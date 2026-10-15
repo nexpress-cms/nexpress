@@ -18,6 +18,9 @@ import {
 import { createAgentModeratorCombinedCommentCollectorV1 } from "../../../packages/core/src/agent/moderator-combined-collector.js";
 import { npResolveAgentModeratorCombinedCommentEvidenceV1 } from "../../../packages/core/src/agent/moderator-comment-evidence.js";
 import { npAgentModeratorWindowStartedAtV1 } from "../../../packages/core/src/agent/moderator-detector.js";
+import { npModeratorFloodScopeV1 } from "../../../packages/core/src/agent/moderator-flood-collection.js";
+import { npPruneAgentModeratorFloodCheckpointsV1 } from "../../../packages/core/src/agent/moderator-flood-retention.js";
+import { npWithAgentRuntimeControlTransactionV1 } from "../../../packages/core/src/agent/runtime-controls.js";
 import {
   createAgentModeratorCommentReportCollectorV1,
   createAgentModeratorCommentReportObserverV1,
@@ -28,7 +31,11 @@ import {
   getCollectionConfig,
   registerCollection,
 } from "../../../packages/core/src/collections/registry.js";
-import { createComment, deleteComment } from "../../../packages/core/src/community/comments.js";
+import {
+  createComment,
+  deleteComment,
+  updateComment,
+} from "../../../packages/core/src/community/comments.js";
 import {
   resetCommunityModerationObserverV1,
   setCommunityModerationObserverV1,
@@ -45,7 +52,7 @@ import {
   npAgentSignals,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npComments, npReports } from "../../../packages/core/src/db/schema/community.js";
-import { npUsers } from "../../../packages/core/src/db/schema/system.js";
+import { npSettings, npUsers } from "../../../packages/core/src/db/schema/system.js";
 import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
 import { postsTable } from "../../../packages/core/src/integration/fixtures.js";
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
@@ -71,7 +78,7 @@ const settings: NpAgentModeratorSettingsV1 = {
   automaticConfidenceBasisPoints: 9950,
 };
 
-async function fixture(config: { duplicates?: boolean } = {}) {
+async function fixture(config: { duplicates?: boolean; count?: number } = {}) {
   const db = await getTestDb();
   const { userId } = await seedUser({ role: "admin" });
   const [raw] = await db
@@ -106,7 +113,7 @@ async function fixture(config: { duplicates?: boolean } = {}) {
   );
   const never = () => Promise.reject(new Error("Collection must not dispatch or activate Runtime"));
   const events = createAgentRuntimeEventServiceV1({
-    admission: { admit: never, withCurrentRun: never, withRunAuthority: never },
+    admission: { admit: never, withCurrentRun: never, withRunAuthority: never, retry: never },
     deploymentAuthority: {
       policyId: "mixed-collector-test",
       fingerprint: `cj1:sha256:${"A".repeat(43)}`,
@@ -121,7 +128,7 @@ async function fixture(config: { duplicates?: boolean } = {}) {
       fileReport({
         targetType: "comment",
         targetId: commentId,
-        reporterId: reporters[reporterIndex]!.memberId,
+        reporterId: reporters[reporterIndex].memberId,
         reason: "Unverified private report me@example.test",
       }),
     );
@@ -129,17 +136,20 @@ async function fixture(config: { duplicates?: boolean } = {}) {
   const reports: Awaited<ReturnType<typeof report>>[] = [];
   let windowStartedAt: string | null = null;
   let observedCount = 0;
+  const count = config.count ?? 5;
   // Keep the actual PostgreSQL timestamps and restart the fixture's selection
   // if source writes cross a bucket. No historical evidence is rewritten.
-  for (let index = 0; comments.length < 5 && index < 20; index++) {
+  // A rollover near the end of a large selection needs a whole replacement
+  // selection, not merely twenty extra writes. Keep retries explicitly bounded.
+  for (let index = 0; comments.length < count && index < count * 3 + 20; index++) {
     resetCommunityModerationObserverV1();
-    const reported = observedCount >= 3;
+    const reported = observedCount >= count - 2;
     if (!reported) setCommunityModerationObserverV1(observed);
     const comment = await withCurrentSite(siteId, () =>
       createComment({
         targetType: "posts",
         targetId: String(saved.doc.id),
-        memberId: members[index % members.length]!.memberId,
+        memberId: members[index % members.length].memberId,
         bodyMd: `Actual campaign ${index} https://offer.example/${index}?private=never-copy`,
       }),
     );
@@ -175,14 +185,16 @@ async function fixture(config: { duplicates?: boolean } = {}) {
     if (claim) reports.push(claim);
     else observedCount++;
   }
-  if (!windowStartedAt || comments.length !== 5 || reports.length !== 2)
+  if (!windowStartedAt || comments.length !== count || reports.length !== 2)
     throw new Error("Could not prepare one mixed source window");
-  const now = () => new Date(Date.parse(windowStartedAt!) + 600_001);
+  const now = () => new Date(Date.parse(windowStartedAt) + 600_001);
   let captured: NpAgentModeratorSignalCandidateV1 | null = null;
+  const capturedCandidates: NpAgentModeratorSignalCandidateV1[] = [];
   const incidents = createAgentIncidentWriteServiceV1({
     now,
     resolveEvidence: (input) => {
       captured = structuredClone(input.candidate);
+      capturedCandidates.push(structuredClone(input.candidate));
       return npResolveAgentModeratorCombinedCommentEvidenceV1({ ...input, staffUserId: userId });
     },
   });
@@ -193,7 +205,9 @@ async function fixture(config: { duplicates?: boolean } = {}) {
     userId,
     user,
     comments,
+    capturedCandidates,
     reports,
+    observed,
     report,
     incidents,
     options,
@@ -247,7 +261,7 @@ describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", (
     expect(collected.inspectedEvents).toBeGreaterThanOrEqual(7);
     expect(collected.acceptedFacts).toBe(7);
     expect(collected.observations).toHaveLength(1);
-    expect(collected.observations[0]!.disposition).toBe("created");
+    expect(collected.observations[0].disposition).toBe("created");
     const candidate = f.candidate();
     expect(candidate.facts).toHaveLength(5);
     expect(new Set(candidate.facts.map((fact) => fact.memberId)).size).toBe(3);
@@ -285,7 +299,7 @@ describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", (
       await expect(f.incidents.observe(candidate)).rejects.toThrow();
       expect(await stored(f.db)).toEqual(retained);
     };
-    const report = f.reports[0]!;
+    const report = f.reports[0];
     await f.db
       .update(npReports)
       .set({ reason: "Tampered immutable filing" })
@@ -335,7 +349,7 @@ describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", (
     expect(await stored(f.db)).toEqual(retained);
   });
 
-  it("rejects one globally bounded 101-source batch before inspecting sources or persisting partial Incidents", async () => {
+  it("commits a bounded durable page and resumes a 101-source batch without partial Incidents", async () => {
     const f = await fixture();
     const inWindow = and(
       eq(npAgentEvents.siteId, siteId),
@@ -382,10 +396,260 @@ describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", (
     expect(
       batch.filter((event) => event.sourceComponent === "community.comment-reports"),
     ).toHaveLength(50);
-    await expect(f.collector.collect(f.input)).rejects.toMatchObject({
-      code: "MODERATOR_COLLECTION_LIMIT",
+    expect(await f.collector.collect(f.input)).toMatchObject({
+      complete: false,
+      inspectedEvents: 100,
+      observations: [],
     });
     expect(await stored(f.db)).toEqual({ incidents: [], signals: [], timeline: [] });
+    expect(await f.db.select().from(npSettings)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: expect.stringContaining("agent.moderator.flood.v1:") }),
+      ]),
+    );
+    const resumed = createAgentModeratorCombinedCommentCollectorV1(f.options);
+    expect(await resumed.collect(f.input)).toMatchObject({
+      complete: false,
+      inspectedEvents: 1,
+      observations: [],
+    });
+    let complete = false;
+    for (let page = 0; page < 12 && !complete; page++)
+      complete = (await resumed.collect(f.input)).complete === true;
+    expect(complete).toBe(true);
+    expect((await stored(f.db)).incidents).toHaveLength(1);
+  });
+
+  it("covers 151 actual mixed targets through late delivery, current replacement, replay and ACL restoration", async () => {
+    const f = await fixture({ count: 151 });
+    const retainedSources = await f.db.select().from(npAgentEvents);
+    const delayed = retainedSources.find(
+      (source) =>
+        source.subject?.kind === "comment" && source.subject.commentId === f.comments[0].id,
+    )!;
+    // Delay delivery of one actual owner-created immutable source. Restore its
+    // exact bytes later, with an occurredAt behind the already processed page.
+    await f.db.delete(npAgentEvents).where(eq(npAgentEvents.id, delayed.id));
+    expect(await f.collector.collect(f.input)).toMatchObject({
+      complete: false,
+      inspectedEvents: 100,
+      observations: [],
+    });
+    expect(await stored(f.db)).toEqual({ incidents: [], signals: [], timeline: [] });
+    const resumed = createAgentModeratorCombinedCommentCollectorV1(f.options);
+    expect(await resumed.collect(f.input)).toMatchObject({ complete: false, inspectedEvents: 50 });
+    await f.db.insert(npAgentEvents).values(delayed);
+    expect(await resumed.collect(f.input)).toMatchObject({ complete: false, inspectedEvents: 1 });
+    // A real owner edit replaces an earlier page's source when its source time
+    // remains in this bucket. A later bucket belongs to its own collection.
+    setCommunityModerationObserverV1(f.observed);
+    const edited = await withCurrentSite(siteId, () =>
+      updateComment({
+        commentId: f.comments[0].id,
+        memberId: f.comments[0].memberId,
+        bodyMd: "Updated actual campaign https://offer.example/current",
+      }),
+    );
+    const editBucket = npAgentModeratorWindowStartedAtV1(edited.editedAt!.toISOString());
+    const assertEditCollection = async (comment: typeof edited) => {
+      const bucket = npAgentModeratorWindowStartedAtV1(comment.editedAt!.toISOString());
+      expect(await resumed.collect(f.input)).toMatchObject({
+        complete: false,
+        inspectedEvents: bucket === f.input.windowStartedAt ? 1 : 0,
+      });
+      if (bucket !== f.input.windowStartedAt) {
+        const closedNow = () => new Date(Date.parse(bucket) + 600_001);
+        const nextWindow = createAgentModeratorCombinedCommentCollectorV1({
+          ...f.options,
+          now: closedNow,
+          incidents: createAgentIncidentWriteServiceV1({
+            now: closedNow,
+            resolveEvidence: (input) =>
+              npResolveAgentModeratorCombinedCommentEvidenceV1({
+                ...input,
+                staffUserId: f.userId,
+              }),
+          }),
+        });
+        const next = await nextWindow.collect({ ...f.input, windowStartedAt: bucket });
+        expect(next.complete).not.toBe(false);
+        expect(next.inspectedEvents).toBeGreaterThan(0);
+        expect(next.acceptedFacts).toBe(1);
+        expect(next.observations).toEqual([]);
+      }
+    };
+    await assertEditCollection(edited);
+    let complete = false;
+    for (let page = 0; page < 20 && !complete; page++)
+      complete = (await resumed.collect(f.input)).complete === true;
+    expect(complete).toBe(true);
+    const covered = new Set(
+      f.capturedCandidates.flatMap((candidate) =>
+        candidate.facts.map((fact) =>
+          fact.subject.kind === "comment" ? fact.subject.commentId : fact.subject.documentId,
+        ),
+      ),
+    );
+    expect(covered).toEqual(
+      new Set(
+        f.comments
+          .filter((comment) => editBucket === f.input.windowStartedAt || comment.id !== edited.id)
+          .map((comment) => comment.id),
+      ),
+    );
+    expect(
+      f.capturedCandidates.every(
+        (candidate) => candidate.facts.length <= 100 && candidate.advisory,
+      ),
+    ).toBe(true);
+    const editedFacts = f.capturedCandidates
+      .flatMap((candidate) => candidate.facts)
+      .filter((fact) => fact.subject.kind === "comment" && fact.subject.commentId === edited.id);
+    if (editBucket === f.input.windowStartedAt) {
+      expect(editedFacts.length).toBeGreaterThan(0);
+      expect(editedFacts.every((fact) => fact.observedAt === edited.editedAt!.toISOString())).toBe(
+        true,
+      );
+    } else expect(editedFacts).toEqual([]);
+    const retained = await stored(f.db);
+    expect(retained.incidents).toHaveLength(1);
+    expect(retained.signals.length).toBeGreaterThan(1);
+    expect(await resumed.collect(f.input)).toMatchObject({
+      complete: false,
+      inspectedEvents: 0,
+      observations: [],
+    });
+    complete = false;
+    for (let page = 0; page < 20 && !complete; page++)
+      complete = (await resumed.collect(f.input)).complete === true;
+    expect(complete).toBe(true);
+    expect(await stored(f.db)).toEqual(retained);
+    // A new source after complete cannot be permanently hidden by its checkpoint.
+    const late = await withCurrentSite(siteId, () =>
+      updateComment({
+        commentId: edited.id,
+        memberId: edited.memberId,
+        bodyMd: "Another actual edit https://offer.example/latest",
+      }),
+    );
+    await assertEditCollection(late);
+    const beforeLate = f.capturedCandidates.length;
+    complete = false;
+    for (let page = 0; page < 20 && !complete; page++)
+      complete = (await resumed.collect(f.input)).complete === true;
+    expect(complete).toBe(true);
+    const lateFacts = f.capturedCandidates
+      .slice(beforeLate)
+      .flatMap((candidate) => candidate.facts)
+      .filter((fact) => fact.subject.kind === "comment" && fact.subject.commentId === late.id);
+    if (
+      npAgentModeratorWindowStartedAtV1(late.editedAt!.toISOString()) === f.input.windowStartedAt
+    ) {
+      expect(lateFacts.length).toBeGreaterThan(0);
+      expect(lateFacts.every((fact) => fact.observedAt === late.editedAt!.toISOString())).toBe(
+        true,
+      );
+    } else expect(lateFacts).toEqual([]);
+    // Temporary collection ACL loss cannot turn an old completed attempt into
+    // permanent cached authority, or permanently hide sources after restoration.
+    const collection = getCollectionConfig("posts");
+    registerCollection("posts", postsTable, {
+      ...collection,
+      access: { ...collection.access, read: () => false },
+    });
+    const beforeDenied = f.capturedCandidates.length;
+    try {
+      complete = false;
+      for (let page = 0; page < 20 && !complete; page++)
+        complete = (await resumed.collect(f.input)).complete === true;
+      expect(complete).toBe(true);
+      expect(f.capturedCandidates).toHaveLength(beforeDenied);
+    } finally {
+      registerTestCollections();
+    }
+    complete = false;
+    for (let page = 0; page < 20 && !complete; page++)
+      complete = (await resumed.collect(f.input)).complete === true;
+    expect(complete).toBe(true);
+    expect(f.capturedCandidates.length).toBeGreaterThan(beforeDenied);
+    const activeSettings = { ...settings, minItems: 6 };
+    expect(await resumed.collect({ ...f.input, settings: activeSettings })).toMatchObject({
+      complete: false,
+    });
+    const prefix = npModeratorFloodScopeV1({
+      ...f.input,
+      staffUserId: f.userId,
+      includeDocuments: false,
+    });
+    const activePrefix = npModeratorFloodScopeV1({
+      ...f.input,
+      settings: activeSettings,
+      staffUserId: f.userId,
+      includeDocuments: false,
+    });
+    const activeRows = () =>
+      f.db
+        .select()
+        .from(npSettings)
+        .where(and(gte(npSettings.key, activePrefix), lt(npSettings.key, `${activePrefix}\uffff`)));
+    const beforeActive = await activeRows();
+    const beforeEvents = await f.db.select().from(npAgentEvents);
+    let deletedMetadata = 0;
+    for (let page = 0; page < 100; page++) {
+      const result = await npWithAgentRuntimeControlTransactionV1(siteId, ({ db }) =>
+        npPruneAgentModeratorFloodCheckpointsV1({
+          db,
+          siteId,
+          now: new Date(Date.parse(f.input.windowStartedAt) + 600_000 + 90 * 86_400_000),
+          signalDays: 90,
+          limit: 25,
+          maximumRows: 100,
+          beforeStatement: () => Promise.resolve(),
+        }),
+      );
+      expect(result.pruned).toBeLessThanOrEqual(100);
+      deletedMetadata += result.pruned;
+      if (!result.pruned) break;
+    }
+    expect(deletedMetadata).toBeGreaterThan(151);
+    const [expired] = await f.db
+      .select()
+      .from(npSettings)
+      .where(eq(npSettings.key, `${prefix}state`));
+    expect(expired.value).toMatchObject({ phase: "expired", cleanupComplete: true });
+    expect(
+      await f.db
+        .select()
+        .from(npSettings)
+        .where(and(gte(npSettings.key, prefix), lt(npSettings.key, `${prefix}\uffff`))),
+    ).toHaveLength(1);
+    expect(await activeRows()).toEqual(beforeActive);
+    expect(await f.db.select().from(npAgentEvents)).toEqual(beforeEvents);
+    await expect(resumed.collect(f.input)).rejects.toMatchObject({
+      code: "MODERATOR_SOURCE_EXPIRED",
+    });
+    expect(await f.db.select().from(npComments).where(eq(npComments.status, "hidden"))).toEqual([]);
+  }, 90_000);
+
+  it("filters unselected collection sources before the bounded fast-path inventory", async () => {
+    const f = await fixture();
+    const [source] = await f.db
+      .select()
+      .from(npAgentEvents)
+      .where(eq(npAgentEvents.sourceComponent, "community.comments"))
+      .limit(1);
+    // Out-of-scope envelope rows must not reach source validation or capacity.
+    const unrelated = Array.from({ length: 120 }, (_, n) => ({
+      ...source,
+      id: randomUUID(),
+      subject: { ...source.subject!, collection: "unselected" },
+      deduplicationKey: `unselected.${n}`,
+    }));
+    await f.db.insert(npAgentEvents).values(unrelated);
+    const result = await f.collector.collect(f.input);
+    expect(result.inspectedEvents).toBe(5);
+    expect(result.observations).toHaveLength(1);
+    expect(result.complete).not.toBe(false);
   });
 
   it("rolls back the real Signal and Incident when staff authority changes before the collection transaction commits", async () => {

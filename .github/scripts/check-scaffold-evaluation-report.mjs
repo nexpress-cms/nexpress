@@ -82,6 +82,60 @@ try {
   console.log(
     `Installed evaluation report pipe passed (${Buffer.byteLength(child.stdout)} bytes).`,
   );
+  for (const [dataset, recipe] of [
+    ["moderator-assessment.v1", "moderator-assessment"],
+    ["publisher.v3", "publisher-selection"],
+  ]) {
+    const evaluationPath = join(directory, `${recipe}.json`);
+    const evaluationChild = spawnSync(
+      "pnpm",
+      [
+        "exec",
+        "nexpress",
+        "agent",
+        "evaluate",
+        "--dataset",
+        dataset,
+        "--out",
+        evaluationPath,
+        "--json",
+      ],
+      { cwd: scaffoldDir, encoding: "utf8", timeout: 90000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    assert.ifError(evaluationChild.error);
+    assert.equal(evaluationChild.status, 0, evaluationChild.stderr || evaluationChild.stdout);
+    const profile = JSON.parse(await readFile(evaluationPath, "utf8"));
+    assert.equal(profile.ok, true);
+    assert.equal(profile.mode, "fake");
+    const profileReview = await contracts.npBuildAgentProfileEvaluationReviewArtifactV1(profile);
+    assert.equal(profileReview.summary.reviewed, 0);
+    const reviewPath = join(directory, `${recipe}-review.json`);
+    for (const extra of [
+      ["--out", reviewPath],
+      ["--compare", reviewPath],
+    ]) {
+      const reviewChild = spawnSync(
+        "pnpm",
+        ["exec", "nexpress", "agent", "evaluate", "--review", evaluationPath, ...extra, "--json"],
+        { cwd: scaffoldDir, encoding: "utf8", timeout: 90000, maxBuffer: 8 * 1024 * 1024 },
+      );
+      assert.ifError(reviewChild.error);
+      assert.equal(reviewChild.status, 0, reviewChild.stderr || reviewChild.stdout);
+      assert.deepEqual(JSON.parse(reviewChild.stdout).artifact, profileReview);
+    }
+    const workbench = await agents.npBuildAgentEvaluationWorkbenchV1({
+      schemaVersion: "np.agent-eval-workbench-request.v1",
+      recipe,
+      evaluation: profile,
+      review: profileReview,
+      baseline: null,
+      baselineReview: null,
+      labels: null,
+    });
+    assert.equal(workbench.fixtureGate, "passed");
+    assert.equal(workbench.authority, "offline-self-reported-no-approval");
+    console.log(`Installed ${dataset} fake evaluation/review/Workbench passed.`);
+  }
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

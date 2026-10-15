@@ -74,7 +74,7 @@ describe("Activity closed contract", () => {
       createHash("sha256")
         .update(serializeAgentCanonicalJson(npAgentActivityContractV1))
         .digest("hex"),
-    ).toBe("9d31c6b1a86bc86320791fd1f12bc1ccccfe00e370a5d81d84e5bafa38c3edf3");
+    ).toBe("e3cfe7740ad0df81f6f0e8fd46a4228dfb782e540ac8c498ace9ea56af1fc756");
   });
   it("locks only six read routes, leaving mutations in the shared admission registry", () => {
     expect(npAgentActivityReadRoutesV1.map(({ method, path }) => `${method} ${path}`)).toEqual([

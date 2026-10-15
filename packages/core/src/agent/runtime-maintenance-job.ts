@@ -14,11 +14,13 @@ import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npWithAgentRuntimeRetentionBudgetV1 } from "./runtime-retention-budget.js";
 import { npPruneAgentRuntimeRetentionV1 } from "./runtime-retention.js";
+import type { NpAgentIncidentRetentionPolicyV1 } from "../agent-contract/incident-retention-contract.js";
 
 /** Explicit host job only: pruning, durable cursor and receipt commit together. */
 export async function npPruneAgentRuntimeJobV1(options: {
   siteId: string;
   now?: () => Date;
+  incidentRetention?: NpAgentIncidentRetentionPolicyV1;
 }): Promise<void> {
   npAssertAgentPreviewEffectsAllowed();
   const now = options.now ?? (() => new Date());
@@ -56,6 +58,7 @@ export async function npPruneAgentRuntimeJobV1(options: {
           settings,
           revision,
           beforeStatement,
+          incidentRetention: options.incidentRetention,
         });
         const completedAt = now().toISOString();
         const receipt = npNextAgentMaintenanceReceiptV1(previous, {

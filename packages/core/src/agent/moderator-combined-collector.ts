@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lt, or } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import {
   canonicalBodySiteId,
   canonicalBodyUuid,
@@ -24,13 +24,19 @@ import {
   npDetectAgentRepeatedLinkSpamV1,
 } from "./moderator-detector.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
+import { npCollectAgentModeratorFloodPageV1 } from "./moderator-flood-collection.js";
+
+export interface NpAgentModeratorCombinedCollectionResultV1 extends NpAgentModeratorCollectionResultV1 {
+  /** False means a durable bounded page committed; admission must remain pending. */
+  complete?: boolean;
+}
 
 export interface NpAgentModeratorCombinedCommentCollectorV1 {
   collect(input: {
     siteId: string;
     windowStartedAt: string;
     settings: NpAgentModeratorSettingsV1;
-  }): Promise<NpAgentModeratorCollectionResultV1>;
+  }): Promise<NpAgentModeratorCombinedCollectionResultV1>;
 }
 
 export type NpAgentModeratorCombinedContentCollectorV1 = NpAgentModeratorCombinedCommentCollectorV1;
@@ -41,14 +47,14 @@ interface CollectorOptions {
   now?: () => Date;
 }
 
-/** Explicit host invocation; one closed window and one 100-event bound across both source owners. */
+/** Explicit host invocation; one closed window and bounded durable source pages. */
 export function createAgentModeratorCombinedCommentCollectorV1(
   options: CollectorOptions,
 ): NpAgentModeratorCombinedCommentCollectorV1 {
   return createCombinedCollector(options, false);
 }
 
-/** Explicit host invocation; one global 100-event bound across all three existing source owners. */
+/** Explicit host invocation; bounded durable pages across all three source owners. */
 export function createAgentModeratorCombinedContentCollectorV1(
   options: CollectorOptions,
 ): NpAgentModeratorCombinedContentCollectorV1 {
@@ -82,44 +88,78 @@ function createCombinedCollector(
       return withCurrentSite(siteId, () =>
         npWithAgentRuntimeControlTransactionV1(siteId, async ({ db }) => {
           const user = await npResolveAgentModeratorStaffUserV1(db, siteId, options.staffUserId);
+          const selectedSources = and(
+            eq(npAgentEvents.siteId, siteId),
+            eq(npAgentEvents.sourceKind, "community"),
+            sql`${npAgentEvents.subject}->>'collection' in (${sql.join(
+              settings.collectionSlugs.map((slug) => sql`${slug}`),
+              sql`, `,
+            )})`,
+            includeDocuments
+              ? sql`${npAgentEvents.subject}->>'kind' in ('comment', 'document')`
+              : sql`${npAgentEvents.subject}->>'kind' = 'comment'`,
+            or(
+              and(
+                eq(npAgentEvents.sourceComponent, "community.comments"),
+                inArray(npAgentEvents.kind, [
+                  "community.content.created",
+                  "community.content.moderated",
+                ]),
+              ),
+              and(
+                eq(npAgentEvents.sourceComponent, "community.comment-reports"),
+                eq(npAgentEvents.kind, "community.content.reported"),
+              ),
+              includeDocuments
+                ? and(
+                    eq(npAgentEvents.sourceComponent, "community.document-reports"),
+                    eq(npAgentEvents.kind, "community.content.reported"),
+                  )
+                : undefined,
+            ),
+            gte(npAgentEvents.occurredAt, start),
+            lt(npAgentEvents.occurredAt, end),
+          );
+          const resumed = await npCollectAgentModeratorFloodPageV1({
+            db,
+            siteId,
+            settings,
+            windowStartedAt: input.windowStartedAt,
+            staffUserId: options.staffUserId,
+            includeDocuments,
+            incidents: options.incidents,
+            selectedSources,
+            user,
+            now: now(),
+          });
+          if (resumed) {
+            await npResolveAgentModeratorStaffUserV1(db, siteId, options.staffUserId);
+            return resumed;
+          }
           const sources = await db
             .select()
             .from(npAgentEvents)
-            .where(
-              and(
-                eq(npAgentEvents.siteId, siteId),
-                eq(npAgentEvents.sourceKind, "community"),
-                or(
-                  and(
-                    eq(npAgentEvents.sourceComponent, "community.comments"),
-                    inArray(npAgentEvents.kind, [
-                      "community.content.created",
-                      "community.content.moderated",
-                    ]),
-                  ),
-                  and(
-                    eq(npAgentEvents.sourceComponent, "community.comment-reports"),
-                    eq(npAgentEvents.kind, "community.content.reported"),
-                  ),
-                  includeDocuments
-                    ? and(
-                        eq(npAgentEvents.sourceComponent, "community.document-reports"),
-                        eq(npAgentEvents.kind, "community.content.reported"),
-                      )
-                    : undefined,
-                ),
-                gte(npAgentEvents.occurredAt, start),
-                lt(npAgentEvents.occurredAt, end),
-              ),
-            )
+            .where(selectedSources)
             .orderBy(asc(npAgentEvents.occurredAt), asc(npAgentEvents.id))
             .limit(101);
-          if (sources.length > 100)
-            throw new NpAgentGatewayError(
-              "MODERATOR_COLLECTION_LIMIT",
-              409,
-              "The selected moderation window exceeds the bounded collector capacity.",
-            );
+          if (sources.length > 100) {
+            const result = await npCollectAgentModeratorFloodPageV1({
+              db,
+              siteId,
+              settings,
+              windowStartedAt: input.windowStartedAt,
+              staffUserId: options.staffUserId,
+              includeDocuments,
+              incidents: options.incidents,
+              selectedSources,
+              user,
+              now: now(),
+              initialize: true,
+            });
+            if (!result) throw new Error("Flood collection checkpoint was not initialized.");
+            await npResolveAgentModeratorStaffUserV1(db, siteId, options.staffUserId);
+            return result;
+          }
           const facts: NpAgentModeratorFactV1[] = [];
           for (const source of sources) {
             if (

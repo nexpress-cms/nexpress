@@ -15,6 +15,8 @@ import {
   runAgentEvaluationV1,
   runAgentModeratorEvaluationV2,
   runAgentModeratorEvaluationV3,
+  npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentPublisherSelectionEvaluationSuiteV1,
 } from "@nexpress/core/agents";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -441,3 +443,71 @@ test("evaluation workspace labels actual document/comment detector replay and ex
   });
   expect(new Set(writes)).toEqual(new Set(["/api/admin/agents/evaluations"]));
 });
+
+for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
+  test(`${recipe} imports and reviews the explicit new profile without live execution`, async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(
+      page.context(),
+      210 + (recipe === "publisher-selection" ? 10 : 0) + testInfo.retry,
+    );
+    await signInAsE2EAdmin(page);
+    const suite = await (recipe === "moderator-assessment"
+      ? npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+      : npCreateAgentPublisherSelectionEvaluationSuiteV1());
+    const source = await runAgentEvaluationV1({
+      suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases: suite.cases.slice(0, 2) }),
+      mode: "fake",
+      providerId: "fake",
+      model: "deterministic-v1",
+      budget: {
+        maxCalls: 2,
+        maxInputTokens: 100000,
+        maxOutputTokens: 100000,
+        maxCostMicros: 0,
+        timeoutMs: 5000,
+      },
+    });
+    await page.goto("/admin/agents/evaluations");
+    await page.getByLabel("Recipe", { exact: true }).selectOption(recipe);
+    await importArtifact(page, "Evaluation artifact (required)", `${recipe}.json`, source);
+    const initial = await recompute(page, "Validate imports");
+    expect(initial.recipe).toBe(recipe);
+    expect(initial.fixtureGate).toBe("passed");
+    const entry = initial.cases.find((entry) => entry.eligible);
+    if (!entry) throw new Error("Missing reviewable new profile case");
+    await page
+      .getByLabel("Case", { exact: true })
+      .selectOption(`${entry.caseId}@${entry.caseVersion}`);
+    await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
+    const edited = JSON.parse(
+      await page.getByLabel("Edited structured result JSON", { exact: true }).inputValue(),
+    ) as Record<string, unknown>;
+    expect(edited).toHaveProperty(
+      recipe === "moderator-assessment" ? "moderatorAssessment" : "publisherSelectionResponse",
+    );
+    await page.getByLabel("Outcome", { exact: true }).selectOption("accept");
+    await page
+      .getByLabel("Reviewer (self-reported)", { exact: true })
+      .fill("browser-fixture-review");
+    const reviewed = await recompute(page, "Apply and recompute");
+    expect(reviewed.cases.find((item) => item.caseId === entry.caseId)?.labelJson).toContain(
+      "browser-fixture-review",
+    );
+    expect(reviewed.authority).toBe("offline-self-reported-no-approval");
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+        await page.getByRole("button", { name: "Close navigation" }).last().click();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`${recipe}-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  });
+}

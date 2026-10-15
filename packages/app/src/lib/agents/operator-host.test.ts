@@ -43,7 +43,7 @@ vi.mock("@nexpress/core/cache", async (original) => ({
   npInvalidateCache: mocks.invalidate,
   getOptionalCacheInvalidationAdapter: mocks.adapter,
 }));
-vi.mock("../system-health", () => ({
+vi.mock("../system-health-checks", () => ({
   checkStorageAdapter: mocks.storage,
   checkCacheInvalidation: mocks.cache,
   checkCollectionRuntime: () => ({ state: "ok" }),
@@ -74,11 +74,80 @@ const context: NpAgentOperatorHostContextV1 = {
 const directories: string[] = [];
 afterEach(async () => {
   vi.resetAllMocks();
+  vi.unstubAllEnvs();
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 describe("Operator host owner boundary", () => {
+  it("withholds retained Doctor evidence when deployment authority is absent or lost during the read", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "np-operator-doctor-"));
+    directories.push(directory);
+    const path = join(directory, "doctor.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        schemaVersion: "np.doctor.v1",
+        ok: false,
+        blocksDeploy: true,
+        mode: "dev",
+        target: null,
+        summary: { total: 1, errors: 1, warnings: 0 },
+        checks: [
+          {
+            id: "jobs.contract",
+            state: "error",
+            label: "private label",
+            detail: "/private/password",
+          },
+        ],
+      }),
+    );
+    let allowed = true;
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(allowed),
+      reportSources: { doctor: { path } },
+    });
+    const result = await host.status({ families: ["readiness"] }, context);
+    expect(result.report.checks).toContainEqual(
+      expect.objectContaining({ id: "jobs.contract", state: "error" }),
+    );
+    expect(JSON.stringify(result)).not.toMatch(/password|private label/);
+    allowed = false;
+    expect(
+      (await host.status({ families: ["readiness"] }, context)).report.checks,
+    ).not.toContainEqual(expect.objectContaining({ id: "jobs.contract" }));
+    let grants = 0;
+    const revoked = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(++grants < 3),
+      reportSources: { doctor: { path } },
+    });
+    expect(
+      (await revoked.status({ families: ["readiness"] }, context)).report.checks,
+    ).not.toContainEqual(expect.objectContaining({ id: "jobs.contract" }));
+  });
+  it("preflights the deployment mutation gate and rechecks it at dispatch without touching cache", async () => {
+    vi.stubEnv("NP_REMOTE_OPS_MUTATIONS", "0");
+    const host = npCreateAgentOperatorAppHostV1({ authorize: async () => {} });
+    const input = { action: "cache.revalidate" as const, target: { kind: "site" as const } };
+    await expect(host.preflightExecution!({ ...context, input })).rejects.toThrow("unavailable");
+    await expect(
+      host.execute!({
+        ...context,
+        input,
+        artifact: {},
+        contractId: "cache.invalidation",
+        executionId: uuid,
+      }),
+    ).rejects.toThrow("unavailable");
+    expect(mocks.invalidate).not.toHaveBeenCalled();
+    vi.stubEnv("NP_REMOTE_OPS_MUTATIONS", "1");
+    await expect(host.preflightExecution!({ ...context, input })).resolves.toBeUndefined();
+    vi.stubEnv("NP_REMOTE_OPS_MUTATIONS", "0");
+    await expect(host.preflightExecution!({ ...context, input })).rejects.toThrow("unavailable");
+  });
   it("does not inspect deployment state without explicit current permission", async () => {
     const authorize = vi.fn().mockResolvedValue(undefined);
     const host = npCreateAgentOperatorAppHostV1({ authorize });
@@ -230,6 +299,9 @@ describe("Operator host owner boundary", () => {
     expect(result.artifact.manifestId).toBe("backup-one");
     expect(result.artifact.backupDir).toBe(directory);
     expect(result.contractId).toBe("ops.backup");
+    expect(result.checks.map((check) => check.id)).toEqual(
+      (result.artifact.checks as Array<{ id: string }>).map((check) => check.id),
+    );
     expect(result.projectCommand).toBe(
       "pnpm --silent run ops:backup -- restore-plan backup-one --json",
     );
@@ -267,6 +339,7 @@ describe("Operator host owner boundary", () => {
     ).rejects.toThrow("unavailable");
   });
   it("executes only the frozen site-owned cache targets and projects the actual adapter outcome", async () => {
+    vi.stubEnv("NP_REMOTE_OPS_MUTATIONS", "1");
     mocks.adapter.mockReturnValue({ kind: "test-cache" });
     mocks.invalidate.mockResolvedValue({
       status: "applied",
@@ -315,6 +388,7 @@ describe("Operator host owner boundary", () => {
     await expect(host.plan!({ ...context, input, planId: uuid })).rejects.toThrow("unavailable");
   });
   it("retains partial cache failure and requires independent approver authority", async () => {
+    vi.stubEnv("NP_REMOTE_OPS_MUTATIONS", "1");
     mocks.adapter.mockReturnValue({ kind: "test-cache" });
     mocks.invalidate.mockResolvedValue({
       status: "partial",

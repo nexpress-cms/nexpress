@@ -7,6 +7,8 @@ export interface NpAgentEvaluationCommandArgsV1 {
     | "operator.v1"
     | "publisher.v1"
     | "publisher.v2"
+    | "moderator-assessment.v1"
+    | "publisher.v3"
     | "moderator.v1"
     | "moderator.v2"
     | "moderator.v3"
@@ -94,6 +96,8 @@ export function npParseAgentEvaluationCommandArgsV1(
     dataset !== "operator.v1" &&
     dataset !== "publisher.v1" &&
     dataset !== "publisher.v2" &&
+    dataset !== "moderator-assessment.v1" &&
+    dataset !== "publisher.v3" &&
     dataset !== "moderator.v1" &&
     dataset !== "moderator.v2" &&
     dataset !== "moderator.v3" &&
@@ -149,6 +153,8 @@ export function npParseAgentEvaluationCommandArgsV1(
       | "operator.v1"
       | "publisher.v1"
       | "publisher.v2"
+      | "moderator-assessment.v1"
+      | "publisher.v3"
       | "moderator.v1"
       | "moderator.v2"
       | "moderator.v3"

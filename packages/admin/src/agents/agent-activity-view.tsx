@@ -19,6 +19,7 @@ import {
   type NpAgentActivityKindV1,
   type NpAgentActivityPrincipalsPageV1,
   type NpAgentActivityRunsPageV1,
+  type NpAgentOperatorReviewV1,
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
@@ -224,6 +225,87 @@ function ActivityTime({ value }: { value: string | null }) {
     </time>
   ) : (
     <span>—</span>
+  );
+}
+
+function OperatorEvidence({ review }: { review: NpAgentOperatorReviewV1 }) {
+  const plan = review.plan;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-[15px]">Operator evidence and plan</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p>Server-owned observations. A model summary cannot change these checks.</p>
+        <ul className="space-y-1">
+          {review.checks.map((check) => (
+            <li key={check.id}>
+              <code>{check.id}</code> · {check.state}
+            </li>
+          ))}
+        </ul>
+        {plan && (
+          <div className="space-y-2">
+            <p className="break-all">Plan: {plan.planId}</p>
+            <p className="break-all">Digest: {plan.planDigest}</p>
+            <p>
+              Expires: <ActivityTime value={plan.expiresAt} />. Historical evidence does not
+              authorize execution.
+            </p>
+            <pre className="overflow-auto whitespace-pre-wrap break-words">
+              {JSON.stringify(plan.operation, null, 2)}
+            </pre>
+            {plan.execution.kind === "local-cli-handoff" ? (
+              <>
+                <p>Local planning handoff only · {plan.execution.contractId}</p>
+                <code className="block break-words">{plan.execution.projectCommand}</code>
+              </>
+            ) : (
+              <Link className="underline" href={plan.execution.approvalResource}>
+                Review required human approval
+              </Link>
+            )}
+          </div>
+        )}
+        {review.queue && (
+          <p>
+            Recorded queue sample: <ActivityTime value={review.queue.observedAt} /> · ready{" "}
+            {review.queue.ready} · active {review.queue.active} ·{" "}
+            {review.queue.paused === null
+              ? "pause unknown"
+              : review.queue.paused
+                ? "paused"
+                : "not paused"}
+            . A snapshot alone does not prove recovery.
+          </p>
+        )}
+        {review.recovery && (
+          <div className="space-y-1">
+            <p>
+              Recorded recovery monitoring: <strong>{review.recovery.state}</strong> ·{" "}
+              {review.recovery.reason}
+            </p>
+            <p>
+              Pending backlog: {review.recovery.beforePending ?? "unknown"} →{" "}
+              {review.recovery.afterPending ?? "unknown"}
+            </p>
+            <p>
+              Sampled: <ActivityTime value={review.recovery.sampledAt} /> · deadline:{" "}
+              <ActivityTime value={review.recovery.deadline} />
+            </p>
+            <p>
+              Recovery requires a fresh subscribed worker and a decreasing due-plus-active backlog.
+              This does not prove command causality or application readiness.
+            </p>
+          </div>
+        )}
+        {review.execution && (
+          <p className="break-all">
+            Recorded execution: {review.execution.state} · digest {review.execution.resultDigest}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1023,6 +1105,7 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                 </dl>
               </CardContent>
             </Card>
+            {detail.operatorReview && <OperatorEvidence review={detail.operatorReview} />}
             {detail.evidence === "redacted" ? (
               <Card>
                 <CardHeader>

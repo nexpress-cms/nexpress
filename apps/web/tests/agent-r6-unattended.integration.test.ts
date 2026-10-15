@@ -385,6 +385,20 @@ describe.skipIf(skipIfNoTestDb())("Explicit R6 unattended recipe journeys", () =
       (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
         .nextRunAt,
     ).toEqual(due.nextRunAt);
+    collect.mockResolvedValueOnce({
+      inspectedEvents: 100,
+      acceptedFacts: 100,
+      observations: [],
+      complete: false,
+    });
+    expect(await events.schedule({ siteId })).toMatchObject({ failed: 1, runIds: [] });
+    expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
+    expect(await f.db.select().from(npAgentProviderCalls)).toEqual([]);
+    expect(f.providerInvoke).not.toHaveBeenCalled();
+    expect(
+      (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
+        .nextRunAt,
+    ).toEqual(due.nextRunAt);
     // Cross a complete source bucket before retrying this unchanged occurrence.
     // Selecting by retry time would collect another bucket and miss its evidence.
     advance(f, 600);

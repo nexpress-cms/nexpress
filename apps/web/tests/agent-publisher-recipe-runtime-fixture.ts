@@ -29,7 +29,7 @@ import { createAgentRuntimeUsageV1 } from "../../../packages/core/src/agent/runt
 import { createAgentRuntimeExecutorV1 } from "../../../packages/core/src/agent/runtime-executor.js";
 import { createAgentRuntimeBreakersV1 } from "../../../packages/core/src/agent/runtime-breakers.js";
 import { createAgentProviderInferenceRuntimeV1 } from "../../../packages/core/src/agent/provider-inference.js";
-import { saveDocument } from "../../../packages/core/src/collections/pipeline.js";
+import { saveDocument, getDocumentById } from "../../../packages/core/src/collections/pipeline.js";
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
 import { postsTable } from "../../../packages/core/src/integration/fixtures.js";
 import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
@@ -62,6 +62,7 @@ export async function publisherRuntimeFixture(
   options: {
     recipe?: NpAgentRecipeDefinitionCanonicalV1;
     recipeRegistry?: NpAgentRecipeRegistryCanonicalV1;
+    publisherLimits?: { candidateLimit: number; batchSize: number };
   } = {},
 ) {
   const recipe = options.recipe ?? (await npCreateAgentPublisherRecipeDefinitionV1());
@@ -79,6 +80,8 @@ export async function publisherRuntimeFixture(
   const previewJobs: Array<{ siteId: string; previewId: string }> = [];
   let processPreviews: () => Promise<void> = () => Promise.resolve();
   let patch: NpAgentJsonObject = { title: "Reviewed stale post" };
+  let batchPatches: ((index: number) => NpAgentJsonObject) | null = null;
+  let previewAssertions: (() => Promise<void>) | null = null;
   let getTarget: string | null = null;
   let completeAfterCreate = false;
   const invoke = vi.fn<NpAgentProviderInferenceFacetV1["invoke"]>(async (request) => {
@@ -125,20 +128,21 @@ export async function publisherRuntimeFixture(
       return propose("changeset.create", {
         title: "Publisher review",
         summary: null,
-        operations: [
-          {
-            kind: "document",
-            operation: "update",
-            clientOperationId: "publisher-post",
-            reason: null,
-            resource: {
-              collection: candidate.collection,
-              documentId: targetOverride ?? candidate.documentId,
-            },
-            base: candidate.base,
-            input: { patch, targetStatus: "published" },
+        operations: (batchPatches ? metadata.candidates : [candidate]).map((candidate, index) => ({
+          kind: "document",
+          operation: "update",
+          clientOperationId: batchPatches ? `publisher-post-${index}` : "publisher-post",
+          reason: null,
+          resource: {
+            collection: candidate.collection,
+            documentId: targetOverride ?? candidate.documentId,
           },
-        ],
+          base: candidate.base,
+          input: {
+            patch: batchPatches ? structuredClone(batchPatches(index)) : patch,
+            targetStatus: "published",
+          },
+        })),
       });
     }
     const current = refs[0];
@@ -180,6 +184,7 @@ export async function publisherRuntimeFixture(
     }),
     definition,
     documentCollection: "posts",
+    publisherLimits: options.publisherLimits,
     recipe,
     recipeRegistry: options.recipeRegistry,
     responseSchema: recipe.responseSchema,
@@ -201,11 +206,10 @@ export async function publisherRuntimeFixture(
   const reader = createAgentCoreRuntimeDocumentEvidenceReaderV1(readOptions);
   const { adapter } = previewStorageFixture();
   const configuration = previewConfiguration();
-  const render = vi.fn(() =>
-    Promise.resolve(
-      '<html lang="en"><head><title>Review</title><meta name="description" content="Review"></head><body><main>Review preview</main></body></html>',
-    ),
-  );
+  const render = vi.fn(async () => {
+    if (previewAssertions) await previewAssertions();
+    return '<html lang="en"><head><title>Review</title><meta name="description" content="Review"></head><body><main>Review preview</main></body></html>';
+  });
   const service: ReturnType<typeof createAgentChangeSetServiceV1> = createAgentChangeSetServiceV1({
     cursorKey: new Uint8Array(32).fill(76),
     runtimeAdmission: runtime.admission,
@@ -329,6 +333,17 @@ export async function publisherRuntimeFixture(
     },
     setPatch(value: NpAgentJsonObject) {
       patch = value;
+    },
+    setBatchPatches(value: (index: number) => NpAgentJsonObject) {
+      batchPatches = value;
+    },
+    assertDuringPreview(callback: () => Promise<void>) {
+      previewAssertions = callback;
+    },
+    async readDocument(id: string) {
+      return withCurrentSite(siteId, () =>
+        getDocumentById<Record<string, unknown>>("posts", id, runtime.actor.actor.user),
+      );
     },
     setGetTarget(id: string) {
       getTarget = id;

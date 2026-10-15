@@ -1,7 +1,7 @@
 # R6 implementation and acceptance
 
-This decision follows the current R6 implementation at the `3e24be63` baseline
-and the subsequent completion bundle. It separates shipped behavior, local
+This decision follows the R6 implementation at `3d38784c` (PRs #1537 and #1538)
+and the user-delegated AI review below. It separates shipped behavior, local
 verification, actual model usefulness and optional production enablement. A
 passing synthetic report or an installed recipe cannot establish all four.
 
@@ -12,9 +12,31 @@ plan review, and Publisher draft/validation/preview. The explicitly installed
 [unattended profile](r6-unattended-flow.md) adds event/scheduled read/proposal work
 without changing the original manual definitions, granting effect authority or
 enabling any worker/provider. The completion bundle passed the complete local
-coverage recorded below, with the explicit corrected-run limits. **Full R6
-acceptance is not established until actual model usefulness and the applicable
-operating evidence are reviewed.**
+coverage recorded below, with the explicit corrected-run limits. **The retained
+model responses are accepted within this implemented slice; the full original R6
+goal remains incomplete.** The [original-goal audit](r6-goal-gap-audit.md)
+identified missing flood continuation, Operator event/runbook/monitoring paths,
+Publisher exclusion evidence and broader assessment/lifecycle work. Its
+[authorized implementation follow-up](r6-goal-gap-audit.md#authorized-implementation-follow-up)
+records the subsequent bundled fixes and their preserved boundaries. This corrects
+the earlier, overly broad AP-600–606 development-completion wording.
+[The delegated review record](r6-delegated-acceptance-review.md) still binds the
+actual model outputs and qualitative decisions. This is AI review, not independent
+human acceptance, live-site qualification or automatic-action enablement.
+General production usefulness and spam accuracy remain unestablished.
+
+The subsequent [integrated-path recheck](r6-goal-gap-audit.md#integrated-path-recheck-after-the-gap-fix-bundle)
+found remaining flood visibility, semantic selection, Publisher source/snapshot,
+Operator gate/review/check-identity and new-profile evaluation gaps. The
+[integrated-path corrections](#integrated-path-corrections-and-verification)
+address those counterexamples and additional supplied-source/projection/UI
+connections. The earlier local passes remain valid only for their declared
+assertions; the new bundle has its own verification below. Automatic quarantine
+code and complete segmented large-Incident semantic assessment were outside
+that preceding bundle. The subsequently authorized
+[explicit Moderator extensions](r6-moderator-automatic-segmented-flow.md) own their
+new implementation and separate verification. Actual model quality and automatic
+production enablement remain unestablished.
 
 The reference app and fresh scaffold remain disabled by default. Existing
 installations are not migrated to a new profile or activated automatically.
@@ -23,15 +45,15 @@ the expanded profile requires a newly saved draft and explicit activation.
 
 ## AP scope and owning evidence
 
-| Package | Implemented boundary                                                                                                                                                                                                    | Owning flows and remaining acceptance                                                                                                                                                                                                                                                                                  |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AP-600  | Shared Signal, Incident, timeline, notification and feedback persistence; bounded current-authority reads and Gateway/MCP projection.                                                                                   | [Foundation](r6-incident-foundation-flow.md), [Studio review](r6-incident-studio-flow.md). Security sources belong to R7.                                                                                                                                                                                              |
-| AP-601  | Actual comment/document observation and report collection, bounded mixed correlation, deterministic repeated-link detector, fresh human-approved quarantine/restore, feedback and Member advisory review.               | [Content collection](r6-moderator-content-collection-flow.md), [document recipe](r6-moderator-document-recipe-flow.md), [Member review](r6-incident-member-report-flow.md), [unattended dispatch](r6-unattended-flow.md). Rule conformance is separate from spam accuracy; Member filings grant no response authority. |
-| AP-602  | Jobs/storage/backup-manifest/plugin/readiness observations, bounded status/audit, owner-backed plans and three approved execution actions. Explicit progress diagnostics add actual retained job transition timestamps. | [Observations](r6-operator-observations-flow.md), [recipe](r6-operator-recipe-flow.md), [execution](r6-operator-execution-flow.md). Snapshot, retained transitions, backup manifests and host declarations retain their distinct limits.                                                                               |
-| AP-603  | Current-base stale-content/SEO/link selection, bounded field-safe ChangeSet draft/validate/preview and same-document/revision cooldown; explicit scheduled execution.                                                   | [Publisher review](r6-publisher-content-review-flow.md), [unattended dispatch](r6-unattended-flow.md). Actual proposal usefulness still needs review.                                                                                                                                                                  |
-| AP-604  | Current-ACL Admin notification feed, exact transition provenance/deduplication and explicit bounded local recording recovery.                                                                                           | [Notifications](r6-incident-notifications-flow.md), [recovery](r6-incident-notification-recovery-flow.md). Email/Slack are optional; local recovery is not external delivery.                                                                                                                                          |
-| AP-605  | Template-specific draft presets with current scopes, policy and narrowed budgets; explicit provider selection, delegation, activation and trigger enablement.                                                           | [Moderator](r6-moderator-recipe-flow.md), [Operator](r6-operator-recipe-flow.md), [Publisher](r6-publisher-content-review-flow.md), [unattended profile](r6-unattended-flow.md). No default installation or activation is inferred.                                                                                    |
-| AP-606  | Versioned bilingual detector/proposal/diagnostic fixtures, bounded opt-in evaluation runner, exact offline review/compatible comparison, report, Workbench and runbooks.                                                | [Report](r6-evaluation-report-flow.md), [Workbench](r6-evaluation-workbench-flow.md), [evaluation design](testing-and-evaluation.md#10-provider-evaluation-runner). Actual model/representative-review/operating usefulness remains unestablished.                                                                     |
+| Package | Implemented boundary                                                                                                                                                                                                    | Owning flows and remaining acceptance                                                                                                                                                                                                                                                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-600  | Shared Signal, Incident, timeline, notification and feedback persistence; bounded current-authority reads and Gateway/MCP projection.                                                                                   | [Foundation](r6-incident-foundation-flow.md), [Studio review](r6-incident-studio-flow.md). Security sources belong to R7.                                                                                                                                                                                                                                |
+| AP-601  | Actual comment/document observation and report collection, bounded mixed correlation, deterministic repeated-link detector, fresh human-approved quarantine/restore, feedback and Member advisory review.               | [Content collection](r6-moderator-content-collection-flow.md), [document recipe](r6-moderator-document-recipe-flow.md), [Member review](r6-incident-member-report-flow.md), [unattended dispatch](r6-unattended-flow.md). Rule conformance is separate from spam accuracy; Member filings grant no response authority.                                   |
+| AP-602  | Jobs/storage/backup-manifest/plugin/readiness observations, bounded status/audit, owner-backed plans and three approved execution actions. Explicit progress diagnostics add actual retained job transition timestamps. | [Observations](r6-operator-observations-flow.md), [recipe](r6-operator-recipe-flow.md), [execution](r6-operator-execution-flow.md). Snapshot, retained transitions, backup manifests and host declarations retain their distinct limits.                                                                                                                 |
+| AP-603  | Current-base stale-content/SEO/link selection, bounded field-safe ChangeSet draft/validate/preview and same-document/revision cooldown; explicit scheduled execution.                                                   | [Publisher review](r6-publisher-content-review-flow.md), [unattended dispatch](r6-unattended-flow.md), [delegated AI acceptance](r6-delegated-acceptance-review.md). Four actual V2 drafts accepted within the bounded corpus; production editorial quality remains unestablished.                                                                       |
+| AP-604  | Current-ACL Admin notification feed, exact transition provenance/deduplication and explicit bounded local recording recovery.                                                                                           | [Notifications](r6-incident-notifications-flow.md), [recovery](r6-incident-notification-recovery-flow.md). Email/Slack are optional; local recovery is not external delivery.                                                                                                                                                                            |
+| AP-605  | Template-specific draft presets with current scopes, policy and narrowed budgets; explicit provider selection, delegation, activation and trigger enablement.                                                           | [Moderator](r6-moderator-recipe-flow.md), [Operator](r6-operator-recipe-flow.md), [Publisher](r6-publisher-content-review-flow.md), [unattended profile](r6-unattended-flow.md). No default installation or activation is inferred.                                                                                                                      |
+| AP-606  | Versioned bilingual detector/proposal/diagnostic fixtures, bounded opt-in evaluation runner, exact offline review/compatible comparison, report, Workbench and runbooks.                                                | [Report](r6-evaluation-report-flow.md), [Workbench](r6-evaluation-workbench-flow.md), [evaluation design](testing-and-evaluation.md#10-provider-evaluation-runner), [delegated AI acceptance](r6-delegated-acceptance-review.md). Actual model outputs reviewed for the declared reference/scaffold scope; production generalization is not established. |
 
 ## Required local gate
 
@@ -50,10 +72,12 @@ optional integrations. The completion gate includes:
 - Independent review, test-inclusive typechecks for changed fixtures and browser
   specs, formatter/link checks and `git diff --check`.
 
-The tested working tree starts at `3e24be6304c07e8ec209770e59bec64f5046d9a6`.
+The earlier reviewed implementation bundle starts at `3e24be6304c07e8ec209770e59bec64f5046d9a6`.
 Its 30 changed code/test files are frozen in a local SHA-256 manifest with digest
 `c985a6cb42aca89767d4c495a0a9059457324704b3e16d4d5697bf88034c9bbe`.
 Existing feature flows preserve their dated, narrower results.
+
+This historical table is not the gate for the subsequent gap-fix working tree.
 
 | Gate                                | Completion working-tree result (2026-10-15)                                                                                                                                                                                                                                                                                                                                                        |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -93,6 +117,157 @@ unknown-read reservations now have focused regressions. Final changed-file
 formatting, local document links, secret-pattern/unintended-file checks and
 `git diff --check` passed. The pre-existing handoff diff was preserved.
 
+## Authorized gap-fix implementation and local gate, 2026-10-15
+
+The user requested the remaining work while excluding actual Runtime validation.
+This bundle implements G1–G6, U1 and I1 from the
+[original-goal audit](r6-goal-gap-audit.md#authorized-implementation-follow-up),
+with V2 coverage for the supported source, contract and service behavior. No
+live-model/provider Runtime trial or new model-quality measurement was performed.
+The earlier model artifacts retain their exact profile and dataset identities;
+their passes are not transferred to the new profiles.
+
+- Moderator collection now resumes bounded selected-source scans, handles late
+  delivery and current-target replacement, and waits for complete collection
+  before Runtime admission. A separately installed read-only semantic profile
+  records current-source evidence and immutable provider/Run/policy provenance.
+  Its budget checks precede dispatch, and Studio separates model assessment from
+  deterministic facts and human decisions.
+- Operator has an explicit operational Event source, event-eligible profile,
+  concrete local pg-boss runbook planning and persisted bounded before/after
+  monitoring. A fresh heartbeat and actual queue changes support the reported
+  outcome; missing sources, pause and timeout do not become recovery claims.
+- Publisher retains safe selection/exclusion receipts before dispatch, supports
+  actual SEO metadata fields and supplies an anonymous-ACL canonical route
+  inventory adapter. Multi-candidate, nested/rich-text, SEO-title and stale-source
+  cases verify supported behavior without claiming editorial model quality.
+- Incident Studio adds source, assignee, containment, time-range and literal
+  query filters. Explicit maintenance policy prunes eligible terminal history,
+  local feed records and completed flood bookkeeping through the existing owner.
+  The [retention matrix](r6-history-retention-flow.md) preserves active work,
+  unknown outcomes, immutable audit, approvals, Actions and rollback evidence;
+  it does not promise universal erasure of audited Incident skeletons.
+
+The code gate below includes the final installed-Node import correction and
+Module-boundary regression. The final collector fixture correction changes only
+test construction and assertions at real ten-minute source-window boundaries;
+it does not rewrite source timestamps or change product behavior.
+
+| Gate                          | Current gap-fix working-tree result                                                                                                                                                                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Repository/build/type/unit    | `pnpm verify --concurrency=2`: **113/113 tasks**, including repository 62, Core 2,370, App 726, Admin 195 and Web 164 cases.                                                                                                                                                                                 |
+| Lint and fixture types        | **41/41** workspace lint tasks; explicit test-inclusive typecheck covers all fourteen changed Web integration fixtures/specs.                                                                                                                                                                                |
+| Core PostgreSQL               | **63/63** cases, ten files, no skips.                                                                                                                                                                                                                                                                        |
+| Web PostgreSQL                | **1,711 ordinary cases covered across the complete and corrected runs**, including five theme cases. The separately enabled native-preview case is recorded below. Initial failures and corrections are retained in the paragraph below.                                                                     |
+| Live Redis and native preview | **16/16** Redis cases; **1/1** native preview with actual headless Chromium.                                                                                                                                                                                                                                 |
+| Production browser            | **122/122** Chromium cases using the production build, including new filter queries and separately labelled assessment/provenance links. The 390/1280 Incident screenshots were inspected; no horizontal overflow.                                                                                           |
+| Fresh installed packages      | **40 public packages / 59 stages**: public factories in plain Node, installed configuration types, production build, generated schema, evaluation/report, extension matrix, five runtime-module probes, operations journey and fresh-database migrations/foundation. Installed files matched producer bytes. |
+
+The complete Web PostgreSQL run reported 1,710 passes, one outdated over-capacity
+assertion failure and the intentionally disabled native-preview case, plus a
+reference-fence database-cleanup hook timeout. The collector assertion was
+replaced with actual bounded continuation and exact selected-source checks; its
+whole twelve-case file passed. All 28 reference-fence assertions passed before
+the hook timed out. PostgreSQL was waiting for a checkpoint after the full test
+workload; only this bundle's disposable cluster was changed to disable `fsync`
+and synchronous commit. The complete fence file then passed **28/28**, including
+cleanup. No application/developer database setting or product durability claim
+was changed. A later focused run exposed a real-clock boundary assumption in the
+151-target collector fixture: a new edit can belong to the next window and must
+not be accepted into the old one. Its corrected assertions verify the actual
+source window and require nonempty evidence. These results are complete-plus-
+corrected coverage, not a claim that the initial full command exited successfully.
+The final affected ten-file pass covered 72 passing cases before that single
+fixture failure; the corrected whole mixed-collector file then passed **6/6**.
+The final 81 code/test/CI files are recorded in
+`/tmp/np-r6-remaining-source-manifest-accepted.json`, SHA-256
+`71a26a289253d3f2b767a9f8cbfb448f0a0c6d88126d107c850e45429d7f2f2d`.
+Only that fixture changed after the full code gate; product sources and installed
+artifacts stayed frozen.
+
+The fresh installed-package check also found that Operator's first App entry
+transitively imported an application bootstrap alias in plain Node. Existing
+health-check bodies were moved unchanged into a neutral module and reused by both
+entry points. The new import-boundary regression, focused App checks and final
+fresh installation all pass. Earlier failed attempts remain in the local logs;
+the final package gate uses newly packed artifacts and a new empty database.
+
+Logs use `/tmp/np-r6-remaining-*` and `/tmp/np-r6-final-consumer.log`. No model or
+provider was called in this bundle. The eight bilingual semantic cases establish
+contract conformance, not measured spam accuracy. Actual model plus Runtime
+acceptance remains excluded, and broader semantic/editorial/operational usefulness
+remains unestablished. Automatic quarantine and external notification delivery
+remain separate opt-in work. No versions, changesets, lockfile, migrations,
+credentials, default activation, commit, PR or merge were introduced. The
+pre-existing handoff was preserved rather than rewritten.
+
+## Integrated-path corrections and verification
+
+The next authorized bundle closes the eight concrete
+[integrated-path counterexamples](r6-goal-gap-audit.md#authorized-integrated-path-corrections):
+whole-Incident visibility and bounded target continuation, trigger-aware eligible
+semantic selection, anonymous per-document inventory/content ACL, durable V3
+selected snapshots, the existing Operator deployment mutation gate, safe Activity
+plan/recovery review, stable backup check identities and new-profile offline
+evaluation tooling. It also adds authorized opt-in Incident list summaries,
+explicit retained Doctor/release report sources and declared-block projection
+using actual registered fields. Existing default wire shapes and older recipe,
+evaluation and review identities remain preserved.
+
+Semantic evaluation now has eight bilingual synthetic cases; Publisher V3
+selection has eleven. CLI evaluation/comparison, exact-bound accept/edit/reject,
+reports and Admin Workbench reuse the existing owners without live approval or
+provider calls. Independent review corrected empty-response fallback, comparison
+parsing and case-version review isolation. Actual DB coverage includes a readable
+151-target Incident and multi-document nested/rich-text Publisher proposal
+create–validate–preview. Unknown/stale/denied evidence remains unavailable.
+
+Those integrated corrections did not implement automatic quarantine or segmented
+complete large-Incident semantic classification. The subsequent
+[explicit Moderator extension bundle](r6-moderator-automatic-segmented-flow.md)
+adds those code paths with separate verification and opt-in installation. Required
+production precision/sample/shadow qualification remains absent; existing approved
+quarantine/restore remains available. Actual model/provider Runtime validation is
+excluded by the user. Earlier model results are not transferred to these new
+profiles, and `fullR6`/`modelUsefulness` remain `not-established`.
+
+| Gate                       | Integrated correction result                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository/build/type/unit | Final `pnpm verify --concurrency=2`: **113/113 tasks**; repository 62, Core 2,391, App 738, Admin 195, Web 164 and CLI 165 cases.                                                                                                                                                                                                                         |
+| Lint and fixture types     | **41/41** lint tasks; explicit test-inclusive TypeScript covers all **21** changed Web fixture/spec entry files.                                                                                                                                                                                                                                          |
+| Core PostgreSQL            | **63/63**, ten files, no skips.                                                                                                                                                                                                                                                                                                                           |
+| Web PostgreSQL             | Complete 203-file run: **1,724 passed / one compatibility regression**. After its product correction, the complete affected evidence, document-report and Studio files plus theme/native-preview gates passed **30/30**, no skips.                                                                                                                        |
+| Live Redis                 | **16/16**, including the three explicitly enabled live cases.                                                                                                                                                                                                                                                                                             |
+| Production browser         | Final production build: **126/126** Chromium cases, no retries or skips. New semantic/Publisher Workbench, Operator review and Incident summary/target-page journeys pass; the 390/1280 Workbench/Operator captures were inspected.                                                                                                                       |
+| Fresh installed packages   | **40 public packages / 59 stages**: plain-Node factories, installed configuration types, production build, generated schema, actual new-profile CLI evaluation/review/comparison, extension matrix, five runtime-module probes, operations journey and empty-database migrations/foundation. Installed Core/Admin/App/CLI bytes match producer artifacts. |
+
+The full Web run's single failure expected eight eligible response choices and
+received seven: an omitted response cursor had been converted to an explicit
+first-page request. The correction preserves that expectation, the existing
+11/100-target default response and absence of `nextCursor`; explicit pagination
+and 151-target defaults remain bounded. The final 30-case run includes the new
+100-target regression, all five theme cases and actual native-preview Chromium.
+This is complete-plus-corrected coverage, not a claim that the first full Web
+command exited successfully.
+
+Installed-package verification exposed the CLI's missing exact-suite/profile-
+review dispatch despite the shared App script passing. The CLI now independently
+binds both new datasets, review sources, labels and baselines while preserving
+the existing command envelope. Its entire 165-case suite passes; the installed
+guard also executes actual fake evaluation, review and review comparison commands.
+The initial repeated full-corpus review composition test was reduced to one exact
+case while retaining the complete corpus baseline. An unrelated existing payment
+plugin self-import/build race was resolved in verification by completing its
+build first; no payment behavior or task graph was changed.
+
+The final 128 code/test/CI files are frozen in
+`/tmp/np-r6-integrated-source-manifest-final.json`, SHA-256
+`bcd7098eda76ab9f1289d5ce9e34c70f64c19842704b0a334d1eef3895d00324`.
+Current logs use `/tmp/np-r6-integrated-*`. Versions, changesets, lockfile,
+migrations, production credentials and default activation are unchanged. The
+pre-existing handoff is preserved. No commit, PR, merge or live provider call
+was performed.
+
 ## Actual model and operating acceptance
 
 The existing evaluation CLI requires an explicitly injected evaluation-only
@@ -121,7 +296,10 @@ The offline report deliberately keeps `fullR6` and `modelUsefulness` as
 `not-established`; this decision does not modify those fields or promote fake
 provider results to model acceptance. The explicitly authorized assessment below
 supplies an evaluation-only provider host. Representative review and operating
-evidence remain external inputs, not missing facts to be synthesized by tests.
+evidence must be supplied separately, not synthesized by tests. The later
+[delegated review](r6-delegated-acceptance-review.md) supplies a manual AI
+assessment for the declared development scope; these fixed report fields still
+do not authenticate a reviewer or make a milestone decision.
 
 ### Authorized OpenAI assessment, 2026-10-15
 
@@ -267,9 +445,32 @@ and `git diff --check` passed; the pre-existing handoff was preserved. The earli
 complete PostgreSQL/Redis/native/browser gate belongs to PR #1537; this follow-up
 ran the affected six PostgreSQL journeys and does not claim those unrelated
 local integration/browser suites were repeated or that full R6 acceptance closed.
-Representative deployment cases, actual reviewer provenance and applicable
-operating acceptance remain required. `fullR6` and `modelUsefulness` remain
-`not-established`; the earlier negative evidence is not erased.
+At that follow-up, representative deployment cases, actual reviewer provenance
+and applicable operating acceptance remained required. `fullR6` and
+`modelUsefulness` remained `not-established`; the earlier negative evidence is
+not erased.
+
+### User-delegated acceptance, 2026-10-15
+
+The user subsequently delegated the decision to Codex AI in this conversation:
+“너가 판단해도 될것같은데”. The same previously recorded qualitative rubric
+was applied to all 58 retained selected model responses and 32 detector cases.
+No new numerical threshold, model call, Runtime activation or human judgment
+was introduced. All 44 canonically eligible model responses were accepted; the
+14 Publisher no-proposal decisions were assessed separately rather than made
+eligible. Detector spam-verdict labels remain absent; normal repeated-reference
+controls still produce two advisory false positives against fixture intent.
+
+The [complete review](r6-delegated-acceptance-review.md) records case rationales,
+AI provenance, exact artifact bindings, nonblocking wording issues and the
+existing operating evidence. That assessment accepts the reviewed responses for
+explicitly installed reference/scaffold use. The subsequent
+[original-goal audit](r6-goal-gap-audit.md) corrects its initial broader milestone
+claim and records the implementation/evidence gaps that remain. It does not convert
+AI labels to authenticated Incident feedback, change report `fullR6` or
+`modelUsefulness` from `not-established`, or establish production automatic-action
+readiness. Earlier failed model runs remain preserved. No additional application
+builds were needed for this documentation and offline review only follow-up.
 
 ## Optional extensions and separate gates
 

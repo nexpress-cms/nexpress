@@ -31,6 +31,18 @@ export interface NpAgentOperatorExecutionResultV1 {
  * Execution runs only after an exact approval and a committed dispatch reservation.
  * Adapters honor abortSignal; private execution evidence never enters the public wire. */
 export interface NpAgentOperatorHostV1 {
+  /** Current staff target/deployment visibility for retained safe evidence; never execution authority. */
+  assertReviewAccess?(input: {
+    db: ReturnType<typeof getDb>;
+    siteId: string;
+    staffUser: NpAuthUser;
+    capabilityId: "ops.status" | "audit.run" | "ops.plan" | "ops.execute";
+    input: unknown;
+  }): Promise<void>;
+  /** Effect-free deployment preflight, invoked before approval consumption and dispatch. */
+  preflightExecution?(
+    input: NpAgentOperatorHostContextV1 & { input: NpAgentExecutableOpsPlanInputV1 },
+  ): Promise<void>;
   assertAccess(
     input: NpAgentOperatorHostContextV1 & {
       capabilityId: "audit.run" | "ops.plan" | "ops.execute";
@@ -152,6 +164,7 @@ import { withCurrentSite } from "../sites/context.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { registerJobHandler } from "../jobs/handlers.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npReadAgentOperatorReviewV1 } from "./operator-review.js";
 
 type Db = ReturnType<typeof database>;
 type Invocation = typeof npAgentInvocations.$inferSelect;
@@ -1138,6 +1151,7 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
     const checked = await options.resolveApprovals().verify(approval);
     await assertStatement(actor, facts, checked.statement, "execute-approved");
     await liveApprover(actor.db, facts, approval.decidedByUserId);
+    await options.host.preflightExecution?.({ ...context(actor, row.id), input: facts.input });
     await options.resolveApprovals().consumeAction({
       db: actor.db,
       siteId: row.siteId,
@@ -1258,6 +1272,10 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
       await assertStatement(actor, facts, checked.statement, "execute-approved");
       await liveApprover(actor.db, facts, approval.decidedByUserId);
       await access(actor, "ops.execute", facts.input, invocation.id);
+      await options.host.preflightExecution?.({
+        ...context(actor, invocation.id),
+        input: facts.input,
+      });
       await actor.db
         .update(npAgentOperatorExecutions)
         .set({ state: "dispatching", dispatchedAt: actor.time })
@@ -2384,6 +2402,46 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
       return "pendingExecutionId" in result ? finishExecution(result) : result;
     },
     invokeRuntimeCapability: invokeRuntimeRequest,
+    async projectActivity(input: { siteId: string; actor: NpAgentAdminActorV1; actionId: string }) {
+      if (!options.host.assertReviewAccess) throw unavailable();
+      return database().transaction(async (db) => {
+        const auth = await npResolveAgentStaffSessionAuthorizationV1(
+          db,
+          input.siteId,
+          input.actor,
+          now(),
+        );
+        if (!auth.authority.capabilities.includes("admin.manage")) throw unavailable();
+        const review = await npReadAgentOperatorReviewV1({
+          db,
+          siteId: input.siteId,
+          actionId: input.actionId,
+          now: now(),
+          authorize: async (selector) => {
+            await options.host.assertReviewAccess!({
+              db,
+              siteId: input.siteId,
+              staffUser: {
+                ...input.actor.user,
+                role:
+                  auth.authority.kind === "super-admin"
+                    ? "admin"
+                    : (auth.authority.role as NpAuthUser["role"]),
+              },
+              ...selector,
+            });
+          },
+        });
+        const current = await npResolveAgentStaffSessionAuthorizationV1(
+          db,
+          input.siteId,
+          input.actor,
+          now(),
+        );
+        if (!same(auth, current)) throw unavailable();
+        return review;
+      });
+    },
     async projectRuntimeAction(runtime: NpAgentRuntimeRunContextV1, actionId: string) {
       const [action] = await runtime.db
         .select()

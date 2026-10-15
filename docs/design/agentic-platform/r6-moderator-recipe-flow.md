@@ -5,6 +5,12 @@ setup to current observed-comment evidence, a quarantine proposal and existing
 human approval. It builds on the [Moderator collector](r6-moderator-flow.md) and
 [Runtime continuation](r6-moderator-runtime-flow.md) owners.
 
+This flow preserves the original human-approved proposal profile. The separate
+[read-only semantic assessment profile](r6-moderator-assessment-flow.md) supplies
+bounded current-content classification and immutable Incident provenance without
+moderation effects. Hosts explicitly select one of these registry profiles;
+existing Agent versions are never silently converted.
+
 ## Explicit installation and setup
 
 Hosts include `npCreateAgentModeratorRecipeDefinitionV1()` from

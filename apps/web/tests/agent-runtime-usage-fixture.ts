@@ -89,6 +89,7 @@ export async function runtimeUsageFixture(
     verifier?: "present" | "absent" | "reject" | "throw";
     dataClassCeiling?: NpAgentProviderDataClass;
     documentCollection?: string;
+    publisherLimits?: { candidateLimit: number; batchSize: number };
     providerInference?: NpAgentConnectionAuthAdapterV1["inference"];
     responseSchema?: NpAgentJsonSchema;
     recipe?: NpAgentRecipeDefinitionCanonicalV1;
@@ -292,8 +293,8 @@ export async function runtimeUsageFixture(
         recipeVersion: 1,
         collectionSlugs: [options.documentCollection],
         staleAfterDays: 30,
-        candidateLimit: 1,
-        batchSize: 1,
+        candidateLimit: options.publisherLimits?.candidateLimit ?? 1,
+        batchSize: options.publisherLimits?.batchSize ?? 1,
       },
     ];
   }

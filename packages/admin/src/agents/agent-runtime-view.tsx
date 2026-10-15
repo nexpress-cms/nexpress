@@ -26,7 +26,12 @@ import {
 } from "@nexpress/core/agent-contract";
 import { publisherSetupAvailable, publisherSetupDefinition } from "./agent-publisher-setup.js";
 import { operatorSetupAvailable, operatorSetupDefinition } from "./agent-operator-setup.js";
-import { moderatorSetupAvailable, moderatorSetupDefinition } from "./agent-moderator-setup.js";
+import {
+  moderatorSetupAvailable,
+  moderatorSetupDefinition,
+  moderatorAssessmentSetupAvailable,
+  moderatorAssessmentSetupDefinition,
+} from "./agent-moderator-setup.js";
 import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
@@ -384,6 +389,25 @@ function RuntimeConfigurationEditor({
                 onClick={() => update(publisherSetupDefinition(catalog, definition.name))}
               >
                 Use Publisher content review setup
+              </Button>
+            </div>
+          ) : null}
+          {!current && moderatorAssessmentSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure a Moderator to assess current Incident evidence and record a separately
+                labelled model judgment for staff review. This replaces the draft’s recipe,
+                permissions and budget. Choose collections and a provider explicitly; saving does
+                not activate the Agent. When the installed profile supports analysis in batches, the
+                configured call and token budgets still apply. A stopped or incomplete analysis does
+                not establish a verdict for the whole Incident.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(moderatorAssessmentSetupDefinition(catalog, definition.name))}
+              >
+                Use Moderator read-only assessment setup
               </Button>
             </div>
           ) : null}

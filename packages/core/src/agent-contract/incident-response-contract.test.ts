@@ -34,6 +34,21 @@ const execute = {
   idempotencyKey: "execute-1",
 };
 describe("Incident response wire contracts", () => {
+  it("preserves legacy bytes and binds optional target continuations to an explicit partial result", () => {
+    const legacy = { choices: [], plans: [], truncated: false };
+    expect(JSON.stringify(npRequireAgentIncidentResponseV1(legacy))).toBe(JSON.stringify(legacy));
+    const cursor = `eyJvZmZzZXQiOjEwfQ.${"A".repeat(43)}`;
+    expect(
+      npRequireAgentIncidentResponseV1({ ...legacy, truncated: true, nextCursor: cursor }),
+    ).toMatchObject({ nextCursor: cursor, truncated: true });
+    expect(npRequireAgentIncidentResponseV1({ ...legacy, nextCursor: null })).toMatchObject({
+      nextCursor: null,
+    });
+    expect(() => npRequireAgentIncidentResponseV1({ ...legacy, nextCursor: cursor })).toThrow();
+    expect(() =>
+      npRequireAgentIncidentResponseV1({ ...legacy, truncated: true, nextCursor: "forged-cursor" }),
+    ).toThrow();
+  });
   it("preserves domain target identifiers and exact discriminated plans and execution identity", () => {
     const restore = {
       ...plan,

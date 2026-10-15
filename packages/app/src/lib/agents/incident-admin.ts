@@ -1,8 +1,8 @@
 import { NpServiceUnavailableError, NpValidationError } from "@nexpress/core";
 import {
   npRequireAgentIncidentGetInputV1,
-  npRequireAgentIncidentListInputV1,
-  npRequireAgentIncidentListOutputV1,
+  npRequireAgentIncidentStudioListQueryV1,
+  npRequireAgentIncidentStudioListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
   npRequireAgentIncidentMemberReportEvidenceV1,
@@ -40,22 +40,61 @@ function query(request: NextRequest, detail: boolean) {
     cursor: null,
   };
   const seen = new Set<string>();
+  const extra = new Set([
+    "source",
+    "assignedAgentId",
+    "containment",
+    "observedAfter",
+    "observedBefore",
+    "query",
+    "includeSummaries",
+  ]);
   for (const [key, value] of request.nextUrl.searchParams) {
-    if (seen.has(key) || !Object.hasOwn(values, key) || (detail && key !== "cursor"))
+    if (
+      seen.has(key) ||
+      (!Object.hasOwn(values, key) && !extra.has(key)) ||
+      (detail && key !== "cursor")
+    )
       throw invalid();
     seen.add(key);
     if (key === "limit") {
       if (!/^[1-9][0-9]{0,2}$/u.test(value)) throw invalid();
       values[key] = Number(value);
+    } else if (key === "includeSummaries") {
+      if (!["true", "false"].includes(value)) throw invalid();
+      values[key] = value === "true";
     } else if (["statuses", "categories", "severities"].includes(key)) {
       values[key] = value.split(",");
     } else values[key] = value;
   }
   try {
-    return npRequireAgentIncidentListInputV1(values);
+    return npRequireAgentIncidentStudioListQueryV1(values);
   } catch {
     throw invalid();
   }
+}
+
+function detailQuery(request: NextRequest): {
+  cursor: string | null;
+  responseCursor?: string | null;
+} {
+  if (request.nextUrl.search.length > 8192) throw invalid();
+  const seen = new Set<string>();
+  const result: { cursor: string | null; responseCursor?: string | null } = { cursor: null };
+  for (const [key, value] of request.nextUrl.searchParams) {
+    if (
+      !["cursor", "responseCursor"].includes(key) ||
+      seen.has(key) ||
+      !value ||
+      value.length > 2048 ||
+      /[\p{Cc}\p{Cs}]/u.test(value)
+    )
+      throw invalid();
+    seen.add(key);
+    if (key === "cursor") result.cursor = value;
+    else result.responseCursor = value;
+  }
+  return result;
 }
 
 /** HTTP decoding only; current visibility and mutation authority belong to the host service. */
@@ -101,7 +140,7 @@ export async function handleAgentIncidentAdminRequest(
         await service.notifications({ ...staff, cursor: query(request, true).cursor }),
       );
     } else if (operation === "list") {
-      const page = npRequireAgentIncidentListOutputV1(
+      const page = npRequireAgentIncidentStudioListOutputV1(
         await service.list({ ...staff, query: query(request, false) }),
       );
       if (page.items.some((incident) => incident.siteId !== staff.siteId))
@@ -141,7 +180,7 @@ export async function handleAgentIncidentAdminRequest(
         result = evidence;
       } else if (operation === "detail") {
         const detail = npRequireAgentIncidentStudioDetailV1(
-          await service.get({ ...staff, incidentId, cursor: query(request, true).cursor }),
+          await service.get({ ...staff, incidentId, ...detailQuery(request) }),
         );
         if (detail.incident.id !== incidentId || detail.incident.siteId !== staff.siteId)
           throw new Error("Incident detail response binding is invalid.");

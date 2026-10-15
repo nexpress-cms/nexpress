@@ -75,6 +75,7 @@ import {
 } from "../agent-contract/canonical-runtime-primitives.js";
 import { npAgentRecipeIds, npAgentProviderDataClassRank } from "../agent-contract/types.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import type {
   NpAgentJsonObject,
   NpAgentModelPricingV1,
@@ -566,7 +567,8 @@ export function createAgentRuntimeAdmissionV1(
       )) !== run.recipeFingerprint
     )
       fail("RUNTIME_ADMISSION_INVALID");
-    if (recipe.task !== "interactive-capability") fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+    if (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe))
+      fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
     if (run.manualInput != null) {
       const validated = npRequireAgentRuntimeManualInputV1(recipe, run.manualInput);
       if ((await npDigestAgentRuntimeManualInputV1(validated)) !== run.manualInputDigest)
@@ -1123,7 +1125,11 @@ export function createAgentRuntimeAdmissionV1(
           !recipe.triggerKinds.includes(trigger.kind as "event" | "schedule" | "manual")
         )
           fail("RUNTIME_RECIPE_UNAVAILABLE");
-        if (recipe.task !== "interactive-capability") fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+        if (
+          recipe.task !== "interactive-capability" &&
+          !npIsAgentModeratorAssessmentProfileV1(recipe)
+        )
+          fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
         const provider =
           recipe.providerMode === "forbidden"
             ? { connection: null, connectionSnapshot: null, pricing: null, canonical: null }

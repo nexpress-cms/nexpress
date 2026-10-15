@@ -51,13 +51,27 @@ type Facts = {
 type Input = Omit<NpAgentIncidentStaffContextV1, "transaction"> & { incidentId: string };
 type EventRef = Extract<NpAgentEvidenceRef, { kind: "event" }>;
 type Group = { eventId: string; signalIds: string[]; refs: EventRef[] };
+// The existing canonical Incident owns at most 100 Signals, each with at most
+// 100 evidence references. This is a whole-Incident authority bound, distinct
+// from the ten items returned on one UI page.
+const MAXIMUM_INCIDENT_EVENTS = 100 * 100;
+const SOURCE_PAGE = 100;
+export interface NpAgentIncidentTargetPageV1 {
+  targets: NpCommunityContentTargetV1[];
+  nextCursor: string | null;
+}
 export interface NpAgentIncidentEvidenceServiceV1 {
   canReadStaffIncident: NonNullable<NpAgentIncidentServiceOptionsV1["canReadStaffIncident"]>;
   get(input: Input & { cursor?: string | null }): Promise<NpAgentIncidentEvidenceV1>;
-  /** Directly reusable as response.resolveTargets. Caller transaction and canonical Incident remain bound. */
+  /** Directly reusable as response.resolveTargets. Absent cursor preserves the legacy array up to 100 targets; larger results use the bounded first page. Caller transaction and canonical Incident remain bound. */
   resolveTargets(
-    input: Input & { db: Db; incident: NpAgentIncidentV1 },
-  ): Promise<NpCommunityContentTargetV1[]>;
+    input: Input & {
+      db: Db;
+      incident: NpAgentIncidentV1;
+      cursor?: string | null;
+      target?: NpCommunityContentTargetV1;
+    },
+  ): Promise<NpCommunityContentTargetV1[] | NpAgentIncidentTargetPageV1>;
 }
 const unavailable = () =>
   new NpAgentGatewayError(
@@ -82,6 +96,23 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     options.cursorHmacKey,
     "np.agent-incident-evidence.cursor",
   );
+  async function sourceRows(db: Db, siteId: string, ids: string[]) {
+    const rows: Facts["sources"] = [];
+    for (let offset = 0; offset < ids.length; offset += SOURCE_PAGE)
+      rows.push(
+        ...(await db
+          .select()
+          .from(npAgentEvents)
+          .where(
+            and(
+              eq(npAgentEvents.siteId, siteId),
+              inArray(npAgentEvents.id, ids.slice(offset, offset + SOURCE_PAGE)),
+            ),
+          )
+          .orderBy(asc(npAgentEvents.id))),
+      );
+    return rows;
+  }
   async function snapshot(db: Db, input: Input) {
     canonicalBodyUuid(input.incidentId, "incidentId");
     const auth = await npResolveAgentStaffSessionAuthorizationV1(
@@ -131,7 +162,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
         if (ref.kind !== "event") continue;
         let group = byEvent.get(ref.eventId);
         if (!group) {
-          if (byEvent.size >= 100) throw unavailable();
+          if (byEvent.size >= MAXIMUM_INCIDENT_EVENTS) throw unavailable();
           group = { eventId: ref.eventId, signalIds: [], refs: [] };
           byEvent.set(ref.eventId, group);
         }
@@ -140,21 +171,11 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       }
     }
     const groups = [...byEvent.values()].sort((a, b) => a.eventId.localeCompare(b.eventId));
-    const sources = groups.length
-      ? await db
-          .select()
-          .from(npAgentEvents)
-          .where(
-            and(
-              eq(npAgentEvents.siteId, input.siteId),
-              inArray(
-                npAgentEvents.id,
-                groups.map((g) => g.eventId),
-              ),
-            ),
-          )
-          .orderBy(asc(npAgentEvents.id))
-      : [];
+    const sources = await sourceRows(
+      db,
+      input.siteId,
+      groups.map((g) => g.eventId),
+    );
     const items: NpAgentIncidentEvidenceItemV1[] = [];
     for (const group of groups)
       items.push(await project(db, input, { auth, incident, sources, user }, group));
@@ -415,6 +436,31 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     const next = await snapshot(db, input);
     if (next.binding !== previous.binding) throw unavailable();
   }
+  function pageOffset(s: Awaited<ReturnType<typeof snapshot>>, cursor?: string | null) {
+    if (cursor === undefined || cursor === null) return 0;
+    try {
+      const c = codec.open(cursor) as { binding: unknown; offset: unknown; expires: unknown };
+      if (
+        c.binding !== s.binding ||
+        typeof c.offset !== "number" ||
+        !Number.isInteger(c.offset) ||
+        c.offset <= 0 ||
+        c.offset >= s.groups.length ||
+        c.offset % 10 !== 0 ||
+        typeof c.expires !== "number" ||
+        c.expires <= now().getTime()
+      )
+        throw invalidCursor();
+      return c.offset;
+    } catch {
+      throw invalidCursor();
+    }
+  }
+  function nextCursor(s: Awaited<ReturnType<typeof snapshot>>, offset: number) {
+    return offset + 10 < s.groups.length
+      ? codec.seal({ binding: s.binding, offset: offset + 10, expires: now().getTime() + 900000 })
+      : null;
+  }
   return {
     canReadStaffIncident: ({ incident, signals, context }) =>
       withCurrentSite(context.siteId, async () => {
@@ -454,11 +500,8 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           .flatMap((s) => s.evidence)
           .filter((ref): ref is EventRef => ref.kind === "event");
         const ids = [...new Set(refs.map((ref) => ref.eventId))];
-        if (ids.length > 100) return false;
-        const sources = await db
-          .select()
-          .from(npAgentEvents)
-          .where(and(eq(npAgentEvents.siteId, context.siteId), inArray(npAgentEvents.id, ids)));
+        if (ids.length > MAXIMUM_INCIDENT_EVENTS) return false;
+        const sources = await sourceRows(db, context.siteId, ids.sort());
         for (const eventId of ids) {
           const item = await project(
             db,
@@ -474,30 +517,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       withCurrentSite(input.siteId, async () => {
         const db = getDb();
         const s = await snapshot(db, input);
-        let offset = 0;
-        if (input.cursor !== undefined && input.cursor !== null) {
-          try {
-            const c = codec.open(input.cursor) as {
-              binding: unknown;
-              offset: unknown;
-              expires: unknown;
-            };
-            if (
-              c.binding !== s.binding ||
-              typeof c.offset !== "number" ||
-              !Number.isInteger(c.offset) ||
-              c.offset <= 0 ||
-              c.offset >= s.groups.length ||
-              c.offset % 10 !== 0 ||
-              typeof c.expires !== "number" ||
-              c.expires <= now().getTime()
-            )
-              throw invalidCursor();
-            offset = c.offset;
-          } catch {
-            throw invalidCursor();
-          }
-        }
+        const offset = pageOffset(s, input.cursor);
         const items = s.items.slice(offset, offset + 10);
         await current(db, input, s);
         return npRequireAgentIncidentEvidenceV1({
@@ -505,14 +525,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           incidentId: s.incident.id,
           incidentVersion: s.incident.versionNumber,
           items,
-          nextCursor:
-            offset + 10 < s.groups.length
-              ? codec.seal({
-                  binding: s.binding,
-                  offset: offset + 10,
-                  expires: now().getTime() + 900000,
-                })
-              : null,
+          nextCursor: nextCursor(s, offset),
         });
       }),
     resolveTargets: (input) =>
@@ -520,13 +533,32 @@ export function createAgentIncidentEvidenceServiceV1(options: {
         const s = await snapshot(input.db, input);
         if (serializeAgentCanonicalJson(input.incident) !== serializeAgentCanonicalJson(s.incident))
           throw unavailable();
+        if (input.cursor !== undefined && input.target !== undefined) throw unavailable();
+        const offset = pageOffset(s, input.cursor);
         const unique = new Map<string, NpCommunityContentTargetV1>();
-        for (const item of s.items) {
+        let paged = input.cursor !== undefined;
+        const items = paged ? s.items.slice(offset, offset + 10) : s.items;
+        for (const item of items) {
           if (item.responseEligible && item.target)
-            unique.set(serializeAgentCanonicalJson(item.target), item.target);
+            if (
+              !input.target ||
+              serializeAgentCanonicalJson(input.target) === serializeAgentCanonicalJson(item.target)
+            )
+              unique.set(serializeAgentCanonicalJson(item.target), item.target);
+        }
+        // Cursor absence is the existing all-target read for a representable
+        // response. Only a larger result opts into the new bounded first page;
+        // an exact plan target remains independent of the displayed page.
+        if (!paged && input.target === undefined && unique.size > 100) {
+          paged = true;
+          unique.clear();
+          for (const item of s.items.slice(0, 10))
+            if (item.responseEligible && item.target)
+              unique.set(serializeAgentCanonicalJson(item.target), item.target);
         }
         await current(input.db, input, s);
-        return [...unique.values()];
+        const targets = [...unique.values()];
+        return paged ? { targets, nextCursor: nextCursor(s, offset) } : targets;
       }),
   };
 }

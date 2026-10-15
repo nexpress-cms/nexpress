@@ -1,5 +1,11 @@
 # R6 Operator diagnostic recipe
 
+The later [source and recovery-monitoring flow](r6-operator-source-monitor-flow.md)
+adds the explicit V3 event profile, canonical operational producers, concrete
+local pg-boss runbook plan and bounded before/after recovery evidence. This flow
+preserves the original diagnostic profile; existing installations are not
+automatically changed or activated.
+
 The explicitly installed `operator.worker-not-draining` recipe connects Studio
 setup, current operational observations and an owner-backed plan for human review.
 It extends the [operational observations](r6-operator-observations-flow.md) and

@@ -406,7 +406,7 @@ describe.skipIf(skipIfNoTestDb())("Moderator unified actual content collection",
     expect(await stored(f.db)).toEqual({ incidents: [], signals: [], timeline: [] });
   });
 
-  it("applies one global 100-event bound across three exact sources before inspection or writes", async () => {
+  it("advances across three exact sources in bounded pages without admitting invalid capacity fixtures", async () => {
     const f = await collectionFixture({ counts: allSources });
     const inWindow = and(
       eq(npAgentEvents.siteId, siteId),
@@ -465,16 +465,23 @@ describe.skipIf(skipIfNoTestDb())("Moderator unified actual content collection",
       ...config,
       access: { ...config.access, read },
     });
-    await expect(f.collector.collect(f.input)).rejects.toMatchObject({
-      code: "MODERATOR_COLLECTION_LIMIT",
-    });
-    expect(read).not.toHaveBeenCalled();
+    const first = await f.collector.collect(f.input);
+    expect(first).toMatchObject({ complete: false, inspectedEvents: 100, observations: [] });
     expect(await stored(f.db)).toEqual({ incidents: [], signals: [], timeline: [] });
-    await f.db.delete(npAgentEvents).where(eq(npAgentEvents.id, extra[0]!.id));
-    expect(await f.collector.collect(f.input)).toMatchObject({
-      inspectedEvents: 100,
-      acceptedFacts: 5,
-    });
+    let inspected = first.inspectedEvents,
+      accepted = first.acceptedFacts,
+      complete = false;
+    for (let page = 0; page < 20 && !complete; page++) {
+      const result = await f.collector.collect(f.input);
+      expect(result.inspectedEvents).toBeLessThanOrEqual(100);
+      inspected += result.inspectedEvents;
+      accepted += result.acceptedFacts;
+      complete = result.complete === true;
+    }
+    expect(complete).toBe(true);
+    expect(inspected).toBe(101);
+    expect(accepted).toBe(5);
+    expect(read).toHaveBeenCalled();
     expect((await stored(f.db)).signals).toHaveLength(1);
   });
 

@@ -1,3 +1,8 @@
+import {
+  npBuildAgentProfileEvaluationReviewArtifactV1,
+  npRequireAgentProfileEvaluationReviewArtifactV1,
+  npCompareAgentProfileEvaluationReviewArtifactsV1,
+} from "../agent-contract/profile-evaluation-review-contract.js";
 import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation.js";
 import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -68,11 +73,15 @@ async function evidence(
     evaluation.suite.cases.some(
       (c) =>
         c.category !==
-        (recipe === "operator"
-          ? "ops-plan"
-          : recipe === "moderator-proposal"
-            ? "moderator-proposal"
-            : "publisher"),
+        (recipe === "publisher-selection"
+          ? "publisher-selection"
+          : recipe === "moderator-assessment"
+            ? "moderator-assessment"
+            : recipe === "operator"
+              ? "ops-plan"
+              : recipe === "moderator-proposal"
+                ? "moderator-proposal"
+                : "publisher"),
     )
   )
     fail();
@@ -81,11 +90,13 @@ async function evidence(
       ? null
       : recipe === "moderator"
         ? await npRequireAgentModeratorEvaluationReviewArtifact(r.review)
-        : recipe === "moderator-proposal"
-          ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(r.review)
-          : recipe === "operator"
-            ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(r.review)
-            : await npRequireAgentEvaluationReviewArtifactV1(r.review);
+        : recipe === "moderator-assessment" || recipe === "publisher-selection"
+          ? await npRequireAgentProfileEvaluationReviewArtifactV1(r.review)
+          : recipe === "moderator-proposal"
+            ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(r.review)
+            : recipe === "operator"
+              ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(r.review)
+              : await npRequireAgentEvaluationReviewArtifactV1(r.review);
   if (review && !equal(review.source, evaluation)) fail();
   return { evaluation, review };
 }
@@ -167,30 +178,37 @@ async function row(
                     current.review,
                     baseline.review,
                   )
-                : recipe === "moderator-proposal"
-                  ? await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
+                : recipe === "moderator-assessment" || recipe === "publisher-selection"
+                  ? await npCompareAgentProfileEvaluationReviewArtifactsV1(
                       current.review,
                       baseline.review,
                     )
-                  : recipe === "operator"
-                    ? await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+                  : recipe === "moderator-proposal"
+                    ? await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
                         current.review,
                         baseline.review,
                       )
-                    : await npCompareAgentEvaluationReviewArtifactsV1(
-                        current.review,
-                        baseline.review,
-                      ),
+                    : recipe === "operator"
+                      ? await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+                          current.review,
+                          baseline.review,
+                        )
+                      : await npCompareAgentEvaluationReviewArtifactsV1(
+                          current.review,
+                          baseline.review,
+                        ),
           };
   const coverage =
     current.review ??
     (recipe === "moderator"
       ? await npBuildAgentModeratorEvaluationReviewArtifact(current.evaluation)
-      : recipe === "moderator-proposal"
-        ? await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(current.evaluation)
-        : recipe === "operator"
-          ? await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(current.evaluation)
-          : await npBuildAgentEvaluationReviewArtifactV1(current.evaluation));
+      : recipe === "moderator-assessment" || recipe === "publisher-selection"
+        ? await npBuildAgentProfileEvaluationReviewArtifactV1(current.evaluation)
+        : recipe === "moderator-proposal"
+          ? await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(current.evaluation)
+          : recipe === "operator"
+            ? await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(current.evaluation)
+            : await npBuildAgentEvaluationReviewArtifactV1(current.evaluation));
   return {
     recipe,
     status: "present",
@@ -216,7 +234,11 @@ export async function npBuildAgentEvaluationReportV1(
 ): Promise<NpAgentEvaluationReportV1> {
   const source = await input(value);
   const rows: NpAgentEvaluationReportRowV1[] = [];
-  for (const recipe of npAgentEvaluationReportRecipesV1)
+  for (const recipe of npAgentEvaluationReportRecipesV1.filter(
+    (recipe) =>
+      !["moderator-assessment", "publisher-selection"].includes(recipe) ||
+      source.entries.some((entry) => entry.recipe === recipe),
+  ))
     rows.push(
       await row(
         recipe,
@@ -260,7 +282,12 @@ export async function npRequireAgentEvaluationReportV1(
   if (equal(actual, r)) return actual;
   // Reports written before the proposal row retain their original exact projection.
   // Recompute all evidence and the legacy hash rather than trusting old derived fields.
-  if (actual.input.entries.some((entry) => entry.recipe === "moderator-proposal")) fail();
+  if (
+    actual.input.entries.some((entry) =>
+      ["moderator-proposal", "moderator-assessment", "publisher-selection"].includes(entry.recipe),
+    )
+  )
+    fail();
   const body = {
     schemaVersion: actual.schemaVersion,
     authority: actual.authority,

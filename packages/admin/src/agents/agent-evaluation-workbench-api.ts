@@ -56,6 +56,9 @@ export function evaluationReviewDraft(
   const prediction = object(JSON.parse(entry.predictionJson));
   const proposal =
     label?.editedProposal ??
+    (prediction?.moderatorAssessment || prediction?.publisherSelectionResponse
+      ? prediction
+      : null) ??
     prediction?.moderatorResponse ??
     prediction?.planProposal ??
     prediction?.proposal ??

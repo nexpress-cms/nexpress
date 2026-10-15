@@ -32,6 +32,22 @@ const actorBucket = {
 const goldenEventDigest = "cj1:sha256:N8kgm1_Et-4DgzYJvtWsJAsILK8i9hF0k7_k8tfceZ4";
 const goldenSignalDigest = "cj1:sha256:g3oExO4IxnyH_dFTc3_09LxUihMBR7gfpBDGRBd8MAE";
 
+it("preserves actual camelCase queue names and rejects shell/whitespace handler names", () => {
+  for (const kind of ["jobs.handler.failed", "jobs.backlog.threshold"] as const) {
+    const queuePayload = (handlerName: string): NpAgentEventPayload =>
+      kind === "jobs.handler.failed"
+        ? { kind, handlerName, jobId: uuidA, reasonCode: "HANDLER_FAILED" }
+        : { kind, handlerName, countBucket: 5, threshold: 3 };
+    expect(
+      npAnalyzeAgentEventCanonical(event({ kind, payload: queuePayload("agent.runExecute") })).ok,
+    ).toBe(true);
+    for (const handlerName of ["agent runExecute", "agent;execute", "$(restart)"])
+      expect(
+        npAnalyzeAgentEventCanonical(event({ kind, payload: queuePayload(handlerName) })).ok,
+      ).toBe(false);
+  }
+});
+
 function payload(kind: NpAgentEventKind): NpAgentEventPayload {
   switch (kind) {
     case "auth.login.failed":

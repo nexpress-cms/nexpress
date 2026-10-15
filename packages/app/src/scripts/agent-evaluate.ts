@@ -1,3 +1,9 @@
+import {
+  npBuildAgentProfileEvaluationReviewArtifactV1,
+  npRequireAgentProfileEvaluationReviewArtifactV1,
+  npCompareAgentProfileEvaluationReviewArtifactsV1,
+  type NpAgentProfileEvaluationReviewArtifactV1,
+} from "@nexpress/core/agent-contract";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, rename, unlink, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -24,6 +30,8 @@ import {
   npCreateAgentModeratorProposalEvaluationSuiteV3,
   npCreateAgentPublisherEvaluationSuiteV1,
   npCreateAgentPublisherEvaluationSuiteV2,
+  npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentPublisherSelectionEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
@@ -89,6 +97,8 @@ moderator-proposal.v1 checks the installed recipe response against synthetic obs
 moderator-proposal.v2 adds synthetic unverified report and mixed evidence; reports confer no verdict or approval authority.
 moderator-proposal.v3 adds exact document/comment targets to synthetic document-report and mixed evidence; reports confer no verdict or approval authority.
 publisher.v2 preserves all V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile; V1 artifacts remain unchanged.
+publisher.v3 checks bounded multi-document selection with the explicit V3 instruction.
+moderator-assessment.v1 checks the explicit read-only semantic profile on versioned bilingual fixtures.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
@@ -218,19 +228,23 @@ export async function runAgentEvaluateProcessV1(
     const artifact = await npRequireAgentEvaluationArtifactV1(
       await runAgentEvaluationV1({
         suite:
-          input.dataset === "publisher.v2"
-            ? await npCreateAgentPublisherEvaluationSuiteV2()
-            : input.dataset === "publisher.v1"
-              ? await npCreateAgentPublisherEvaluationSuiteV1()
-              : input.dataset === "operator-plan.v1"
-                ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-                : input.dataset === "moderator-proposal.v3"
-                  ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-                  : input.dataset === "moderator-proposal.v2"
-                    ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                    : input.dataset === "moderator-proposal.v1"
-                      ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                      : await npCreateAgentOperatorEvaluationSuiteV1(),
+          input.dataset === "publisher.v3"
+            ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
+            : input.dataset === "moderator-assessment.v1"
+              ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+              : input.dataset === "publisher.v2"
+                ? await npCreateAgentPublisherEvaluationSuiteV2()
+                : input.dataset === "publisher.v1"
+                  ? await npCreateAgentPublisherEvaluationSuiteV1()
+                  : input.dataset === "operator-plan.v1"
+                    ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+                    : input.dataset === "moderator-proposal.v3"
+                      ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                      : input.dataset === "moderator-proposal.v2"
+                        ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                        : input.dataset === "moderator-proposal.v1"
+                          ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                          : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,
@@ -297,7 +311,8 @@ async function runReview(
   input: NpAgentEvaluateCliInputV1,
   output: Pick<Writable, "write">,
 ): Promise<number> {
-  let artifact: NpAgentEvaluationReviewArtifactV1 | null = null;
+  let artifact:
+    NpAgentEvaluationReviewArtifactV1 | NpAgentProfileEvaluationReviewArtifactV1 | null = null;
   let comparison: NpAgentEvaluationReviewComparisonV1 | null = null;
   let errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | null = null;
   try {
@@ -316,14 +331,26 @@ async function runReview(
       return runModeratorProposalReview(input, output, evaluation);
     if (evaluation.suite.cases[0].category === "ops-plan")
       return runOperatorPlanReview(input, output, evaluation);
-    artifact = await npBuildAgentEvaluationReviewArtifactV1(
-      evaluation,
-      input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
+    const profile = ["moderator-assessment", "publisher-selection"].includes(
+      evaluation.suite.cases[0].category,
     );
+    artifact = await (
+      profile
+        ? npBuildAgentProfileEvaluationReviewArtifactV1
+        : npBuildAgentEvaluationReviewArtifactV1
+    )(evaluation, input.reviewsPath ? await readArtifactJson(input.reviewsPath) : []);
     if (input.comparePath)
-      comparison = await npCompareAgentEvaluationReviewArtifactsV1(
+      comparison = await (
+        profile
+          ? npCompareAgentProfileEvaluationReviewArtifactsV1
+          : npCompareAgentEvaluationReviewArtifactsV1
+      )(
         artifact,
-        await npRequireAgentEvaluationReviewArtifactV1(await readArtifactJson(input.comparePath)),
+        await (
+          profile
+            ? npRequireAgentProfileEvaluationReviewArtifactV1
+            : npRequireAgentEvaluationReviewArtifactV1
+        )(await readArtifactJson(input.comparePath)),
       );
   } catch {
     errorCode = "ARTIFACT_INVALID";

@@ -4,6 +4,7 @@ import {
   NP_AGENT_PUBLISHER_PAYLOAD_BYTES,
   NP_AGENT_PUBLISHER_DOCUMENT_BYTES,
   npAnalyzeAgentPublisherContentV1,
+  npCreateAgentPublisherSelectionReceiptV1,
   npRankAgentPublisherCandidatesV1,
   npRequireAgentPublisherRouteInventoryV1,
   type NpAgentPublisherCandidatesV1,
@@ -57,6 +58,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getCollectionTable,
+  npAssertCollectionReadAccess,
   type NpTransaction,
 } from "../collections/index.js";
 import type { NpAuthUser, NpCollectionConfig, NpFieldConfig } from "../config/types.js";
@@ -106,6 +108,13 @@ export interface NpAgentCoreReadCapabilityOptionsV1 {
   ) =>
     | readonly { type: string; schema: NpAgentJsonSchema }[]
     | Promise<readonly { type: string; schema: NpAgentJsonSchema }[]>;
+  /** Actual current block field declarations; absent/unknown nonempty block sources fail closed. */
+  resolveBlockFields?: (
+    siteId: string,
+    transaction?: NpTransaction,
+  ) =>
+    | readonly { type: string; fields: readonly NpFieldConfig[] }[]
+    | Promise<readonly { type: string; fields: readonly NpFieldConfig[] }[]>;
   resolveGatewaySettings?: (
     siteId: string,
   ) => NpAgentGatewaySettingsV1 | Promise<NpAgentGatewaySettingsV1>;
@@ -624,12 +633,82 @@ interface JsonProjectionState {
   nodes: number;
 }
 
+type BlockFields = ReadonlyMap<string, readonly NpFieldConfig[]>;
+async function exactBlockFields(
+  siteId: string,
+  resolver: NpAgentCoreReadCapabilityOptionsV1["resolveBlockFields"],
+  transaction?: NpTransaction,
+): Promise<BlockFields> {
+  const rows = resolver ? await resolver(siteId, transaction) : [];
+  if (!Array.isArray(rows) || rows.length > MAX_BLOCK_SCHEMAS)
+    throw new Error("Agent block field declarations are unavailable.");
+  const result = new Map<string, readonly NpFieldConfig[]>();
+  for (const row of rows) {
+    if (!BLOCK_TYPE_PATTERN.test(row.type) || !Array.isArray(row.fields) || result.has(row.type))
+      throw new Error("Agent block field declarations are unavailable.");
+    result.set(row.type, row.fields);
+  }
+  return result;
+}
+
+function publisherBlockSchemas(
+  blocks: readonly { type: string; schema: NpAgentJsonSchema }[],
+  declarations: BlockFields,
+): ReadonlyMap<string, NpAgentJsonSchema> {
+  // The host's generic schemas need not carry hidden-field semantics. Derive
+  // Publisher's read-only prop shape from actual declarations instead.
+  return new Map(
+    blocks.map(({ type }) => {
+      const fields = safeFieldEntries(declarations.get(type) ?? []);
+      return [
+        type,
+        jsonSchema(
+          {
+            id: { type: "string", maxLength: 128 },
+            type: { const: type },
+            props: {
+              type: "object",
+              additionalProperties: false,
+              properties: Object.fromEntries(
+                fields.map((field) => [field.name, fieldSchema(field, new Map())]),
+              ),
+              required: [],
+            },
+            layout: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                colSpan: { type: "integer", minimum: 1, maximum: 12 },
+                mdColSpan: { type: "integer", minimum: 1, maximum: 12 },
+                lgColSpan: { type: "integer", minimum: 1, maximum: 12 },
+              },
+              required: ["colSpan"],
+            },
+            children: {
+              type: "array",
+              maxItems: MAX_PROJECTED_ARRAY_ITEMS,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                patternProperties: { ".*": {} },
+              },
+            },
+          },
+          ["id", "type", "props"],
+        ),
+      ];
+    }),
+  );
+}
+
 function toJson(
   value: unknown,
   path: string,
   state: JsonProjectionState = { seen: new WeakSet<object>(), nodes: 0 },
   depth = 0,
   fields?: readonly NpFieldConfig[],
+  blockFields: BlockFields = new Map(),
+  blocks = false,
 ): NpAgentJsonValue {
   state.nodes += 1;
   if (state.nodes > MAX_PROJECTED_NODES || depth > MAX_PROJECTED_DEPTH) {
@@ -655,9 +734,81 @@ function toJson(
       if (!descriptor || !("value" in descriptor)) {
         throw new Error(`Content field ${path} contains a sparse or computed array value.`);
       }
-      projected.push(
-        toJson(descriptor.value, `${path}[${index.toString()}]`, state, depth + 1, fields),
-      );
+      if (!blocks) {
+        projected.push(
+          toJson(
+            descriptor.value,
+            `${path}[${index.toString()}]`,
+            state,
+            depth + 1,
+            fields,
+            blockFields,
+          ),
+        );
+        continue;
+      }
+      const block: unknown = descriptor.value;
+      if (
+        !block ||
+        typeof block !== "object" ||
+        Array.isArray(block) ||
+        Object.getPrototypeOf(block) !== Object.prototype
+      )
+        throw new Error("Agent block content is unavailable.");
+      const descriptors = Object.getOwnPropertyDescriptors(block);
+      if (
+        Object.keys(descriptors).some(
+          (key) => !["id", "type", "props", "children", "layout"].includes(key),
+        ) ||
+        Object.values(descriptors).some((entry) => !("value" in entry))
+      )
+        throw new Error("Agent block content is unavailable.");
+      const type: unknown = descriptors.type?.value;
+      const id: unknown = descriptors.id?.value;
+      const props: unknown = descriptors.props?.value;
+      if (
+        typeof type !== "string" ||
+        typeof id !== "string" ||
+        !BLOCK_TYPE_PATTERN.test(type) ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(id) ||
+        !blockFields.has(type) ||
+        !props ||
+        typeof props !== "object" ||
+        Array.isArray(props)
+      )
+        throw new Error("Agent block field declarations are unavailable.");
+      const item: NpAgentJsonObject = {
+        id,
+        type,
+        props: toJson(
+          props,
+          `${path}[${index}].props`,
+          state,
+          depth + 1,
+          blockFields.get(type),
+          blockFields,
+        ),
+      };
+      if (descriptors.layout)
+        item.layout = toJson(
+          descriptors.layout.value,
+          `${path}[${index}].layout`,
+          state,
+          depth + 1,
+          undefined,
+          blockFields,
+        );
+      if (descriptors.children)
+        item.children = toJson(
+          descriptors.children.value,
+          `${path}[${index}].children`,
+          state,
+          depth + 1,
+          undefined,
+          blockFields,
+          true,
+        );
+      projected.push(item);
     }
     return projected;
   }
@@ -700,6 +851,8 @@ function toJson(
             state,
             depth + 1,
             field?.type === "group" || field?.type === "array" ? field.fields : undefined,
+            blockFields,
+            field?.type === "blocks",
           ),
         });
       }
@@ -834,7 +987,21 @@ async function queryContent(
       return doc ? [doc] : [];
     });
   }
-  const items = docs.map((doc) => {
+  const readable: ContentRow[] = [];
+  for (const doc of docs) {
+    try {
+      await npAssertCollectionReadAccess(config, input.collection, user ?? null, doc);
+      readable.push(doc);
+    } catch {
+      // A denied/currently unavailable row contributes no identity or ACL detail.
+    }
+  }
+  const blockFields = await exactBlockFields(
+    context.siteId,
+    options.resolveBlockFields,
+    context.transaction as unknown as NpTransaction | undefined,
+  );
+  const items = readable.map((doc) => {
     const data = Object.fromEntries(
       input.fields.flatMap((field) => {
         const descriptor = Object.getOwnPropertyDescriptor(doc, field);
@@ -856,6 +1023,8 @@ async function queryContent(
                   definition?.type === "group" || definition?.type === "array"
                     ? definition.fields
                     : undefined,
+                  blockFields,
+                  definition?.type === "blocks",
                 ),
               ],
             ];
@@ -983,11 +1152,18 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
           )
         : null;
       const blocks = await exactBlockSchemas(context.siteId, options.resolveBlockSchemas);
+      const blockFields = await exactBlockFields(
+        context.siteId,
+        options.resolveBlockFields,
+        context.db as unknown as NpTransaction,
+      );
       const validationResources = createAgentChangeSetValidationResourceServiceV1();
       const candidates: NpAgentPublisherCandidateV1[] = [];
       let remaining = settings.candidateLimit,
         scanned = 0,
-        truncated = false;
+        truncated = false,
+        excludedUnavailable = 0,
+        excludedOversized = 0;
       for (const [index, collection] of settings.collectionSlugs.entries()) {
         if (remaining === 0) {
           truncated = true;
@@ -1000,10 +1176,8 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
           .sort();
         if (fields.length > 32) unavailable();
         if (config.access?.read && !(await config.access.read({ user: user! }))) unavailable();
-        const schema = collectionSchema(
-          config,
-          new Map(blocks.map((block) => [block.type, block.schema])),
-        );
+        const schema = collectionSchema(config, publisherBlockSchemas(blocks, blockFields));
+        let examinedSlots = 0;
         const output = await queryContent(
           {
             collection,
@@ -1019,12 +1193,19 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
           options,
           (count) => {
             remaining -= count;
+            examinedSlots = count;
           },
         );
         scanned += output.items.length;
-        truncated ||= output.nextCursor !== null;
+        // Hydration can remove rows after the bounded query. Do not reveal their
+        // number or identities: only mark the already bounded sample partial.
+        truncated ||= output.nextCursor !== null || examinedSlots !== output.items.length;
         for (const item of output.items) {
-          if (item.status !== "published" || item.updatedAt >= cutoff) continue;
+          if (item.status !== "published" || item.updatedAt >= cutoff) {
+            truncated = true;
+            excludedUnavailable += 1;
+            continue;
+          }
           try {
             const current = await validationResources.readDocumentBase({
               tx: context.db as unknown as NpTransaction,
@@ -1038,8 +1219,11 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
               current.document.status !== "published" ||
               current.document.visibility !== "public" ||
               dateIso(current.document.updatedAt) !== item.updatedAt
-            )
+            ) {
+              truncated = true;
+              excludedUnavailable += 1;
               continue;
+            }
             const currentContent = Object.fromEntries(
               safeFieldEntries(config.fields).flatMap((field) => {
                 const value = current.document[field.name];
@@ -1056,6 +1240,8 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
                           field.type === "group" || field.type === "array"
                             ? field.fields
                             : undefined,
+                          blockFields,
+                          field.type === "blocks",
                         ),
                       ],
                     ];
@@ -1065,6 +1251,7 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
               serializeAgentCanonicalJson(currentContent) !== serializeAgentCanonicalJson(item.data)
             ) {
               truncated = true;
+              excludedUnavailable += 1;
               continue;
             }
             const candidate: NpAgentPublisherCandidateV1 = {
@@ -1079,7 +1266,9 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
                 cutoff,
                 inventory,
               }),
-              schema,
+              // Canonical evidence rejects shared object identities, including
+              // one collection schema reused by multiple selected documents.
+              schema: structuredClone(schema),
               content: item.data,
             };
             if (
@@ -1089,22 +1278,39 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
               ) > NP_AGENT_PUBLISHER_DOCUMENT_BYTES
             ) {
               truncated = true;
+              excludedOversized += 1;
               continue;
             }
             candidates.push(candidate);
           } catch {
             truncated = true;
+            excludedUnavailable += 1;
           }
         }
         if (remaining === 0 && index < settings.collectionSlugs.length - 1) truncated = true;
       }
       const ranked = npRankAgentPublisherCandidatesV1(candidates);
       const selected = ranked.slice(0, settings.batchSize);
+      const selectionReceipt = npCreateAgentPublisherSelectionReceiptV1({
+        observedAt,
+        collectionSlugs: settings.collectionSlugs,
+        staleBefore: cutoff,
+        candidateLimit: settings.candidateLimit,
+        batchSize: settings.batchSize,
+        partial: truncated || ranked.length > selected.length,
+        inventory,
+        scanned,
+        admitted: ranked.length,
+        selected: selected.length,
+        unavailable: excludedUnavailable,
+        oversized: excludedOversized,
+      });
       const result = {
         observedAt,
         scanned,
         truncated: truncated || ranked.length > selected.length,
         candidates: selected,
+        selectionReceipt,
       };
       if (
         Buffer.byteLength(serializeAgentCanonicalJson(result), "utf8") >

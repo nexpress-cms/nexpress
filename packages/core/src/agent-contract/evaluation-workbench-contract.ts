@@ -250,6 +250,8 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
       "moderator-proposal": ["np.agent-moderator-proposal-eval-review.v1"],
       operator: ["np.agent-operator-plan-eval-review.v1"],
       publisher: ["np.agent-eval-review.v1"],
+      "moderator-assessment": ["np.agent-profile-eval-review.v1"],
+      "publisher-selection": ["np.agent-profile-eval-review.v1"],
     };
     if (
       typeof artifact !== "object" ||

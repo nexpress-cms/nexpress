@@ -1,4 +1,5 @@
 import { npRequireAgentContractResult } from "./contract.js";
+
 import {
   analyzeCanonicalBody,
   canonicalBodyArray,
@@ -54,6 +55,14 @@ import {
 } from "./types.js";
 
 const EVENT_PURPOSE = "np.agent-event.v1" as const;
+
+/** Exact pg-boss queue grammar; canonical identifiers must not lowercase queue names. */
+function parseQueueName(value: unknown, path: string): string {
+  const name = parseCanonicalAscii(value, path, 96);
+  if (!/^[A-Za-z0-9_.\-/]+$/u.test(name))
+    failCanonicalBody("invalid-field", path, "Invalid queue name");
+  return name;
+}
 const SIGNAL_PURPOSE = "np.agent-signal-evidence.v1" as const;
 const EVENT_KINDS = new Set<string>(npAgentEventKinds);
 const EVENT_SOURCE_KINDS = new Set<string>([
@@ -335,7 +344,7 @@ function parseEventPayload(
     );
     return {
       kind,
-      handlerName: parseCanonicalIdentifier(record.handlerName, `${path}.handlerName`, 96),
+      handlerName: parseQueueName(record.handlerName, `${path}.handlerName`),
       jobId: parseCanonicalAscii(record.jobId, `${path}.jobId`, 128),
       reasonCode: canonicalRuntimeStableCode(record.reasonCode, `${path}.reasonCode`),
     };
@@ -357,7 +366,7 @@ function parseEventPayload(
     );
     return {
       kind,
-      handlerName: parseCanonicalIdentifier(record.handlerName, `${path}.handlerName`, 96),
+      handlerName: parseQueueName(record.handlerName, `${path}.handlerName`),
       countBucket: parseCanonicalInteger(
         record.countBucket,
         `${path}.countBucket`,

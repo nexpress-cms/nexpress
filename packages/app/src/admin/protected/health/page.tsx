@@ -295,7 +295,7 @@ function HealthProbeCard({ check }: { check: Check }) {
               {check.label}
             </span>
             {check.detail ? (
-              <span className="break-words text-[12.5px] text-neutral-500 dark:text-neutral-400">
+              <span className="min-w-0 break-all text-[12.5px] text-neutral-500 dark:text-neutral-400">
                 {check.detail}
               </span>
             ) : null}

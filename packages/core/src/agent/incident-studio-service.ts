@@ -2,6 +2,12 @@ import type { NpAgentIncidentMemberReportEvidenceServiceV1 } from "./incident-me
 import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
 import {
+  npRequireAgentIncidentAssessmentEntryV1,
+  npRequireAgentIncidentSegmentedAssessmentEntryV2,
+} from "./incident-assessment-service.js";
+import type { NpAgentModeratorSegmentedAssessmentV2 } from "../agent-contract/moderator-segmented-assessment-contract.js";
+import type { NpAgentModeratorAssessmentV1 } from "../agent-contract/moderator-assessment-contract.js";
+import {
   type NpAgentIncidentSeverityChangeV1,
   type NpAgentIncidentSeverityInputV1,
 } from "../agent-contract/incident-severity-contract.js";
@@ -17,7 +23,7 @@ import {
 } from "../agent-contract/incident-workflow-contract.js";
 import type { NpAgentIncidentWorkflowServiceV1 } from "./incident-workflow-service.js";
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lte, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentSignals,
@@ -25,16 +31,20 @@ import {
   npAgentFeedback,
   npAgentIncidents,
   npAgentActions,
+  npAgentContainments,
+  npAgentIncidentSignals,
 } from "../db/schema/agent.js";
 import {
-  npRequireAgentIncidentStudioDetailV1,
-  type NpAgentIncidentStudioDetailV1,
-} from "../agent-contract/incident-studio-contract.js";
+  npRequireAgentIncidentStudioListQueryV1,
+  type NpAgentIncidentStudioListQueryV1,
+} from "../agent-contract/incident-studio-query-contract.js";
 import {
-  npRequireAgentIncidentListInputV1,
-  type NpAgentIncidentListInputV1,
-  type NpAgentIncidentListOutputV1,
-} from "../agent-contract/incident-contract.js";
+  npRequireAgentIncidentStudioDetailV1,
+  npRequireAgentIncidentStudioListOutputV1,
+  type NpAgentIncidentStudioDetailV1,
+  type NpAgentIncidentStudioListOutputV1,
+} from "../agent-contract/incident-studio-contract.js";
+import { type NpAgentIncidentListOutputV1 } from "../agent-contract/incident-contract.js";
 import { type NpAgentIncidentFeedbackInputV1 } from "../agent-contract/incident-feedback-contract.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
@@ -60,9 +70,11 @@ export interface NpAgentIncidentStudioServiceV1 {
   responsePlan: NpAgentIncidentResponseServiceV1["responsePlan"];
   responseExecute: NpAgentIncidentResponseServiceV1["responseExecute"];
   restore: NpAgentIncidentResponseServiceV1["restore"];
-  list(input: Staff & { query: NpAgentIncidentListInputV1 }): Promise<NpAgentIncidentListOutputV1>;
+  list(
+    input: Staff & { query: NpAgentIncidentStudioListQueryV1 },
+  ): Promise<NpAgentIncidentStudioListOutputV1>;
   get(
-    input: Staff & { incidentId: string; cursor?: string | null },
+    input: Staff & { incidentId: string; cursor?: string | null; responseCursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1>;
   escalate(
     input: Staff & { incidentId: string; command: NpAgentIncidentSeverityInputV1 },
@@ -99,9 +111,9 @@ export function createAgentIncidentStudioServiceV1(
   const now = options.now ?? (() => new Date());
   const cursor = createAgentCursorCodecV1(options.cursorHmacKey, "np.agent-incident-studio.cursor");
   async function list(
-    input: Staff & { query: NpAgentIncidentListInputV1 },
-  ): Promise<NpAgentIncidentListOutputV1> {
-    const query = npRequireAgentIncidentListInputV1(input.query);
+    input: Staff & { query: NpAgentIncidentStudioListQueryV1 },
+  ): Promise<NpAgentIncidentStudioListOutputV1> {
+    const query = npRequireAgentIncidentStudioListQueryV1(input.query);
     await options.reads.authorize(input);
     const db = getDb();
     const auth = await npResolveAgentStaffSessionAuthorizationV1(
@@ -169,6 +181,24 @@ export function createAgentIncidentStudioServiceV1(
           query.updatedAfter
             ? gt(npAgentIncidents.updatedAt, new Date(query.updatedAfter))
             : undefined,
+          query.assignedAgentId
+            ? eq(npAgentIncidents.assignedAgentId, query.assignedAgentId)
+            : undefined,
+          query.observedAfter
+            ? gte(npAgentIncidents.lastObservedAt, new Date(query.observedAfter))
+            : undefined,
+          query.observedBefore
+            ? lte(npAgentIncidents.lastObservedAt, new Date(query.observedBefore))
+            : undefined,
+          query.query
+            ? sql`position(lower(${query.query}) in lower(${npAgentIncidents.title} || ' ' || ${npAgentIncidents.summary}))>0`
+            : undefined,
+          query.source
+            ? sql`exists (select 1 from ${npAgentIncidentSignals} link join ${npAgentSignals} signal on signal.site_id=link.site_id and signal.id=link.signal_id where link.site_id=${input.siteId} and link.incident_id=${npAgentIncidents.id} and signal.detector_id=${query.source})`
+            : undefined,
+          query.containment
+            ? sql`${query.containment === "inactive" ? sql`not` : sql``} exists (select 1 from ${npAgentContainments} containment where containment.site_id=${input.siteId} and containment.incident_id=${npAgentIncidents.id} and containment.state='active')`
+            : undefined,
           position
             ? sql`(${closed},${severity},-extract(epoch from ${npAgentIncidents.lastObservedAt}),${npAgentIncidents.id}) > (${position.closed},${position.severity},-extract(epoch from ${position.time}::timestamptz),${position.id}::uuid)`
             : undefined,
@@ -182,14 +212,84 @@ export function createAgentIncidentStudioServiceV1(
       )
       .limit(query.limit + 1);
     const items: NpAgentIncidentListOutputV1["items"] = [];
+    const summaries: NonNullable<NpAgentIncidentStudioListOutputV1["summaries"]> = [];
     for (const row of rows.slice(0, query.limit)) {
       try {
         const current = (await options.reads.get({ incidentId: row.id }, input)).incident;
         if (
           current.versionNumber === row.version &&
           current.updatedAt === row.updatedAt.toISOString()
-        )
+        ) {
+          if (query.includeSummaries) {
+            const summary: (typeof summaries)[number] = {
+              incidentId: current.id,
+              versionNumber: current.versionNumber,
+              containment: null,
+              assessmentAvailable: null,
+            };
+            if (options.workflow) {
+              try {
+                const review = await options.workflow.get({ ...input, incidentId: current.id });
+                const [aggregate] = await db
+                  .select({
+                    active: sql<number>`count(*)::integer`,
+                    nearestExpiryAt: sql<
+                      string | null
+                    >`to_char(min(${npAgentContainments.expiresAt}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+                  })
+                  .from(npAgentContainments)
+                  .where(
+                    and(
+                      eq(npAgentContainments.siteId, input.siteId),
+                      eq(npAgentContainments.incidentId, current.id),
+                      eq(npAgentContainments.state, "active"),
+                    ),
+                  );
+                const confirmed = await options.workflow.get({ ...input, incidentId: current.id });
+                if (
+                  aggregate &&
+                  aggregate.active === review.containment.active &&
+                  confirmed.containment.reviewHash === review.containment.reviewHash
+                )
+                  summary.containment = {
+                    active: aggregate.active,
+                    nearestExpiryAt: aggregate.nearestExpiryAt,
+                  };
+              } catch {
+                // The optional owner must prove every containment/action visible.
+                // No owner or an unavailable review is unknown, never zero.
+              }
+            }
+            const [entry] = await db
+              .select()
+              .from(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, input.siteId),
+                  eq(npAgentIncidentTimeline.incidentId, current.id),
+                  eq(npAgentIncidentTimeline.kind, "agent_assessment"),
+                ),
+              )
+              .orderBy(desc(npAgentIncidentTimeline.sequence))
+              .limit(1);
+            if (!entry) summary.assessmentAvailable = false;
+            else {
+              try {
+                if (entry.details.schemaVersion === "np.agent-moderator-segmented-assessment.v2")
+                  await npRequireAgentIncidentSegmentedAssessmentEntryV2(db, entry);
+                else await npRequireAgentIncidentAssessmentEntryV1(db, entry);
+                summary.assessmentAvailable = true;
+              } catch {
+                /* Invalid/legacy assessment evidence stays unknown. */
+              }
+            }
+            const checked = (await options.reads.get({ incidentId: current.id }, input)).incident;
+            if (serializeAgentCanonicalJson(checked) !== serializeAgentCanonicalJson(current))
+              continue;
+            summaries.push(summary);
+          }
           items.push(current);
+        }
       } catch (error) {
         if (!(error instanceof NpAgentGatewayError) || error.code !== "INCIDENT_NOT_FOUND")
           throw error;
@@ -202,9 +302,10 @@ export function createAgentIncidentStudioServiceV1(
     )
       throw new NpAgentGatewayError("INCIDENT_FORBIDDEN", 403, "Incident permission is required.");
     const last = rows[Math.min(rows.length, query.limit) - 1];
-    return {
+    return npRequireAgentIncidentStudioListOutputV1({
       schemaVersion: "np.agent-incident-list.v1",
       items,
+      ...(query.includeSummaries ? { summaries } : {}),
       nextCursor:
         rows.length > query.limit && last
           ? cursor.seal({
@@ -218,10 +319,10 @@ export function createAgentIncidentStudioServiceV1(
               },
             })
           : null,
-    };
+    });
   }
   async function get(
-    input: Staff & { incidentId: string; cursor?: string | null },
+    input: Staff & { incidentId: string; cursor?: string | null; responseCursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1> {
     const db = getDb();
     const { incident } = await options.reads.get({ incidentId: input.incidentId }, input);
@@ -355,7 +456,21 @@ export function createAgentIncidentStudioServiceV1(
           continue;
         }
       }
+      let assessment: NpAgentModeratorAssessmentV1 | undefined;
+      let segmentedAssessment: NpAgentModeratorSegmentedAssessmentV2 | undefined;
+      if (row.kind === "agent_assessment") {
+        try {
+          if (row.details.schemaVersion === "np.agent-moderator-segmented-assessment.v2")
+            segmentedAssessment = await npRequireAgentIncidentSegmentedAssessmentEntryV2(db, row);
+          else assessment = await npRequireAgentIncidentAssessmentEntryV1(db, row);
+        } catch {
+          // Raw model prose and unverified legacy entries never become a trusted projection.
+          continue;
+        }
+      }
       timeline.push({
+        ...(assessment ? { assessment } : {}),
+        ...(segmentedAssessment ? { segmentedAssessment } : {}),
         ...(containmentFailure ? { containmentFailure } : {}),
         ...(containmentFailure && options.notifications?.recoveryState
           ? {
@@ -435,7 +550,15 @@ export function createAgentIncidentStudioServiceV1(
       signals.every((signal) => signal.detectorId === "moderator.member-report-review");
     if (options.response && !memberReports) {
       try {
-        response = await options.response.get(input);
+        const {
+          responseCursor: selectedResponseCursor,
+          cursor: _timelineCursor,
+          ...responseInput
+        } = input;
+        response = await options.response.get({
+          ...responseInput,
+          ...(selectedResponseCursor !== undefined ? { cursor: selectedResponseCursor } : {}),
+        });
       } catch (error) {
         if (!(error instanceof NpAgentGatewayError) || ![403, 404, 409].includes(error.status))
           throw error;

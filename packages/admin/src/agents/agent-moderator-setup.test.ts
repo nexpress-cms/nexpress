@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   npAgentModeratorRecipeSetupV1,
+  npAgentModeratorAssessmentRecipeSetupV1,
   npCreateDisabledAgentRuntimeSettingsV1,
   type NpAgentRuntimeStudioCatalogV1,
 } from "@nexpress/core/agent-contract";
-import { moderatorSetupAvailable, moderatorSetupDefinition } from "./agent-moderator-setup.js";
+import {
+  moderatorSetupAvailable,
+  moderatorSetupDefinition,
+  moderatorAssessmentSetupAvailable,
+  moderatorAssessmentSetupDefinition,
+} from "./agent-moderator-setup.js";
 
 function catalog(): NpAgentRuntimeStudioCatalogV1 {
   const setup = npAgentModeratorRecipeSetupV1;
@@ -35,6 +41,28 @@ function catalog(): NpAgentRuntimeStudioCatalogV1 {
 }
 
 describe("Moderator human approval draft setup", () => {
+  it("offers a separate read-only draft only for the installed assessment surface", () => {
+    const value = catalog();
+    expect(moderatorAssessmentSetupAvailable(value)).toBe(false);
+    const setup = npAgentModeratorAssessmentRecipeSetupV1;
+    value.scopes = [...setup.scopes];
+    value.recipes[0].capabilityIds = setup.capabilityModes.map((entry) => entry.capabilityId);
+    value.capabilities = setup.capabilityModes.map(({ capabilityId, mode }) => ({
+      id: capabilityId,
+      modes: [mode],
+    }));
+    expect(moderatorAssessmentSetupAvailable(value)).toBe(true);
+    expect(moderatorSetupAvailable(value)).toBe(false);
+    const draft = moderatorAssessmentSetupDefinition(value, "Review");
+    expect(draft.autonomy).toBe("observe");
+    expect(draft.capabilityModes).toEqual([
+      { capabilityId: "incident.get", mode: "observe" },
+      { capabilityId: "incident.list", mode: "observe" },
+    ]);
+    expect(draft.budget.directActionsPerHour).toBe(0);
+    expect(draft.modelConnectionId).toBeNull();
+    expect(moderatorAssessmentSetupAvailable({ ...value, capabilities: [] })).toBe(false);
+  });
   it("requires the installed recipe and every live scope and capability mode", () => {
     const value = catalog();
     expect(moderatorSetupAvailable(value)).toBe(true);

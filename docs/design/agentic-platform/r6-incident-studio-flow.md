@@ -22,6 +22,11 @@ assistive-technology acceptance.
   `canReviewContainment` authorizes actual retained targets, and `canReviewAction`
   is required when pending moderation actions exist. Missing or denied target
   review disables the workflow summary rather than exposing hidden counts.
+- The Admin list opts into `includeSummaries=true`; older Studio/Gateway clients
+  retain the original list projection. Per-Incident summaries bind the exact
+  Incident version, optional current workflow review and the newest verified AI
+  assessment. Missing/denied containment ownership and invalid assessment proof
+  return unknown, never a fabricated zero or absence.
 - `agent-contract/incident-studio-contract.ts` is the exact browser-safe detail
   projection. Private source bodies, raw timeline details, actor fingerprints and
   containment original state are excluded. Unknown deterministic scores remain
@@ -33,8 +38,9 @@ assistive-technology acceptance.
 ## Review behavior
 
 The initial view filters unresolved incidents. Supported filters are exact
-status, category and severity; the HTTP service also accepts the existing
-updated-after filter. Staff ordering is unresolved first, severity descending,
+status, category, severity, detector source, assigned Agent, active containment,
+observation-time range and literal title/summary search. The HTTP service also
+accepts the existing updated-after filter. Staff ordering is unresolved first, severity descending,
 then last observation descending and ID. Gateway ordering is unchanged.
 
 List cursors are authenticated and bound to the current site, staff session,
@@ -50,6 +56,21 @@ verification. Continuations bind to the incident generation; updates require a
 fresh first page. Source evidence and current item visibility are checked again
 after composition.
 
+The list displays the existing assigned Agent ID and optional active-containment
+count, nearest recorded expiry and AI-assessment availability. The workflow owner
+authorizes all retained containment and pending Actions before the aggregate;
+its review hash/count are checked again afterward. Exact Incident generation and
+staff authority are reread before returning a summary. No expiry automatically
+restores content. No assessment entry is distinct from an invalid/unverifiable
+entry; the latter remains unknown.
+
+Flood evidence follows the existing canonical maximum of 100 attached Signals
+with at most 100 references each. The staff evidence owner checks the whole set
+of up to 10,000 unique Events, loading at most 100 source rows per query, while
+returning ten metadata items per page. Visibility is never granted from only the
+displayed page. A missing or inaccessible source on a later page denies the
+whole Incident.
+
 Action and approval links are exposed only after the corresponding read owner
 accepts the current viewer. Real containment entries retain an action ID; its
 approval is resolved and independently authorized through the existing Approval
@@ -58,6 +79,18 @@ links remain absent while an authorized moderation approval remains reviewable.
 The [staff response flow](r6-incident-response-flow.md) connects optional response
 planning and explicit execution to these same owners. No incident-specific
 approval, quarantine or restore executor is introduced.
+Response targets paginate independently through detail's `responseCursor` and
+the response's optional authenticated `nextCursor`. Timeline `cursor` is never
+forwarded to the response owner. Omitting the response cursor preserves the
+existing complete response and wire shape for up to 100 distinct eligible
+targets. Larger default results start a ten-evidence-item page; an explicitly
+provided cursor, including `null` at the service boundary, always requests that
+bounded page mode. Changing response pages clears the selected
+target; a last-page proposal independently rechecks exact target membership and
+current version rather than requiring that target on the first display page.
+Existing approval, 50-plan and 100-containment/choice limits remain. When the
+combined choice ceiling is reached, restoration remains available and the result
+is explicitly partial; further quarantine waits for human restoration/review.
 
 Feedback offers confirmed-spam and false-positive labels for spam signals. The
 current immutable feedback head is displayed per signal; a correction passes
@@ -105,15 +138,43 @@ This document records the review, feedback and human-decision slice. The
 The [comment evidence flow](r6-incident-evidence-flow.md) adds bounded observation
 metadata/current-state review and exact response target selection. The
 [assignment flow](r6-incident-assignment-flow.md) adds explicit Agent designation
-and removal. Other source evidence viewers, model assessment content,
-notification posture and the additional designed filters still need their
-owning services and projections. Comment source collectors, evaluation datasets
+and removal. The [semantic assessment flow](r6-moderator-assessment-flow.md)
+provides separately labeled read-only judgments; its ten-target uncertainty
+boundary does not claim whole-flood semantic classification. Other source
+extensions still need their owning services and projections. Comment source collectors, evaluation datasets
 and Runtime approval-resume boundaries remain as recorded in the
 [Moderator flow](r6-moderator-flow.md). This work installs no Runtime, provider,
 worker, collector or credential and makes no external provider call. It changes
 no schema, package version, changeset or lockfile.
 
 ## Verification
+
+### Current paging and optional-summary verification
+
+On 2026-10-15, the focused PostgreSQL run passed 24 cases across Incident Studio,
+actual comment evidence and read-only semantic assessment. It covers 151 actual
+source Events through strict staff visibility, all target pages, a final-page
+proposal and feedback; detail forwards response pagination without consuming the
+timeline cursor. An unavailable off-page source denies the whole Incident.
+Actual approved quarantine proves active-count projection and denied review
+becomes unknown. Genuine assessment proof becomes available; tampered retained
+proof becomes unknown. Generation changes exclude mixed summaries.
+
+The staff-query contract suite passed two cases and the HTTP boundary suite
+passed 62 cases. Core, App and Admin source TypeScript, the connected Studio,
+assessment, evidence and browser test types, and focused product lint passed
+against the coordinated Core build. The new browser fixture covers optional
+summaries and explicit target selection after response pagination; the full
+bundle's acceptance document records its production-browser gate. These checks
+install no production owner and establish no model accuracy or automatic
+moderation permission.
+
+A follow-up persistence run passed all 16 comment-evidence and document-report
+cases. It preserves the existing complete 11-target and 100-target default
+response and absent `nextCursor` field, while explicit first-page requests and
+151-target defaults use bounded continuation. The document-report case still
+requires all eight eligible choices after resolution, owner edits and hiding;
+its expectation was preserved.
 
 ### Review and feedback slice
 

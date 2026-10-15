@@ -1,3 +1,4 @@
+import type { NpAgentProfileEvaluationReviewArtifactV1 } from "./profile-evaluation-review-contract.js";
 import { canonicalBodyRecord } from "./canonical-body-validation.js";
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import type {
@@ -36,6 +37,8 @@ export const npAgentEvaluationReportRecipesV1 = [
   "moderator-proposal",
   "operator",
   "publisher",
+  "moderator-assessment",
+  "publisher-selection",
 ] as const;
 export type NpAgentEvaluationReportRecipeV1 = (typeof npAgentEvaluationReportRecipesV1)[number];
 export interface NpAgentEvaluationReportManifestV1 {
@@ -51,6 +54,7 @@ export interface NpAgentEvaluationReportEvidenceV1 {
   evaluation: NpAgentEvaluationArtifactV1 | NpAgentModeratorEvaluationArtifact;
   review:
     | NpAgentEvaluationReviewArtifactV1
+    | NpAgentProfileEvaluationReviewArtifactV1
     | NpAgentOperatorPlanEvaluationReviewArtifactV1
     | NpAgentModeratorProposalEvaluationReviewArtifactV1
     | NpAgentModeratorEvaluationReviewArtifact

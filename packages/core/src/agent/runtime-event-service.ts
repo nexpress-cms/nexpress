@@ -1,4 +1,5 @@
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import {
   canonicalBodyRecord,
   canonicalBodySiteId,
@@ -132,7 +133,8 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
     });
     return evidence.registry.recipes.filter(
       (recipe) =>
-        recipe.task === "interactive-capability" &&
+        (recipe.task === "interactive-capability" ||
+          npIsAgentModeratorAssessmentProfileV1(recipe)) &&
         recipe.triggerKinds.includes(trigger.kind as "manual" | "event" | "schedule") &&
         evidence.definition.settings.some((branch) => branch.recipeId === recipe.id),
     );
@@ -195,11 +197,12 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
     // Collect outside the Runtime-control transaction. The source owner rechecks
     // staff/site authority and takes its own ordered locks. Admission subsequently
     // repeats current trigger/version/policy checks; collection grants no authority.
-    await options.moderatorCollector.collect({
+    const collection = await options.moderatorCollector.collect({
       siteId: trigger.siteId,
       windowStartedAt,
       settings,
     });
+    if (collection.complete === false) fail("MODERATOR_COLLECTION_PENDING");
   }
   async function registerTrigger(input: {
     siteId: string;
