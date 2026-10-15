@@ -41,6 +41,7 @@ import type { NpAgentModerationServiceV1 } from "./moderation-service.js";
 import type { NpAgentApprovalServiceV1 } from "./approval-service.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import type { NpAgentIncidentTargetPageV1 } from "./incident-evidence-service.js";
 type Db = ReturnType<typeof getDb>;
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 type Input = Staff & { incidentId: string };
@@ -50,13 +51,18 @@ export interface NpAgentIncidentResponseServiceOptionsV1 {
   approvals: NpAgentApprovalServiceV1;
   /** Explicit evidence owner. Return only selected current domain targets bound to the supplied canonical Incident's Signals/Events; never infer targets from opaque event identifiers. The facade independently checks current domain ACL and versions. */
   resolveTargets(
-    input: Input & { db: Db; incident: NpAgentIncidentV1 },
-  ): Promise<NpCommunityContentTargetV1[]>;
+    input: Input & {
+      db: Db;
+      incident: NpAgentIncidentV1;
+      cursor?: string | null;
+      target?: NpCommunityContentTargetV1;
+    },
+  ): Promise<NpCommunityContentTargetV1[] | NpAgentIncidentTargetPageV1>;
   admission?: NpAgentAdminAdmissionOptionsV1;
   now?: () => Date;
 }
 export interface NpAgentIncidentResponseServiceV1 {
-  get(input: Input): Promise<NpAgentIncidentResponseV1>;
+  get(input: Input & { cursor?: string | null }): Promise<NpAgentIncidentResponseV1>;
   responsePlan(
     input: Input & { command: NpAgentIncidentResponsePlanInputV1 },
   ): Promise<{ resourceId: string; replayed: boolean }>;
@@ -98,15 +104,27 @@ export function createAgentIncidentResponseServiceV1(
       await options.reads.get({ incidentId: input.incidentId }, { ...input, transaction: db })
     ).incident;
   }
-  async function choices(db: Db, input: Input, incident: NpAgentIncidentV1) {
+  async function choices(
+    db: Db,
+    input: Input,
+    incident: NpAgentIncidentV1,
+    selection: { cursor?: string | null; target?: NpCommunityContentTargetV1 } = {},
+  ) {
     const result: NpAgentIncidentResponseV1["choices"] = [];
+    let nextCursor: string | null | undefined;
     const viewer = await options.moderation.staff.viewer({ ...input, db });
     if (!["resolved", "dismissed"].includes(incident.status)) {
-      const targets = await options.resolveTargets({
+      const selected = await options.resolveTargets({
         ...input,
+        ...selection,
         db,
         incident: structuredClone(incident),
       });
+      const targets = Array.isArray(selected) ? selected : selected.targets;
+      if (!Array.isArray(selected)) {
+        if (typeof selected.nextCursor !== "string" && selected.nextCursor !== null) fail();
+        nextCursor = selected.nextCursor;
+      }
       if (!Array.isArray(targets) || targets.length > 100) fail();
       const seen = new Set<string>();
       for (const target of targets) {
@@ -160,13 +178,29 @@ export function createAgentIncidentResponseServiceV1(
         choice.capabilityId !== "moderation.quarantine" ||
         !rows.some((containment) => same(containment.targetRef, choice.target)),
     );
-    if (available.length > 100) fail();
-    return available;
+    // At the existing combined choice ceiling, keep every restoration available.
+    // Further quarantines wait for human restoration/review rather than hiding
+    // compensation behind an oversized mixed response.
+    const limited = available.length > 100;
+    return {
+      available: limited
+        ? available.filter((choice) => choice.capabilityId === "moderation.restore")
+        : available,
+      nextCursor,
+      limited,
+    };
   }
-  async function get(input: Input): Promise<NpAgentIncidentResponseV1> {
+  async function get(
+    input: Input & { cursor?: string | null },
+  ): Promise<NpAgentIncidentResponseV1> {
     const db = getDb(),
       incident = await authorize(db, input);
-    const available = await choices(db, input, incident);
+    const { available, nextCursor, limited } = await choices(
+      db,
+      input,
+      incident,
+      input.cursor === undefined ? {} : { cursor: input.cursor },
+    );
     const containments = await db
       .select({ id: npAgentContainments.id })
       .from(npAgentContainments)
@@ -264,7 +298,8 @@ export function createAgentIncidentResponseServiceV1(
     return npRequireAgentIncidentResponseV1({
       choices: available,
       plans,
-      truncated: rows.length > 50,
+      truncated: rows.length > 50 || nextCursor != null || limited,
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
     });
   }
   async function mutate(
@@ -308,7 +343,14 @@ export function createAgentIncidentResponseServiceV1(
                     let parsed;
                     if ("proposal" in command) {
                       capabilityId = command.capabilityId;
-                      const available = await choices(db, input, incident);
+                      const { available } = await choices(
+                        db,
+                        input,
+                        incident,
+                        capabilityId === "moderation.quarantine"
+                          ? { target: npRequireAgentQuarantineProposalV1(command.proposal).target }
+                          : {},
+                      );
                       if (capabilityId === "moderation.quarantine") {
                         const p = npRequireAgentQuarantineProposalV1(command.proposal);
                         if (

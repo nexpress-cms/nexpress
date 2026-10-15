@@ -7,7 +7,9 @@ export type {
   NpAgentPublisherCandidateV1,
   NpAgentPublisherFindingV1,
   NpAgentPublisherRouteInventoryV1,
+  NpAgentPublisherSelectionReceiptV1,
 } from "./publisher-content.js";
+export { npRequireAgentPublisherRouteInventoryV1 } from "./publisher-content.js";
 export * from "./connection-service.js";
 export * from "./connection-admin-service.js";
 export * from "./contract-diagnostics.js";
@@ -66,7 +68,13 @@ export * from "./runtime-executor.js";
 
 export * from "./runtime-event-service.js";
 export * from "./runtime-jobs.js";
+export * from "./operator-event-source.js";
+export * from "./operator-event-observation.js";
 export * from "./runtime-maintenance.js";
+export * from "./incident-retention.js";
+export * from "./moderator-assessment-source.js";
+export * from "./moderator-assessment-fixtures.js";
+export * from "./incident-assessment-service.js";
 export * from "./runtime-studio-service.js";
 
 // Reviewed migration / diagnostics primitives; do not install services or journals.
@@ -148,3 +156,7 @@ export {
 
 export * from "./moderator-member-report-source.js";
 export * from "./incident-member-report-evidence-service.js";
+
+export { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
+
+export * from "./publisher-selection-evaluation-fixtures.js";

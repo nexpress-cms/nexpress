@@ -46,6 +46,8 @@ const recipeLabels: Record<NpAgentEvaluationReportRecipeV1, string> = {
   "moderator-proposal": "Moderator proposal",
   operator: "Operator plan",
   publisher: "Publisher",
+  "moderator-assessment": "Moderator semantic assessment",
+  "publisher-selection": "Publisher selection profile V3",
 };
 const caseKey = (entry: NpAgentEvaluationWorkbenchCaseV1) => `${entry.caseId}@${entry.caseVersion}`;
 const emptyDraft = (): EvaluationReviewDraft => ({
@@ -484,7 +486,11 @@ export function AgentEvaluationWorkbenchView() {
                       </div>
                       {draft.outcome === "edit" ? (
                         <div className="space-y-2">
-                          <Label htmlFor="eval-edit">Edited proposal JSON</Label>
+                          <Label htmlFor="eval-edit">
+                            {recipe === "moderator-assessment" || recipe === "publisher-selection"
+                              ? "Edited structured result JSON"
+                              : "Edited proposal JSON"}
+                          </Label>
                           <Textarea
                             id="eval-edit"
                             className="min-h-56 font-mono text-xs"

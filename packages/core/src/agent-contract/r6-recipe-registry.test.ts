@@ -12,6 +12,8 @@ import { npCreateAgentPublisherRecipeDefinitionV1 } from "./publisher-recipe-con
 import {
   npCreateAgentR6UnattendedRecipeRegistryV1,
   npCreateAgentR6UnattendedRecipeRegistryV2,
+  npCreateAgentR6UnattendedRecipeRegistryV3,
+  npCreateAgentR6AssessmentRecipeRegistryV1,
 } from "./r6-recipe-registry.js";
 import type {
   NpAgentRecipeDefinitionCanonicalV1,
@@ -39,6 +41,24 @@ function definition(recipe: NpAgentRecipeDefinitionCanonicalV1): NpAgentRecipeRe
 }
 
 describe("explicit R6 unattended recipe installation profile", () => {
+  it("keeps selection/source and read-only assessment adoption separate from frozen profiles", async () => {
+    const prior = await npCreateAgentR6UnattendedRecipeRegistryV2();
+    const bytes = serializeAgentCanonicalJson(prior);
+    const source = await npCreateAgentR6UnattendedRecipeRegistryV3();
+    const assessment = await npCreateAgentR6AssessmentRecipeRegistryV1();
+    expect(source.recipes[0]).toEqual(prior.recipes[0]);
+    expect(source.recipes[1].triggerKinds).toEqual(["event", "manual", "schedule"]);
+    expect(source.recipes[2].instruction?.templateVersion).toBe(3);
+    expect(assessment.recipes.slice(1)).toEqual(source.recipes.slice(1));
+    expect(assessment.recipes[0].task).toBe("moderation-classification");
+    expect(assessment.recipes[0].capabilityIds).toEqual(["incident.get", "incident.list"]);
+    expect(() =>
+      npRequireAgentRecipeRegistryCanonicalForInstalledRecipes(source, assessment.recipes),
+    ).toThrow(NpAgentCanonicalIncompleteRegistryError);
+    expect(serializeAgentCanonicalJson(await npCreateAgentR6UnattendedRecipeRegistryV2())).toBe(
+      bytes,
+    );
+  });
   it("changes only trigger eligibility and preserves all shipped manual definition bytes", async () => {
     const original = await manualRegistry();
     const originalBytes = serializeAgentCanonicalJson(original);

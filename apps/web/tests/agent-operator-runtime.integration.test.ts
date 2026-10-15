@@ -80,6 +80,7 @@ describe.skipIf(skipIfNoTestDb())("Operator Runtime operation owners", () => {
   });
   afterAll(closeTestDb);
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const cleanup of cleanupAdapters.splice(0)) cleanup();
   });
 
@@ -286,6 +287,7 @@ describe.skipIf(skipIfNoTestDb())("Operator Runtime operation owners", () => {
     await f.dispose();
   });
   it("waits for human approval and resumes the real Runtime executor exactly once", async () => {
+    vi.stubEnv("NP_REMOTE_OPS_MUTATIONS", "1");
     const responseSchema: NpAgentJsonSchema = {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "object",

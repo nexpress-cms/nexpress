@@ -15,9 +15,16 @@ import {
 import type { getDb } from "../db/runtime.js";
 import { npAgentSiteOwnedTableNamesV1 } from "./site-deletion.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
+import { npPruneAgentIncidentRetentionV1 } from "./incident-retention.js";
+import { npPruneAgentModeratorFloodCheckpointsV1 } from "./moderator-flood-retention.js";
+import {
+  npRequireAgentIncidentRetentionPolicyV1,
+  type NpAgentIncidentRetentionPolicyV1,
+} from "../agent-contract/incident-retention-contract.js";
 
 type Db = ReturnType<typeof getDb>;
-type Category = "events" | "diagnostics" | "calls" | "reservations" | "runs" | "breakers" | "daily";
+type Category =
+  "events" | "diagnostics" | "calls" | "reservations" | "runs" | "breakers" | "daily" | "r6";
 interface CandidateSource {
   category: Category;
   table: string;
@@ -37,6 +44,9 @@ function unreferenced(table: string, hasJobs: boolean): SQL {
   checks.push(sql`not exists (select 1 from np_audit_events dependency
     where (dependency.site_id=t.site_id or dependency.site_id is null)
     and position(t.id::text in to_jsonb(dependency)::text)>0)`);
+  // Durable collection/monitor checkpoints are source references too.
+  checks.push(sql`not exists (select 1 from np_settings dependency
+    where dependency.site_id=t.site_id and position(t.id::text in to_jsonb(dependency)::text)>0)`);
   if (hasJobs)
     checks.push(sql`not exists (select 1 from pgboss.job dependency
     where dependency.state::text in ('created','retry','active')
@@ -55,6 +65,7 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
   settings: NpAgentRuntimeSettingsV1;
   revision: number;
   beforeStatement: () => Promise<void>;
+  incidentRetention?: NpAgentIncidentRetentionPolicyV1;
 }): Promise<{ examined: number; pruned: number; nextCursor: string | null }> {
   const { db, siteId, cursor, limit, now, beforeStatement } = options;
   const minimumDetailBefore = new Date(now.getTime() - 86_400_000);
@@ -125,6 +136,31 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
           and (reservation.reserved_at at time zone 'UTC')::date=t.usage_date)`,
     },
   ];
+  const incidentRetention =
+    options.incidentRetention === undefined
+      ? undefined
+      : npRequireAgentIncidentRetentionPolicyV1(options.incidentRetention);
+  if (incidentRetention) {
+    const closedBefore = new Date(now.getTime() - incidentRetention.historyDays * 86400000);
+    const signalBefore = new Date(now.getTime() - incidentRetention.signalDays * 86400000);
+    sources.push(
+      {
+        category: "r6",
+        table: "np_agent_incidents",
+        eligible: sql`t.status in ('resolved','dismissed') and t.resolved_at<=${closedBefore} and t.updated_at<=${closedBefore}`,
+      },
+      {
+        category: "r6",
+        table: "np_agent_notifications",
+        eligible: sql`t.channel='admin' and t.state='sent' and t.created_at<=${closedBefore} and t.updated_at<=${closedBefore} and t.sent_at<=${closedBefore} and t.run_id is null and t.action_id is null and exists (select 1 from np_agent_incidents parent where parent.site_id=t.site_id and parent.id=t.incident_id and parent.status in ('resolved','dismissed') and parent.resolved_at<=${closedBefore} and parent.updated_at<=${closedBefore})`,
+      },
+      {
+        category: "r6",
+        table: "np_agent_signals",
+        eligible: sql`t.created_at<=${signalBefore} and t.expires_at<=${now} and not exists (select 1 from np_agent_incident_signals link where link.site_id=t.site_id and link.signal_id=t.id)`,
+      },
+    );
+  }
   await beforeStatement();
   const candidates = await db.execute(
     sql`select distinct id from (${sql.join(
@@ -155,7 +191,26 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
     const jobTable = await db.execute(sql`select to_regclass('pgboss.job') is not null as present`);
     const hasJobs = jobTable.rows[0]?.present === true;
     await npLockAgentSourceReleaseFenceV1(db, beforeStatement);
+    await beforeStatement();
+    await db.execute(sql`lock table np_settings in share mode nowait`);
+    if (incidentRetention) {
+      for (let offset = 0; offset < ids.length; offset += 25) {
+        const retired = await npPruneAgentIncidentRetentionV1({
+          db,
+          siteId,
+          cursor: null,
+          limit: 25,
+          now,
+          policy: incidentRetention,
+          beforeStatement,
+          rootIds: ids.slice(offset, offset + 25),
+          maximumRows: Math.max(0, 10000 - pruned - 2 * ids.length),
+        });
+        pruned += retired.pruned;
+      }
+    }
     for (const source of sources) {
+      if (source.category === "r6") continue;
       const retentionDeadlines = new Map<string, Date>();
       let eligibleIds = ids;
       if (source.category === "runs") {
@@ -245,6 +300,10 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
               409,
               "Agent maintenance is unavailable.",
             );
+          await beforeStatement();
+          const settingsReference = await db.execute(sql`select 1 from np_settings dependency
+            where dependency.site_id=${siteId} and position(${candidate.id}::text in to_jsonb(dependency)::text)>0 limit 1`);
+          if (settingsReference.rows.length) continue;
           const ready = await npPrepareAgentSourceReleaseV1({
             db,
             siteId,
@@ -283,6 +342,18 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
         pruned += result.rows.length;
       }
     }
+  }
+  if (incidentRetention && pruned < 10000) {
+    const checkpoint = await npPruneAgentModeratorFloodCheckpointsV1({
+      db,
+      siteId,
+      now,
+      signalDays: incidentRetention.signalDays,
+      limit: 1,
+      maximumRows: 10000 - pruned,
+      beforeStatement,
+    });
+    pruned += checkpoint.pruned;
   }
   return {
     examined: ids.length,

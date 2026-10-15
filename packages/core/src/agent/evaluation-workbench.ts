@@ -1,3 +1,7 @@
+import {
+  npBuildAgentProfileEvaluationReviewArtifactV1,
+  npRequireAgentProfileEvaluationReviewArtifactV1,
+} from "../agent-contract/profile-evaluation-review-contract.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
   npRequireAgentEvaluationWorkbenchRequestV1,
@@ -33,22 +37,26 @@ import { npBuildAgentEvaluationReportV1 } from "./evaluation-report.js";
 
 const json = (value: unknown) => JSON.stringify(value);
 const buildReview = (recipe: NpAgentEvaluationReportRecipeV1, source: unknown, labels: unknown) =>
-  recipe === "moderator"
-    ? npBuildAgentModeratorEvaluationReviewArtifact(source, labels)
-    : recipe === "moderator-proposal"
-      ? npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source, labels)
-      : recipe === "operator"
-        ? npBuildAgentOperatorPlanEvaluationReviewArtifactV1(source, labels)
-        : npBuildAgentEvaluationReviewArtifactV1(source, labels);
+  recipe === "moderator-assessment" || recipe === "publisher-selection"
+    ? npBuildAgentProfileEvaluationReviewArtifactV1(source, labels)
+    : recipe === "moderator"
+      ? npBuildAgentModeratorEvaluationReviewArtifact(source, labels)
+      : recipe === "moderator-proposal"
+        ? npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source, labels)
+        : recipe === "operator"
+          ? npBuildAgentOperatorPlanEvaluationReviewArtifactV1(source, labels)
+          : npBuildAgentEvaluationReviewArtifactV1(source, labels);
 
 const requireReview = (recipe: NpAgentEvaluationReportRecipeV1, value: unknown) =>
-  recipe === "moderator"
-    ? npRequireAgentModeratorEvaluationReviewArtifact(value)
-    : recipe === "moderator-proposal"
-      ? npRequireAgentModeratorProposalEvaluationReviewArtifactV1(value)
-      : recipe === "operator"
-        ? npRequireAgentOperatorPlanEvaluationReviewArtifactV1(value)
-        : npRequireAgentEvaluationReviewArtifactV1(value);
+  recipe === "moderator-assessment" || recipe === "publisher-selection"
+    ? npRequireAgentProfileEvaluationReviewArtifactV1(value)
+    : recipe === "moderator"
+      ? npRequireAgentModeratorEvaluationReviewArtifact(value)
+      : recipe === "moderator-proposal"
+        ? npRequireAgentModeratorProposalEvaluationReviewArtifactV1(value)
+        : recipe === "operator"
+          ? npRequireAgentOperatorPlanEvaluationReviewArtifactV1(value)
+          : npRequireAgentEvaluationReviewArtifactV1(value);
 
 async function caseScore(source: NpAgentEvaluationArtifactV1, index: number) {
   const { mode, provider, model, startedAt, finishedAt, budget } = source;

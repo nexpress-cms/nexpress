@@ -23,6 +23,8 @@ import type { NpAgentRuntimeExecutionStoreV1 } from "./runtime-execution-store.j
 import type { NpAgentRuntimeContextV1 } from "./runtime-context.js";
 import type { NpAgentRuntimeUsageV1 } from "./runtime-usage.js";
 import type { NpAgentRuntimeBreakersV1 } from "./runtime-breakers.js";
+import type { NpAgentIncidentAssessmentServiceV1 } from "./incident-assessment-service.js";
+import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import type { NpAgentProviderInferenceRuntimeV1 } from "./provider-inference.js";
 import {
   npParseAgentStoredProviderConnectionConfigV1,
@@ -45,6 +47,7 @@ export interface NpAgentRuntimeExecutorOptionsV1 {
   vault: Pick<NpAgentVaultServiceV1, "leaseProviderCredential">;
   capabilities: NpAgentCapabilityAdmissionServiceV1;
   breakers: NpAgentRuntimeBreakersV1;
+  incidentAssessments?: NpAgentIncidentAssessmentServiceV1;
   now?: () => Date;
 }
 function fail(code: string): never {
@@ -166,7 +169,17 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
           for (const call of calls)
             if (["failed", "cancelled"].includes(call.state))
               await npRequireAgentRuntimeProviderFailureV1({ db: context.db, call });
-          return { calls, limits: context.limits };
+          const recipe = calls.some((call) => call.state === "succeeded")
+            ? context.evidence.registry.recipes.find(
+                (entry) =>
+                  entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+              )
+            : undefined;
+          return {
+            calls,
+            limits: context.limits,
+            assessment: npIsAgentModeratorAssessmentRecipeV1(recipe),
+          };
         });
         // Retained approval requests never authorize another provider turn by themselves.
         // This also fences a crash after the explicit resume claim but before execution.
@@ -199,6 +212,12 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         for (const call of history.calls) {
           if (call.state !== "succeeded") continue;
           const output = await npRequireAgentRuntimeProviderDecisionV1(call);
+          if (
+            history.assessment &&
+            output.task === "moderation-classification" &&
+            output.decision.kind === "classification"
+          )
+            continue;
           if (output.task !== "interactive-capability")
             fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
           if (output.decision.kind === "request-evidence") {
@@ -211,6 +230,17 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         if (evidence.length > 32) fail("RUNTIME_EVIDENCE_LIMIT");
         if (latest?.state === "succeeded") {
           const output = await npRequireAgentRuntimeProviderDecisionV1(latest);
+          if (
+            history.assessment &&
+            output.task === "moderation-classification" &&
+            output.decision.kind === "classification"
+          ) {
+            if (!options.incidentAssessments) fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+            await options.store.withClaim(claimed, (context) =>
+              options.incidentAssessments!.record(context, { providerCallId: latest.id }),
+            );
+            return options.store.transition({ ...claimed, state: "succeeded" });
+          }
           if (output.task !== "interactive-capability")
             fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
           const decision = output.decision;
@@ -337,6 +367,15 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         }
         if (history.calls.length >= history.limits.maxProviderCalls)
           fail("RUNTIME_PROVIDER_CALL_LIMIT");
+        await options.store.withClaim(claimed, (context) => {
+          const recipe = context.evidence.registry.recipes.find(
+            (entry) =>
+              entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+          );
+          if (npIsAgentModeratorAssessmentRecipeV1(recipe) && !options.incidentAssessments)
+            fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+          return Promise.resolve();
+        });
         const sequence = (latest?.sequence ?? 0) + 1;
         const request = await options.context.prepare({
           ...claimed,

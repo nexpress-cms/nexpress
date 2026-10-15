@@ -640,14 +640,40 @@ adds event/scheduled eligibility with separate immutable fingerprints while
 preserving the original manual factories and evaluation bytes. Deterministic
 Moderator collection precedes new event/schedule admission; Operator additionally
 offers bounded actual retained job transitions. Nothing is installed or activated
-automatically. Full R6 acceptance still requires actual usefulness evidence;
-external email/Slack, Member account responses and automatic-quarantine enablement
-are separate optional extensions or production gates.
+automatically. The [2026-10-15 user-delegated AI review](r6-delegated-acceptance-review.md)
+accepts the retained model responses within the implemented reference/scaffold
+slice: all 58 selected actual model responses were reviewed, alongside the
+recorded operating verification. The subsequent
+[original-goal gap audit](r6-goal-gap-audit.md) found the full R6 goal incomplete.
+Its [authorized follow-up](r6-goal-gap-audit.md#authorized-implementation-follow-up)
+implements bounded flood continuation, Operator event/runbook/recovery owners,
+Publisher selection/inventory evidence, read-only semantic assessment, Incident
+filters and explicit dependency-safe history retention. Actual live-model Runtime
+validation is excluded by the user's current instruction; the new profiles do
+not inherit earlier model quality results. Required audit/Action/approval history
+remains protected under the [retention matrix](r6-history-retention-flow.md). This corrects
+the earlier AP-600–606 development-completion claim. Bounded AI review does not
+establish independent human review or production usefulness/accuracy.
+The [post-bundle integrated-path recheck](r6-goal-gap-audit.md#integrated-path-recheck-after-the-gap-fix-bundle)
+identified concrete source, selection, visibility, Operator review/gate and
+evaluation-tooling gaps. Its
+[authorized corrections](r6-goal-gap-audit.md#authorized-integrated-path-corrections)
+connect those paths, including versioned semantic/Publisher V3 offline evaluation,
+authorized Incident summaries and declared-block projection. Automatic quarantine
+code remains absent as well as unqualified for enablement. Large-Incident semantic
+assessment remains bounded and returns uncertainty for incomplete evidence.
+External email/Slack, Member account responses and automatic-quarantine
+enablement remain separate optional extensions or production gates. Fixed
+offline report fields do not grant milestone authority and remain
+`not-established`.
 
 The [Publisher content review flow](r6-publisher-content-review-flow.md) records
 bounded stale-content/SEO/link evidence, current-base ChangeSet draft/preview,
-cross-run duplicate protection and the explicit Studio draft setup. Real-model
-quality and the full R6 evaluation gate remain open.
+cross-run duplicate protection and the explicit Studio draft setup. Four actual
+V2 model drafts were accepted by the delegated AI review; general production
+editorial quality remains unestablished. Older slice notes below describe their
+then-current evidence; the acceptance crosswalk above owns the current milestone
+decision.
 
 The [AP-600 foundation flow](r6-incident-foundation-flow.md) records the shared
 persistence and explicitly installed read boundary. It does not close R5

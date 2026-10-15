@@ -80,6 +80,9 @@ const scriptEntries = {
 
 const libEntries = {
   "lib/agents/operator-host": "src/lib/agents/operator-host.ts",
+  "lib/agents/operator-event-source": "src/lib/agents/operator-event-source.ts",
+  "lib/agents/operator-queue-plan": "src/lib/agents/operator-queue-plan.ts",
+  "lib/agents/publisher-route-inventory": "src/lib/agents/publisher-route-inventory.ts",
   "lib/agents/preview-http": "src/lib/agents/preview-http.ts",
   "lib/api-response": "src/lib/api-response.ts",
   "lib/active-theme-state": "src/lib/active-theme-state.ts",

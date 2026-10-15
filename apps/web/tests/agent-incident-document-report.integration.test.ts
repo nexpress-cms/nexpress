@@ -12,6 +12,7 @@ import {
   deleteDocument,
   updateMemberDocument,
   withDeferredPostCommit,
+  type NpTransaction,
 } from "../../../packages/core/src/collections/pipeline.js";
 import {
   resetCommunityDocumentReportObserverV1,
@@ -106,7 +107,7 @@ async function fixture() {
   const never = () =>
     Promise.reject(new Error("Collection must not activate Runtime or call a provider"));
   const events = createAgentRuntimeEventServiceV1({
-    admission: { admit: never, withCurrentRun: never, withRunAuthority: never },
+    admission: { admit: never, withCurrentRun: never, withRunAuthority: never, retry: never },
     deploymentAuthority: {
       policyId: "moderator-test",
       fingerprint: `cj1:sha256:${"A".repeat(43)}`,
@@ -747,6 +748,16 @@ describe.skipIf(skipIfNoTestDb())("Incident actual document report evidence", ()
 
   it("invalidates continuation and fresh choices on report resolution, actual document edits, and hidden state", async () => {
     const f = await setup(11);
+    const { response } = await responses(f);
+    const legacy = await response.get(f.input);
+    expect(legacy.choices).toHaveLength(11);
+    expect(legacy).not.toHaveProperty("nextCursor");
+    const responsePage = await response.get({ ...f.input, cursor: null });
+    expect(responsePage.choices).toHaveLength(10);
+    expect(responsePage.nextCursor).toEqual(expect.any(String));
+    expect(
+      (await response.get({ ...f.input, cursor: responsePage.nextCursor })).choices,
+    ).toHaveLength(1);
     const first = await f.evidence.get(f.input);
     expect(first.items).toHaveLength(10);
     expect(first.nextCursor).not.toBeNull();
@@ -775,14 +786,13 @@ describe.skipIf(skipIfNoTestDb())("Incident actual document report evidence", ()
         String(editable[0]!.memberAuthorId),
       ),
     );
-    const { response } = await responses(f);
     const hiddenChoice = (await response.get(f.input)).choices.find(
       (choice) => choice.target.id === editable[1]!.id,
     )!;
     await withCurrentSite(siteId, () =>
       withDeferredPostCommit(() =>
         f.db.transaction((tx) =>
-          npQuarantineCommunityContentV1(tx, {
+          npQuarantineCommunityContentV1(tx as unknown as NpTransaction, {
             siteId,
             target: hiddenChoice.target,
             user: f.user,

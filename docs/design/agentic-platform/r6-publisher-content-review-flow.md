@@ -1,5 +1,24 @@
 # Publisher content review through ChangeSets
 
+The explicit `npCreateAgentR6UnattendedRecipeRegistryV3()` profile additionally
+retains `np.agent-publisher-selection-diagnostic.v2` on the provider-call row
+**before dispatch**. Its receipt records frozen criteria/limits, counts, route
+coverage and bounded exclusion codes. Its selected-candidate snapshot records
+exact resource identities/bases, observation times, findings and content/schema
+digests. The request digest and retained classification manifest bind this
+snapshot to the existing V3 provider metadata. Raw content/schema and excluded
+identities are absent; hidden pipeline losses expose only partial coverage.
+The diagnostic expires after 30 days through the existing retention owner.
+Original V1/V2 profile/evaluation bytes and V3 provider request bytes are preserved.
+
+The supplied App factory `npCreateAgentPublisherAppRouteInventoryV1()` from
+`@nexpress/app/lib/agents/publisher-route-inventory` reuses anonymous collection
+and document ACLs and canonical SEO paths with a 2,000-row/route ceiling. Hosts
+enumerate static/plugin routes and explicitly declare whether their public surface is
+complete; unavailable, changed or truncated sources force partial coverage.
+There is no URL fetch or automatic installation. See the
+[gap follow-up](r6-goal-gap-audit.md#authorized-implementation-follow-up).
+
 ## Boundary
 
 AP-603 ships an explicitly installed `publisher.stale-content` recipe and the
@@ -39,13 +58,25 @@ cannot replace it. Keep the existing Runtime capability, ChangeSet, preview,
 storage and queue installation explicit. Missing preview or evidence is a
 readiness/operation failure, never an invented successful preview.
 
+For blocks, the same [App supplier](../../../packages/app/src/lib/agents/publisher-route-inventory.ts) supplies
+`npCreateAgentPublisherAppBlockFieldsV1({authorize})`. Its site-id authorization
+callback is rechecked around reads; the returned `(siteId, transaction?)` function
+implements the reader's optional `resolveBlockFields` seam. It uses the actual
+active-site theme/plugin block registry and declared props, recursively handles
+arrays and conservatively omits conditional fields. The reader excludes hidden
+and undeclared props from content and derives Publisher's embedded props schemas
+from those declarations, so generic host schemas cannot reintroduce hidden names.
+Nonempty block content without supported declarations fails closed. This does
+not enable block editing.
+
 A live delegated staff principal, a verified provider/model, sufficient current
 scopes, and `sensitive-approved` provider-data policy and run ceilings are
 required. Document content and schema retain this conservative classification
 even when the source document is public. The shortcut does not select a provider,
 delegate a user, relax policy, register a trigger or activate the Agent. The
-shipped version supports manual invocation only; structured manual input and an
-automatic weekly schedule are not installed.
+original factory supports manual invocation only; explicit unattended V3 allows
+manual/scheduled eligibility without installing a trigger. Structured manual input
+and an automatic weekly schedule are not installed.
 
 For link checks, optionally provide the read owner's `publisherRouteInventory`
 facet with `{siteId, complete, routes: [{path, updatedAt}]}` from the host's
@@ -53,6 +84,9 @@ canonical public route inventory. It is bounded to 2,000 unique canonical paths.
 Use `complete: false` for partial inventories. No network lookup or model-supplied
 URL is executed. Missing/incomplete inventory produces unknown evidence, not a
 broken-link conclusion.
+
+An existing route with `updatedAt: null` proves existence but leaves referenced
+content freshness unknown, including conflicting route-owner timestamps.
 
 ## Selection and evidence
 
@@ -64,9 +98,12 @@ references, age, collection and document id. This is not a whole-site or globall
 exhaustive ranking. `truncated` identifies partial sampling/selection or skipped
 unavailable evidence.
 
-The collection pipeline enforces current read access and field projection. The
-ChangeSet resource owner additionally checks update access and reads the actual
-revision/timestamp plus its existing semantic digest, without reserving a draft
+Both the content-query owner and App route supplier apply the existing
+document-aware anonymous read ACL before projection. Denied/currently unavailable
+rows reveal no identities, values, ACL reasons or hidden-row counts; candidate
+sampling becomes partial when hydration/read admission removes a bounded slot.
+The ChangeSet resource owner separately checks delegated staff read/update access
+and reads the actual revision/timestamp plus its existing semantic digest, without reserving a draft
 id or fabricating a version. Races between the two reads are excluded. Draft,
 private, other-site, unscoped, hidden or unavailable document evidence does not
 become a candidate. Unsupported timestamps or oversized evidence fail closed or
@@ -76,7 +113,8 @@ Selected schema/content is limited to 48 KiB per document and 256 KiB total.
 Framework ids, actual bases and fixed finding codes are separate from untrusted
 schema/content in provider context. Existing redaction and request-source
 verification re-read the current source before dispatch. SEO checks recognize
-declared `seoTitle`/`metaTitle`, `seoDescription`/`metaDescription`, and corresponding
+declared `seoMetaTitle`/`seoMetaDescription`, `seoTitle`/`metaTitle`,
+`seoDescription`/`metaDescription`, and corresponding
 `seo` group fields; unknown structures are reported as unknown. Link checks use
 structured rich-text links and the explicitly installed canonical inventory;
 blocks and unresolved link forms retain unknown coverage.
@@ -122,6 +160,31 @@ uses the existing null-idempotency contract for ChangeSet get/list reads, so
 preview polling does not accidentally construct a mutation-only invocation key.
 
 ## Verification
+
+The 2026-10-15 follow-up passed 50 focused Core cases, eight App supplier cases
+and 12 distinct PostgreSQL cases across the new selection and existing Runtime
+suites. After adding candidate item ACL checks, the affected PostgreSQL case
+passed again; its four name-filtered cases were intentionally not run in that
+follow-up. The new two-document journey verifies nested SEO titles/descriptions
+and rich-text updates through create, validate and a ready preview, checks the
+rendered overlay and exact persisted bases, and preserves both published rows.
+Core typecheck, focused typed lint, formatting, relative links and
+`git diff --check` passed. These focused results do not replace the combined
+bundle's final gate.
+
+The separate `publisher.v3` corpus (`publisher-selection-review:3`) contains eleven
+English/Korean source-grounding cases. It supplies the actual V3 instruction and
+interactive task/decision wire, consistent selection receipts and exact
+schema/content digests. Independent checks cover multiple documents, flat/nested
+SEO, rich-text link replacement, stale/unknown-age references, partial evidence,
+injection, protected fields and forged resource/base or collateral edits.
+`npCreateAgentPublisherSelectionEvaluationSuiteV1()` and its
+[pure evaluation contract](../../../packages/core/src/agent-contract/publisher-selection-evaluation-contract.ts)
+extend the existing runner/review path without changing V1/V2 datasets. Fake
+conformance is not measured model accuracy or broad editorial usefulness; no new
+actual provider/model Runtime trial was performed.
+
+The following full-workspace evidence is preserved from the original slice:
 
 - Final `pnpm verify --concurrency=2`: 113 tasks passed, including 2,242 Core
   unit cases. Final `pnpm lint`: 41 tasks passed. Changed-file formatting,

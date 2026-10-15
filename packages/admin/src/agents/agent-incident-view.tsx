@@ -9,12 +9,14 @@ import {
   npAgentIncidentStates,
   npAgentIncidentCategories,
   npAgentIncidentSeverities,
-  npRequireAgentIncidentListOutputV1,
+  npRequireAgentIncidentStudioListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentFeedbackInputV1,
   npRequireAgentRuntimeStudioMutationResultV1,
   type NpAgentIncidentStudioDetailV1,
   type NpAgentIncidentFeedbackInputV1,
+  type NpAgentIncidentV1,
+  type NpAgentIncidentStudioListOutputV1,
 } from "@nexpress/core/agent-contract";
 import { IncidentNotifications } from "./agent-incident-notifications.js";
 import { IncidentAssignment } from "./agent-incident-assignment.js";
@@ -29,12 +31,51 @@ import { RuntimeSelect } from "./agent-runtime-fields.js";
 import { useAgentPolling } from "./use-agent-polling.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Input } from "../ui/input.js";
 
 const root = "/api/admin/agents/incidents";
 const unresolved = "open,investigating,contained,monitoring";
 const allStatuses = npAgentIncidentStates.join(",");
 const statusFilter = (value: string | null) => (value === allStatuses ? "all" : value || "all");
 const options = (values: readonly string[]) => values.map((value) => ({ value, label: value }));
+
+function IncidentListSummary({
+  incident,
+  summary,
+}: {
+  incident: NpAgentIncidentV1;
+  summary: NonNullable<NpAgentIncidentStudioListOutputV1["summaries"]>[number] | undefined;
+}) {
+  const containment = summary?.containment;
+  const expiry =
+    containment === null || containment === undefined
+      ? "Unknown"
+      : containment.active === 0
+        ? "No active containment"
+        : (containment.nearestExpiryAt ?? "No expiry recorded");
+  const assessment =
+    summary?.assessmentAvailable === true
+      ? "Available for review"
+      : summary?.assessmentAvailable === false
+        ? "None recorded"
+        : "Unknown";
+  return (
+    <>
+      <p className="break-all">Assigned Agent: {incident.assignedAgentId ?? "Unassigned"}</p>
+      <p>Active containments: {containment?.active ?? "Unknown"}</p>
+      <p>
+        Nearest containment expiry:{" "}
+        {containment?.nearestExpiryAt ? (
+          <time dateTime={containment.nearestExpiryAt}>{expiry}</time>
+        ) : (
+          expiry
+        )}
+        . Expiry does not automatically restore content.
+      </p>
+      <p>AI assessment: {assessment}</p>
+    </>
+  );
+}
 
 export function AgentIncidentListView({ query = "" }: { query?: string }) {
   return <IncidentList key={query} query={query} />;
@@ -43,13 +84,26 @@ function IncidentList({ query }: { query: string }) {
   const router = useRouter();
   const params = new URLSearchParams(query);
   if (!params.has("statuses")) params.set("statuses", unresolved);
+  params.set("includeSummaries", "true");
   const normalized = params.toString();
   const [filters, setFilters] = React.useState({
     statuses: statusFilter(params.get("statuses")),
     categories: params.get("categories") || "all",
     severities: params.get("severities") || "all",
+    source: params.get("source") || "",
+    assignedAgentId: params.get("assignedAgentId") || "",
+    containment: params.get("containment") || "all",
+    observedAfter: params.get("observedAfter") || "",
+    observedBefore: params.get("observedBefore") || "",
+    query: params.get("query") || "",
   });
-  const state = useRuntimeResource(`${root}?${normalized}`, npRequireAgentIncidentListOutputV1);
+  const state = useRuntimeResource(
+    `${root}?${normalized}`,
+    npRequireAgentIncidentStudioListOutputV1,
+  );
+  const summaries = new Map(
+    state.value?.summaries?.map((summary) => [summary.incidentId, summary]),
+  );
   const clearList = state.clear;
   const notificationsAccessLost = React.useCallback(
     (error: unknown) => {
@@ -85,7 +139,7 @@ function IncidentList({ query }: { query: string }) {
           const next = new URLSearchParams(normalized);
           next.delete("cursor");
           for (const [key, value] of Object.entries(filters)) {
-            if (value !== "all") next.set(key, value);
+            if (value !== "all" && value.trim()) next.set(key, value.trim());
             else if (key === "statuses") next.set(key, allStatuses);
             else next.delete(key);
           }
@@ -120,6 +174,34 @@ function IncidentList({ query }: { query: string }) {
             ...options(npAgentIncidentSeverities),
           ]}
         />
+        <RuntimeSelect
+          label="Active containment"
+          value={filters.containment}
+          onChange={(containment) => setFilters((value) => ({ ...value, containment }))}
+          options={[
+            { value: "all", label: "Any containment" },
+            { value: "active", label: "Active containment" },
+            { value: "inactive", label: "No active containment" },
+          ]}
+        />
+        {(
+          [
+            ["source", "Detector source", 128],
+            ["assignedAgentId", "Assigned Agent ID", 36],
+            ["observedAfter", "Observed since (UTC ISO)", 24],
+            ["observedBefore", "Observed until (UTC ISO)", 24],
+            ["query", "Search incident title and summary", 200],
+          ] as const
+        ).map(([key, label, maxLength]) => (
+          <label key={key} className="min-w-0 space-y-1 text-sm">
+            <span>{label}</span>
+            <Input
+              value={filters[key]}
+              maxLength={maxLength}
+              onChange={(event) => setFilters((value) => ({ ...value, [key]: event.target.value }))}
+            />
+          </label>
+        ))}
         <Button variant="outline" type="submit">
           Apply filters
         </Button>
@@ -150,6 +232,7 @@ function IncidentList({ query }: { query: string }) {
               <p>
                 {incident.signalIds.length} signals · {incident.eventCount} events
               </p>
+              <IncidentListSummary incident={incident} summary={summaries.get(incident.id)} />
               <p>
                 First observed:{" "}
                 <time dateTime={incident.firstObservedAt}>{incident.firstObservedAt}</time>
@@ -166,8 +249,10 @@ function IncidentList({ query }: { query: string }) {
         <Button
           variant="outline"
           onClick={() => {
+            const selectedCursor = state.value?.nextCursor;
+            if (!selectedCursor) return;
             const next = new URLSearchParams(normalized);
-            next.set("cursor", state.value!.nextCursor!);
+            next.set("cursor", selectedCursor);
             router.push(`/admin/agents/incidents?${next}`);
           }}
         >
@@ -241,8 +326,12 @@ export function AgentIncidentDetailView({ id }: { id: string }) {
 }
 function IncidentDetail({ id }: { id: string }) {
   const [cursor, setCursor] = React.useState<string | null>(null);
+  const [responseCursor, setResponseCursor] = React.useState<string | null>(null);
   const [writing, setWriting] = React.useState(false);
-  const path = `${root}/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  if (responseCursor) params.set("responseCursor", responseCursor);
+  const path = `${root}/${encodeURIComponent(id)}${params.size ? `?${params}` : ""}`;
   const state = useRuntimeResource(path, npRequireAgentIncidentStudioDetailV1);
   const detail = state.value;
   const [responseSelection, setResponseSelection] = React.useState<{
@@ -278,7 +367,11 @@ function IncidentDetail({ id }: { id: string }) {
     path,
     detail,
     Boolean(
-      detail && !cursor && !writing && !["resolved", "dismissed"].includes(detail.incident.status),
+      detail &&
+      !cursor &&
+      !responseCursor &&
+      !writing &&
+      !["resolved", "dismissed"].includes(detail.incident.status),
     ),
     state.loading,
     state.reload,
@@ -300,6 +393,7 @@ function IncidentDetail({ id }: { id: string }) {
           disabled={writing}
           onClick={() => {
             setCursor(null);
+            setResponseCursor(null);
             state.reload();
           }}
         >
@@ -384,6 +478,7 @@ function IncidentDetail({ id }: { id: string }) {
               onWriting={setWriting}
               onSuccess={() => {
                 setCursor(null);
+                setResponseCursor(null);
                 state.reload();
               }}
               onAccessLost={evidenceAccessLost}
@@ -392,6 +487,12 @@ function IncidentDetail({ id }: { id: string }) {
           ) : null}
           {detail.incident.primarySubject?.kind !== "member" ? (
             <IncidentResponse
+              responsePage={Boolean(responseCursor)}
+              onResponsePage={(next) => {
+                setResponseSelection({ detail, index: "", fromEvidence: false });
+                setCursor(null);
+                setResponseCursor(next);
+              }}
               detail={detail}
               choiceIndex={
                 responseSelection === null
@@ -407,6 +508,7 @@ function IncidentDetail({ id }: { id: string }) {
               onWriting={setWriting}
               onSuccess={() => {
                 setCursor(null);
+                setResponseCursor(null);
                 state.reload();
               }}
               onAccessLost={(error) =>
@@ -426,6 +528,7 @@ function IncidentDetail({ id }: { id: string }) {
             onWriting={setWriting}
             onSuccess={() => {
               setCursor(null);
+              setResponseCursor(null);
               state.reload();
             }}
             onAccessLost={(error) =>
@@ -443,6 +546,7 @@ function IncidentDetail({ id }: { id: string }) {
             onWriting={setWriting}
             onSuccess={() => {
               setCursor(null);
+              setResponseCursor(null);
               state.reload();
             }}
             onAccessLost={(error) =>
@@ -460,6 +564,7 @@ function IncidentDetail({ id }: { id: string }) {
             onWriting={setWriting}
             onSuccess={() => {
               setCursor(null);
+              setResponseCursor(null);
               state.reload();
             }}
             onAccessLost={(error) =>
@@ -506,6 +611,31 @@ function IncidentDetail({ id }: { id: string }) {
                           {entry.severityChange.toSeverity}
                         </p>
                         <p className="whitespace-pre-wrap">{entry.severityChange.note}</p>
+                      </div>
+                    ) : null}
+                    {entry.assessment ? (
+                      <div className="space-y-2 break-words">
+                        <p className="font-medium">AI assessment: {entry.assessment.label}</p>
+                        <p className="text-sm">
+                          Model score: {entry.assessment.confidenceBasisPoints / 100} / 100. This is
+                          not a calibrated probability or a human decision.
+                        </p>
+                        <p className="whitespace-pre-wrap">{entry.assessment.summary}</p>
+                        <p className="text-sm">
+                          Reasons: {entry.assessment.reasonCodes.join(", ")}. Evidence references:{" "}
+                          {entry.assessment.evidenceDigests.length}.
+                        </p>
+                        <p className="text-sm">
+                          {entry.assessment.provenance.provider} /{" "}
+                          {entry.assessment.provenance.model} · Source observed{" "}
+                          {entry.assessment.observedAt}
+                        </p>
+                        <Link
+                          className="text-primary underline"
+                          href={`/admin/agents/runs/${entry.assessment.provenance.runId}`}
+                        >
+                          Review assessment Run
+                        </Link>
                       </div>
                     ) : null}
                     {entry.containmentFailure ? (

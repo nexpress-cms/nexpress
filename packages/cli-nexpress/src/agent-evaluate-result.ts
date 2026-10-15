@@ -26,15 +26,19 @@ import {
   npBuildAgentEvaluationReviewArtifactV1,
   npCompareAgentEvaluationReviewArtifactsV1,
   npRequireAgentEvaluationReviewArtifactV1,
+  npBuildAgentProfileEvaluationReviewArtifactV1,
+  npRequireAgentProfileEvaluationReviewArtifactV1,
+  npCompareAgentProfileEvaluationReviewArtifactsV1,
   type NpAgentEvaluationCommandArgsV1,
   type NpAgentEvaluationCommandResultV1,
   type NpAgentEvaluationReviewArtifactV1,
+  type NpAgentProfileEvaluationReviewArtifactV1,
   type NpAgentEvaluationReviewComparisonV1,
 } from "@nexpress/core/agent-contract";
 
 interface ReviewResult {
   schemaVersion: "np.agent-eval-review-command.v1";
-  artifact: NpAgentEvaluationReviewArtifactV1 | null;
+  artifact: NpAgentEvaluationReviewArtifactV1 | NpAgentProfileEvaluationReviewArtifactV1 | null;
   comparison: NpAgentEvaluationReviewComparisonV1 | null;
   errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
 }
@@ -209,6 +213,11 @@ export async function prepareEvaluationResultVerifier(
       return prepareModeratorProposalReviewVerifier(input, cwd, evaluation);
     if (evaluation.suite.cases[0].category === "ops-plan")
       return prepareOperatorPlanReviewVerifier(input, cwd, evaluation);
+    if (
+      evaluation.suite.cases[0].category === "moderator-assessment" ||
+      evaluation.suite.cases[0].category === "publisher-selection"
+    )
+      return prepareProfileReviewVerifier(input, cwd, evaluation);
     const expectedArtifact = await npBuildAgentEvaluationReviewArtifactV1(
       evaluation,
       input.reviewsPath ? await readBoundedJson(input.reviewsPath, cwd) : [],
@@ -254,25 +263,31 @@ export async function prepareEvaluationResultVerifier(
     npCreateAgentOperatorEvaluationSuiteV1,
     npCreateAgentPublisherEvaluationSuiteV1,
     npCreateAgentPublisherEvaluationSuiteV2,
+    npCreateAgentPublisherSelectionEvaluationSuiteV1,
+    npCreateAgentModeratorAssessmentEvaluationSuiteV1,
     npCreateAgentOperatorPlanEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV2,
     npCreateAgentModeratorProposalEvaluationSuiteV3,
   } = await import("@nexpress/core/agents");
   const suite =
-    input.dataset === "publisher.v2"
-      ? await npCreateAgentPublisherEvaluationSuiteV2()
-      : input.dataset === "publisher.v1"
-        ? await npCreateAgentPublisherEvaluationSuiteV1()
-        : input.dataset === "operator-plan.v1"
-          ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-          : input.dataset === "moderator-proposal.v3"
-            ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-            : input.dataset === "moderator-proposal.v2"
-              ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-              : input.dataset === "moderator-proposal.v1"
-                ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                : await npCreateAgentOperatorEvaluationSuiteV1();
+    input.dataset === "publisher.v3"
+      ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
+      : input.dataset === "moderator-assessment.v1"
+        ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+        : input.dataset === "publisher.v2"
+          ? await npCreateAgentPublisherEvaluationSuiteV2()
+          : input.dataset === "publisher.v1"
+            ? await npCreateAgentPublisherEvaluationSuiteV1()
+            : input.dataset === "operator-plan.v1"
+              ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+              : input.dataset === "moderator-proposal.v3"
+                ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                : input.dataset === "moderator-proposal.v2"
+                  ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                  : input.dataset === "moderator-proposal.v1"
+                    ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                    : await npCreateAgentOperatorEvaluationSuiteV1();
   const suiteHash = await npDigestAgentEvaluationSuiteV1(suite);
   return async (value) => {
     const parsed = await npRequireAgentEvaluationCommandResultV1(value);
@@ -298,6 +313,44 @@ export async function prepareEvaluationResultVerifier(
         throw new Error("Mismatched evaluation comparison");
     }
     return parsed;
+  };
+}
+
+async function prepareProfileReviewVerifier(
+  input: NpAgentEvaluationCommandArgsV1,
+  cwd: string,
+  source: unknown,
+): Promise<(value: unknown) => Promise<EvaluationResult>> {
+  const artifact = await npBuildAgentProfileEvaluationReviewArtifactV1(
+    source,
+    input.reviewsPath ? await readBoundedJson(input.reviewsPath, cwd) : [],
+  );
+  const comparison = input.comparePath
+    ? await npCompareAgentProfileEvaluationReviewArtifactsV1(
+        artifact,
+        await npRequireAgentProfileEvaluationReviewArtifactV1(
+          await readBoundedJson(input.comparePath, cwd),
+        ),
+      )
+    : null;
+  const expected: ReviewResult = {
+    schemaVersion: "np.agent-eval-review-command.v1",
+    artifact,
+    comparison,
+    errorCode: null,
+  };
+  return async (value) => {
+    for (const errorCode of ["ARTIFACT_INVALID", "ARTIFACT_UNAVAILABLE"] as const) {
+      const failure: ReviewResult = {
+        schemaVersion: expected.schemaVersion,
+        artifact: null,
+        comparison: null,
+        errorCode,
+      };
+      if (isDeepStrictEqual(value, failure)) return Promise.resolve(failure);
+    }
+    if (!isDeepStrictEqual(value, expected)) throw new Error("Mismatched profile review result");
+    return Promise.resolve(expected);
   };
 }
 

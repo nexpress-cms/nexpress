@@ -20,6 +20,10 @@ const {
   createAgentRuntimeEventServiceV1,
   createAgentRuntimeJobsV1,
   pruneAgentRuntimeEventsV1,
+  createAgentOperatorEventSourceV1,
+  createAgentModeratorAssessmentSourceV1,
+  createAgentIncidentAssessmentServiceV1,
+  npCreateAgentModeratorAssessmentFixtureCorpusV1,
 } = await import(pathToFileURL(agentsEntry).href);
 const {
   npAgentRuntimeStudioReadRoutesV1,
@@ -34,6 +38,9 @@ const {
   npCreateDisabledAgentRuntimeSettingsV1,
   npSimulateAgentPolicyV1,
   npRequireAgentPolicySimulationReportV1,
+  npCreateAgentR6UnattendedRecipeRegistryV3,
+  npCreateAgentR6AssessmentRecipeRegistryV1,
+  npRequireAgentIncidentRetentionPolicyV1,
 } = await import(pathToFileURL(requireFromScaffold.resolve("@nexpress/core/agent-contract")).href);
 
 const DEFERRED_CONSTRAINTS = [
@@ -68,9 +75,56 @@ for (const factory of [
   createAgentRuntimeEventServiceV1,
   createAgentRuntimeJobsV1,
   pruneAgentRuntimeEventsV1,
+  createAgentOperatorEventSourceV1,
+  createAgentModeratorAssessmentSourceV1,
+  createAgentIncidentAssessmentServiceV1,
 ]) {
   if (typeof factory !== "function") fail("packed Runtime operations exports are unavailable");
 }
+
+// These facets are also used by Node workers. Loading the installed entry must
+// not depend on Next's application-local @ alias or construct a host Runtime.
+const inventoryModule = await import(
+  pathToFileURL(requireFromScaffold.resolve("@nexpress/app/lib/agents/publisher-route-inventory"))
+    .href
+);
+const statusModule = await import(
+  pathToFileURL(requireFromScaffold.resolve("@nexpress/app/lib/agents/operator-event-source")).href
+);
+const queueModule = await import(
+  pathToFileURL(requireFromScaffold.resolve("@nexpress/app/lib/agents/operator-queue-plan")).href
+);
+let automaticSourceReads = 0;
+const publicInventory = inventoryModule.npCreateAgentPublisherAppRouteInventoryV1({
+  authorize: async () => {
+    automaticSourceReads++;
+    throw new Error("Unexpected source read");
+  },
+  collectionSlugs: [],
+  fixedRoutes: [],
+  publicSurfaceComplete: false,
+});
+if (
+  typeof publicInventory !== "function" ||
+  typeof statusModule.npCreateAgentOperatorAppStatusSourceV1({}) !== "function" ||
+  typeof queueModule.collectOperatorQueuePlanV1 !== "function" ||
+  automaticSourceReads !== 0
+)
+  fail("packed R6 source installation performed work or is unavailable");
+const sourceProfile = await npCreateAgentR6UnattendedRecipeRegistryV3();
+const assessmentProfile = await npCreateAgentR6AssessmentRecipeRegistryV1();
+if (
+  sourceProfile.recipes.find((recipe) => recipe.id === "publisher.stale-content")?.instruction
+    ?.templateVersion !== 3 ||
+  sourceProfile.recipes
+    .find((recipe) => recipe.id === "operator.worker-not-draining")
+    ?.triggerKinds.join(",") !== "event,manual,schedule" ||
+  assessmentProfile.recipes.find((recipe) => recipe.id === "moderator.repeated-link-spam")?.task !==
+    "moderation-classification" ||
+  npCreateAgentModeratorAssessmentFixtureCorpusV1().cases.length !== 8 ||
+  npRequireAgentIncidentRetentionPolicyV1({ signalDays: 90, historyDays: 365 }).historyDays !== 365
+)
+  fail("packed R6 explicit profile or retention contracts diverged");
 const trigger = npRequireAgentTriggerV1({ type: "manual", id: randomUUID() });
 if (
   trigger.type !== "manual" ||

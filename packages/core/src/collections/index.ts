@@ -25,6 +25,7 @@ export {
   getDocumentById,
   npGetPersistedCollectionDocumentById,
   npGetPersistedCollectionDocumentIds,
+  npAssertCollectionReadAccess,
 } from "./pipeline.js";
 export type { NpTransaction } from "./pipeline.js";
 export { withDeferredPostCommit } from "./pipeline.js";

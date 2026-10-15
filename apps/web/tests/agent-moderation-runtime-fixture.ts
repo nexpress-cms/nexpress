@@ -28,6 +28,7 @@ import { createAgentRuntimeBreakersV1 } from "../../../packages/core/src/agent/r
 import { createAgentProviderInferenceRuntimeV1 } from "../../../packages/core/src/agent/provider-inference.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "../../../packages/core/src/agent/runtime-controls.js";
 import { npInspectCommunityContentContainmentV1 } from "../../../packages/core/src/community/content-containment.js";
+import type { NpTransaction } from "../../../packages/core/src/collections/pipeline.js";
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
 import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
 import { npResolveAgentBudgetV1 } from "../../../packages/core/src/agent-contract/runtime-budget.js";
@@ -78,6 +79,7 @@ function providerOutcome(decision: NpAgentJsonObject): NpAgentProviderInvokeOutc
   };
 }
 const proposalSchema = (capabilityId: string, args: NpAgentJsonSchema): NpAgentJsonSchema => ({
+  $schema: "https://json-schema.org/draft/2020-12/schema",
   type: "object",
   additionalProperties: false,
   properties: {
@@ -364,7 +366,7 @@ export async function moderationRuntimeFixture(options: { runtimeTargetLimit?: n
   const target = { kind: "comment" as const, collection: "discussions", id: comment.id };
   const inspected = await withCurrentSite(siteId, () =>
     runtime.db.transaction((tx) =>
-      npInspectCommunityContentContainmentV1(tx, {
+      npInspectCommunityContentContainmentV1(tx as unknown as NpTransaction, {
         siteId,
         target,
         user: runtime.actor.actor.user,

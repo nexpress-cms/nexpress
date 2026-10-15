@@ -1333,6 +1333,15 @@ Self-reported review labels grant no live approval and do not change the source
 artifact's `ok`. These extractive synthetic checks do not close AP-606 or the
 real-model usefulness gate.
 
+The [2026-10-15 user-delegated AI acceptance](r6-delegated-acceptance-review.md)
+adds actual provider responses, explicitly attributed AI review and the existing
+operating evidence for the implemented reference/scaffold recipe slice. The
+[original-goal audit](r6-goal-gap-audit.md) records additional implementation and
+evaluation gaps; this bounded review does not close the whole R6 goal. It does
+not infer production usefulness from synthetic checks, assert independent human
+labels or relax section 9.3's separate automatic-action enablement gates. The
+offline report still cannot establish those claims automatically.
+
 `publisher.v2` retains the twelve V1 cases and adds six completeness-priority
 controls. It uses an explicitly selected Publisher uncertainty instruction
 (template version two, recipe wire version one) and an ordered benchmark with
@@ -1391,6 +1400,21 @@ coverage without pooling their unlike rates. It preserves missing/failed
 evidence and comparison reasons, independently recomputes derived fields, and
 always leaves full R6 and model usefulness unestablished. Report command success
 means the report was generated, not that acceptance gates passed.
+
+The versioned `moderator-assessment.v1` dataset uses eight bilingual synthetic
+semantic cases with the read-only classification response. `publisher.v3` uses
+eleven bilingual bounded selection cases with the actual V3 structured response,
+current document bases and content/schema bindings. Both run through the same
+opt-in runner/CLI, offline review/report and Admin Workbench. Their new review
+artifact is `np.agent-profile-eval-review.v1`; edits contain the full structured
+prediction and grant no approval authority. Existing dataset hashes and earlier
+review formats remain unchanged. Explicit empty provider output is invalid;
+only an explicitly selected fake run synthesizes baseline answers. Fixture
+labels stay out of provider requests. These source-grounded synthetic checks do
+not establish arbitrary prose truth, multilingual model accuracy or editorial
+usefulness. Semantic binary precision/recall measure harmful-versus-benign
+classification, not spam-only precision, and cannot satisfy automatic quarantine
+enablement. See the [integrated corrections](r6-goal-gap-audit.md#authorized-integrated-path-corrections).
 
 The target opt-in command artifact has these shared fields:
 

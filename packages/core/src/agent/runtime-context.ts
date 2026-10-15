@@ -3,6 +3,11 @@ import {
   type NpAgentModeratorRecipeSourceV1,
 } from "./moderator-recipe-source.js";
 import { npRequireAgentRecipeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import {
+  npIsAgentModeratorAssessmentSourceV1,
+  type NpAgentModeratorAssessmentSourceV1,
+} from "./moderator-assessment-source.js";
 import { npRequireAgentProviderSchemaValueV1 } from "./provider-auth-contract.js";
 import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import {
@@ -116,6 +121,7 @@ export interface NpAgentRuntimeContextOptionsV1 {
   capabilities?: NpAgentRuntimeContextCapabilitySourceV1;
   documentEvidence?: NpAgentRuntimeDocumentEvidenceReaderV1;
   moderatorEvidence?: NpAgentModeratorRecipeSourceV1;
+  moderatorAssessmentEvidence?: NpAgentModeratorAssessmentSourceV1;
 }
 
 export interface NpAgentRuntimeContextPrepareInputV1 {
@@ -459,7 +465,7 @@ async function build(
   );
   if (
     !recipe?.instruction ||
-    recipe.task !== "interactive-capability" ||
+    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentRecipeV1(recipe)) ||
     !connection ||
     !snapshot ||
     !pricing ||
@@ -482,7 +488,8 @@ async function build(
   )
     unavailable();
   const tools: Request["tools"] = [];
-  const entries = (await source?.list(context)) ?? [];
+  const entries =
+    recipe.task === "interactive-capability" ? ((await source?.list(context)) ?? []) : [];
   if (!Array.isArray(entries) || entries.length > 21) unavailable();
   const seen = new Set<string>();
   for (const entry of entries) {
@@ -663,12 +670,38 @@ async function readSources(
   capturedAt: string,
   capabilities: NpAgentRuntimeContextCapabilitySourceV1 | undefined,
   moderatorEvidence: NpAgentModeratorRecipeSourceV1 | undefined,
+  moderatorAssessmentEvidence: NpAgentModeratorAssessmentSourceV1 | undefined,
 ): Promise<{ trusted: Request["trustedContext"]; untrusted: Request["untrustedEvidence"] }> {
   const trusted: Request["trustedContext"] = [];
   const untrusted: Request["untrustedEvidence"] = [];
   const recipe = context.evidence.registry.recipes.find(
     (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
   );
+  if (npIsAgentModeratorAssessmentRecipeV1(recipe)) {
+    if (
+      !moderatorAssessmentEvidence ||
+      !npIsAgentModeratorAssessmentSourceV1(moderatorAssessmentEvidence)
+    )
+      unavailable();
+    const selected = await moderatorAssessmentEvidence.read(context, capturedAt);
+    const digest = hash("np.agent-runtime-moderator-assessment.v1", selected.metadata);
+    trusted.push({
+      id: "moderator-assessment",
+      kind: "server-fact",
+      digest,
+      classification: classification(digest, "sensitive-approved"),
+      text: serializeAgentCanonicalJson(selected.metadata),
+    });
+    for (const excerpt of selected.excerpts)
+      untrusted.push({
+        id: excerpt.id,
+        kind: "content",
+        digest: excerpt.digest,
+        observedAt: excerpt.observedAt,
+        classification: classification(excerpt.digest, "sensitive-approved"),
+        text: redactText(excerpt.text),
+      });
+  }
   if (
     recipe?.id === "moderator.repeated-link-spam" &&
     recipe.instruction?.templateId === recipe.id
@@ -714,6 +747,9 @@ async function readSources(
           findings,
         }),
       ),
+      ...(recipe.instruction.templateVersion >= 3
+        ? { selectionReceipt: selected.selectionReceipt }
+        : {}),
     };
     const digest = hash("np.agent-runtime-publisher-candidates.v1", metadata);
     trusted.push({
@@ -840,7 +876,8 @@ async function readSources(
     if (calls.length > 64) unavailable();
     for (const call of calls) {
       const output = await npRequireAgentRuntimeProviderDecisionV1(call);
-      if (output.task !== "interactive-capability") unavailable();
+      if (output.task !== "interactive-capability" && output.task !== "moderation-classification")
+        unavailable();
       const decision = output.decision;
       // Prior model text and arguments never become trusted facts or authority.
       const metadata =
@@ -927,6 +964,7 @@ export function createAgentRuntimeContextV1(
               capturedAt,
               options.capabilities,
               options.moderatorEvidence,
+              options.moderatorAssessmentEvidence,
             );
             const request = await build(context, input, options.capabilities, sources);
             const attestation = {
@@ -968,6 +1006,7 @@ export function createAgentRuntimeContextV1(
               attestation.capturedAt,
               options.capabilities,
               options.moderatorEvidence,
+              options.moderatorAssessmentEvidence,
             )
           : { trusted: [], untrusted: [] };
         const expected = await build(

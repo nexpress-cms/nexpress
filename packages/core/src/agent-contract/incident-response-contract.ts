@@ -62,6 +62,8 @@ export interface NpAgentIncidentResponseV1 {
   choices: NpAgentIncidentResponseChoiceV1[];
   plans: NpAgentIncidentResponsePlanV1[];
   truncated: boolean;
+  /** Present for a paginated target owner. Older installed owners may omit it. */
+  nextCursor?: string | null;
 }
 const record = (v: unknown, p: string, keys: string[]) =>
   canonicalBodyRecord(v, p, keys, keys, { seen: new WeakSet<object>() });
@@ -137,11 +139,13 @@ export function npRequireAgentIncidentResponseExecuteInputV1(
   };
 }
 export function npRequireAgentIncidentResponseV1(value: unknown): NpAgentIncidentResponseV1 {
-  const r = record(cloneCanonicalRuntimeInput(value, "response", 131072), "response", [
-    "choices",
-    "plans",
-    "truncated",
-  ]);
+  const r = canonicalBodyRecord(
+    cloneCanonicalRuntimeInput(value, "response", 131072),
+    "response",
+    ["choices", "plans", "truncated", "nextCursor"],
+    ["choices", "plans", "truncated"],
+    { seen: new WeakSet<object>() },
+  );
   if (
     !Array.isArray(r.choices) ||
     r.choices.length > 100 ||
@@ -193,7 +197,17 @@ export function npRequireAgentIncidentResponseV1(value: unknown): NpAgentInciden
   if (seenChoices.size !== choices.length)
     failCanonicalBody("duplicate", "response.choices", "Duplicate response target");
   const seenActions = new Set<string>();
+  const nextCursor =
+    r.nextCursor === undefined || r.nextCursor === null
+      ? r.nextCursor
+      : canonicalBodyAscii(r.nextCursor, "response.nextCursor", 2048);
+  if (
+    typeof nextCursor === "string" &&
+    (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/u.test(nextCursor) || r.truncated !== true)
+  )
+    failCanonicalBody("invalid-field", "response.nextCursor", "Invalid target continuation");
   return {
+    ...(nextCursor !== undefined ? { nextCursor } : {}),
     choices,
     plans: r.plans.map((v) => {
       const p = record(v, "response.plan", [

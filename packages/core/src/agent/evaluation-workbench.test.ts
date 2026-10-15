@@ -1,3 +1,5 @@
+import { npCreateAgentPublisherSelectionEvaluationSuiteV1 } from "./publisher-selection-evaluation-fixtures.js";
+import { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { npBuildAgentEvaluationWorkbenchV1 } from "./evaluation-workbench.js";
 import { npRequireAgentEvaluationReportV1 } from "./evaluation-report.js";
@@ -103,8 +105,17 @@ beforeAll(async () => {
     "pub-002",
     "pub-003",
   ]);
+  const selectionSuite = await npCreateAgentPublisherSelectionEvaluationSuiteV1();
   sources = {
+    "publisher-selection": await evaluate(
+      selectionSuite,
+      selectionSuite.cases.slice(0, 2).map((c) => c.id),
+    ),
     publisher,
+    "moderator-assessment": await evaluate(
+      await npCreateAgentModeratorAssessmentEvaluationSuiteV1(),
+      ["mas-en-promotional-burst", "mas-ko-missing-content"],
+    ),
     operator: await evaluate(await npCreateAgentOperatorPlanEvaluationSuiteV1(), [
       "opn-001",
       "opn-009",

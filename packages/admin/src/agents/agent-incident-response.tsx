@@ -31,6 +31,8 @@ export function IncidentResponse({
   onSuccess,
   onConflict,
   onAccessLost,
+  responsePage = false,
+  onResponsePage,
 }: {
   detail: NpAgentIncidentStudioDetailV1;
   choiceIndex: string;
@@ -40,6 +42,8 @@ export function IncidentResponse({
   onSuccess: () => void;
   onConflict: () => void;
   onAccessLost: (error: unknown) => void;
+  responsePage?: boolean;
+  onResponsePage?: (cursor: string | null) => void;
 }) {
   const response = detail.response;
   const [reason, setReason] = React.useState("HUMAN_REVIEW");
@@ -164,6 +168,24 @@ export function IncidentResponse({
         <AgentRecoveryBoundary error={failure}>
           {response.truncated ? (
             <p>Only a bounded set of response targets and plans is shown.</p>
+          ) : null}
+          {onResponsePage && (responsePage || response.nextCursor) ? (
+            <div className="flex flex-wrap gap-2" aria-label="Response target pages">
+              {responsePage ? (
+                <Button variant="outline" disabled={locked} onClick={() => onResponsePage(null)}>
+                  First response targets
+                </Button>
+              ) : null}
+              {response.nextCursor ? (
+                <Button
+                  variant="outline"
+                  disabled={locked}
+                  onClick={() => onResponsePage(response.nextCursor ?? null)}
+                >
+                  Next response targets
+                </Button>
+              ) : null}
+            </div>
           ) : null}
           {response.choices.length > 0 ? (
             <form

@@ -50,6 +50,7 @@ import type {
 } from "./capability-admission.js";
 import type { NpAuthUser } from "../config/types.js";
 import type { NpCapability } from "../auth/capabilities.js";
+import type { NpAgentOperatorServiceV1 } from "./operator-service.js";
 
 type Action = typeof npAgentActions.$inferSelect;
 type Run = typeof npAgentRuns.$inferSelect;
@@ -69,6 +70,8 @@ interface Visibility {
 export interface NpAgentActivityServiceOptionsV1 {
   cursorHmacKey: Uint8Array;
   admission?: NpAgentCapabilityAdmissionServiceV1;
+  /** Explicit current-viewer/target-authorized Operator review owner. */
+  operator?: Pick<NpAgentOperatorServiceV1, "projectActivity">;
   /** Explicit current-item authorization through the existing ChangeSet service. */
   changesets?: Pick<NpAgentChangeSetServiceV1, "get"> &
     Partial<Pick<NpAgentChangeSetServiceV1, "refreshGatewayInvocation">>;
@@ -151,6 +154,23 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       )
     )
       return false;
+    if (
+      options.operator &&
+      row.outputHash &&
+      ["ops.status", "audit.run", "ops.plan", "ops.execute"].includes(row.capabilityId)
+    ) {
+      if (visibility.actor.kind !== "staff") return false;
+      try {
+        await options.operator.projectActivity({
+          siteId: row.siteId,
+          actor: visibility.actor.actor,
+          actionId: row.id,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
     if (
       [
         "changeset.create",
@@ -526,7 +546,21 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     const inv = await invocation(input.siteId, row.invocationId);
     const principalId = await actionOwner(row, inv);
     if (!principalId) throw missing();
-    const detail = actionDetail(row, inv, principalId);
+    let detail = actionDetail(row, inv, principalId);
+    if (
+      options.operator &&
+      row.outputHash &&
+      ["ops.status", "audit.run", "ops.plan", "ops.execute"].includes(row.capabilityId)
+    ) {
+      detail = npRequireAgentActivityActionDetailV1({
+        ...detail,
+        operatorReview: await options.operator.projectActivity({
+          siteId: input.siteId,
+          actor: input.actor,
+          actionId: row.id,
+        }),
+      });
+    }
     await assertSameStaff(input, auth);
     return detail;
   }

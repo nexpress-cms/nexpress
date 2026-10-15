@@ -1,6 +1,20 @@
+import {
+  npCreateAgentPublisherSelectionEvaluationProfileV1,
+  npRequireAgentPublisherSelectionEvaluationBindingsV1,
+  npRequireAgentPublisherSelectionEvaluationResponseV1,
+  npCreateAgentPublisherSelectionEvaluationPredictionV1,
+} from "../agent-contract/publisher-selection-evaluation-contract.js";
+import { npCreateAgentModeratorAssessmentRecipeDefinitionV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import {
+  npAgentModeratorAssessmentEvaluationBenchmarkInstructionV1,
+  npRequireAgentModeratorAssessmentEvaluationBindingsV1,
+  npRequireAgentModeratorAssessmentEvaluationResponseV1,
+  npCreateAgentModeratorAssessmentEvaluationPredictionV1,
+} from "../agent-contract/moderator-assessment-evaluation-contract.js";
 import { npCreateAgentModeratorRecipeDefinitionV1 } from "../agent-contract/moderator-recipe-contract.js";
 import {
   npCreateAgentModeratorProposalEvaluationPrediction,
+  npRequireAgentModeratorEvaluationResponseV1,
   npAgentModeratorProposalEvaluationBenchmarkInstructionV1,
 } from "../agent-contract/moderator-proposal-evaluation-contract.js";
 import {
@@ -203,11 +217,25 @@ export async function runAgentEvaluationV1(
   const category = suite.cases[0].category;
   const publisherProfile =
     category === "publisher" ? await npCreateAgentPublisherEvaluationProfileV1(suite) : null;
-  const recipe = await (category === "moderator-proposal"
-    ? npCreateAgentModeratorRecipeDefinitionV1()
-    : category === "publisher"
-      ? publisherProfile!.recipe
-      : npCreateAgentOperatorRecipeDefinitionV1());
+  if (category === "publisher-selection")
+    for (const entry of suite.cases)
+      await npRequireAgentPublisherSelectionEvaluationBindingsV1(entry.evidence);
+  if (category === "moderator-assessment")
+    for (const entry of suite.cases)
+      await npRequireAgentModeratorAssessmentEvaluationBindingsV1(entry.evidence);
+  const selectionProfile =
+    category === "publisher-selection"
+      ? await npCreateAgentPublisherSelectionEvaluationProfileV1()
+      : null;
+  const recipe = await (category === "publisher-selection"
+    ? selectionProfile!.recipe
+    : category === "moderator-assessment"
+      ? npCreateAgentModeratorAssessmentRecipeDefinitionV1()
+      : category === "moderator-proposal"
+        ? npCreateAgentModeratorRecipeDefinitionV1()
+        : category === "publisher"
+          ? publisherProfile!.recipe
+          : npCreateAgentOperatorRecipeDefinitionV1());
   if (!recipe.instruction) throw new NpAgentEvaluationError("ARGUMENT_INVALID");
   const now = options.now ?? (() => new Date());
   const startedAt = now().toISOString();
@@ -252,13 +280,17 @@ export async function runAgentEvaluationV1(
       instruction: { ...recipe.instruction },
       responseSchema: structuredClone(npAgentEvaluationResponseSchemaV1(category)),
       benchmarkInstruction:
-        category === "moderator-proposal"
-          ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
-          : category === "publisher"
-            ? publisherProfile!.benchmarkInstruction
-            : category === "ops-plan"
-              ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
-              : npAgentEvaluationBenchmarkInstructionV1,
+        category === "publisher-selection"
+          ? selectionProfile!.benchmarkInstruction
+          : category === "moderator-assessment"
+            ? npAgentModeratorAssessmentEvaluationBenchmarkInstructionV1
+            : category === "moderator-proposal"
+              ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
+              : category === "publisher"
+                ? publisherProfile!.benchmarkInstruction
+                : category === "ops-plan"
+                  ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
+                  : npAgentEvaluationBenchmarkInstructionV1,
     };
     let limit: NpAgentEvaluationReservationV1;
     try {
@@ -301,14 +333,20 @@ export async function runAgentEvaluationV1(
             )
           : Promise.resolve({
               prediction:
-                category === "moderator-proposal"
-                  ? npCreateAgentModeratorProposalEvaluationPrediction(request.case.evidence)
-                      .moderatorResponse
-                  : category === "publisher"
-                    ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
-                    : category === "ops-plan"
-                      ? npCreateAgentOperatorPlanEvaluationPredictionV1(request.case.evidence)
-                      : fakePrediction(request),
+                category === "publisher-selection"
+                  ? npCreateAgentPublisherSelectionEvaluationPredictionV1(request.case.evidence)
+                      .publisherSelectionResponse
+                  : category === "moderator-assessment"
+                    ? npCreateAgentModeratorAssessmentEvaluationPredictionV1(request.case.evidence)
+                        .moderatorAssessment
+                    : category === "moderator-proposal"
+                      ? npCreateAgentModeratorProposalEvaluationPrediction(request.case.evidence)
+                          .moderatorResponse
+                      : category === "publisher"
+                        ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
+                        : category === "ops-plan"
+                          ? npCreateAgentOperatorPlanEvaluationPredictionV1(request.case.evidence)
+                          : fakePrediction(request),
               usage: zero(),
             });
       const response = await Promise.race([operation, aborted]);
@@ -338,15 +376,31 @@ export async function runAgentEvaluationV1(
       remaining.costMicros -= usage.costMicros;
       try {
         result.prediction =
-          category === "moderator-proposal"
+          category === "publisher-selection"
             ? npRequireAgentEvaluationPredictionV1(
-                npCreateAgentModeratorProposalEvaluationPrediction(
+                npCreateAgentPublisherSelectionEvaluationPredictionV1(
                   entry.evidence,
-                  response.prediction,
+                  npRequireAgentPublisherSelectionEvaluationResponseV1(response.prediction),
                 ),
                 category,
               )
-            : npRequireAgentEvaluationPredictionV1(response.prediction, category);
+            : category === "moderator-assessment"
+              ? npRequireAgentEvaluationPredictionV1(
+                  npCreateAgentModeratorAssessmentEvaluationPredictionV1(
+                    entry.evidence,
+                    npRequireAgentModeratorAssessmentEvaluationResponseV1(response.prediction),
+                  ),
+                  category,
+                )
+              : category === "moderator-proposal"
+                ? npRequireAgentEvaluationPredictionV1(
+                    npCreateAgentModeratorProposalEvaluationPrediction(
+                      entry.evidence,
+                      npRequireAgentModeratorEvaluationResponseV1(response.prediction),
+                    ),
+                    category,
+                  )
+                : npRequireAgentEvaluationPredictionV1(response.prediction, category);
         result.error = null;
       } catch {
         result.error = "STRUCTURED_OUTPUT_INVALID";

@@ -1,6 +1,10 @@
 import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import { npRequireAgentRuntimeProviderFailureV1 } from "./runtime-provider-evidence.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npRequireAgentPublisherSelectionDiagnosticV2 } from "./publisher-content.js";
+import { npRequireAgentModeratorAssessmentEvidenceV1 } from "../agent-contract/moderator-assessment-contract.js";
+import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npRequireAgentModeratorAssessmentBudgetV1 } from "./moderator-assessment-budget.js";
 import { npBuildAgentRuntimeClassificationManifestV1 } from "./runtime-context.js";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
@@ -42,6 +46,7 @@ import type {
   NpAgentRunLimitsV1,
   NpAgentModelPricingV1,
   NpAgentRecipeDefinitionCanonicalV1,
+  NpAgentJsonObject,
 } from "../agent-contract/types.js";
 import {
   npRuntimeRunAdmissionBodyV1,
@@ -212,7 +217,10 @@ async function validateCurrentRequest(
     !recipe.instruction
   )
     fail("RUNTIME_PROVIDER_UNAVAILABLE");
-  if (request.task !== "interactive-capability" || recipe.task !== request.task)
+  if (
+    (request.task !== "interactive-capability" && !npIsAgentModeratorAssessmentRecipeV1(recipe)) ||
+    recipe.task !== request.task
+  )
     fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
   const expectedConnection = {
     id: connection.id,
@@ -617,6 +625,16 @@ export function createAgentRuntimeUsageV1(
           )
             fail("RUNTIME_DISPATCH_UNAVAILABLE");
           await npRequireAgentRuntimeUsageKnownV1({ db, siteId: input.siteId });
+          if (
+            npIsAgentModeratorAssessmentRecipeV1(
+              context.evidence.registry.recipes.find(
+                (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+              ),
+            )
+          )
+            await npRequireAgentModeratorAssessmentBudgetV1(context, request, {
+              existingCallId: call.id,
+            });
           await perRunCapacity(db, run, request, 0, context.limits, false);
           for (const agentId of [undefined, run.agentId!]) {
             const counters = await npMeasureAgentRuntimeBudgetV1({
@@ -680,6 +698,14 @@ export function createAgentRuntimeUsageV1(
           )
             fail("RUNTIME_RETRY_UNAVAILABLE");
         }
+        if (
+          npIsAgentModeratorAssessmentRecipeV1(
+            context.evidence.registry.recipes.find(
+              (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+            ),
+          )
+        )
+          await npRequireAgentModeratorAssessmentBudgetV1(context, request);
         const cost = maximumCost(request);
         await perRunCapacity(db, run, request, cost, context.limits);
         const amount = {
@@ -727,6 +753,46 @@ export function createAgentRuntimeUsageV1(
           })
           .returning();
         if (!reservation) fail();
+        let selectionDiagnostic: Record<string, unknown> | null = null;
+        if (
+          request.recipe.id === "publisher.stale-content" &&
+          request.instruction.templateId === "publisher.stale-content" &&
+          request.instruction.templateVersion >= 3
+        ) {
+          try {
+            selectionDiagnostic = JSON.parse(
+              serializeAgentCanonicalJson({
+                ...npRequireAgentPublisherSelectionDiagnosticV2(request, requestDigest),
+              }),
+            ) as Record<string, unknown>;
+          } catch {
+            fail("RUNTIME_CONTEXT_INVALID");
+          }
+        }
+        if (
+          npIsAgentModeratorAssessmentRecipeV1(
+            context.evidence.registry.recipes.find(
+              (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+            ),
+          )
+        ) {
+          try {
+            const entry = request.trustedContext.find((item) => item.id === "moderator-assessment");
+            if (!entry) fail("RUNTIME_CONTEXT_INVALID");
+            const assessmentEvidence = npRequireAgentModeratorAssessmentEvidenceV1(
+              JSON.parse(entry.text),
+            );
+            selectionDiagnostic = JSON.parse(
+              serializeAgentCanonicalJson({
+                schemaVersion: "np.agent-moderator-assessment-diagnostic.v1",
+                requestDigest,
+                assessmentEvidence,
+              }),
+            ) as Record<string, unknown>;
+          } catch {
+            fail("RUNTIME_CONTEXT_INVALID");
+          }
+        }
         const [call] = await db
           .insert(npAgentProviderCalls)
           .values({
@@ -762,6 +828,12 @@ export function createAgentRuntimeUsageV1(
             dispatchState: "not-dispatched",
             usageReservationId: reservation.id,
             requestDigest,
+            ...(selectionDiagnostic
+              ? {
+                  requestRedacted: selectionDiagnostic as NpAgentJsonObject,
+                  diagnosticExpiresAt: new Date(context.now.getTime() + 30 * 86400000),
+                }
+              : {}),
             idempotencyKey: request.idempotencyKey,
             createdAt: context.now,
           })

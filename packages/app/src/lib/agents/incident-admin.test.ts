@@ -137,15 +137,69 @@ describe("Incident Studio HTTP boundary", () => {
     "?cursor=",
     "?cursor=" + "x".repeat(2049),
     "?updatedAfter=yesterday",
+    "?containment=all",
+    "?source=bad%20source",
+    "?assignedAgentId=not-a-uuid",
+    "?query=one&query=two",
+    "?observedAfter=2026-10-16T00:00:00.000Z&observedBefore=2026-10-15T00:00:00.000Z",
+    "?includeSummaries=1",
+    "?includeSummaries=true&includeSummaries=false",
   ])("rejects ambiguous/unsupported query %s", async (query) => {
     expect((await handleAgentIncidentAdminRequest(request(query), "list")).status).toBe(400);
     expect(mocks.list).not.toHaveBeenCalled();
   });
-  it("validates IDs and accepts only timeline cursor for detail", async () => {
+  it("decodes the staff-only Incident filters without normalizing literal search characters", async () => {
+    const params = new URLSearchParams({
+      source: "moderator.repeated-domain",
+      assignedAgentId: id,
+      containment: "active",
+      observedAfter: "2026-10-15T00:00:00.000Z",
+      observedBefore: "2026-10-16T00:00:00.000Z",
+      query: "literal %_ evidence",
+    });
+    expect((await handleAgentIncidentAdminRequest(request(`?${params}`), "list")).status).toBe(200);
+    expect(mocks.list).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.objectContaining(Object.fromEntries(params)) }),
+    );
+  });
+  it("decodes optional staff summaries without changing legacy list bytes", async () => {
+    const page = {
+      schemaVersion: "np.agent-incident-list.v1",
+      items: [],
+      nextCursor: null,
+      summaries: [],
+    };
+    mocks.list.mockResolvedValue(page);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?includeSummaries=true"),
+      "list",
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(page);
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: expect.objectContaining({ includeSummaries: true }) }),
+    );
+    await handleAgentIncidentAdminRequest(request("?includeSummaries=false"), "list");
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: expect.objectContaining({ includeSummaries: false }) }),
+    );
+    mocks.list.mockResolvedValue({
+      ...page,
+      summaries: [
+        { incidentId: id, versionNumber: 1, containment: null, assessmentAvailable: false },
+      ],
+    });
+    expect(
+      (await handleAgentIncidentAdminRequest(request("?includeSummaries=true"), "list")).status,
+    ).toBe(500);
+  });
+  it("validates IDs and keeps timeline and response cursors separate for detail", async () => {
     for (const [query, target] of [
       ["", "bad-id"],
       ["?statuses=open", id],
       ["?cursor=a&cursor=b", id],
+      ["?responseCursor=a&responseCursor=b", id],
+      [`?responseCursor=${"x".repeat(2049)}`, id],
     ]) {
       expect((await handleAgentIncidentAdminRequest(request(query), "detail", target)).status).toBe(
         400,
@@ -158,6 +212,17 @@ describe("Incident Studio HTTP boundary", () => {
         .status,
     ).toBe(403);
     expect(mocks.get).toHaveBeenCalledWith({ ...staff, incidentId: id, cursor: "sealed-cursor" });
+    await handleAgentIncidentAdminRequest(
+      request("?cursor=timeline&responseCursor=responses"),
+      "detail",
+      id,
+    );
+    expect(mocks.get).toHaveBeenLastCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "timeline",
+      responseCursor: "responses",
+    });
   });
   it("projects bounded detail and rejects response identity or private field injection", async () => {
     const time = "2026-09-27T00:00:00.000Z";

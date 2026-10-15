@@ -137,6 +137,20 @@ test("incident list defaults to unresolved and filters without treating failures
     .toBe("open,investigating,contained,monitoring,resolved,dismissed");
   expect(queries.at(-1)?.has("categories")).toBe(false);
   expect(queries.at(-1)?.has("severities")).toBe(false);
+  await page
+    .getByRole("textbox", { name: "Detector source", exact: true })
+    .fill("moderator.repeated-domain");
+  await page
+    .getByRole("textbox", { name: "Search incident title and summary", exact: true })
+    .fill("literal %_ evidence");
+  await page.getByRole("textbox", { name: "Observed since (UTC ISO)", exact: true }).fill(at);
+  await page.getByRole("combobox", { name: "Active containment", exact: true }).click();
+  await page.getByRole("option", { name: "No active containment", exact: true }).click();
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect.poll(() => queries.at(-1)?.get("query")).toBe("literal %_ evidence");
+  expect(queries.at(-1)?.get("source")).toBe("moderator.repeated-domain");
+  expect(queries.at(-1)?.get("observedAfter")).toBe(at);
+  expect(queries.at(-1)?.get("containment")).toBe("inactive");
   unavailable = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
@@ -154,6 +168,46 @@ test("incident feedback retries one identity and exposes only review links", asy
   );
   await signInAsE2EAdmin(page);
   const result = detail();
+  const digest = `cj1:sha256:${"a".repeat(43)}`;
+  result.timeline.push({
+    id: "71111111-1111-4111-8111-111111111111",
+    sequence: 3,
+    kind: "agent_assessment",
+    createdAt: at,
+    approvalId: null,
+    actionId: null,
+    decision: null,
+    assessment: {
+      schemaVersion: "np.agent-moderator-assessment.v1",
+      incidentId: id,
+      incidentVersion: 1,
+      observedAt: at,
+      label: "uncertain",
+      confidenceBasisPoints: 100,
+      reasonCodes: ["insufficient-evidence"],
+      evidenceDigests: [],
+      summary: "Evidence requires staff review.",
+      evidence: {
+        schemaVersion: "np.agent-moderator-assessment-evidence.v1",
+        observedAt: at,
+        incident: { id, versionNumber: 1, fingerprint: "safe-fixture" },
+        truncated: true,
+        sources: [],
+      },
+      provenance: {
+        runId: id,
+        providerCallId: signalId,
+        provider: "fixture",
+        model: "test-model",
+        recipeFingerprint: digest,
+        instructionDigest: digest,
+        policyDigests: [],
+        requestDigest: digest,
+        responseDigest: digest,
+        sourceDigest: digest,
+      },
+    },
+  });
   const commands: unknown[] = [];
   await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
     route.fulfill({ json: result }),
@@ -172,6 +226,12 @@ test("incident feedback retries one identity and exposes only review links", asy
   await expect(page.getByText("Observed fact", { exact: true })).toBeVisible();
   await expect(page.getByText("Deterministic confidence basis: exact-rule")).toBeVisible();
   await expect(page.getByText("Deterministic score: 9900 basis points")).toBeVisible();
+  await expect(page.getByText("AI assessment: uncertain", { exact: true })).toBeVisible();
+  await expect(page.getByText("Evidence requires staff review.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review assessment Run" })).toHaveAttribute(
+    "href",
+    `/admin/agents/runs/${id}`,
+  );
   await expect(page.getByRole("link", { name: "Review approval" })).toHaveAttribute(
     "href",
     `/admin/agents/approvals/${id}`,
@@ -1903,4 +1963,88 @@ test("incident severity conflicts discard stale decisions and access loss clears
     page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+});
+
+test("incident summaries and response target pages keep unknown evidence and target choice explicit", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    228 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const first = responseDetail();
+  const responseCursor = `eyJvZmZzZXQiOjEwfQ.${"a".repeat(43)}`;
+  first.response!.truncated = true;
+  first.response!.nextCursor = responseCursor;
+  first.incident.assignedAgentId = actionId;
+  const second = structuredClone(first);
+  second.response!.choices[0]!.target = { ...responseTarget, id: actionId };
+  second.response!.nextCursor = null;
+  second.response!.truncated = false;
+  const detailQueries: URLSearchParams[] = [];
+  const prepared: unknown[] = [];
+  let unknown = false;
+  await page.route("**/api/admin/agents/incidents?*", (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    expect(query.get("includeSummaries")).toBe("true");
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [first.incident],
+        nextCursor: null,
+        summaries: [
+          {
+            incidentId: id,
+            versionNumber: first.incident.versionNumber,
+            containment: unknown
+              ? null
+              : { active: 1, nearestExpiryAt: "2026-10-16T00:00:00.000Z" },
+            assessmentAvailable: unknown ? null : true,
+          },
+        ],
+      },
+    });
+  });
+  await page.route(new RegExp(`/api/admin/agents/incidents/${id}(?:\\?.*)?$`), (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    detailQueries.push(query);
+    return route.fulfill({
+      json: npRequireAgentIncidentStudioDetailV1(
+        query.get("responseCursor") === responseCursor ? second : first,
+      ),
+    });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared.push(route.request().postDataJSON());
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto("/admin/agents/incidents");
+  await expect(page.getByText(`Assigned Agent: ${actionId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Active containments: 1", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("AI assessment: Available for review", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Nearest containment expiry: 2026-10-16/)).toBeVisible();
+  await page.getByRole("link", { name: "Repeated links", exact: true }).click();
+  const response = page.getByRole("region", { name: "Response plans" });
+  await response.getByRole("button", { name: "Next response targets", exact: true }).click();
+  await expect(
+    response.getByRole("button", { name: "First response targets", exact: true }),
+  ).toBeVisible();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Select a response target",
+  );
+  expect(detailQueries.at(-1)?.get("responseCursor")).toBe(responseCursor);
+  expect(detailQueries.at(-1)?.has("cursor")).toBe(false);
+  await response.getByRole("combobox", { name: "Response target" }).click();
+  await page.getByRole("option", { name: "Quarantine comment 1", exact: true }).click();
+  await expect(response.getByText(new RegExp(`Target: comment.*${actionId}`))).toBeVisible();
+  await response.getByRole("button", { name: "Prepare response plan", exact: true }).click();
+  await expect.poll(() => prepared.length).toBe(1);
+  expect(prepared[0]).toMatchObject({ proposal: { target: { id: actionId } }, expectedVersion: 1 });
+  unknown = true;
+  await page.getByRole("link", { name: "All incidents", exact: true }).click();
+  await expect(page.getByText("Active containments: Unknown", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI assessment: Unknown", { exact: true })).toBeVisible();
 });

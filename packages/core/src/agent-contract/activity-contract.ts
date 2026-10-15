@@ -1,5 +1,9 @@
 import { npRequireAgentContractResult } from "./contract.js";
 import {
+  npRequireAgentOperatorReviewV1,
+  type NpAgentOperatorReviewV1,
+} from "./operator-review-contract.js";
+import {
   analyzeCanonicalBody,
   canonicalBodyRecord,
   canonicalBodyInteger,
@@ -145,6 +149,7 @@ export interface NpAgentActivityActionDetailV1 {
   outputHash: string | null;
   auditEventId: string | null;
   evidence: "redacted" | "expired";
+  operatorReview?: NpAgentOperatorReviewV1;
 }
 export type NpAgentActivityPrincipalsPageV1 = NpAgentCursorPageV1<
   NpAgentPrincipalV1,
@@ -249,23 +254,29 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
       "inputHash",
       "outputHash",
       "auditEventId",
+      "operatorReview",
     ];
     const r = canonicalBodyRecord(
       cloneCanonicalRuntimeInput(value, "agent.activity.action", 512 * 1024),
       "agent.activity.action",
       allowed,
-      allowed,
+      allowed.filter((key) => key !== "operatorReview"),
       {
         seen: new WeakSet(),
       },
     );
+    const action = npRequireAgentContractResult(npAnalyzeAgentActionProjectionV1(r.action));
+    const operatorReview =
+      r.operatorReview === undefined ? undefined : npRequireAgentOperatorReviewV1(r.operatorReview);
+    if (operatorReview && operatorReview.capabilityId !== action.capabilityId)
+      failCanonicalBody("invalid-field", "operatorReview", "must match this Action capability");
     return {
       schemaVersion: canonicalBodyEnum<"np.agent-activity-action.v1">(
         r.schemaVersion,
         "schemaVersion",
         new Set(["np.agent-activity-action.v1"]),
       ),
-      action: npRequireAgentContractResult(npAnalyzeAgentActionProjectionV1(r.action)),
+      action,
       principalId: canonicalBodyUuid(r.principalId, "principalId"),
       invocationId: nullableUuid(r.invocationId),
       evidence: canonicalBodyEnum<"redacted" | "expired">(
@@ -277,6 +288,7 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
       outputHash:
         r.outputHash === null ? null : canonicalBodySha256Digest(r.outputHash, "outputHash"),
       auditEventId: nullableUuid(r.auditEventId),
+      ...(operatorReview === undefined ? {} : { operatorReview }),
     };
   });
 }
@@ -332,6 +344,7 @@ export const npAgentActivityContractV1 = {
       "inputHash",
       "outputHash",
       "auditEventId",
+      "operatorReview",
     ],
   },
 } as const;

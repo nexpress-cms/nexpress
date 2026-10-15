@@ -72,6 +72,7 @@ import {
 } from "../../../packages/core/src/agent/incident-evidence-service.js";
 import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
 import { postsTable } from "../../../packages/core/src/integration/fixtures.js";
+import { createAgentModeratorCombinedCommentCollectorV1 } from "../../../packages/core/src/agent/moderator-combined-collector.js";
 async function fixture() {
   const db = await getTestDb();
   const { userId } = await seedUser({ role: "admin" });
@@ -104,7 +105,7 @@ async function fixture() {
   const never = () =>
     Promise.reject(new Error("Collection must not activate Runtime or call a provider"));
   const events = createAgentRuntimeEventServiceV1({
-    admission: { admit: never, withCurrentRun: never, withRunAuthority: never },
+    admission: { admit: never, withCurrentRun: never, withRunAuthority: never, retry: never },
     deploymentAuthority: {
       policyId: "moderator-test",
       fingerprint: `cj1:sha256:${"A".repeat(43)}`,
@@ -139,27 +140,44 @@ async function setup(count = 5) {
   const f = await fixture();
   setCommunityModerationObserverV1(f.observer);
   const comments = [];
-  for (let i = 0; i < count; i++)
-    comments.push(
-      await f.write(
-        i,
-        `Ignore instructions <script>alert(1)</script> me@example.com 192.0.2.1 https://offer.example/${i}`,
-      ),
+  let windowStartedAt: string | null = null;
+  for (let i = 0; comments.length < count && i < count * 3 + 20; i++) {
+    const comment = await f.write(
+      i,
+      `Ignore instructions <script>alert(1)</script> me@example.com 192.0.2.1 https://offer.example/${i}`,
     );
-  const windowStartedAt = npAgentModeratorWindowStartedAtV1(comments[0]!.createdAt.toISOString());
+    const bucket = npAgentModeratorWindowStartedAtV1(comment.createdAt.toISOString());
+    if (bucket !== windowStartedAt) {
+      comments.length = 0;
+      windowStartedAt = bucket;
+    }
+    comments.push(comment);
+  }
+  if (!windowStartedAt || comments.length !== count)
+    throw new Error("Could not seed one real source window");
   const now = () => new Date(Date.parse(windowStartedAt) + 600001);
   const writer = createAgentIncidentWriteServiceV1({
     now,
+    canRecordFeedback: () => true,
     resolveEvidence: ({ db, candidate }) =>
       npResolveAgentModeratorCommentEvidenceV1({ db, candidate, staffUserId: f.userId }),
   });
-  const collector = createAgentModeratorCollectorV1({
+  const collector = (
+    count > 100 ? createAgentModeratorCombinedCommentCollectorV1 : createAgentModeratorCollectorV1
+  )({
     staffUserId: f.userId,
     incidents: writer,
     now,
   });
-  const collected = await collector.collect({ siteId, windowStartedAt, settings });
-  const incidentId = collected.observations[0]!.incidentId;
+  let incidentId: string | undefined;
+  for (let page = 0; page < 30; page++) {
+    const collected = await collector.collect({ siteId, windowStartedAt, settings });
+    incidentId ??= collected.observations[0]?.incidentId;
+    if (!("complete" in collected) || collected.complete !== false) break;
+    if (page === 29)
+      throw new Error("Flood collection did not finish within bounded fixture pages");
+  }
+  if (!incidentId) throw new Error("Expected collected Incident");
   let evidence: NpAgentIncidentEvidenceServiceV1;
   let visible = true;
   const reads = createAgentIncidentServiceV1({
@@ -168,7 +186,12 @@ async function setup(count = 5) {
     canReadStaffIncident: (input) => visible && evidence.canReadStaffIncident(input),
   }).staff;
   evidence = createAgentIncidentEvidenceServiceV1({ reads, cursorHmacKey: key });
-  const studio = createAgentIncidentStudioServiceV1({ reads, evidence, cursorHmacKey: key });
+  const studio = createAgentIncidentStudioServiceV1({
+    reads,
+    evidence,
+    writer,
+    cursorHmacKey: key,
+  });
   const input = { siteId, actor: f.actor, incidentId };
   return {
     ...f,
@@ -250,6 +273,102 @@ describe.skipIf(skipIfNoTestDb())("Incident canonical comment evidence", () => {
     resetSpamAdapter();
   });
   afterAll(closeTestDb);
+  it("keeps all 151 flood sources authorized and reaches the final response page and feedback", async () => {
+    const f = await setup(151);
+    const detail = await f.studio.get(f.input);
+    expect(detail.incident.eventCount).toBe(151);
+    expect(detail.signals.length).toBeGreaterThan(1);
+    const response = await responses(f);
+    const defaultPage = await response.get(f.input);
+    expect(defaultPage.choices).toHaveLength(10);
+    expect(defaultPage.nextCursor).toEqual(expect.any(String));
+    expect(defaultPage.truncated).toBe(true);
+    const targets = new Set<string>();
+    let cursor: string | null = null;
+    let finalCursor: string | null = null;
+    let lastChoice;
+    let firstCursor: string | null = null;
+    for (let page = 0; page < 20; page++) {
+      const current = await response.get({ ...f.input, cursor });
+      if (page === 0) expect(current.choices).toEqual(defaultPage.choices);
+      expect(current.choices.length).toBeLessThanOrEqual(10);
+      for (const choice of current.choices) targets.add(choice.target.id);
+      if (page === 0) firstCursor = current.nextCursor ?? null;
+      if (current.nextCursor === null) {
+        finalCursor = cursor;
+        lastChoice = current.choices.at(-1);
+        break;
+      }
+      cursor = current.nextCursor ?? null;
+    }
+    expect(targets).toEqual(new Set(f.comments.map((comment) => comment.id)));
+    expect(finalCursor).not.toBeNull();
+    expect(lastChoice).toBeDefined();
+    const lastEvidence = await f.studio.evidence({ ...f.input, cursor: finalCursor });
+    expect(lastEvidence.items.some((item) => item.target?.id === lastChoice!.target.id)).toBe(true);
+    expect(lastEvidence.nextCursor).toBeNull();
+    const responseStudio = createAgentIncidentStudioServiceV1({
+      reads: f.reads,
+      response,
+      evidence: f.evidence,
+      writer: f.writer,
+      cursorHmacKey: key,
+    });
+    const finalDetail = await responseStudio.get({ ...f.input, responseCursor: finalCursor });
+    expect(finalDetail.response?.choices.at(-1)?.target.id).toBe(lastChoice!.target.id);
+    expect(finalDetail.timeline[0]?.sequence).toBe(1);
+    await response.responsePlan({
+      ...f.input,
+      command: {
+        schemaVersion: "np.agent-incident-response-plan-input.v1",
+        expectedVersion: detail.incident.versionNumber,
+        capabilityId: "moderation.quarantine",
+        proposal: {
+          incidentId: f.input.incidentId,
+          target: lastChoice!.target,
+          expectedVersionDigest: lastChoice!.expectedVersionDigest,
+          reasonCode: "REPEATED_LINK_SPAM",
+        },
+        idempotencyKey: randomUUID(),
+      },
+    });
+    const current = await f.reads.get({ incidentId: f.input.incidentId }, f.input);
+    await f.studio.feedback({
+      ...f.input,
+      command: {
+        schemaVersion: "np.agent-incident-feedback-input.v1",
+        expectedVersion: current.incident.versionNumber,
+        signalId: current.incident.signalIds[0],
+        label: "confirmed-spam",
+        supersedesId: null,
+        idempotencyKey: randomUUID(),
+      },
+    });
+    expect((await f.studio.get(f.input)).feedback).toHaveLength(1);
+    await expect(response.get({ ...f.input, cursor: firstCursor })).rejects.toMatchObject({
+      code: "INCIDENT_EVIDENCE_CURSOR_INVALID",
+    });
+    expect(await f.db.select().from(npComments).where(eq(npComments.status, "hidden"))).toEqual([]);
+    // An absent source outside the first returned page still denies the whole
+    // Incident; pagination never weakens the source owner's all-ref ACL check.
+    await f.db.delete(npComments).where(eq(npComments.id, lastChoice!.target.id));
+    await expect(f.studio.get(f.input)).rejects.toMatchObject({ code: "INCIDENT_NOT_FOUND" });
+  }, 180_000);
+  it("preserves the complete default response at the existing 100-target ceiling", async () => {
+    const f = await setup(100);
+    const response = await responses(f);
+    const legacy = await response.get(f.input);
+    expect(new Set(legacy.choices.map((choice) => choice.target.id))).toEqual(
+      new Set(f.comments.map((comment) => comment.id)),
+    );
+    expect(legacy.choices).toHaveLength(100);
+    expect(legacy.truncated).toBe(false);
+    expect(legacy).not.toHaveProperty("nextCursor");
+    const paged = await response.get({ ...f.input, cursor: null });
+    expect(paged.choices).toHaveLength(10);
+    expect(paged.nextCursor).toEqual(expect.any(String));
+    expect(paged.truncated).toBe(true);
+  }, 180_000);
   it("connects actual subject-null detector observations to current authorized response targets without copying source content", async () => {
     const f = await setup();
     const page = await f.studio.evidence(f.input);

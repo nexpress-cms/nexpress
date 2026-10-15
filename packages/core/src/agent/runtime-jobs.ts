@@ -19,6 +19,10 @@ import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.
 import type { NpAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
 import type { createAgentRuntimeExecutorV1 } from "./runtime-executor.js";
 import { npPruneAgentRuntimeJobV1 } from "./runtime-maintenance-job.js";
+import {
+  npRequireAgentIncidentRetentionPolicyV1,
+  type NpAgentIncidentRetentionPolicyV1,
+} from "../agent-contract/incident-retention-contract.js";
 
 type Db = ReturnType<typeof getDb>;
 type State = ReturnType<typeof npCreateAgentRuntimeJobStateV1>;
@@ -30,6 +34,13 @@ export interface NpAgentRuntimeJobsOptionsV1 {
   events: Pick<NpAgentRuntimeEventServiceV1, "dispatch" | "schedule">;
   executor: Pick<ReturnType<typeof createAgentRuntimeExecutorV1>, "process">;
   incidentNotifications?: Pick<NpAgentIncidentNotificationsServiceV1, "recover">;
+  /** Explicit source/monitor owner; absence never polls operational sources. */
+  operator?: {
+    observe(input: { siteId: string }): Promise<unknown>;
+    sampleDueMonitors(input: { siteId: string }): Promise<unknown>;
+  };
+  /** Explicit closed R6 lifecycle policy. Omission retains the existing Runtime-only lifecycle. */
+  incidentRetention?: NpAgentIncidentRetentionPolicyV1;
   now?: () => Date;
 }
 function unavailable(): never {
@@ -59,6 +70,10 @@ async function save(db: Db, siteId: string, value: State, now: Date): Promise<vo
 }
 /** Explicit registration only. No queue, worker, provider or site setting is enabled here. */
 export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
+  const incidentRetention =
+    options.incidentRetention === undefined
+      ? undefined
+      : npRequireAgentIncidentRetentionPolicyV1(options.incidentRetention);
   if (!npIsCanonicalSiteId(options.coordinationSiteId)) unavailable();
   const now = options.now ?? (() => new Date());
   const resolveSiteId = (input: { siteId: string }) => input.siteId;
@@ -158,8 +173,21 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
   });
   const reconcile = safe<NpBuiltinJobPayloadMap["agent:eventReconcile"]>(async () => {
     await fanout("eventSites", async (siteId) => {
+      let sourceFailed = false;
+      if (options.operator) {
+        try {
+          await options.operator.observe({ siteId });
+        } catch {
+          sourceFailed = true;
+        }
+        try {
+          await options.operator.sampleDueMonitors({ siteId });
+        } catch {
+          sourceFailed = true;
+        }
+      }
       const rows = await pending(siteId);
-      let failed = false;
+      let failed = sourceFailed;
       if (options.incidentNotifications?.recover) {
         try {
           await options.incidentNotifications.recover({ siteId });
@@ -208,7 +236,7 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
     });
   });
   const prune = safe<NpBuiltinJobPayloadMap["agent:retentionPrune"]>(async ({ siteId }) => {
-    await npPruneAgentRuntimeJobV1({ siteId, now });
+    await npPruneAgentRuntimeJobV1({ siteId, now, incidentRetention });
   });
   const retention = safe<NpBuiltinJobPayloadMap["agent:retentionTick"]>(async () => {
     await fanout("retentionSites", (siteId) => enqueue("agent:retentionPrune", { siteId }));
