@@ -23,6 +23,7 @@ import {
   npCreateAgentModeratorProposalEvaluationSuiteV2,
   npCreateAgentModeratorProposalEvaluationSuiteV3,
   npCreateAgentPublisherEvaluationSuiteV1,
+  npCreateAgentPublisherEvaluationSuiteV2,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
@@ -70,6 +71,7 @@ pnpm agent:evaluate --provider fake --dataset moderator-proposal.v3 --out <artif
 pnpm agent:evaluate --provider fake --dataset operator.v1 --json
 pnpm agent:evaluate --provider fake --dataset operator-plan.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
+pnpm agent:evaluate --provider fake --dataset publisher.v2 --out <artifact> --json
 nexpress agent evaluate --out <artifact> [--compare <previous-artifact>] [--json]
 nexpress agent evaluate --review <evaluation-artifact> [--reviews <labels.json>] [--compare <review-artifact>] [--out <review-artifact>] [--json]
 nexpress agent evaluate --report <manifest.json> [--out <report.json>] [--json]
@@ -86,6 +88,7 @@ All moderator detector datasets run the actual deterministic detector offline; n
 moderator-proposal.v1 checks the installed recipe response against synthetic observed evidence.
 moderator-proposal.v2 adds synthetic unverified report and mixed evidence; reports confer no verdict or approval authority.
 moderator-proposal.v3 adds exact document/comment targets to synthetic document-report and mixed evidence; reports confer no verdict or approval authority.
+publisher.v2 preserves all V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile; V1 artifacts remain unchanged.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
@@ -215,17 +218,19 @@ export async function runAgentEvaluateProcessV1(
     const artifact = await npRequireAgentEvaluationArtifactV1(
       await runAgentEvaluationV1({
         suite:
-          input.dataset === "publisher.v1"
-            ? await npCreateAgentPublisherEvaluationSuiteV1()
-            : input.dataset === "operator-plan.v1"
-              ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-              : input.dataset === "moderator-proposal.v3"
-                ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-                : input.dataset === "moderator-proposal.v2"
-                  ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                  : input.dataset === "moderator-proposal.v1"
-                    ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                    : await npCreateAgentOperatorEvaluationSuiteV1(),
+          input.dataset === "publisher.v2"
+            ? await npCreateAgentPublisherEvaluationSuiteV2()
+            : input.dataset === "publisher.v1"
+              ? await npCreateAgentPublisherEvaluationSuiteV1()
+              : input.dataset === "operator-plan.v1"
+                ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+                : input.dataset === "moderator-proposal.v3"
+                  ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                  : input.dataset === "moderator-proposal.v2"
+                    ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                    : input.dataset === "moderator-proposal.v1"
+                      ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                      : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,

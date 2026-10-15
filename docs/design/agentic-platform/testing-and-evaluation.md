@@ -1333,6 +1333,15 @@ Self-reported review labels grant no live approval and do not change the source
 artifact's `ok`. These extractive synthetic checks do not close AP-606 or the
 real-model usefulness gate.
 
+`publisher.v2` retains the twelve V1 cases and adds six completeness-priority
+controls. It uses an explicitly selected Publisher uncertainty instruction
+(template version two, recipe wire version one) and an ordered benchmark with
+unchanged decision/proposal rules. Dispatch and reconstruction share its pure
+profile resolver. V1 suite, instruction and policy hashes remain frozen; V2 has
+its own suite/policy hashes, the same gate hash and `SUITE_MISMATCH` cross-version
+comparison when provider/model identity matches. No failed model prediction is
+normalized into a passing result.
+
 The [Moderator offline evaluation flow](r6-moderator-evaluation-flow.md) adds
 `moderator.v1` as a separate deterministic detector artifact. It replays 22
 synthetic bilingual cases through the actual repeated-link detector, independently

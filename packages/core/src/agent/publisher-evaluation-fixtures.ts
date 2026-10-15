@@ -172,3 +172,91 @@ export async function npCreateAgentPublisherEvaluationSuiteV1(): Promise<NpAgent
     ),
   });
 }
+
+/** Adds completeness-priority controls without changing any V1 source case or scoring rule. */
+export async function npCreateAgentPublisherEvaluationSuiteV2(): Promise<NpAgentEvaluationSuiteV1> {
+  const suite = await npCreateAgentPublisherEvaluationSuiteV1();
+  const original = suite.cases[0];
+  const base: NpAgentPublisherEvaluationFactsV1 = JSON.parse(
+    original.evidence[0].text,
+  ) as NpAgentPublisherEvaluationFactsV1;
+  if (!base.candidate) throw new Error("Expected Publisher fixture candidate");
+  const additions: Array<{
+    locale: "en" | "ko";
+    patch: Partial<NonNullable<NpAgentPublisherEvaluationFactsV1["candidate"]>>;
+    note: string;
+    fresh?: boolean;
+  }> = [
+    {
+      locale: "en",
+      patch: {
+        routesComplete: false,
+        internalLink: "/old-library",
+        linkReplacement: { from: "/old-library", to: "/library" },
+      },
+      note: "The route scan is incomplete.",
+    },
+    {
+      locale: "ko",
+      patch: { routesComplete: false, seoDescription: null },
+      note: "SEO 설명은 없지만 경로 관측이 불완전합니다.",
+    },
+    {
+      locale: "en",
+      patch: { routesComplete: false, internalLink: null },
+      note: "An incomplete scan is not a healthy-link conclusion.",
+    },
+    {
+      locale: "ko",
+      patch: { stale: false, routesComplete: false, contentComplete: false, body: null },
+      note: "신규 문서는 오래된 후보 검토 대상이 아닙니다.",
+      fresh: true,
+    },
+    {
+      locale: "ko",
+      patch: { contentComplete: false, body: null },
+      note: "본문을 완전히 읽지 못했습니다.",
+    },
+    {
+      locale: "en",
+      patch: { stale: false, routesComplete: false, contentComplete: false, body: null },
+      note: "Fresh content is outside this stale-candidate benchmark.",
+      fresh: true,
+    },
+  ];
+  const cases = await Promise.all(
+    additions.map(async (entry, index): Promise<NpAgentEvaluationCaseV1> => {
+      const evidence = {
+        ...original.evidence[0],
+        text: JSON.stringify({
+          ...base,
+          candidate: { ...base.candidate, ...entry.patch },
+          note: entry.note,
+        }),
+      };
+      return {
+        ...structuredClone(original),
+        id: `pub-${String(suite.cases.length + index + 1).padStart(3, "0")}`,
+        locale: entry.locale,
+        evidence: [
+          {
+            ...evidence,
+            digest: await npDigestAgentEvaluationValueV1({
+              id: evidence.id,
+              kind: evidence.kind,
+              observedAt: evidence.observedAt,
+              text: evidence.text,
+            }),
+          },
+        ],
+        expectedDecision: entry.fresh ? "ignore" : "observe",
+        rationaleTags: [entry.fresh ? "normal" : "unknown"],
+      };
+    }),
+  );
+  return npRequireAgentEvaluationSuiteV1({
+    ...suite,
+    version: 2,
+    cases: [...suite.cases, ...cases],
+  });
+}

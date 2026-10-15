@@ -1,6 +1,6 @@
 # R6 explicitly installed unattended recipes
 
-The optional R6 installation profile permits bounded event or scheduled
+The optional R6 installation profiles permit bounded event or scheduled
 read/proposal work through the existing Runtime owners. It preserves the shipped
 manual recipe definitions and their instruction, settings, response-schema and
 evaluation bytes. Constructing the profile starts no service, trigger, worker or
@@ -21,7 +21,7 @@ allowed trigger kinds:
 | `operator.worker-not-draining` | manual                 | manual, schedule            |
 | `publisher.stale-content`      | manual                 | manual, schedule            |
 
-Recipe and instruction versions remain one. Capabilities, provider requirements,
+In the V1 profile, recipe and instruction versions remain one. Capabilities, provider requirements,
 settings, schemas and instruction bytes are unchanged. Both trigger sets and
 recipe entries use canonical ordering. Hosts install one complete profile;
 combining the manual and expanded definitions for the same `(id,version)` is an
@@ -50,6 +50,23 @@ enablement, Agent activation, trigger registration/enablement and host job
 installation remain separate explicit operations. The factory does not perform
 any of them. Normal request processing does not start a model process or wait for
 inference.
+
+### Optional Publisher uncertainty instruction
+
+`npCreateAgentR6UnattendedRecipeRegistryV2()` preserves the V1 trigger eligibility
+and all Moderator/Operator bytes, while selecting the explicit Publisher
+uncertainty instruction profile. The recipe wire and `recipeVersion` remain one;
+only Publisher's instruction `templateVersion` becomes two with a different digest.
+The manual V1 factory and unattended V1 registry remain byte-for-byte unchanged.
+V1 and V2 are alternative complete installations, never duplicate same-id members.
+
+The new instruction requires incomplete checks to be described as unverified,
+rather than claiming content/links are normal because no ChangeSet was produced.
+It preserves independently justified improvements, capability ceilings and all
+existing activation/current-authority rules. New profile construction still
+installs nothing; adopting it requires a newly saved, explicitly activated draft.
+The [Publisher evaluation flow](r6-publisher-evaluation-flow.md#explicit-uncertainty-profile-and-v2-evaluation)
+records the separate V2 benchmark and unchanged historical artifacts.
 
 ## Actual Moderator evidence before admission
 

@@ -3,7 +3,10 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { npCreateAgentOperatorAppHostV1 } from "../../../packages/app/src/lib/agents/operator-host.js";
 import { npAgentOperatorRecipeSetupV1 } from "../../../packages/core/src/agent-contract/operator-recipe-contract.js";
-import { npCreateAgentR6UnattendedRecipeRegistryV1 } from "../../../packages/core/src/agent-contract/r6-recipe-registry.js";
+import {
+  npCreateAgentR6UnattendedRecipeRegistryV1,
+  npCreateAgentR6UnattendedRecipeRegistryV2,
+} from "../../../packages/core/src/agent-contract/r6-recipe-registry.js";
 import {
   npAgentDisabledGatewaySettingsV1,
   type NpAgentJsonObject,
@@ -67,8 +70,10 @@ type RuntimeFixture = Pick<
 type Events = ReturnType<typeof createAgentRuntimeEventServiceV1>;
 const active: Array<{ dispose(): Promise<void> }> = [];
 
-async function recipe(id: NpAgentRecipeId) {
-  const registry = await npCreateAgentR6UnattendedRecipeRegistryV1();
+async function recipe(id: NpAgentRecipeId, profile: 1 | 2 = 1) {
+  const registry = await (profile === 2
+    ? npCreateAgentR6UnattendedRecipeRegistryV2()
+    : npCreateAgentR6UnattendedRecipeRegistryV1());
   const selected = registry.recipes.find((entry) => entry.id === id);
   if (!selected) throw new Error("Expected the installed R6 recipe");
   return { recipe: selected, recipeRegistry: registry };
@@ -298,53 +303,60 @@ describe.skipIf(skipIfNoTestDb())("Explicit R6 unattended recipe journeys", () =
   });
   afterAll(closeTestDb);
 
-  it("schedules Publisher into an exact draft and ready preview, then preserves public content and same-base cooldown", async () => {
-    const f = await publisherRuntimeFixture(await recipe("publisher.stale-content"));
-    active.push(f);
-    await f.store.cancel({ siteId, runId: f.runId });
-    const id = await f.document();
-    const before = await f.db.select().from(postsTable).where(eq(postsTable.id, id));
-    const { events, enqueue } = eventService(f);
-    const trigger = await registerSchedule(f, events);
-    const runId = await scheduledRun(f, events);
-    expect(enqueue).toHaveBeenCalledWith({ siteId, runId });
-    expect(f.invoke).not.toHaveBeenCalled();
-    expect(await f.executor.process({ siteId, runId })).toEqual({ state: "succeeded" });
-    expect(await f.previews()).toEqual([expect.objectContaining({ state: "ready" })]);
-    expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
-    expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
-    const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId));
-    if (!run.agentVersionId) throw new Error("Expected the admitted Runtime version");
-    const [version] = await f.db
-      .select()
-      .from(npAgentVersions)
-      .where(eq(npAgentVersions.id, run.agentVersionId));
-    expect(version.recipeRegistryBody.recipes).toHaveLength(3);
-    expect(version.recipeRegistryBody).toEqual(f.runtimeOptions.recipes);
-    expect(run.triggerId).toBe(trigger.id);
-    expect(run.eventRef?.scheduledFor).toBeTypeOf("string");
-    expect((await events.schedule({ siteId })).runIds).toEqual([]);
-    expect(await f.executor.process({ siteId, runId })).toEqual({ state: "succeeded" });
-    expect(f.invoke).toHaveBeenCalledTimes(5);
-    f.resetProviderStep();
-    const next = await scheduledRun(f, events);
-    expect(await f.executor.process({ siteId, runId: next })).toEqual({ state: "failed" });
-    expect(f.invoke).toHaveBeenCalledTimes(6);
-    const [duplicateCall] = await f.db
-      .select()
-      .from(npAgentProviderCalls)
-      .where(eq(npAgentProviderCalls.runId, next));
-    expect(duplicateCall.state).toBe("succeeded");
-    expect(duplicateCall.decision).toMatchObject({
-      task: "interactive-capability",
-      decision: { kind: "propose-capability", capabilityId: "changeset.create" },
-    });
-    expect(
-      (await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, next)))[0].errorCode,
-    ).toBe("PUBLISHER_PROPOSAL_DUPLICATE");
-    expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
-    expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
-  }, 60_000);
+  it.each([1, 2] as const)(
+    "schedules Publisher profile %i into an exact draft and ready preview, preserving public content and same-base cooldown",
+    async (profile) => {
+      const f = await publisherRuntimeFixture(await recipe("publisher.stale-content", profile));
+      active.push(f);
+      await f.store.cancel({ siteId, runId: f.runId });
+      const id = await f.document();
+      const before = await f.db.select().from(postsTable).where(eq(postsTable.id, id));
+      const { events, enqueue } = eventService(f);
+      const trigger = await registerSchedule(f, events);
+      const runId = await scheduledRun(f, events);
+      expect(enqueue).toHaveBeenCalledWith({ siteId, runId });
+      expect(f.invoke).not.toHaveBeenCalled();
+      expect(await f.executor.process({ siteId, runId })).toEqual({ state: "succeeded" });
+      expect(await f.previews()).toEqual([expect.objectContaining({ state: "ready" })]);
+      expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
+      expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
+      const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId));
+      if (!run.agentVersionId) throw new Error("Expected the admitted Runtime version");
+      const [version] = await f.db
+        .select()
+        .from(npAgentVersions)
+        .where(eq(npAgentVersions.id, run.agentVersionId));
+      expect(version.recipeRegistryBody.recipes).toHaveLength(3);
+      expect(version.recipeRegistryBody).toEqual(f.runtimeOptions.recipes);
+      expect(run.instructionTemplateVersion).toBe(profile);
+      expect(f.invoke.mock.calls[0][0].instruction.templateVersion).toBe(profile);
+      expect(f.invoke.mock.calls[0][0].instruction.digest).toBe(run.instructionDigest);
+      expect(run.triggerId).toBe(trigger.id);
+      expect(run.eventRef?.scheduledFor).toBeTypeOf("string");
+      expect((await events.schedule({ siteId })).runIds).toEqual([]);
+      expect(await f.executor.process({ siteId, runId })).toEqual({ state: "succeeded" });
+      expect(f.invoke).toHaveBeenCalledTimes(5);
+      f.resetProviderStep();
+      const next = await scheduledRun(f, events);
+      expect(await f.executor.process({ siteId, runId: next })).toEqual({ state: "failed" });
+      expect(f.invoke).toHaveBeenCalledTimes(6);
+      const [duplicateCall] = await f.db
+        .select()
+        .from(npAgentProviderCalls)
+        .where(eq(npAgentProviderCalls.runId, next));
+      expect(duplicateCall.state).toBe("succeeded");
+      expect(duplicateCall.decision).toMatchObject({
+        task: "interactive-capability",
+        decision: { kind: "propose-capability", capabilityId: "changeset.create" },
+      });
+      expect(
+        (await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, next)))[0].errorCode,
+      ).toBe("PUBLISHER_PROPOSAL_DUPLICATE");
+      expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
+      expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
+    },
+    60_000,
+  );
 
   it("collects a closed Moderator schedule before proposing one exact fresh human-approved quarantine", async () => {
     const f = await moderatorRecipeFixture({

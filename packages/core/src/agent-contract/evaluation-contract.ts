@@ -18,12 +18,11 @@ import {
   npEvaluateAgentOperatorPlanProposalV1,
   type NpAgentOperatorPlanEvaluationProposalV1,
 } from "./operator-plan-evaluation-contract.js";
-import { npCreateAgentPublisherRecipeDefinitionV1 } from "./publisher-recipe-contract.js";
 import {
   npRequireAgentPublisherEvaluationProposalV1,
   npRequireAgentPublisherEvaluationEvidenceV1,
   npAgentPublisherEvaluationProposalSchemaV1,
-  npAgentPublisherEvaluationBenchmarkInstructionV1,
+  npCreateAgentPublisherEvaluationProfileV1,
   npEvaluateAgentPublisherProposalV1,
   type NpAgentPublisherEvaluationProposalV1,
 } from "./publisher-evaluation-contract.js";
@@ -748,10 +747,12 @@ export async function npBuildAgentEvaluationArtifactV1(
     p95LatencyMs: p95(caseResults.map((c) => c.latencyMs)),
   };
   if (Object.values(metrics).some((v) => v !== null && !Number.isSafeInteger(v))) fail();
+  const publisherProfile =
+    category === "publisher" ? await npCreateAgentPublisherEvaluationProfileV1(suite) : null;
   const recipe = await (category === "moderator-proposal"
     ? npCreateAgentModeratorRecipeDefinitionV1()
     : category === "publisher"
-      ? npCreateAgentPublisherRecipeDefinitionV1()
+      ? publisherProfile!.recipe
       : npCreateAgentOperatorRecipeDefinitionV1());
   return {
     schemaVersion: "np.agent-eval.v1",
@@ -773,12 +774,12 @@ export async function npBuildAgentEvaluationArtifactV1(
       version: 1,
       instructionDigest: recipe.instruction!.digest,
       predictionSchema: npAgentEvaluationResponseSchemaV1(category),
-      benchmarkVersion: 1,
+      benchmarkVersion: publisherProfile?.benchmarkVersion ?? 1,
       benchmarkInstruction:
         category === "moderator-proposal"
           ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
           : category === "publisher"
-            ? npAgentPublisherEvaluationBenchmarkInstructionV1
+            ? publisherProfile!.benchmarkInstruction
             : category === "ops-plan"
               ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
               : npAgentEvaluationBenchmarkInstructionV1,
