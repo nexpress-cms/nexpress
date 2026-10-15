@@ -1,12 +1,20 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npAgentEvents, npAgentIncidentSignals, npAgentSignals } from "../db/schema/agent.js";
-import { canonicalBodyUuid } from "../agent-contract/canonical-body-validation.js";
+import { npUsers } from "../db/schema/system.js";
+import { can } from "../auth/capabilities.js";
+import { npReadActiveMemberBansBounded } from "../community/bans.js";
+import {
+  canonicalBodyUtc,
+  canonicalBodyUuid,
+} from "../agent-contract/canonical-body-validation.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
   npRequireAgentIncidentMemberReportEvidenceV1,
+  npAgentIncidentMemberRestrictionLimitV1,
   type NpAgentIncidentMemberReportEvidenceV1,
   type NpAgentIncidentMemberReportEvidenceItemV1,
+  type NpAgentIncidentMemberReviewContextV1,
 } from "../agent-contract/incident-member-report-contract.js";
 import { npAgentModeratorMemberReportDetectorV1 } from "../agent-contract/moderator-member-report-contract.js";
 import type {
@@ -132,6 +140,7 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
     incident: NpAgentIncidentV1,
     sources: (typeof npAgentEvents.$inferSelect)[],
     group: Group,
+    reviewContext?: NpAgentIncidentMemberReviewContextV1,
   ): Promise<NpAgentIncidentMemberReportEvidenceItemV1> {
     const missing: NpAgentIncidentMemberReportEvidenceItemV1 = {
       eventId: group.eventId,
@@ -182,6 +191,14 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
           status: inspected.report.resolvedAt === null ? "unresolved" : "resolved",
           resolvedAt: inspected.report.resolvedAt?.toISOString() ?? null,
         },
+        ...(reviewContext
+          ? {
+              reviewContext: {
+                ...reviewContext,
+                activeRestrictions: reviewContext.activeRestrictions.map((row) => ({ ...row })),
+              },
+            }
+          : {}),
       },
       responseEligible: false,
     };
@@ -203,7 +220,7 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
           .orderBy(asc(npAgentEvents.id))
       : [];
   }
-  async function snapshot(db: Db, input: Input) {
+  async function snapshot(db: Db, input: Input, observedAt: Date, snapshotAt: string) {
     const auth = await authorize(db, input);
     const { incident } = await options.reads.get(
       { incidentId: input.incidentId },
@@ -251,16 +268,68 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
       )
     )
       throw unavailable();
+    if (incident.primarySubject?.kind !== "member") throw unavailable();
+    const restrictions = await npReadActiveMemberBansBounded({
+      db,
+      siteId: input.siteId,
+      memberId: incident.primarySubject.memberId,
+      now: observedAt,
+      limit: npAgentIncidentMemberRestrictionLimitV1,
+    });
+    const [currentStaff] = await db
+      .select({ role: npUsers.role })
+      .from(npUsers)
+      .where(eq(npUsers.id, input.actor.user.id))
+      .limit(1);
+    if (!currentStaff) throw unavailable();
+    const reviewContext: NpAgentIncidentMemberReviewContextV1 = {
+      siteId: input.siteId,
+      snapshotAt,
+      activeRestrictions: restrictions.rows.map((row) => ({
+        scopeType: row.scopeType,
+        scopeId: row.scopeId,
+        kind: row.kind,
+        expiresAt: row.expiresAt?.toISOString() ?? null,
+      })),
+      hasMoreRestrictions: restrictions.hasMore,
+      canOpenMemberManagement: can(
+        { ...input.actor.user, role: currentStaff.role },
+        "content.publish",
+      ),
+    };
     const grouped = groups(signals);
     const sources = await sourceRows(db, input.siteId, grouped);
     const items = [];
-    for (const group of grouped) items.push(await project(db, incident, sources, group));
+    for (const group of grouped)
+      items.push(await project(db, incident, sources, group, reviewContext));
     if (items.some((item) => item.availability !== "available")) throw unavailable();
+    const finalAuth = await authorize(db, input);
+    const [finalStaff] = await db
+      .select({ role: npUsers.role })
+      .from(npUsers)
+      .where(eq(npUsers.id, input.actor.user.id))
+      .limit(1);
+    if (
+      serializeAgentCanonicalJson(finalAuth) !== serializeAgentCanonicalJson(auth) ||
+      finalStaff?.role !== currentStaff.role
+    )
+      throw unavailable();
     return {
       incident,
       items,
       binding: codec.mac(
-        serializeAgentCanonicalJson({ siteId: input.siteId, auth, incident, signals, items }),
+        serializeAgentCanonicalJson({
+          siteId: input.siteId,
+          auth,
+          incident,
+          signals,
+          items,
+          globalStaffRole: currentStaff.role,
+          restrictionBindings: restrictions.rows.map((row) => ({
+            id: row.id,
+            createdAt: row.createdAt.toISOString(),
+          })),
+        }),
       ),
     };
   }
@@ -323,33 +392,44 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
     get: (input) =>
       withCurrentSite(input.siteId, async () => {
         canonicalBodyUuid(input.incidentId, "incident.memberReport.id");
-        const db = getDb(),
-          state = await snapshot(db, input);
+        const db = getDb();
+        const observedAt = now();
+        let snapshotAt = observedAt.toISOString();
         let offset = 0;
+        let cursorBinding: unknown;
         if (input.cursor !== undefined && input.cursor !== null) {
           try {
             const cursor = codec.open(input.cursor) as {
               binding?: unknown;
               offset?: unknown;
               expires?: unknown;
+              snapshotAt?: unknown;
             };
+            snapshotAt = canonicalBodyUtc(
+              cursor.snapshotAt,
+              "incident.memberReport.cursor.snapshotAt",
+            );
             if (
-              cursor.binding !== state.binding ||
               typeof cursor.offset !== "number" ||
               !Number.isInteger(cursor.offset) ||
               cursor.offset <= 0 ||
-              cursor.offset >= state.items.length ||
               cursor.offset % 10 !== 0 ||
               typeof cursor.expires !== "number" ||
-              cursor.expires <= now().getTime()
+              cursor.expires !== Date.parse(snapshotAt) + 900000 ||
+              cursor.expires <= observedAt.getTime() ||
+              Date.parse(snapshotAt) > observedAt.getTime()
             )
               throw invalidCursor();
             offset = cursor.offset;
+            cursorBinding = cursor.binding;
           } catch {
             throw invalidCursor();
           }
         }
-        const current = await snapshot(db, input);
+        const state = await snapshot(db, input, observedAt, snapshotAt);
+        if (offset > 0 && (cursorBinding !== state.binding || offset >= state.items.length))
+          throw invalidCursor();
+        const current = await snapshot(db, input, observedAt, snapshotAt);
         if (current.binding !== state.binding) throw unavailable();
         return npRequireAgentIncidentMemberReportEvidenceV1({
           schemaVersion: "np.agent-incident-member-report-evidence.v1",
@@ -361,7 +441,8 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
               ? codec.seal({
                   binding: state.binding,
                   offset: offset + 10,
-                  expires: now().getTime() + 900000,
+                  snapshotAt,
+                  expires: Date.parse(snapshotAt) + 900000,
                 })
               : null,
         });

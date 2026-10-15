@@ -91,6 +91,7 @@ export * from "./operator-capability-contract.js";
 export * from "./operator-recipe-contract.js";
 export * from "./publisher-recipe-contract.js";
 export * from "./moderator-recipe-contract.js";
+export * from "./r6-recipe-registry.js";
 
 export * from "./evaluation-contract.js";
 

@@ -13,8 +13,8 @@ export function moderatorSetupAvailable(catalog: NpAgentRuntimeStudioCatalogV1):
     recipe?.version === 1 &&
     recipe.allowedTemplates.includes("moderator") &&
     recipe.providerMode === "required" &&
-    recipe.triggerKinds.length === 1 &&
-    recipe.triggerKinds[0] === "manual" &&
+    (recipe.triggerKinds.join(",") === "manual" ||
+      recipe.triggerKinds.join(",") === "event,manual,schedule") &&
     setup.scopes.every((scope) => catalog.scopes.includes(scope)) &&
     setup.capabilityModes.every(
       ({ capabilityId, mode }) =>

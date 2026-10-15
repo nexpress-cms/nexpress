@@ -78,4 +78,15 @@ describe("Moderator human approval draft setup", () => {
     expect(moderatorSetupAvailable(value)).toBe(true);
     expect(npAgentModeratorRecipeSetupV1.settings.collectionSlugs).toEqual([]);
   });
+
+  it("supports the explicit unattended profile while rejecting unsupported trigger subsets", () => {
+    const value = catalog();
+    value.recipes[0].triggerKinds = ["event", "manual", "schedule"];
+    expect(moderatorSetupAvailable(value)).toBe(true);
+    expect(moderatorSetupDefinition(value, "Review").autonomy).toBe("approved");
+    value.recipes[0].triggerKinds = ["event"];
+    expect(moderatorSetupAvailable(value)).toBe(false);
+    value.recipes[0].triggerKinds = ["manual", "schedule"];
+    expect(moderatorSetupAvailable(value)).toBe(false);
+  });
 });

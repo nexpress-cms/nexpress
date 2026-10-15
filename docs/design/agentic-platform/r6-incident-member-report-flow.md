@@ -20,8 +20,10 @@ The new `community.member.reported` Event uses source component
 site, identity, reporter, target, reason and filing time separately from minimal
 Member identity/status/update metadata. Report resolution is a current fact,
 not part of the immutable filing base. Reason, profile, email, IP and account
-sanction data are not copied into Agent evidence. Private Event actor attribution
-stays outside the staff evidence wire.
+sanction records are not copied into the immutable report Event or Signal
+evidence. Private Event actor attribution stays outside the staff evidence wire.
+The separately checked current-site restriction projection below exposes only
+scope, kind and expiry; it does not change the filing's claim or authority.
 
 Members are global. The real report supplies site scope; current account status
 is therefore labelled global, while report resolution belongs to the site.
@@ -106,11 +108,51 @@ invalid. Physical absence does not imply a deletion status or retention outcome.
 read operation. Missing installation returns 503. The pure
 `np.agent-incident-member-report-evidence.v1` wire returns at most ten Events per
 page, their Signal IDs, recorded claim/time/status and current global Member
-status/update/version plus site report resolution. It excludes reporter/profile,
-reason, report ID, raw Event, ban data and execution input. Every item has
+status/update/version plus site report resolution. Current server projections
+also supply the optional `current.reviewContext` extension described below.
+Canonical inspection remains bounded at 512 KiB. The full legal page, including
+ten items, 25 restrictions and 100 Signal references per item, fits a conservative
+372,672-byte ceiling even with six-byte JSON escaping for every scope code unit.
+The row, field, reference and alias limits remain unchanged.
+The wire excludes reporter/profile, reason, report ID, raw Event, restriction
+identity/issuer/history and execution input. Every item has
 `responseEligible: false`. Existing content wire remains strict and unchanged.
-Current authorization, Incident generation and all source/current facts bind
-signed continuation; access, version or source drift clears review state.
+Current authorization, Incident generation, all source facts and projected
+current facts bind signed continuation; access, version or source drift clears
+review state.
+
+The existing Community ban owner supplies a bounded read through the caller's
+DB handle and current request clock. It reads only the target Member's current
+site rows whose expiry is null or strictly later than that clock, ordered by
+creation time and UUID. At most 25 active restrictions are projected as
+`scopeType`, `scopeId`, `kind` and `expiresAt`; a 26th row sets
+`hasMoreRestrictions: true`, and Studio labels the list incomplete. Site,
+category and collection scope remain distinct from global account status and
+report resolution. An empty complete list establishes only that no active
+restrictions were found on this site at that read, never prior bans, revocation,
+expiry history or account intent. Existing issue/revoke/audit behavior is
+unchanged.
+
+`reviewContext.snapshotAt` records the original review snapshot time and stays
+signed across the 15-minute continuation window. Every continuation rechecks
+the actual active restriction facts and expiry using its current request clock;
+restriction identities remain private in the cursor binding. Changes to the
+returned restriction identities or projected facts, including revocation and
+exact expiry, source/generation drift or relevant authority changes invalidate
+continuation. An incomplete sample establishes no facts about unreturned rows.
+This timestamp is not a claim about underlying source
+freshness. Older v1 wires without `reviewContext` remain valid; Studio shows
+restriction and management access as unavailable instead of inferring an empty
+list or permission.
+
+Studio offers an explicit link to the existing `/admin/members/{id}` page only
+when the live global staff role retains that page's `content.publish` read
+permission. That check is separate from current-site `admin.manage` and
+`community.moderate` required for Incident review. A site membership can retain
+Agent review while a global role change withdraws the management link. Both
+authorities are rechecked around the evidence read and bound to continuation.
+The link disables prefetch, and the destination retains its existing permission
+checks and human-owned actions. This read adds no account response authority.
 
 Studio separates filed and current facts, labels external claims with no score,
 and offers no account or content response target. Existing human investigation
@@ -118,7 +160,7 @@ and closure remain available through their existing owners. No feedback-based
 spam quality label is inferred from an abuse Incident. Even when a content
 response owner is installed, member review projects no content response.
 
-## Acceptance and remaining scope
+## Historical member report acceptance
 
 Local acceptance on 2026-10-14 KST, based on `45fb68bf` (merged PR #1535).
 The preceding PR's main CI and Release both succeeded before this bundle.
@@ -168,6 +210,40 @@ path. They were corrected and affected checks passed; already successful stages
 were retained. The comparator checks published raw App source paths alongside
 built Core/Admin exports. No product rebuild was needed for the browser fixture.
 
-These are affected-slice checks and do not establish the full R6 gate or
-real-model quality. Member restriction policy, any approved account response
-workflow, external delivery and model-quality acceptance remain separate work.
+These historical affected-slice checks do not establish the full R6 gate,
+real-model quality or acceptance of the subsequent review-context extension.
+
+## Current-site review context acceptance and boundaries
+
+The 2026-10-15 KST extension is based on main `3e24be63` and changes no schema,
+migration, package version, changeset or lockfile.
+
+- Core member evidence contracts: 7 cases passed, including the optional legacy
+  wire, strict scope/kind/expiry invariants, 25/26 projection bounds, private
+  field rejection and unchanged `responseEligible: false`. The final parser case
+  covers full legal Unicode/JSON-escaped pages above the former 128 KiB budget,
+  independent object identities, defensive cloning, and continued byte/field/
+  shared-alias rejection under the explicit 512 KiB inspection budget.
+- Admin render checks: 2 cases passed. They cover scoped expiry, explicit
+  management navigation with prefetch disabled, access loss, missing context,
+  empty active state, incomplete results and no action form.
+- Actual PostgreSQL member suite: 11 cases passed without skips. The existing
+  nine claim/source/authority cases are preserved; two new cases exercise real
+  Community issue/revoke owners, current-site and Member isolation, exact expiry,
+  continuation drift, 25/26 active bounds, management-link withdrawal while site
+  review remains authorized, and final site authority loss. The shared Member
+  and Operator progress log has 14 total cases; only 11 belong to this suite:
+  `/tmp/np-r6-member-operator-pg.log`.
+- Core typecheck, changed source ESLint, Prettier and `git diff --check` passed.
+  The production browser's existing Member journey passed with the new context,
+  restriction bounds, access loss and narrow layout assertions. The complete
+  production suite passed 122/122 without retries or skips; its 320px Member
+  evidence capture was inspected. The [bundle acceptance record](r6-acceptance.md)
+  owns the complete local gate results and remaining model acceptance.
+
+The optional Member review context now connects existing restriction facts and
+human management. A new Member restriction policy or Agent-approved account
+response workflow remains unsupported and is a separately selected product
+extension, not authority implied by this advisory filing flow. External delivery
+and real-model quality acceptance remain separate boundaries. These focused
+checks alone do not establish full R6 completion.

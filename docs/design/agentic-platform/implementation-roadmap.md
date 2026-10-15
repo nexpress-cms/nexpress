@@ -632,6 +632,18 @@ Gate:
 - false-positive and usefulness thresholds in the evaluation doc are met on
   versioned fixtures.
 
+Current implementation reconciliation (2026-10-15): the
+[R6 acceptance crosswalk](r6-acceptance.md) separates the implemented AP-600–606
+human-approved/read/proposal scope from local verification and actual model or
+operating acceptance. The [explicit unattended profile](r6-unattended-flow.md)
+adds event/scheduled eligibility with separate immutable fingerprints while
+preserving the original manual factories and evaluation bytes. Deterministic
+Moderator collection precedes new event/schedule admission; Operator additionally
+offers bounded actual retained job transitions. Nothing is installed or activated
+automatically. Full R6 acceptance still requires actual usefulness evidence;
+external email/Slack, Member account responses and automatic-quarantine enablement
+are separate optional extensions or production gates.
+
 The [Publisher content review flow](r6-publisher-content-review-flow.md) records
 bounded stale-content/SEO/link evidence, current-base ChangeSet draft/preview,
 cross-run duplicate protection and the explicit Studio draft setup. Real-model
@@ -708,9 +720,12 @@ continuation. The [operational observations flow](r6-operator-observations-flow.
 connects bounded Jobs/media sources, plugin registry diagnostics and explicitly
 labeled backup/readiness evidence. The [Operator recipe flow](r6-operator-recipe-flow.md)
 connects explicit Studio setup, deployment worker observations and owner-backed
-plan review with deterministic evaluation fixtures. Broader source coverage,
-longitudinal observations and model usefulness evaluations remain open; these
-slices do not close AP-602 or AP-606. The
+plan review with deterministic evaluation fixtures. The subsequent observations
+extension adds explicitly installed site/deployment progress checks from a bounded
+15-minute window of actual retained job transition timestamps. These observations
+do not establish full history, throughput or a stuck worker. Broader source
+coverage and actual model usefulness remain separate; the acceptance crosswalk
+above owns the current AP-602/AP-606/R6 decision. The
 [Operator evaluation flow](r6-operator-evaluation-flow.md) adds a bounded offline
 benchmark, explicitly injected evaluation provider boundary and artifact review
 CLI. Its synthetic structured-diagnosis results do not establish real-model
@@ -740,8 +755,9 @@ The [content detector evaluation flow](r6-moderator-content-evaluation-flow.md)
 adds a separate 32-case bilingual document/comment replay corpus with actual
 threshold, author independence, target-kind deduplication and newest-fact checks.
 It preserves both earlier detector artifacts and keeps CLI/Workbench/report
-feedback bound to exact predictions. Member sources, production precision,
-longitudinal comparison and live-model quality remain open.
+feedback bound to exact predictions. Member filings now have the advisory
+review flow above; Member response/classification datasets, production precision,
+longitudinal comparison and live-model quality remain separate work.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.

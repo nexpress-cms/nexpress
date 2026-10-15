@@ -36,6 +36,150 @@ const page = {
 };
 
 describe("Incident member report evidence projection", () => {
+  it("accepts full legal Unicode and JSON-escaped pages while retaining byte, field and alias bounds", () => {
+    const fullPage = (scopeId: string) => ({
+      ...page,
+      incidentVersion: 2147483647,
+      nextCursor: '"'.repeat(2048),
+      items: Array.from({ length: 10 }, (_, index) => ({
+        ...item,
+        eventId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        signalIds: Array.from(
+          { length: 100 },
+          (_, signal) => `20000000-0000-4000-8000-${String(signal + 1).padStart(12, "0")}`,
+        ),
+        target: { ...item.target },
+        observed: { ...item.observed },
+        current: {
+          ...item.current,
+          report: { ...item.current.report },
+          reviewContext: {
+            siteId: `a${"b".repeat(62)}`,
+            snapshotAt: "2026-10-14T01:00:00.000Z",
+            activeRestrictions: Array.from({ length: 25 }, () => ({
+              scopeType: "collection",
+              scopeId,
+              kind: "temporary",
+              expiresAt: "2026-10-15T00:00:00.000Z",
+            })),
+            hasMoreRestrictions: true,
+            canOpenMemberManagement: false,
+          },
+        },
+      })),
+    });
+    // NUL reaches the six-byte-per-code-unit JSON escape bound. The second
+    // page combines three-byte UTF-8, NUL, backslash and quote escaping.
+    for (const scopeId of ["\u0000".repeat(160), '界\u0000\\"'.repeat(40)]) {
+      const maximum = fullPage(scopeId);
+      const bytes = new TextEncoder().encode(JSON.stringify(maximum)).byteLength;
+      expect(bytes).toBeGreaterThan(131072);
+      expect(bytes).toBeLessThanOrEqual(372672);
+      const parsed = npRequireAgentIncidentMemberReportEvidenceV1(maximum);
+      expect(parsed).toEqual(maximum);
+      parsed.items[0].current!.reviewContext!.activeRestrictions[0].scopeId = "changed";
+      expect(maximum.items[0].current.reviewContext.activeRestrictions[0].scopeId).toBe(scopeId);
+    }
+    const oversized = fullPage("\u0000".repeat(320));
+    expect(new TextEncoder().encode(JSON.stringify(oversized)).byteLength).toBeGreaterThan(
+      512 * 1024,
+    );
+    let byteFailure: unknown;
+    try {
+      npRequireAgentIncidentMemberReportEvidenceV1(oversized);
+    } catch (error) {
+      byteFailure = error;
+    }
+    expect(byteFailure).toMatchObject({
+      contractIssues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "limit",
+          message: "exceeds the canonical JSON byte safety limit",
+        }),
+      ]),
+    });
+    expect(() =>
+      npRequireAgentIncidentMemberReportEvidenceV1(fullPage("界".repeat(161))),
+    ).toThrow();
+    const aliased = fullPage("界".repeat(160));
+    aliased.items[1].current.reviewContext = aliased.items[0].current.reviewContext;
+    expect(() => npRequireAgentIncidentMemberReportEvidenceV1(aliased)).toThrow();
+  });
+
+  it("keeps active site restriction facts bounded and separate from response authority", () => {
+    const reviewContext = {
+      siteId: "default",
+      snapshotAt: "2026-10-14T01:00:00.000Z",
+      activeRestrictions: [
+        { scopeType: "site", scopeId: null, kind: "permanent", expiresAt: null },
+        {
+          scopeType: "collection",
+          scopeId: "posts",
+          kind: "temporary",
+          expiresAt: "2026-10-15T00:00:00.000Z",
+        },
+      ],
+      hasMoreRestrictions: false,
+      canOpenMemberManagement: true,
+    };
+    const contextPage = (context: unknown) => ({
+      ...page,
+      items: [{ ...item, current: { ...item.current, reviewContext: context } }],
+    });
+    expect(npRequireAgentIncidentMemberReportEvidenceV1(contextPage(reviewContext))).toEqual(
+      contextPage(reviewContext),
+    );
+    // The absent optional context in older v1 evidence establishes no ban or permission facts.
+    expect(npRequireAgentIncidentMemberReportEvidenceV1(page).items[0].current).not.toHaveProperty(
+      "reviewContext",
+    );
+    for (const change of [
+      { siteId: "foreign/site" },
+      { canOpenMemberManagement: "true" },
+      { hasMoreRestrictions: true },
+      {
+        activeRestrictions: Array.from({ length: 26 }, () => ({
+          ...reviewContext.activeRestrictions[0],
+        })),
+      },
+      { activeRestrictions: [{ ...reviewContext.activeRestrictions[0], scopeId: "posts" }] },
+      { activeRestrictions: [{ ...reviewContext.activeRestrictions[1], scopeId: null }] },
+      { activeRestrictions: [{ ...reviewContext.activeRestrictions[1], expiresAt: null }] },
+      {
+        activeRestrictions: [
+          { ...reviewContext.activeRestrictions[1], expiresAt: reviewContext.snapshotAt },
+        ],
+      },
+      {
+        activeRestrictions: [
+          { ...reviewContext.activeRestrictions[0], expiresAt: reviewContext.snapshotAt },
+        ],
+      },
+      {
+        activeRestrictions: [{ ...reviewContext.activeRestrictions[0], reason: "private reason" }],
+      },
+      { activeRestrictions: [{ ...reviewContext.activeRestrictions[0], byUserId: id }] },
+      { responseEligible: true },
+    ])
+      expect(() =>
+        npRequireAgentIncidentMemberReportEvidenceV1(contextPage({ ...reviewContext, ...change })),
+      ).toThrow();
+    const partial = {
+      ...reviewContext,
+      activeRestrictions: Array.from({ length: 25 }, () => ({
+        ...reviewContext.activeRestrictions[0],
+      })),
+      hasMoreRestrictions: true,
+      canOpenMemberManagement: false,
+    };
+    expect(
+      npRequireAgentIncidentMemberReportEvidenceV1(contextPage(partial)).items[0],
+    ).toMatchObject({
+      current: { reviewContext: partial },
+      responseEligible: false,
+    });
+  });
+
   it("keeps unverified filing facts separate from current global account and report state", () => {
     expect(npRequireAgentIncidentMemberReportEvidenceV1(page)).toEqual(page);
     for (const status of ["active", "pending", "suspended", "deleted", "imported"]) {

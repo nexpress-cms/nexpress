@@ -28,6 +28,7 @@ import {
   setCommunityMemberReportObserverV1,
 } from "../../../packages/core/src/community/member-report-observer.js";
 import { fileReport, resolveReport } from "../../../packages/core/src/community/reports.js";
+import { issueBan, revokeBan } from "../../../packages/core/src/community/bans.js";
 import {
   npAgentActions,
   npAgentApprovals,
@@ -41,6 +42,7 @@ import {
 } from "../../../packages/core/src/db/schema/agent.js";
 import {
   npAuditEvents,
+  npBans,
   npMemberRoles,
   npMembers,
   npReports,
@@ -443,6 +445,156 @@ describe.skipIf(skipIfNoTestDb())("Incident actual member report evidence", () =
     }
     await f.db.update(npAgentEvents).set({ expiresAt: new Date(Date.now() - 1) });
     expect((await f.evidence.get(f.input)).items).toHaveLength(10);
+    await noEffects(f);
+  });
+
+  it("projects only current site restrictions and invalidates continuation on revocation or exact expiry", async () => {
+    const f = await setup(12);
+    let currentTime = new Date();
+    const evidence = createAgentIncidentMemberReportEvidenceServiceV1({
+      reads: f.reads,
+      cursorHmacKey: key,
+      now: () => currentTime,
+    });
+    const otherSiteId = "other-restriction-site";
+    await f.db.insert(npSites).values({ id: otherSiteId, name: "Other restriction site" });
+    const actor = { kind: "staff", user: f.user } as const;
+    const siteBan = await withCurrentSite(siteId, () =>
+      issueBan({ memberId: f.target.memberId, scopeType: "site", kind: "permanent", actor }),
+    );
+    const collectionBan = await withCurrentSite(siteId, () =>
+      issueBan({
+        memberId: f.target.memberId,
+        scopeType: "collection",
+        scopeId: "posts",
+        kind: "temporary",
+        expiresAt: new Date(currentTime.getTime() + 60000),
+        reason: "Private restriction rationale",
+        actor,
+      }),
+    );
+    const categoryBan = await withCurrentSite(siteId, () =>
+      issueBan({
+        memberId: f.target.memberId,
+        scopeType: "category",
+        scopeId: randomUUID(),
+        kind: "temporary",
+        expiresAt: new Date(currentTime.getTime() + 2000),
+        actor,
+      }),
+    );
+    await withCurrentSite(siteId, () =>
+      issueBan({
+        memberId: f.target.memberId,
+        scopeType: "collection",
+        scopeId: "expired-scope",
+        kind: "temporary",
+        expiresAt: new Date(currentTime.getTime() - 1),
+        actor,
+      }),
+    );
+    await withCurrentSite(otherSiteId, () =>
+      issueBan({ memberId: f.target.memberId, scopeType: "site", kind: "permanent", actor }),
+    );
+    await withCurrentSite(siteId, () =>
+      issueBan({ memberId: f.reporters[0]!.memberId, scopeType: "site", kind: "permanent", actor }),
+    );
+    const first = await evidence.get(f.input);
+    const context = first.items[0]!.current?.reviewContext;
+    expect(context).toMatchObject({
+      siteId,
+      snapshotAt: currentTime.toISOString(),
+      hasMoreRestrictions: false,
+      canOpenMemberManagement: true,
+    });
+    expect(context?.activeRestrictions).toHaveLength(3);
+    expect(context?.activeRestrictions).toEqual(
+      expect.arrayContaining([
+        { scopeType: "site", scopeId: null, kind: "permanent", expiresAt: null },
+        {
+          scopeType: "collection",
+          scopeId: "posts",
+          kind: "temporary",
+          expiresAt: collectionBan.expiresAt?.toISOString(),
+        },
+      ]),
+    );
+    const wire = JSON.stringify(first);
+    for (const privateValue of [
+      "Private restriction rationale",
+      "expired-scope",
+      otherSiteId,
+      siteBan.id,
+      collectionBan.id,
+      categoryBan.id,
+      "byUserId",
+      "reason",
+    ])
+      expect(wire).not.toContain(privateValue);
+    currentTime = new Date(currentTime.getTime() + 1000);
+    const continuation = await evidence.get({ ...f.input, cursor: first.nextCursor });
+    expect(continuation.items).toHaveLength(2);
+    expect(continuation.items[0]?.current?.reviewContext?.snapshotAt).toBe(context?.snapshotAt);
+    await withCurrentSite(siteId, () => revokeBan({ banId: siteBan.id, actor }));
+    await expect(evidence.get({ ...f.input, cursor: first.nextCursor })).rejects.toMatchObject({
+      code: "INCIDENT_MEMBER_REPORT_EVIDENCE_CURSOR_INVALID",
+    });
+    const afterRevoke = await evidence.get(f.input);
+    expect(afterRevoke.items[0]?.current?.reviewContext?.activeRestrictions).toHaveLength(2);
+    currentTime = new Date(categoryBan.expiresAt!);
+    await expect(
+      evidence.get({ ...f.input, cursor: afterRevoke.nextCursor }),
+    ).rejects.toMatchObject({
+      code: "INCIDENT_MEMBER_REPORT_EVIDENCE_CURSOR_INVALID",
+    });
+    const afterExpiry = await evidence.get(f.input);
+    expect(afterExpiry.items[0]?.current?.reviewContext?.activeRestrictions).toHaveLength(1);
+    await withCurrentSite(siteId, () => revokeBan({ banId: collectionBan.id, actor }));
+    const empty = await evidence.get(f.input);
+    expect(empty.items[0]?.current?.reviewContext).toMatchObject({
+      activeRestrictions: [],
+      hasMoreRestrictions: false,
+    });
+    expect(empty.items.every((item) => item.responseEligible === false)).toBe(true);
+    expect(JSON.stringify(empty)).not.toContain("revoked");
+    expect(JSON.stringify(empty)).not.toContain("expired");
+    await noEffects(f);
+  });
+
+  it("bounds active restrictions and independently withdraws management navigation when the live global role changes", async () => {
+    const f = await setup(12);
+    // Current site Agent review is still authorized by membership when the
+    // global role loses the existing Member detail page's content.publish floor.
+    await f.db.insert(npSiteMemberships).values({ siteId, userId: f.userId, role: "admin" });
+    for (let index = 0; index < 26; index++)
+      await withCurrentSite(siteId, () =>
+        issueBan({
+          memberId: f.target.memberId,
+          scopeType: "collection",
+          scopeId: `bounded-scope-${index}`,
+          kind: "permanent",
+          actor: { kind: "staff", user: f.user },
+        }),
+      );
+    expect(await f.db.select().from(npBans)).toHaveLength(26);
+    const first = await f.evidence.get(f.input);
+    expect(first.items[0]?.current?.reviewContext).toMatchObject({
+      hasMoreRestrictions: true,
+      canOpenMemberManagement: true,
+    });
+    expect(first.items[0]?.current?.reviewContext?.activeRestrictions).toHaveLength(25);
+    await f.db.update(npUsers).set({ role: "moderator" }).where(eq(npUsers.id, f.userId));
+    await expect(f.evidence.get({ ...f.input, cursor: first.nextCursor })).rejects.toMatchObject({
+      code: "INCIDENT_MEMBER_REPORT_EVIDENCE_CURSOR_INVALID",
+    });
+    const denied = await f.evidence.get(f.input);
+    expect(denied.items[0]?.current?.reviewContext?.canOpenMemberManagement).toBe(false);
+    expect(denied.items.every((item) => item.responseEligible === false)).toBe(true);
+    await f.db
+      .update(npSiteMemberships)
+      .set({ role: "viewer" })
+      .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, f.userId)));
+    await expect(f.evidence.get(f.input)).rejects.toMatchObject({ code: "INCIDENT_FORBIDDEN" });
     await noEffects(f);
   });
 

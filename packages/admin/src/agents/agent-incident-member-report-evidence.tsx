@@ -1,14 +1,84 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   npRequireAgentIncidentMemberReportEvidenceV1,
+  type NpAgentIncidentMemberReviewContextV1,
   type NpAgentIncidentStudioDetailV1,
 } from "@nexpress/core/agent-contract";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { runtimeAccessLost, useRuntimeResource } from "./agent-runtime-api.js";
 import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import { Button } from "../ui/button.js";
+
+export function IncidentMemberReviewContext({
+  memberId,
+  context,
+}: {
+  memberId: string;
+  context?: NpAgentIncidentMemberReviewContextV1;
+}) {
+  if (!context)
+    return <p>Current site restrictions and member management access are unavailable.</p>;
+  return (
+    <section
+      className="space-y-2 rounded-lg border p-3 text-sm"
+      aria-label="Current site restrictions"
+    >
+      <h4 className="font-medium">Current site restrictions</h4>
+      <p className="break-all">Site: {context.siteId}</p>
+      <p>
+        Review snapshot: <time dateTime={context.snapshotAt}>{context.snapshotAt}</time>. Active
+        restrictions are rechecked on each evidence read.
+      </p>
+      {context.activeRestrictions.length ? (
+        <ul className="space-y-2">
+          {context.activeRestrictions.map((restriction, index) => (
+            <li key={index} className="break-words">
+              <p>
+                Scope: {restriction.scopeType}
+                {restriction.scopeId ? ` — ${restriction.scopeId}` : " — this site"}
+              </p>
+              <p>Kind: {restriction.kind}</p>
+              <p>
+                Expires:{" "}
+                {restriction.expiresAt ? (
+                  <time dateTime={restriction.expiresAt}>{restriction.expiresAt}</time>
+                ) : (
+                  "No expiry"
+                )}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No active restrictions were found on this site.</p>
+      )}
+      {context.hasMoreRestrictions ? (
+        <p role="status">
+          Only the first 25 active restrictions are shown. This list is incomplete.
+        </p>
+      ) : null}
+      <p>
+        This is a current site snapshot. It does not establish prior restrictions, revocation or
+        expiry history, or a change to the global account status.
+      </p>
+      {context.canOpenMemberManagement ? (
+        <Link
+          href={`/admin/members/${encodeURIComponent(memberId)}`}
+          prefetch={false}
+          className="inline-flex underline underline-offset-4"
+        >
+          Open member management
+        </Link>
+      ) : (
+        <p>Member management is unavailable with your current permissions.</p>
+      )}
+      <p>Management actions retain the existing page’s separate permission checks.</p>
+    </section>
+  );
+}
 
 export function IncidentMemberReportEvidence({
   detail,
@@ -31,7 +101,12 @@ export function IncidentMemberReportEvidence({
     (evidence.incidentId !== detail.incident.id ||
       evidence.incidentVersion !== detail.incident.versionNumber ||
       subject?.kind !== "member" ||
-      evidence.items.some((item) => item.target && item.target.id !== subject.memberId)),
+      evidence.items.some(
+        (item) =>
+          (item.target && item.target.id !== subject.memberId) ||
+          (item.current?.reviewContext &&
+            item.current.reviewContext.siteId !== detail.incident.siteId),
+      )),
   );
   React.useEffect(() => {
     onClearSelection();
@@ -61,8 +136,8 @@ export function IncidentMemberReportEvidence({
       </h3>
       <p className="text-sm text-neutral-500">
         Compare the filed report with the member’s current global account status and this site’s
-        report status. A report is an unverified claim. Member profiles and reporter details are not
-        included. This evidence does not authorize an account action.
+        report status and active restrictions. A report is an unverified claim. Member profiles and
+        reporter details are not included. This evidence does not authorize an account action.
       </p>
       <AgentRecoveryBoundary error={state.failure}>
         {state.loading ? <p role="status">Loading member report evidence…</p> : null}
@@ -75,6 +150,12 @@ export function IncidentMemberReportEvidence({
         {evidence && !mismatch ? (
           <>
             {evidence.items.length === 0 ? <p>No visible member reports on this page.</p> : null}
+            {evidence.items[0]?.target && evidence.items[0].current ? (
+              <IncidentMemberReviewContext
+                memberId={evidence.items[0].target.id}
+                context={evidence.items[0].current.reviewContext}
+              />
+            ) : null}
             <ul className="space-y-3">
               {evidence.items.map((item) => (
                 <li
