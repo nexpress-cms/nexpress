@@ -148,5 +148,13 @@ after ordinary response diagnostic expiry. Complete current-source reprojection
 is deliberate: the 151-target persistence test takes about a minute locally;
 large production budgets and latency are not established by this fixture.
 
+The first PR CI run passed the other gates but exceeded this one journey's
+120-second deadline on the shared runner; its PostgreSQL partition otherwise
+passed 931 cases. Only this journey's deadline was raised to 240 seconds,
+preserving all 151 targets, sixteen calls and proof assertions. The affected
+eight-case PostgreSQL file passed again locally in 76 seconds, and its explicit
+test-inclusive typecheck and formatting passed. Runtime code and global test
+timeouts were unchanged by this correction.
+
 Production activation, operating qualification and measured model usefulness
 remain unestablished. Actual model/provider Runtime trials remain excluded.

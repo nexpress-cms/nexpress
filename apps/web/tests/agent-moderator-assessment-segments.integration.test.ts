@@ -66,6 +66,8 @@ describe.skipIf(skipIfNoTestDb())("durable segmented semantic Moderator", () => 
     vi.useRealTimers();
   });
   afterAll(closeTestDb);
+  // Sixteen persisted calls recheck the entire 151-target projection each time.
+  // Shared CI runners need a larger budget than the small segment regressions.
   it("covers all 151 targets in 16 exact sequential calls and records one verified aggregate without effects", async () => {
     const f = await setup(151);
     const before = (await f.db.select().from(npAgentIncidents))[0]!;
@@ -127,7 +129,7 @@ describe.skipIf(skipIfNoTestDb())("durable segmented semantic Moderator", () => 
       })
       .where(eq(npAgentProviderCalls.id, retained[1]!.id));
     await expect(npRequireAgentIncidentSegmentedAssessmentEntryV2(f.db, row!)).rejects.toThrow();
-  }, 120000);
+  }, 240_000);
   it("keeps successful partial segments durable without claiming an aggregate when the explicit call budget ends", async () => {
     const f = await setup(11, 1);
     const selected = await f.readAssessment();
