@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { runAgentEvaluationV1, type NpAgentEvaluationProviderV1 } from "./evaluation.js";
-import { npCreateAgentPublisherEvaluationSuiteV1 } from "./publisher-evaluation-fixtures.js";
+import {
+  npCreateAgentPublisherEvaluationSuiteV1,
+  npCreateAgentPublisherEvaluationSuiteV2,
+} from "./publisher-evaluation-fixtures.js";
 import { npCreateAgentOperatorEvaluationSuiteV1 } from "./operator-evaluation-fixtures.js";
 import {
   npBuildAgentEvaluationArtifactV1,
@@ -10,7 +13,14 @@ import {
   npRequireAgentEvaluationSuiteV1,
   type NpAgentEvaluationArtifactV1,
 } from "../agent-contract/evaluation-contract.js";
-import { npCreateAgentPublisherRecipeDefinitionV1 } from "../agent-contract/publisher-recipe-contract.js";
+import {
+  npCreateAgentPublisherEvaluationPredictionV1,
+  npAgentPublisherEvaluationBenchmarkInstructionV2,
+} from "../agent-contract/publisher-evaluation-contract.js";
+import {
+  npCreateAgentPublisherUncertaintyRecipeDefinitionV1,
+  npCreateAgentPublisherRecipeDefinitionV1,
+} from "../agent-contract/publisher-recipe-contract.js";
 import { npRequireAgentProviderSchemaValueV1 } from "./provider-auth-contract.js";
 import { analyzeAgentCanonicalJsonValue } from "../agent-contract/canonical-foundation.js";
 import { npRequireAgentContractResult } from "../agent-contract/contract.js";
@@ -161,5 +171,84 @@ describe("Publisher evaluation through the shared runner", () => {
       npRequireAgentEvaluationSuiteV1({ ...suite, cases: [suite.cases[0], publisher.cases[0]] }),
     ).toThrow();
     expect(operator.caseResults.every((r) => !Object.hasOwn(r.prediction!, "proposal"))).toBe(true);
+  });
+  it("preserves V1 hashes and every source case while binding V2 dispatch to its explicit profile", async () => {
+    const original = await evaluate();
+    expect(original).toMatchObject({
+      suiteHash: "cj1:sha256:WNL4gtBmc0oMgSzy4JLlyt014xW6R4IXxSp5wFiKzno",
+      policyHash: "cj1:sha256:QuZm6wMYqx6PrEfCbG_xasShUTMhlIJzUF-Djg5GF3Y",
+      gateRulesHash: "cj1:sha256:S8KzzaU7HFJSicVSEgKyWHBNs-FDZXKmJS_JAQ3jfXg",
+    });
+    const suite = await npCreateAgentPublisherEvaluationSuiteV2();
+    expect(suite.cases.slice(0, 12)).toEqual(original.suite.cases);
+    expect(suite.cases).toHaveLength(18);
+    const profile = await npCreateAgentPublisherUncertaintyRecipeDefinitionV1();
+    const invoke = vi.fn<NpAgentEvaluationProviderV1["invoke"]>((request) => {
+      expect(request.instruction).toEqual(profile.instruction);
+      expect(request.benchmarkInstruction).toBe(npAgentPublisherEvaluationBenchmarkInstructionV2);
+      expect(Object.keys(request.case).sort()).toEqual(["caseVersion", "evidence", "id", "locale"]);
+      return Promise.resolve({
+        prediction: npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence),
+        usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 },
+      });
+    });
+    const artifact = await runAgentEvaluationV1({
+      suite,
+      mode: "provider",
+      providerId: "local-stub",
+      model: "fixture",
+      confirmNetwork: true,
+      provider: {
+        id: "local-stub",
+        model: "fixture",
+        quote: () => ({ inputTokens: 2, outputTokens: 2, costMicros: 0 }),
+        invoke,
+      },
+      budget,
+    });
+    expect(artifact.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(18);
+    expect(artifact.policyHash).not.toBe(original.policyHash);
+    expect(artifact.gateRulesHash).toBe(original.gateRulesHash);
+    expect(await npRequireAgentEvaluationArtifactV1(artifact)).toEqual(artifact);
+    const fake = await runAgentEvaluationV1({
+      suite,
+      mode: "fake",
+      providerId: "fake",
+      model: "deterministic-v1",
+      budget,
+    });
+    expect(await npCompareAgentEvaluationArtifactsV1(fake, original)).toEqual({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+    const cases = fake.caseResults.slice(12).map((r) => r.prediction?.decision);
+    expect(cases).toEqual(["observe", "observe", "observe", "ignore", "observe", "ignore"]);
+    await expect(
+      npRequireAgentEvaluationArtifactV1({ ...artifact, policyHash: original.policyHash }),
+    ).rejects.toThrow();
+  });
+
+  it("keeps a model's uncertain-as-normal error visible rather than repairing its prediction", async () => {
+    const artifact = await runAgentEvaluationV1({
+      suite: await npCreateAgentPublisherEvaluationSuiteV2(),
+      mode: "fake",
+      providerId: "fake",
+      model: "deterministic-v1",
+      budget,
+    });
+    const changed = source(artifact);
+    changed.caseResults[3].prediction = {
+      decision: "ignore",
+      actions: [],
+      rationaleTags: ["normal"],
+      proposal: null,
+    };
+    const failed = await npBuildAgentEvaluationArtifactV1(changed);
+    expect(failed.ok).toBe(false);
+    expect(failed.caseResults[3].prediction).toEqual(changed.caseResults[3].prediction);
+    expect(failed.violations).toContainEqual(
+      expect.objectContaining({ caseId: "pub-004", code: "DECISION_MISMATCH" }),
+    );
   });
 });

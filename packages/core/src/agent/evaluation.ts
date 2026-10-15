@@ -7,10 +7,9 @@ import {
   npCreateAgentOperatorPlanEvaluationPredictionV1,
   npAgentOperatorPlanEvaluationBenchmarkInstructionV1,
 } from "../agent-contract/operator-plan-evaluation-contract.js";
-import { npCreateAgentPublisherRecipeDefinitionV1 } from "../agent-contract/publisher-recipe-contract.js";
 import {
   npCreateAgentPublisherEvaluationPredictionV1,
-  npAgentPublisherEvaluationBenchmarkInstructionV1,
+  npCreateAgentPublisherEvaluationProfileV1,
 } from "../agent-contract/publisher-evaluation-contract.js";
 import { NpError } from "../errors.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
@@ -202,10 +201,12 @@ export async function runAgentEvaluationV1(
         throw new NpAgentEvaluationError("ARGUMENT_INVALID");
     }
   const category = suite.cases[0].category;
+  const publisherProfile =
+    category === "publisher" ? await npCreateAgentPublisherEvaluationProfileV1(suite) : null;
   const recipe = await (category === "moderator-proposal"
     ? npCreateAgentModeratorRecipeDefinitionV1()
     : category === "publisher"
-      ? npCreateAgentPublisherRecipeDefinitionV1()
+      ? publisherProfile!.recipe
       : npCreateAgentOperatorRecipeDefinitionV1());
   if (!recipe.instruction) throw new NpAgentEvaluationError("ARGUMENT_INVALID");
   const now = options.now ?? (() => new Date());
@@ -254,7 +255,7 @@ export async function runAgentEvaluationV1(
         category === "moderator-proposal"
           ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
           : category === "publisher"
-            ? npAgentPublisherEvaluationBenchmarkInstructionV1
+            ? publisherProfile!.benchmarkInstruction
             : category === "ops-plan"
               ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
               : npAgentEvaluationBenchmarkInstructionV1,

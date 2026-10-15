@@ -188,12 +188,88 @@ review templates. The report's file SHA-256 is recorded in `assessment.json`.
 Independent AI review checked all outputs against source facts, reproduced the
 follow-up message parsing, confirmed unchanged suites and reconciled all charges.
 This is AI self-review, not human acceptance. Review templates retain null labels;
-`fullR6` and `modelUsefulness` remain `not-established`. The remaining Publisher
-failure and representative deployment review prevent a full R6 completion claim.
+`fullR6` and `modelUsefulness` remain `not-established`. At that assessment, the remaining Publisher failure and representative
+deployment review prevented a full R6 completion claim. The versioned follow-up below retains
+those original results.
 
-Only acceptance documentation changed after this assessment; the 30 frozen
-code/test files and their complete local gate above remain unchanged. No
-application build or unrelated test gate was repeated for this documentation.
+Before PR #1537 merged, only acceptance documentation changed after this
+assessment; its thirty frozen code/test files and complete local gate remained
+unchanged at that merge. No application build or unrelated test gate was repeated
+for that documentation. The following section records a separate code bundle.
+
+### Publisher uncertainty follow-up, 2026-10-15
+
+At the `b7b6ae80` merged baseline, PR #1537 and its post-merge CI/Release passed.
+The follow-up preserves the original twelve-case V1 corpus, instruction/profile
+bytes, policy hash and failing provider artifacts. It adds an explicit alternative
+Publisher instruction profile (template version two, recipe wire version one),
+the complete unattended V2 installation profile and `publisher.v2` evaluation.
+The new instruction explains unverified observations without changing capabilities,
+settings, schemas or execution authority. Six additional cases check priority
+boundaries; the original V1 cases and expected labels remain unchanged.
+
+A separately identified exploratory five-call probe tested the proposed wording
+against the failure and normal/fresh/unsupported-replacement controls. It is not a
+canonical evaluation artifact. The subsequent canonical `publisher.v2` run used
+Luna medium reasoning, a 30-second per-case limit and the unchanged strict gate.
+All **18/18** cases passed, including the original failure and all six added
+controls; schema validity was 100% with no forbidden proposals. The new suite hash
+is `cj1:sha256:__1tEsppaXuHBQLf4VXqzxIkJH5fIgF-AVyJf1oG7GA`, and policy hash is
+`cj1:sha256:OkEwSQRJnTkPMcnTpyAuIjh3CldIzewa7p8Muj2koQ0`. The gate hash remains
+`cj1:sha256:S8KzzaU7HFJSicVSEgKyWHBNs-FDZXKmJS_JAQ3jfXg`, identical to V1.
+Same-provider V1/V2 comparison is `SUITE_MISMATCH`. The actual historical high
+reasoning and new medium host artifacts have different provider identities and
+therefore report `PROVIDER_MISMATCH` first. Neither permits a pooled improvement
+rate. These synthetic, unblinded results cannot establish general model reliability.
+
+The extra five probe calls cost USD 0.001456 and the eighteen canonical calls
+USD 0.003604 at the same observed Standard/default tariff. Across both bundles,
+returned usage computes to USD 0.023750; retaining the original unknown request's
+full reservation gives **USD 0.027127**. All dispatch reservations cumulatively
+remain USD 0.616838, below the user's single USD 1 ceiling. There were no retries
+of ambiguous dispatch or automatic credential/provider/worker installation.
+
+Local source/usage/provenance is retained under
+`/tmp/np-r6-publisher-uncertainty-probe/` and
+`/tmp/np-r6-publisher-uncertainty-v2/`. The latter contains the canonical artifact,
+model/usage ledger, exact host source, reconciled `assessment.json`, combined
+`report.json` and an unlabeled review template. The report file SHA-256 is
+`6428bd95dceb8c5949c5ecd7900f58606dda3a23b1ac520c48f9fe1ed27ab083`.
+It retains the historical V1 Publisher artifact as an incompatible baseline.
+Review labels remain absent. AI self-review found the four proposed patches and their explanatory text grounded
+in the supplied source facts, with no execution/approval/preview-success claim.
+
+Focused Core checks passed 18/18, App command checks 7/7 and installed CLI protocol
+checks 11/11. The actual PostgreSQL unattended suite passed 6/6 with no skips,
+covering both instruction profiles through scheduled admission, provider-bound
+instruction/digest, persisted registry, draft/preview, replay and cooldown. The
+changed integration test also passed an explicit test-inclusive typecheck.
+Final workspace verification passed **113/113 tasks** and lint passed **41/41**.
+The first lint attempt overlapped declaration generation, and its errors persisted
+in the file cache on the next attempt. An uncached check passed; clearing only
+the derived App scripts lint cache and rerunning the complete lint passed without
+source changes or rule suppression.
+
+All **40 public packages / 60 stages** passed in a fresh external scaffold across
+the initial and corrected DB stages: explicit V2 API/type imports, installed CLI
+evaluation/review/report, production build, extension matrix, five runtime module
+loads, operations journey and actual generated migrations/Agent foundation. The
+initial migration stage incorrectly reused the previous bundle's test database
+and rejected existing types. The final two stages passed against a newly created
+empty database in the same owned cluster; no existing database was dropped or
+product migration changed. All **448 Core/CLI dist files**, selected Admin builds
+and published App source paths matched their producer bytes. The fifteen changed
+code/test source hashes stayed frozen throughout final verification.
+
+Logs use `/tmp/np-publisher-uncertainty-*`, including the original and corrected
+consumer/lint results. Final formatting, local links/anchors, secret-value absence
+and `git diff --check` passed; the pre-existing handoff was preserved. The earlier
+complete PostgreSQL/Redis/native/browser gate belongs to PR #1537; this follow-up
+ran the affected six PostgreSQL journeys and does not claim those unrelated
+local integration/browser suites were repeated or that full R6 acceptance closed.
+Representative deployment cases, actual reviewer provenance and applicable
+operating acceptance remain required. `fullR6` and `modelUsefulness` remain
+`not-established`; the earlier negative evidence is not erased.
 
 ## Optional extensions and separate gates
 

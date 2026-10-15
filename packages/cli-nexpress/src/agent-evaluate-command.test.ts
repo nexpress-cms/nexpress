@@ -6,6 +6,7 @@ import {
   runAgentEvaluationV1,
   npCreateAgentOperatorEvaluationSuiteV1,
   npCreateAgentPublisherEvaluationSuiteV1,
+  npCreateAgentPublisherEvaluationSuiteV2,
 } from "@nexpress/core/agents";
 import {
   npBuildAgentEvaluationReviewArtifactV1,
@@ -216,6 +217,29 @@ describe("nexpress agent evaluate wrapper", () => {
         }),
       ).rejects.toThrow("Mismatched evaluation result");
     }
+  }, 20_000);
+  it("accepts requested Publisher V2 but rejects substituting its valid V1 artifact", async () => {
+    const cwd = await project("");
+    const verify = await prepareEvaluationResultVerifier(
+      npParseAgentEvaluationCommandArgsV1(["--dataset", "publisher.v2", "--json"]),
+      cwd,
+    );
+    const artifact = await publisherArtifact(await npCreateAgentPublisherEvaluationSuiteV2());
+    const result = {
+      schemaVersion: "np.agent-eval-command.v1",
+      artifact,
+      comparison: null,
+      errorCode: null,
+    };
+    await expect(verify(result)).resolves.toEqual(result);
+    await expect(verify({ ...result, artifact: publisherSource })).rejects.toThrow(
+      "Mismatched evaluation result",
+    );
+    const v1 = await prepareEvaluationResultVerifier(
+      npParseAgentEvaluationCommandArgsV1(["--dataset", "publisher.v1", "--json"]),
+      cwd,
+    );
+    await expect(v1(result)).rejects.toThrow("Mismatched evaluation result");
   }, 20_000);
   // These artifact workflows recompute canonical hashes and launch real npm children.
   // The timeout bounds the whole workflow, not a product latency requirement.
