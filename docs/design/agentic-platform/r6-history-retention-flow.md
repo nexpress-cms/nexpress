@@ -50,3 +50,13 @@ Signals and completed flood bookkeeping, while preserving the owning evidence
 lifecycles. It never changes normal audit or source-release records, starts a
 worker/provider, executes a moderation capability, or performs a live-model
 Runtime acceptance trial.
+
+The [segmented Moderator extension](r6-moderator-automatic-segmented-flow.md)
+retains V2 request diagnostics containing only bounded immutable source metadata
+and digests. Every linked segment needs that proof for active continuation and
+historical aggregate verification. It expires with its owning provider-call
+reference lifecycle; ordinary response diagnostics still expire after their
+normal deadline. A row containing only preserved proof is not repeatedly counted
+as pruned diagnostic history. Automatic Action/Containment authorization and
+compensation evidence remain protected by the existing required-effect/audit
+reference rules.

@@ -398,7 +398,9 @@ function RuntimeConfigurationEditor({
                 Configure a Moderator to assess current Incident evidence and record a separately
                 labelled model judgment for staff review. This replaces the draft’s recipe,
                 permissions and budget. Choose collections and a provider explicitly; saving does
-                not activate the Agent.
+                not activate the Agent. When the installed profile supports analysis in batches, the
+                configured call and token budgets still apply. A stopped or incomplete analysis does
+                not establish a verdict for the whole Incident.
               </p>
               <Button
                 type="button"

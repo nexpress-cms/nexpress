@@ -1,7 +1,9 @@
+import { npRequireAgentModeratorAssessmentEvidenceV2 } from "../../../packages/core/src/agent-contract/moderator-segmented-assessment-contract.js";
 import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
 import {
   npCreateAgentModeratorAssessmentRecipeDefinitionV1,
+  npCreateAgentModeratorAssessmentRecipeDefinitionV2,
   npAgentModeratorAssessmentRecipeSetupV1,
 } from "../../../packages/core/src/agent-contract/moderator-assessment-recipe-contract.js";
 import { npRequireAgentRecipeRegistryCanonical } from "../../../packages/core/src/agent-contract/canonical-recipe-registry.js";
@@ -44,16 +46,47 @@ export async function moderatorAssessmentFixture(
     source?: "observations" | "content-combined";
     itemCount?: number;
     recorder?: boolean;
+    profileVersion?: 1 | 2;
+    contentCounts?: { documents: number; observedComments: number; reportedComments: number };
+    maxProviderCalls?: number;
   } = {},
 ) {
   const f = await moderatorRecipeFixture({
-    source: options.source ?? "observations",
+    source:
+      options.source ?? ((options.itemCount ?? 0) > 100 ? "content-combined" : "observations"),
+    ...((options.itemCount ?? 0) > 100 && options.source === undefined
+      ? {
+          contentCounts: {
+            documents: 0,
+            observedComments: options.itemCount!,
+            reportedComments: 0,
+          },
+        }
+      : {}),
     itemCount: options.itemCount,
+    ...(options.contentCounts ? { contentCounts: options.contentCounts } : {}),
   });
+  if ((options.itemCount ?? 0) > 100 && options.source === undefined) {
+    for (let page = 0; page < 512; page++) {
+      const result = await f.runtimeCollector.collect({
+        siteId,
+        windowStartedAt: f.windowStartedAt!,
+        settings: {
+          ...npAgentModeratorAssessmentRecipeSetupV1.settings,
+          collectionSlugs: ["discussions"],
+        },
+      });
+      f.collected.observations.push(...result.observations);
+      if (result.complete !== false) break;
+      if (page === 511) throw new Error("Flood fixture did not complete bounded collection");
+    }
+  }
   // Source seeding leaves its proposal-profile Run queued. Release that Run
   // through the owner before installing this alternative, bounded observer.
   await f.store.cancel({ siteId, runId: f.runId });
-  const recipe = await npCreateAgentModeratorAssessmentRecipeDefinitionV1();
+  const recipe = await (options.profileVersion === 2
+    ? npCreateAgentModeratorAssessmentRecipeDefinitionV2()
+    : npCreateAgentModeratorAssessmentRecipeDefinitionV1());
   const recipes = npRequireAgentRecipeRegistryCanonical({
     schemaVersion: "np.agent-recipe-registry.v1",
     projection: "registry",
@@ -63,6 +96,10 @@ export async function moderatorAssessmentFixture(
   rules.capabilityModes = structuredClone(npAgentModeratorAssessmentRecipeSetupV1.capabilityModes);
   await npWithAgentRuntimeControlTransactionV1(siteId, ({ db, revision, settings }) => {
     settings.defaultPolicyRules = structuredClone(rules);
+    if (options.maxProviderCalls !== undefined) {
+      settings.budgetCeiling.providerCallsPerRun = options.maxProviderCalls;
+      settings.budgetCeiling.providerCallsPerHour = Math.max(16, options.maxProviderCalls);
+    }
     return f.controls.updateInTransaction({
       db,
       siteId,
@@ -73,6 +110,15 @@ export async function moderatorAssessmentFixture(
   });
   const runtimeOptions = {
     ...f.runtimeOptions,
+    deploymentBudget: {
+      ...f.runtimeOptions.deploymentBudget,
+      ...(options.maxProviderCalls === undefined
+        ? {}
+        : {
+            providerCallsPerRun: options.maxProviderCalls,
+            providerCallsPerHour: Math.max(16, options.maxProviderCalls),
+          }),
+    },
     recipes,
     deploymentAuthority: {
       ...f.runtimeOptions.deploymentAuthority,
@@ -95,6 +141,10 @@ export async function moderatorAssessmentFixture(
   definition.modelConnectionId = f.connectionId;
   definition.model = "fake-model";
   definition.budget = structuredClone(npAgentModeratorAssessmentRecipeSetupV1.budget);
+  if (options.maxProviderCalls !== undefined) {
+    definition.budget.providerCallsPerRun = options.maxProviderCalls;
+    definition.budget.providerCallsPerHour = Math.max(16, options.maxProviderCalls);
+  }
   const created = await runtime.executeAdmin({
     siteId,
     actor: f.actor.actor,
@@ -117,7 +167,15 @@ export async function moderatorAssessmentFixture(
       idempotencyKey: randomUUID(),
     },
   });
-  const admission = createAgentRuntimeAdmissionV1({ ...runtimeOptions, runLimits: f.limits });
+  const admission = createAgentRuntimeAdmissionV1({
+    ...runtimeOptions,
+    runLimits: {
+      ...f.limits,
+      ...(options.maxProviderCalls === undefined
+        ? {}
+        : { maxProviderCalls: options.maxProviderCalls }),
+    },
+  });
   const runInput = {
     siteId,
     agentId: created.resourceId,
@@ -192,14 +250,23 @@ export async function moderatorAssessmentFixture(
     ...(options.recorder === false ? {} : { incidentAssessments: assessments }),
     now: f.options.now,
   });
-  let beforeResponse: (() => Promise<void>) | null = null;
+  let beforeResponse:
+    | ((
+        evidence:
+          | ReturnType<typeof npRequireAgentModeratorAssessmentEvidenceV1>
+          | ReturnType<typeof npRequireAgentModeratorAssessmentEvidenceV2>,
+      ) => Promise<void>)
+    | null = null;
   let decisionOverride: NpAgentModerationDecisionV1 | null = null;
   const conformanceCases = npCreateAgentModeratorAssessmentFixtureCorpusV1().cases;
   f.providerInvoke.mockImplementation(async (request) => {
     const metadata = request.trustedContext.find((entry) => entry.id === "moderator-assessment");
     if (!metadata) throw new Error("Expected exact assessment metadata");
-    const evidence = npRequireAgentModeratorAssessmentEvidenceV1(JSON.parse(metadata.text));
-    if (beforeResponse) await beforeResponse();
+    const evidence =
+      options.profileVersion === 2
+        ? npRequireAgentModeratorAssessmentEvidenceV2(JSON.parse(metadata.text))
+        : npRequireAgentModeratorAssessmentEvidenceV1(JSON.parse(metadata.text));
+    if (beforeResponse) await beforeResponse(evidence);
     const expected = conformanceCases.find(
       (entry) =>
         entry.id ===
@@ -230,8 +297,43 @@ export async function moderatorAssessmentFixture(
       latencyMs: 0,
     } satisfies NpAgentProviderInvokeOutcomeV1;
   });
+  const additionalContexts: (typeof context)[] = [];
+  const additionalExecutors: (typeof executor)[] = [];
   return {
     ...f,
+    assessmentContext: context,
+    assessmentUsage: usage,
+    restartAssessmentExecutor() {
+      const restartedContext = createAgentRuntimeContextV1({
+        admission,
+        moderatorAssessmentEvidence: source,
+        capabilities: {
+          list: capabilities.sourceEntries,
+          actionOutcomes: capabilities.runtimeActionOutcomes,
+        },
+      });
+      const restartedUsage = createAgentRuntimeUsageV1({
+        admission,
+        ambiguityWindowSeconds: 300,
+        verifyRequest: restartedContext.verifyRequest,
+        now: f.options.now,
+      });
+      const restartedExecutor = createAgentRuntimeExecutorV1({
+        store,
+        context: restartedContext,
+        usage: restartedUsage,
+        provider,
+        providerRegistry: f.providerRegistry,
+        vault: f.vault,
+        capabilities,
+        breakers,
+        incidentAssessments: assessments,
+        now: f.options.now,
+      });
+      additionalContexts.push(restartedContext);
+      additionalExecutors.push(restartedExecutor);
+      return restartedExecutor;
+    },
     runId: admitted.runId,
     assessmentAdmission: admission,
     assessmentSource: source,
@@ -274,7 +376,7 @@ export async function moderatorAssessmentFixture(
         throw new Error("Expected one actual Event-triggered assessment Run");
       return result.runIds[0]!;
     },
-    beforeResponse(callback: () => Promise<void>) {
+    beforeResponse(callback: NonNullable<typeof beforeResponse>) {
       beforeResponse = callback;
     },
     setAssessmentDecision(decision: NpAgentModerationDecisionV1) {
@@ -284,6 +386,8 @@ export async function moderatorAssessmentFixture(
       return admission.withRunAuthority({ siteId, runId }, (current) => source.read(current));
     },
     async dispose() {
+      for (const entry of additionalExecutors) entry.shutdown();
+      for (const entry of additionalContexts) entry.dispose();
       executor.shutdown();
       context.dispose();
       await provider.shutdown();

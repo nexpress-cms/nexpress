@@ -35,7 +35,7 @@ import {
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
-import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import { npDeriveAgentRuntimeAdmissionSourceRefsV1 } from "./runtime-admission-sources.js";
 import { npMeasureAgentRuntimeBudgetV1 } from "./runtime-budget.js";
 import {
@@ -1139,7 +1139,7 @@ export function createAgentRuntimeServiceV1(
                 if (
                   !recipe ||
                   (recipe.task !== "interactive-capability" &&
-                    !npIsAgentModeratorAssessmentRecipeV1(recipe)) ||
+                    !npIsAgentModeratorAssessmentProfileV1(recipe)) ||
                   !recipe.triggerKinds.includes("manual") ||
                   !npIsAgentRuntimeManualRecipeSupportedV1(recipe) ||
                   !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id)

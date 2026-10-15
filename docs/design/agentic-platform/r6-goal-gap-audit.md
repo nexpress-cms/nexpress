@@ -232,6 +232,27 @@ absent; large-Incident semantic assessment remains bounded to ten targets and
 forces uncertainty on truncation; actual model/Runtime validation is excluded.
 No prior model quality or self-reported review is transferred to the new profiles.
 
+## Subsequent authorized Moderator extensions
+
+After the integrated corrections were committed, the user authorized both
+remaining Moderator implementations. The
+[explicit automatic-quarantine and segmented-assessment flow](r6-moderator-automatic-segmented-flow.md)
+now owns their current behavior and verification. Earlier statements above and
+in the preserved findings that these paths had no implementation describe the
+preceding bundle, not the extended source tree.
+
+Automatic quarantine has a separate host-only deterministic execution path with
+immutable preauthorization evidence, current production-artifact verification and
+existing moderation effect owners. No qualifying production review/shadow
+artifact is supplied or installed, so production activation remains unavailable.
+The V2 read-only assessment profile uses a bounded durable full-manifest segment
+continuation and separately verified coverage aggregate. It does not authorize
+quarantine. V1 profiles and old evaluation identities remain unchanged.
+
+Actual model/provider Runtime validation remains excluded, and production model
+quality/automatic-action enablement remain unestablished. The fixed offline
+`fullR6` and `modelUsefulness` fields are not promoted to completion.
+
 ## AP reconciliation
 
 This table and G1–G6 below preserve the pre-follow-up audit findings.

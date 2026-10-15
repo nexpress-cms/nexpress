@@ -14,6 +14,7 @@ import {
   npCreateAgentR6UnattendedRecipeRegistryV2,
   npCreateAgentR6UnattendedRecipeRegistryV3,
   npCreateAgentR6AssessmentRecipeRegistryV1,
+  npCreateAgentR6AssessmentRecipeRegistryV2,
 } from "./r6-recipe-registry.js";
 import type {
   NpAgentRecipeDefinitionCanonicalV1,
@@ -57,6 +58,24 @@ describe("explicit R6 unattended recipe installation profile", () => {
     ).toThrow(NpAgentCanonicalIncompleteRegistryError);
     expect(serializeAgentCanonicalJson(await npCreateAgentR6UnattendedRecipeRegistryV2())).toBe(
       bytes,
+    );
+  });
+  it("requires explicit adoption of segmented assessment without replacing the V1 profile", async () => {
+    const prior = await npCreateAgentR6AssessmentRecipeRegistryV1();
+    const priorBytes = serializeAgentCanonicalJson(prior);
+    const next = await npCreateAgentR6AssessmentRecipeRegistryV2();
+    expect(next.recipes.slice(1)).toEqual(prior.recipes.slice(1));
+    expect(next.recipes[0].task).toBe("moderation-classification");
+    expect(next.recipes[0].instruction?.templateVersion).toBe(2);
+    expect(next.recipes[0].capabilityIds).toEqual(prior.recipes[0].capabilityIds);
+    expect(await npDigestAgentRecipeRegistryCanonical(next, next.recipes)).not.toBe(
+      await npDigestAgentRecipeRegistryCanonical(prior, prior.recipes),
+    );
+    expect(() =>
+      npRequireAgentRecipeRegistryCanonicalForInstalledRecipes(next, prior.recipes),
+    ).toThrow(NpAgentCanonicalIncompleteRegistryError);
+    expect(serializeAgentCanonicalJson(await npCreateAgentR6AssessmentRecipeRegistryV1())).toBe(
+      priorBytes,
     );
   });
   it("changes only trigger eligibility and preserves all shipped manual definition bytes", async () => {

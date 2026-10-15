@@ -45,6 +45,11 @@ import {
   type NpAgentModeratorAssessmentV1,
 } from "./moderator-assessment-contract.js";
 
+import {
+  npRequireAgentModeratorSegmentedAssessmentV2,
+  type NpAgentModeratorSegmentedAssessmentV2,
+} from "./moderator-segmented-assessment-contract.js";
+
 export const npAgentIncidentTimelineKindsV1 = [
   "observed",
   "correlated",
@@ -152,6 +157,7 @@ export interface NpAgentIncidentStudioDetailV1 {
     containmentFailure?: { outcome: "rolled_back"; reasonCode: "CONTAINMENT_VERIFICATION_FAILED" };
     notificationRecovery?: NpAgentIncidentNotificationRecoveryV1 | null;
     assessment?: NpAgentModeratorAssessmentV1;
+    segmentedAssessment?: NpAgentModeratorSegmentedAssessmentV2;
   }>;
   nextTimelineCursor: string | null;
   feedback: Array<{
@@ -184,6 +190,7 @@ export function npRequireAgentIncidentStudioDetailV1(
           k !== "notificationRecovery" &&
           k !== "severityChange" &&
           k !== "assessment" &&
+          k !== "segmentedAssessment" &&
           k !== "availableSeverities",
       ),
       state,
@@ -258,6 +265,7 @@ export function npRequireAgentIncidentStudioDetailV1(
       "notificationRecovery",
       "severityChange",
       "assessment",
+      "segmentedAssessment",
     ]);
     if (r.assignment != null && (r.kind !== "human_note" || r.decision !== null))
       failCanonicalBody("invalid-field", path, "Invalid assignment timeline binding");
@@ -292,8 +300,19 @@ export function npRequireAgentIncidentStudioDetailV1(
         : npRequireAgentIncidentSeverityChangeV1(r.severityChange);
     const assessment =
       r.assessment === undefined ? undefined : npRequireAgentModeratorAssessmentV1(r.assessment);
+    const segmentedAssessment =
+      r.segmentedAssessment === undefined
+        ? undefined
+        : npRequireAgentModeratorSegmentedAssessmentV2(r.segmentedAssessment);
+    if (assessment && segmentedAssessment)
+      failCanonicalBody(
+        "invalid-field",
+        path,
+        "Only one assessment profile may occupy a timeline entry",
+      );
+    const assessmentEntry = assessment ?? segmentedAssessment;
     if (
-      assessment &&
+      assessmentEntry &&
       (r.kind !== "agent_assessment" ||
         r.decision !== null ||
         r.assignment != null ||
@@ -301,7 +320,7 @@ export function npRequireAgentIncidentStudioDetailV1(
         severityChange ||
         r.approvalId !== null ||
         r.actionId !== null ||
-        assessment.incidentId !== incident.id)
+        assessmentEntry.incidentId !== incident.id)
     )
       failCanonicalBody("invalid-field", path, "Invalid assessment timeline binding");
     if (
@@ -314,6 +333,7 @@ export function npRequireAgentIncidentStudioDetailV1(
       failCanonicalBody("invalid-field", path, "Invalid severity timeline binding");
     return {
       ...(assessment ? { assessment } : {}),
+      ...(segmentedAssessment ? { segmentedAssessment } : {}),
       ...(severityChange ? { severityChange } : {}),
       ...(containmentFailure ? { containmentFailure } : {}),
       ...(notificationRecovery === undefined ? {} : { notificationRecovery }),

@@ -659,9 +659,13 @@ identified concrete source, selection, visibility, Operator review/gate and
 evaluation-tooling gaps. Its
 [authorized corrections](r6-goal-gap-audit.md#authorized-integrated-path-corrections)
 connect those paths, including versioned semantic/Publisher V3 offline evaluation,
-authorized Incident summaries and declared-block projection. Automatic quarantine
-code remains absent as well as unqualified for enablement. Large-Incident semantic
-assessment remains bounded and returns uncertainty for incomplete evidence.
+authorized Incident summaries and declared-block projection. The subsequent
+[explicit Moderator extensions](r6-moderator-automatic-segmented-flow.md) add a
+host-preauthorized deterministic automatic-quarantine path and a separately
+selected V2 segmented read-only assessment profile. Automatic quarantine remains
+unqualified for production enablement; no real deployment artifact is installed.
+Incomplete evidence or interrupted/budget-limited segment work never establishes
+a complete whole-Incident verdict.
 External email/Slack, Member account responses and automatic-quarantine
 enablement remain separate optional extensions or production gates. Fixed
 offline report fields do not grant milestone authority and remain

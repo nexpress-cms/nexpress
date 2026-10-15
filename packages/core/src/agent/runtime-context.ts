@@ -3,7 +3,10 @@ import {
   type NpAgentModeratorRecipeSourceV1,
 } from "./moderator-recipe-source.js";
 import { npRequireAgentRecipeSettingsV1 } from "../agent-contract/runtime-contract.js";
-import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import {
+  npIsAgentModeratorAssessmentProfileV1,
+  npIsAgentModeratorAssessmentRecipeV2,
+} from "../agent-contract/moderator-assessment-recipe-contract.js";
 import {
   npIsAgentModeratorAssessmentSourceV1,
   type NpAgentModeratorAssessmentSourceV1,
@@ -465,7 +468,7 @@ async function build(
   );
   if (
     !recipe?.instruction ||
-    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentRecipeV1(recipe)) ||
+    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe)) ||
     !connection ||
     !snapshot ||
     !pricing ||
@@ -677,7 +680,7 @@ async function readSources(
   const recipe = context.evidence.registry.recipes.find(
     (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
   );
-  if (npIsAgentModeratorAssessmentRecipeV1(recipe)) {
+  if (npIsAgentModeratorAssessmentProfileV1(recipe)) {
     if (
       !moderatorAssessmentEvidence ||
       !npIsAgentModeratorAssessmentSourceV1(moderatorAssessmentEvidence)
@@ -859,7 +862,7 @@ async function readSources(
       text: redactText(text),
     });
   }
-  if (sequence > 1) {
+  if (sequence > 1 && !npIsAgentModeratorAssessmentRecipeV2(recipe)) {
     const calls = await context.db
       .select()
       .from(npAgentProviderCalls)

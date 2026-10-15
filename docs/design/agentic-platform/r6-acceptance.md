@@ -32,8 +32,11 @@ Operator gate/review/check-identity and new-profile evaluation gaps. The
 address those counterexamples and additional supplied-source/projection/UI
 connections. The earlier local passes remain valid only for their declared
 assertions; the new bundle has its own verification below. Automatic quarantine
-code, complete segmented large-Incident semantic assessment and actual model
-quality remain outside the completed human-approved/read/proposal scope.
+code and complete segmented large-Incident semantic assessment were outside
+that preceding bundle. The subsequently authorized
+[explicit Moderator extensions](r6-moderator-automatic-segmented-flow.md) own their
+new implementation and separate verification. Actual model quality and automatic
+production enablement remain unestablished.
 
 The reference app and fresh scaffold remain disabled by default. Existing
 installations are not migrated to a new profile or activated automatically.
@@ -219,13 +222,14 @@ parsing and case-version review isolation. Actual DB coverage includes a readabl
 151-target Incident and multi-document nested/rich-text Publisher proposal
 create–validate–preview. Unknown/stale/denied evidence remains unavailable.
 
-These corrections do not implement automatic quarantine or segmented complete
-large-Incident semantic classification. The latter remains bounded to ten targets
-and forces uncertainty on truncation. Automatic quarantine code and required
-precision/sample/shadow evidence are still absent; approved quarantine/restore
-remains available. Actual model/provider Runtime validation is excluded by the
-user. Earlier model results are not transferred to these new profiles, and
-`fullR6`/`modelUsefulness` remain `not-established`.
+Those integrated corrections did not implement automatic quarantine or segmented
+complete large-Incident semantic classification. The subsequent
+[explicit Moderator extension bundle](r6-moderator-automatic-segmented-flow.md)
+adds those code paths with separate verification and opt-in installation. Required
+production precision/sample/shadow qualification remains absent; existing approved
+quarantine/restore remains available. Actual model/provider Runtime validation is
+excluded by the user. Earlier model results are not transferred to these new
+profiles, and `fullR6`/`modelUsefulness` remain `not-established`.
 
 | Gate                       | Integrated correction result                                                                                                                                                                                                                                                                                                                              |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -125,3 +125,5 @@ export * from "./operator-review-contract.js";
 export * from "./profile-evaluation-review-contract.js";
 
 export * from "./publisher-selection-evaluation-contract.js";
+export * from "./automatic-quarantine-contract.js";
+export * from "./moderator-segmented-assessment-contract.js";

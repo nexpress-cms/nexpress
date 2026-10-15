@@ -638,6 +638,37 @@ function IncidentDetail({ id }: { id: string }) {
                         </Link>
                       </div>
                     ) : null}
+                    {entry.segmentedAssessment ? (
+                      <div className="space-y-2 break-words">
+                        <p className="font-medium">
+                          AI assessment across batches: {entry.segmentedAssessment.label}
+                        </p>
+                        <p className="text-sm">
+                          Coverage: {entry.segmentedAssessment.segmentProviderCallIds.length} of{" "}
+                          {entry.segmentedAssessment.coverage.segmentCount} batches;{" "}
+                          {entry.segmentedAssessment.coverage.targetCount} content targets.{" "}
+                          {entry.segmentedAssessment.coverage.complete
+                            ? "All evidence in this recorded snapshot was covered."
+                            : "Evidence coverage is incomplete; an overall content verdict is not established."}
+                        </p>
+                        <p className="whitespace-pre-wrap">{entry.segmentedAssessment.summary}</p>
+                        <p className="text-sm">
+                          Model score: {entry.segmentedAssessment.confidenceBasisPoints / 100} /
+                          100. This is not a calibrated probability or authorization to act.
+                        </p>
+                        <p className="text-sm">
+                          {entry.segmentedAssessment.provenance.provider} /{" "}
+                          {entry.segmentedAssessment.provenance.model} · Source observed{" "}
+                          {entry.segmentedAssessment.observedAt}
+                        </p>
+                        <Link
+                          className="text-primary underline"
+                          href={`/admin/agents/runs/${entry.segmentedAssessment.provenance.runId}`}
+                        >
+                          Review assessment batches in Run
+                        </Link>
+                      </div>
+                    ) : null}
                     {entry.containmentFailure ? (
                       <div className="space-y-2">
                         <p>

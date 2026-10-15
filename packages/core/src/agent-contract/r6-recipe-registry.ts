@@ -1,6 +1,9 @@
 import { npRequireAgentRecipeRegistryCanonical } from "./canonical-recipe-registry.js";
 import { npCreateAgentModeratorRecipeDefinitionV1 } from "./moderator-recipe-contract.js";
-import { npCreateAgentModeratorAssessmentRecipeDefinitionV1 } from "./moderator-assessment-recipe-contract.js";
+import {
+  npCreateAgentModeratorAssessmentRecipeDefinitionV1,
+  npCreateAgentModeratorAssessmentRecipeDefinitionV2,
+} from "./moderator-assessment-recipe-contract.js";
 import { npCreateAgentOperatorRecipeDefinitionV1 } from "./operator-recipe-contract.js";
 import {
   npCreateAgentPublisherRecipeDefinitionV1,
@@ -66,6 +69,16 @@ export async function npCreateAgentR6UnattendedRecipeRegistryV2(): Promise<NpAge
   publisher.triggerKinds = ["manual", "schedule"];
   profile.recipes = profile.recipes.map((recipe) =>
     recipe.id === publisher.id ? publisher : recipe,
+  );
+  return npRequireAgentRecipeRegistryCanonical(profile);
+}
+
+/** Explicit segmented read-only profile; never upgrades or enables an installed Agent. */
+export async function npCreateAgentR6AssessmentRecipeRegistryV2(): Promise<NpAgentRecipeRegistryCanonicalV1> {
+  const profile = await npCreateAgentR6UnattendedRecipeRegistryV3();
+  const moderator = await npCreateAgentModeratorAssessmentRecipeDefinitionV2();
+  profile.recipes = profile.recipes.map((recipe) =>
+    recipe.id === moderator.id ? moderator : recipe,
   );
   return npRequireAgentRecipeRegistryCanonical(profile);
 }

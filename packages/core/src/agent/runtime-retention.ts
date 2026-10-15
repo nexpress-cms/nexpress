@@ -77,6 +77,14 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
     and parent.state in ('succeeded','failed','cancelled','policy_blocked','budget_blocked')
     and parent.finished_at<=${detailBefore} and parent.lease_until is null
     and parent.runtime_retry_at is null)`;
+  // V2 diagnostics contain only bounded immutable source metadata, never excerpts.
+  // They are the retained proof for every segment in an aggregate and for active
+  // continuation. Their owning call/Run reference lifecycle releases them together.
+  const retainedSegmentProof = sql`(t.instruction_template_id='moderator.semantic-assessment'
+    and t.instruction_template_version=2
+    and t.request_redacted->>'schemaVersion'='np.agent-moderator-assessment-diagnostic.v2')`;
+  const expiringDiagnostic = sql`(t.response_redacted is not null
+    or (t.request_redacted is not null and not coalesce(${retainedSegmentProof},false)))`;
   const sources: CandidateSource[] = [
     {
       category: "events",
@@ -86,7 +94,7 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
     {
       category: "diagnostics",
       table: "np_agent_provider_calls",
-      eligible: sql`(t.request_redacted is not null or t.response_redacted is not null)
+      eligible: sql`${expiringDiagnostic}
         and t.diagnostic_expires_at is not null
         and (t.diagnostic_expires_at<=${now} or t.created_at<=${diagnosticBefore})`,
     },
@@ -334,7 +342,9 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
         await beforeStatement();
         const result = await db.execute(
           source.category === "diagnostics"
-            ? sql`update np_agent_provider_calls t set request_redacted=null, response_redacted=null
+            ? sql`update np_agent_provider_calls t
+              set request_redacted=case when coalesce(${retainedSegmentProof},false) then t.request_redacted else null end,
+                response_redacted=null
               where t.site_id=${siteId} and t.id in (${selected}) and ${source.eligible} returning t.id`
             : sql`delete from ${sql.identifier(source.table)} t where t.site_id=${siteId}
               and t.id in (${selected}) and ${source.eligible} and ${unreferenced(source.table, hasJobs)} returning t.id`,

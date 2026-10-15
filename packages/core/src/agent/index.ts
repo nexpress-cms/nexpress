@@ -160,3 +160,9 @@ export * from "./incident-member-report-evidence-service.js";
 export { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
 
 export * from "./publisher-selection-evaluation-fixtures.js";
+export {
+  createAgentAutomaticQuarantineAuthorityV1,
+  createAgentAutomaticQuarantineExpiryProcessorV1,
+  npIsAgentAutomaticQuarantineAuthorityV1,
+  type NpAgentAutomaticQuarantineAuthorityV1,
+} from "./automatic-quarantine-service.js";

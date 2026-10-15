@@ -24,6 +24,9 @@ const {
   createAgentModeratorAssessmentSourceV1,
   createAgentIncidentAssessmentServiceV1,
   npCreateAgentModeratorAssessmentFixtureCorpusV1,
+  createAgentAutomaticQuarantineAuthorityV1,
+  createAgentAutomaticQuarantineExpiryProcessorV1,
+  npIsAgentAutomaticQuarantineAuthorityV1,
 } = await import(pathToFileURL(agentsEntry).href);
 const {
   npAgentRuntimeStudioReadRoutesV1,
@@ -40,6 +43,7 @@ const {
   npRequireAgentPolicySimulationReportV1,
   npCreateAgentR6UnattendedRecipeRegistryV3,
   npCreateAgentR6AssessmentRecipeRegistryV1,
+  npCreateAgentR6AssessmentRecipeRegistryV2,
   npRequireAgentIncidentRetentionPolicyV1,
 } = await import(pathToFileURL(requireFromScaffold.resolve("@nexpress/core/agent-contract")).href);
 
@@ -113,6 +117,7 @@ if (
   fail("packed R6 source installation performed work or is unavailable");
 const sourceProfile = await npCreateAgentR6UnattendedRecipeRegistryV3();
 const assessmentProfile = await npCreateAgentR6AssessmentRecipeRegistryV1();
+const segmentedProfile = await npCreateAgentR6AssessmentRecipeRegistryV2();
 if (
   sourceProfile.recipes.find((recipe) => recipe.id === "publisher.stale-content")?.instruction
     ?.templateVersion !== 3 ||
@@ -121,6 +126,11 @@ if (
     ?.triggerKinds.join(",") !== "event,manual,schedule" ||
   assessmentProfile.recipes.find((recipe) => recipe.id === "moderator.repeated-link-spam")?.task !==
     "moderation-classification" ||
+  segmentedProfile.recipes.find((recipe) => recipe.id === "moderator.repeated-link-spam")
+    ?.instruction?.templateVersion !== 2 ||
+  typeof createAgentAutomaticQuarantineAuthorityV1 !== "function" ||
+  typeof createAgentAutomaticQuarantineExpiryProcessorV1 !== "function" ||
+  npIsAgentAutomaticQuarantineAuthorityV1({}) ||
   npCreateAgentModeratorAssessmentFixtureCorpusV1().cases.length !== 8 ||
   npRequireAgentIncidentRetentionPolicyV1({ signalDays: 90, historyDays: 365 }).historyDays !== 365
 )

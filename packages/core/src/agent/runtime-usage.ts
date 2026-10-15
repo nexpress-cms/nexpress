@@ -1,9 +1,10 @@
+import { npRequireAgentModeratorAssessmentEvidenceV2 } from "../agent-contract/moderator-segmented-assessment-contract.js";
 import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import { npRequireAgentRuntimeProviderFailureV1 } from "./runtime-provider-evidence.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npRequireAgentPublisherSelectionDiagnosticV2 } from "./publisher-content.js";
 import { npRequireAgentModeratorAssessmentEvidenceV1 } from "../agent-contract/moderator-assessment-contract.js";
-import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import { npRequireAgentModeratorAssessmentBudgetV1 } from "./moderator-assessment-budget.js";
 import { npBuildAgentRuntimeClassificationManifestV1 } from "./runtime-context.js";
 import { randomUUID } from "node:crypto";
@@ -218,7 +219,7 @@ async function validateCurrentRequest(
   )
     fail("RUNTIME_PROVIDER_UNAVAILABLE");
   if (
-    (request.task !== "interactive-capability" && !npIsAgentModeratorAssessmentRecipeV1(recipe)) ||
+    (request.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe)) ||
     recipe.task !== request.task
   )
     fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
@@ -626,7 +627,7 @@ export function createAgentRuntimeUsageV1(
             fail("RUNTIME_DISPATCH_UNAVAILABLE");
           await npRequireAgentRuntimeUsageKnownV1({ db, siteId: input.siteId });
           if (
-            npIsAgentModeratorAssessmentRecipeV1(
+            npIsAgentModeratorAssessmentProfileV1(
               context.evidence.registry.recipes.find(
                 (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
               ),
@@ -699,7 +700,7 @@ export function createAgentRuntimeUsageV1(
             fail("RUNTIME_RETRY_UNAVAILABLE");
         }
         if (
-          npIsAgentModeratorAssessmentRecipeV1(
+          npIsAgentModeratorAssessmentProfileV1(
             context.evidence.registry.recipes.find(
               (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
             ),
@@ -770,7 +771,7 @@ export function createAgentRuntimeUsageV1(
           }
         }
         if (
-          npIsAgentModeratorAssessmentRecipeV1(
+          npIsAgentModeratorAssessmentProfileV1(
             context.evidence.registry.recipes.find(
               (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
             ),
@@ -779,12 +780,16 @@ export function createAgentRuntimeUsageV1(
           try {
             const entry = request.trustedContext.find((item) => item.id === "moderator-assessment");
             if (!entry) fail("RUNTIME_CONTEXT_INVALID");
-            const assessmentEvidence = npRequireAgentModeratorAssessmentEvidenceV1(
-              JSON.parse(entry.text),
-            );
+            const assessmentEvidence =
+              request.instruction.templateVersion === 2
+                ? npRequireAgentModeratorAssessmentEvidenceV2(JSON.parse(entry.text))
+                : npRequireAgentModeratorAssessmentEvidenceV1(JSON.parse(entry.text));
             selectionDiagnostic = JSON.parse(
               serializeAgentCanonicalJson({
-                schemaVersion: "np.agent-moderator-assessment-diagnostic.v1",
+                schemaVersion:
+                  request.instruction.templateVersion === 2
+                    ? "np.agent-moderator-assessment-diagnostic.v2"
+                    : "np.agent-moderator-assessment-diagnostic.v1",
                 requestDigest,
                 assessmentEvidence,
               }),

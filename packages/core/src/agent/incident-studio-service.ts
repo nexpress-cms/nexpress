@@ -1,7 +1,11 @@
 import type { NpAgentIncidentMemberReportEvidenceServiceV1 } from "./incident-member-report-evidence-service.js";
 import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
-import { npRequireAgentIncidentAssessmentEntryV1 } from "./incident-assessment-service.js";
+import {
+  npRequireAgentIncidentAssessmentEntryV1,
+  npRequireAgentIncidentSegmentedAssessmentEntryV2,
+} from "./incident-assessment-service.js";
+import type { NpAgentModeratorSegmentedAssessmentV2 } from "../agent-contract/moderator-segmented-assessment-contract.js";
 import type { NpAgentModeratorAssessmentV1 } from "../agent-contract/moderator-assessment-contract.js";
 import {
   type NpAgentIncidentSeverityChangeV1,
@@ -271,7 +275,9 @@ export function createAgentIncidentStudioServiceV1(
             if (!entry) summary.assessmentAvailable = false;
             else {
               try {
-                await npRequireAgentIncidentAssessmentEntryV1(db, entry);
+                if (entry.details.schemaVersion === "np.agent-moderator-segmented-assessment.v2")
+                  await npRequireAgentIncidentSegmentedAssessmentEntryV2(db, entry);
+                else await npRequireAgentIncidentAssessmentEntryV1(db, entry);
                 summary.assessmentAvailable = true;
               } catch {
                 /* Invalid/legacy assessment evidence stays unknown. */
@@ -451,9 +457,12 @@ export function createAgentIncidentStudioServiceV1(
         }
       }
       let assessment: NpAgentModeratorAssessmentV1 | undefined;
+      let segmentedAssessment: NpAgentModeratorSegmentedAssessmentV2 | undefined;
       if (row.kind === "agent_assessment") {
         try {
-          assessment = await npRequireAgentIncidentAssessmentEntryV1(db, row);
+          if (row.details.schemaVersion === "np.agent-moderator-segmented-assessment.v2")
+            segmentedAssessment = await npRequireAgentIncidentSegmentedAssessmentEntryV2(db, row);
+          else assessment = await npRequireAgentIncidentAssessmentEntryV1(db, row);
         } catch {
           // Raw model prose and unverified legacy entries never become a trusted projection.
           continue;
@@ -461,6 +470,7 @@ export function createAgentIncidentStudioServiceV1(
       }
       timeline.push({
         ...(assessment ? { assessment } : {}),
+        ...(segmentedAssessment ? { segmentedAssessment } : {}),
         ...(containmentFailure ? { containmentFailure } : {}),
         ...(containmentFailure && options.notifications?.recoveryState
           ? {

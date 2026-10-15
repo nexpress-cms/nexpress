@@ -1,5 +1,5 @@
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
-import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import {
   canonicalBodyRecord,
   canonicalBodySiteId,
@@ -134,7 +134,7 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
     return evidence.registry.recipes.filter(
       (recipe) =>
         (recipe.task === "interactive-capability" ||
-          npIsAgentModeratorAssessmentRecipeV1(recipe)) &&
+          npIsAgentModeratorAssessmentProfileV1(recipe)) &&
         recipe.triggerKinds.includes(trigger.kind as "manual" | "event" | "schedule") &&
         evidence.definition.settings.some((branch) => branch.recipeId === recipe.id),
     );

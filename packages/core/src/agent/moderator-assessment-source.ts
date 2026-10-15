@@ -45,15 +45,35 @@ export {
 } from "./moderator-assessment-context.js";
 import { npReadAgentModeratorAssessmentEligibilityV1 } from "./moderator-assessment-budget.js";
 
+import { npIsAgentModeratorAssessmentRecipeV2 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import {
+  npRequireAgentModeratorAssessmentEvidenceV2,
+  type NpAgentModeratorAssessmentEvidenceV2,
+} from "../agent-contract/moderator-segmented-assessment-contract.js";
+import { npReadAgentModeratorSegmentedSourcesV2 } from "./moderator-segmented-assessment-source.js";
+import { npRequireAgentModeratorSegmentedSourceProofV2 } from "./moderator-segmented-assessment-proof.js";
 const issued = new WeakSet<object>();
+export type NpAgentModeratorAssessmentSourceEvidenceV1 =
+  NpAgentModeratorAssessmentEvidenceV1 | NpAgentModeratorAssessmentEvidenceV2;
+export function npRequireAgentModeratorAssessmentSourceEvidenceV1(
+  value: unknown,
+): NpAgentModeratorAssessmentSourceEvidenceV1 {
+  return value &&
+    typeof value === "object" &&
+    "schemaVersion" in value &&
+    value.schemaVersion === "np.agent-moderator-assessment-evidence.v2"
+    ? npRequireAgentModeratorAssessmentEvidenceV2(value)
+    : npRequireAgentModeratorAssessmentEvidenceV1(value);
+}
 export interface NpAgentModeratorAssessmentSourceResultV1 {
-  metadata: NpAgentModeratorAssessmentEvidenceV1;
+  metadata: NpAgentModeratorAssessmentSourceEvidenceV1;
   excerpts: { id: string; digest: string; observedAt: string; text: string }[];
 }
 export interface NpAgentModeratorAssessmentSourceV1 {
   read(
     context: NpAgentRuntimeRunContextV1,
     observedAt?: string,
+    segmentIndex?: number,
   ): Promise<NpAgentModeratorAssessmentSourceResultV1>;
 }
 export function npIsAgentModeratorAssessmentSourceV1(
@@ -62,9 +82,9 @@ export function npIsAgentModeratorAssessmentSourceV1(
   return typeof value === "object" && value !== null && issued.has(value);
 }
 export function npDigestAgentModeratorAssessmentSourcesV1(
-  value: NpAgentModeratorAssessmentEvidenceV1,
+  value: NpAgentModeratorAssessmentSourceEvidenceV1,
 ): string {
-  return digest("source", npRequireAgentModeratorAssessmentEvidenceV1(value));
+  return digest("source", npRequireAgentModeratorAssessmentSourceEvidenceV1(value));
 }
 export function npDigestAgentModeratorAssessmentExcerptV1(input: {
   subject: NpAgentModeratorAssessmentEvidenceV1["sources"][number]["subject"];
@@ -76,8 +96,10 @@ export function npDigestAgentModeratorAssessmentExcerptV1(input: {
 /** Retained manifest binds safe metadata and excerpt hashes after diagnostic prose is pruned. */
 export function npRequireAgentModeratorAssessmentSourceProofV1(
   call: { classificationManifest: NpAgentJsonObject; classificationManifestDigest: string },
-  value: NpAgentModeratorAssessmentEvidenceV1,
-): NpAgentModeratorAssessmentEvidenceV1 {
+  value: NpAgentModeratorAssessmentSourceEvidenceV1,
+): NpAgentModeratorAssessmentSourceEvidenceV1 {
+  if (value.schemaVersion === "np.agent-moderator-assessment-evidence.v2")
+    return npRequireAgentModeratorSegmentedSourceProofV2(call, value);
   const metadata = npRequireAgentModeratorAssessmentEvidenceV1(value);
   const hash = (purpose: string, entry: unknown) =>
     `cj1:sha256:${createHash("sha256").update(`${purpose}\0`).update(serializeAgentCanonicalJson(entry)).digest("base64url")}`;
@@ -144,9 +166,15 @@ export function createAgentModeratorAssessmentSourceV1(options: {
   if (!npIsAgentRuntimeDocumentEvidenceReaderV1(options.documentEvidence))
     throw new Error("Framework document evidence owner is required.");
   const service: NpAgentModeratorAssessmentSourceV1 = {
-    read: (context, observedAt = context.now.toISOString()) =>
+    read: (context, observedAt = context.now.toISOString(), segmentIndex) =>
       withCurrentSite(context.siteId, async () => {
         npAssertAgentModeratorAssessmentContextV1(context);
+        const segmented = npIsAgentModeratorAssessmentRecipeV2(
+          context.evidence.registry.recipes.find(
+            (entry) =>
+              entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+          ),
+        );
         const user = await npResolveAgentModeratorStaffUserV1(
           context.db,
           context.siteId,
@@ -187,14 +215,17 @@ export function createAgentModeratorAssessmentSourceV1(options: {
             call.recipeFingerprint !== context.run.recipeFingerprint ||
             call.instructionDigest !== context.run.instructionDigest ||
             !diagnostic ||
-            diagnostic.schemaVersion !== "np.agent-moderator-assessment-diagnostic.v1" ||
+            diagnostic.schemaVersion !==
+              (segmented
+                ? "np.agent-moderator-assessment-diagnostic.v2"
+                : "np.agent-moderator-assessment-diagnostic.v1") ||
             diagnostic.requestDigest !== call.requestDigest ||
             Object.keys(diagnostic).length !== 3
           )
             unavailable();
           const retained = npRequireAgentModeratorAssessmentSourceProofV1(
             call,
-            npRequireAgentModeratorAssessmentEvidenceV1(diagnostic.assessmentEvidence),
+            npRequireAgentModeratorAssessmentSourceEvidenceV1(diagnostic.assessmentEvidence),
           );
           if (
             pinned !== undefined &&
@@ -205,7 +236,13 @@ export function createAgentModeratorAssessmentSourceV1(options: {
         }
         let incident: Awaited<ReturnType<typeof options.incidents.get>>["incident"] | undefined;
         if (pinned !== undefined) {
-          if (pinned === null) return { metadata, excerpts };
+          if (pinned === null) {
+            if (!segmented) return { metadata, excerpts };
+            const retained = npRequireAgentModeratorAssessmentSourceEvidenceV1(
+              priorCalls[0].requestRedacted!.assessmentEvidence,
+            );
+            return { metadata: retained, excerpts };
+          }
           incident = (await options.incidents.get({ incidentId: pinned.id }, readContext)).incident;
           if (
             incident.versionNumber !== pinned.versionNumber ||
@@ -294,13 +331,41 @@ export function createAgentModeratorAssessmentSourceV1(options: {
               "Moderator analysis budget is exhausted.",
             );
         }
-        if (!incident) return { metadata, excerpts };
+        if (!incident) {
+          if (!segmented) return { metadata, excerpts };
+          return {
+            metadata: npRequireAgentModeratorAssessmentEvidenceV2({
+              ...metadata,
+              schemaVersion: "np.agent-moderator-assessment-evidence.v2",
+              manifest: {
+                digest: digest("empty-segment-manifest", null),
+                signalCount: 0,
+                eventCount: 0,
+                targetCount: 0,
+                segmentCount: 1,
+                incomplete: true,
+                segmentDigests: [digest("empty-segment", null)],
+              },
+              segmentIndex: 0,
+            }),
+            excerpts,
+          };
+        }
         if (
           incident.siteId !== context.siteId ||
           !["open", "investigating"].includes(incident.status) ||
           !["spam", "abuse"].includes(incident.category)
         )
           unavailable();
+        if (segmented)
+          return npReadAgentModeratorSegmentedSourcesV2(
+            options,
+            context,
+            incident,
+            priorCalls,
+            observedAt,
+            segmentIndex,
+          );
         metadata.incident = {
           id: incident.id,
           versionNumber: incident.versionNumber,

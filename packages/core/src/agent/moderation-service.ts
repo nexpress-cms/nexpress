@@ -1,4 +1,8 @@
 import {
+  npIsAgentAutomaticQuarantineAuthorityV1,
+  type NpAgentAutomaticQuarantineAuthorityV1,
+} from "./automatic-quarantine-service.js";
+import {
   npIsAgentModeratorRecipeSourceV1,
   type NpAgentModeratorRecipeSourceV1,
 } from "./moderator-recipe-source.js";
@@ -21,7 +25,7 @@ import {
   type NpAgentConcreteBudgetV1,
 } from "../agent-contract/runtime-budget.js";
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npUsers, npSiteMemberships, npSessions } from "../db/schema/system.js";
 import { npAuditEvents } from "../db/schema/community.js";
@@ -65,6 +69,7 @@ import type { createAgentIncidentWriteServiceV1 } from "./incident-write-service
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
   npResolveAgentPolicyV1,
+  npIsAgentPolicyQuietTimeV1,
   npAgentAutonomyAllowsV1,
   type NpAgentPolicyResolutionInputV1,
 } from "../agent-contract/runtime-policy.js";
@@ -152,9 +157,10 @@ export interface NpAgentModerationServiceOptionsV1 {
     Partial<
       Pick<ReturnType<typeof createAgentIncidentWriteServiceV1>, "appendFailedContainmentEvent">
     >;
+  automaticQuarantine?: NpAgentAutomaticQuarantineAuthorityV1;
   now?: () => Date;
 }
-/** Installed only by the host. This first owner always requires fresh human approval. */
+/** Installed only by the host. Public capabilities always require fresh human approval. */
 export function createAgentModerationServiceV1(options: NpAgentModerationServiceOptionsV1) {
   const now = options.now ?? (() => new Date());
   const prepare = (db: Db, siteId: string) =>
@@ -219,6 +225,21 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       (await npDigestAgentActionCanonical(canonical)) !== row.inputHash
     )
       throw conflict();
+    // An approval-free Action exists only through the explicit host owner. Its
+    // evidence is committed by the original canonical invocation fingerprint.
+    if (row.approvalId === null) {
+      const original = await invocation(db, siteId, row.invocationId);
+      const proof = original.requestBody.input.automaticAuthorization;
+      if (
+        original.requestHash !== row.invocationFingerprint ||
+        !proof ||
+        !same(proof, row.inputRedacted.automaticAuthorization) ||
+        original.requestBody.input.deploymentDigest === undefined ||
+        original.operationId !== row.capabilityId ||
+        original.principalId === null
+      )
+        throw conflict();
+    }
     return row;
   }
   async function invocation(db: Db, siteId: string, id: string | null) {
@@ -1144,239 +1165,19 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         statementHash: approval.statementHash,
         consumedAt: time,
       });
-      let containmentId: string,
-        resultVersion: string,
-        originalStateDigest: string | null = null,
-        state: "succeeded" | "compensated";
-      if (capabilityId === "moderation.quarantine") {
-        const p = npRequireAgentQuarantineProposalV1(action.inputCanonical);
-        containmentId = randomUUID();
-        let changed: Awaited<ReturnType<typeof npQuarantineCommunityContentV1>>;
-        try {
-          changed = await withDeferredPostCommit(() =>
-            db.transaction(async (tx) => {
-              const result = await npQuarantineCommunityContentV1(tx as unknown as NpTransaction, {
-                siteId,
-                target: target.target,
-                user: viewer,
-                expectedVersionDigest: p.expectedVersionDigest,
-                reasonCode: p.reasonCode,
-              });
-              const verified = await npInspectCommunityContentContainmentV1(
-                tx as unknown as NpTransaction,
-                {
-                  siteId,
-                  target: target.target,
-                  user: viewer,
-                },
-              );
-              if (verified.versionDigest !== result.installedVersionDigest)
-                throw new NpCommunityContainmentVerificationError();
-              return result;
-            }),
-          );
-        } catch (error) {
-          // Only a typed post-write mismatch, after the savepoint has rolled back,
-          // establishes failure. Permission, CAS, hook/DB and unknown errors still abort.
-          if (
-            !(error instanceof NpCommunityContainmentVerificationError) ||
-            (target.incidentId && !options.incidents?.appendFailedContainmentEvent)
-          )
-            throw error;
-          const errorCode = "CONTAINMENT_VERIFICATION_FAILED";
-          const evidence = [{ outcome: "rolled_back", reasonCode: errorCode }];
-          const resultDigest = digest("np.agent-moderation-result.v1", {
-            actionId,
-            state: "failed",
-            evidence,
-          });
-          const failedOutput = {
-            schemaVersion: "np.agent-direct-action.v1",
-            actionId,
-            state: "failed",
-            containmentId: null,
-            resultDigest,
-            verificationRefs: [],
-          };
-          const validated = npRequireAgentModerationCapabilityOutputV1(capabilityId, failedOutput);
-          const outputHash = digest("np.agent-capability-output.v1", validated);
-          await db
-            .update(npAgentActions)
-            .set({
-              state: "failed",
-              errorCode,
-              executionInvocationId: invocationId,
-              executionInvocationFingerprint: requestHash,
-              verifierId: "containment.verify",
-              verificationState: "failed",
-              verificationResultDigest: resultDigest,
-              verificationEvidence: evidence,
-              verifiedAt: time,
-              startedAt: time,
-              finishedAt: time,
-              outputRedacted: json(validated),
-              outputHash,
-            })
-            .where(eq(npAgentActions.id, actionId));
-          if (runId && !runtime)
-            await db
-              .update(npAgentRuns)
-              .set({
-                state: "failed",
-                errorCode,
-                errorMessage:
-                  "Content quarantine verification failed; the attempt was rolled back.",
-                result: json(validated),
-                finishedAt: time,
-              })
-              .where(eq(npAgentRuns.id, runId));
-          await db
-            .update(npAuditEvents)
-            .set({
-              payload: sql`${npAuditEvents.payload} || ${JSON.stringify({
-                actionId,
-                invocationId,
-                requestHash,
-                outcome: "rolled_back",
-                errorCode,
-              })}::jsonb`,
-            })
-            .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.id, auditId)));
-          if (target.incidentId)
-            await options.incidents!.appendFailedContainmentEvent!({
-              db,
-              siteId,
-              incidentId: target.incidentId,
-              actionId,
-              auditEventId: auditId,
-            });
-          return { actionId, runId, output: json(validated), outputHash };
-        }
-        resultVersion = changed.installedVersionDigest;
-        originalStateDigest = digest("np.agent-moderation-original.v1", changed.originalState);
-        state = "succeeded";
-        await db.insert(npAgentContainments).values({
-          id: containmentId,
-          siteId,
-          kind: "content_quarantine",
-          targetKind: target.target.kind,
-          targetRef: json(target.target),
-          targetVersionDigest: resultVersion,
-          sourceActionId: actionId,
-          incidentId: target.incidentId,
-          state: "active",
-          originalState: json(changed.originalState),
-          activatedAt: time,
-          createdAt: time,
-          updatedAt: time,
-        });
-      } else {
-        const containment = target.containment;
-        if (!containment) throw conflict();
-        containmentId = containment.id;
-        const changed = await npRestoreCommunityContentV1(db as unknown as NpTransaction, {
-          siteId,
-          target: target.target,
-          user: viewer,
-          expectedVersionDigest: target.expectedVersionDigest,
-          originalState: containment.originalState as unknown as NpCommunityContentOriginalStateV1,
-        });
-        resultVersion = changed.restoredVersionDigest;
-        state = "compensated";
-        await db
-          .update(npAgentContainments)
-          .set({
-            state: "restored",
-            restoreActionId: actionId,
-            restoredAt: time,
-            updatedAt: time,
-          })
-          .where(eq(npAgentContainments.id, containmentId));
-        const compensationEvidence = [
-          {
-            containmentId,
-            restoredVersionDigest: resultVersion,
-            restoreActionId: actionId,
-          },
-        ];
-        await db
-          .update(npAgentActions)
-          .set({
-            state: "compensated",
-            compensatedAt: time,
-            compensationEvidence,
-            compensationResultDigest: digest(
-              "np.agent-moderation-compensation.v1",
-              compensationEvidence,
-            ),
-          })
-          .where(eq(npAgentActions.id, containment.sourceActionId));
-      }
-      // Quarantine verification already belongs to the rollback-capable savepoint.
-      if (capabilityId === "moderation.restore") {
-        const verified = await npInspectCommunityContentContainmentV1(
-          db as unknown as NpTransaction,
-          { siteId, target: target.target, user: viewer },
-        );
-        if (verified.versionDigest !== resultVersion) throw conflict();
-      }
-      const evidence = [{ containmentId, targetVersionDigest: resultVersion, originalStateDigest }];
-      const resultDigest = digest("np.agent-moderation-result.v1", {
-        actionId,
-        state,
-        evidence,
+      return performEffect({
+        db,
+        siteId,
+        time,
+        viewer,
+        action,
+        target,
+        capabilityId,
+        invocationId,
+        requestHash,
+        auditId,
+        runtime,
       });
-      output = {
-        schemaVersion: "np.agent-direct-action.v1",
-        actionId,
-        state,
-        containmentId,
-        resultDigest,
-        verificationRefs: [`containment:${containmentId}`],
-      };
-      await db
-        .update(npAgentActions)
-        .set({
-          state: capabilityId === "moderation.restore" ? "compensated" : "succeeded",
-          executionInvocationId: invocationId,
-          executionInvocationFingerprint: requestHash,
-          containmentId,
-          effectDigest: resultDigest,
-          targetVersionDigest: resultVersion,
-          verifierId:
-            capabilityId === "moderation.quarantine"
-              ? "containment.verify"
-              : "containment.restore.verify",
-          verificationState: "passed",
-          verificationResultDigest: resultDigest,
-          verificationEvidence: evidence,
-          verifiedAt: time,
-          startedAt: time,
-          finishedAt: time,
-          ...(capabilityId === "moderation.quarantine"
-            ? { undoRef: { containmentId }, compensatorId: "containment.compensate" }
-            : {
-                compensatedAt: time,
-                compensationResultDigest: resultDigest,
-                compensationEvidence: evidence,
-              }),
-        })
-        .where(eq(npAgentActions.id, actionId));
-      if (runId && !runtime)
-        await db
-          .update(npAgentRuns)
-          .set({ state: "succeeded", result: json(output), finishedAt: time })
-          .where(eq(npAgentRuns.id, runId));
-      if (target.incidentId)
-        await options.incidents!.appendContainmentEvent({
-          db,
-          siteId,
-          incidentId: target.incidentId,
-          actionId,
-          containmentId,
-          phase: capabilityId === "moderation.quarantine" ? "quarantined" : "restored",
-          auditEventId: auditId,
-        });
     }
     const validated = principalId
       ? npRequireAgentModerationCapabilityOutputV1(capabilityId, output)
@@ -1387,6 +1188,893 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       .set({ outputRedacted: json(validated), outputHash })
       .where(eq(npAgentActions.id, actionId));
     return { actionId, runId, output: json(validated), outputHash };
+  }
+  async function performEffect(input: {
+    db: Db;
+    siteId: string;
+    time: Date;
+    viewer: NpAuthUser;
+    action: Action;
+    target: Awaited<ReturnType<typeof resolveTarget>>;
+    capabilityId: NpAgentModerationCapabilityIdV1;
+    invocationId: string;
+    requestHash: string;
+    auditId: string;
+    runtime?: NpAgentRuntimeRunContextV1;
+    automaticExpiresAt?: Date;
+  }) {
+    const {
+      db,
+      siteId,
+      time,
+      viewer,
+      action,
+      target,
+      capabilityId,
+      invocationId,
+      requestHash,
+      auditId,
+      runtime,
+      automaticExpiresAt,
+    } = input;
+    const actionId = action.id;
+    const runId = action.runId;
+    let containmentId: string,
+      resultVersion: string,
+      originalStateDigest: string | null = null,
+      state: "succeeded" | "compensated";
+    if (capabilityId === "moderation.quarantine") {
+      const p = npRequireAgentQuarantineProposalV1(action.inputCanonical);
+      containmentId = randomUUID();
+      let changed: Awaited<ReturnType<typeof npQuarantineCommunityContentV1>>;
+      try {
+        changed = await withDeferredPostCommit(() =>
+          db.transaction(async (tx) => {
+            const result = await npQuarantineCommunityContentV1(tx as unknown as NpTransaction, {
+              siteId,
+              target: target.target,
+              user: viewer,
+              expectedVersionDigest: p.expectedVersionDigest,
+              reasonCode: p.reasonCode,
+            });
+            const verified = await npInspectCommunityContentContainmentV1(
+              tx as unknown as NpTransaction,
+              {
+                siteId,
+                target: target.target,
+                user: viewer,
+              },
+            );
+            if (verified.versionDigest !== result.installedVersionDigest)
+              throw new NpCommunityContainmentVerificationError();
+            return result;
+          }),
+        );
+      } catch (error) {
+        // Only a typed post-write mismatch, after the savepoint has rolled back,
+        // establishes failure. Permission, CAS, hook/DB and unknown errors still abort.
+        if (
+          !(error instanceof NpCommunityContainmentVerificationError) ||
+          (target.incidentId && !options.incidents?.appendFailedContainmentEvent)
+        )
+          throw error;
+        const errorCode = "CONTAINMENT_VERIFICATION_FAILED";
+        const evidence = [{ outcome: "rolled_back", reasonCode: errorCode }];
+        const resultDigest = digest("np.agent-moderation-result.v1", {
+          actionId,
+          state: "failed",
+          evidence,
+        });
+        const failedOutput = {
+          schemaVersion: "np.agent-direct-action.v1",
+          actionId,
+          state: "failed",
+          containmentId: null,
+          resultDigest,
+          verificationRefs: [],
+        };
+        const validated = npRequireAgentModerationCapabilityOutputV1(capabilityId, failedOutput);
+        const outputHash = digest("np.agent-capability-output.v1", validated);
+        await db
+          .update(npAgentActions)
+          .set({
+            state: "failed",
+            errorCode,
+            executionInvocationId: invocationId,
+            executionInvocationFingerprint: requestHash,
+            verifierId: "containment.verify",
+            verificationState: "failed",
+            verificationResultDigest: resultDigest,
+            verificationEvidence: evidence,
+            verifiedAt: time,
+            startedAt: time,
+            finishedAt: time,
+            outputRedacted: json(validated),
+            outputHash,
+          })
+          .where(eq(npAgentActions.id, actionId));
+        if (runId && !runtime)
+          await db
+            .update(npAgentRuns)
+            .set({
+              state: "failed",
+              errorCode,
+              errorMessage: "Content quarantine verification failed; the attempt was rolled back.",
+              result: json(validated),
+              finishedAt: time,
+            })
+            .where(eq(npAgentRuns.id, runId));
+        await db
+          .update(npAuditEvents)
+          .set({
+            payload: sql`${npAuditEvents.payload} || ${JSON.stringify({
+              actionId,
+              invocationId,
+              requestHash,
+              outcome: "rolled_back",
+              errorCode,
+            })}::jsonb`,
+          })
+          .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.id, auditId)));
+        if (target.incidentId)
+          await options.incidents!.appendFailedContainmentEvent!({
+            db,
+            siteId,
+            incidentId: target.incidentId,
+            actionId,
+            auditEventId: auditId,
+          });
+        return { actionId, runId, output: json(validated), outputHash };
+      }
+      resultVersion = changed.installedVersionDigest;
+      originalStateDigest = digest("np.agent-moderation-original.v1", changed.originalState);
+      state = "succeeded";
+      await db.insert(npAgentContainments).values({
+        id: containmentId,
+        siteId,
+        kind: "content_quarantine",
+        targetKind: target.target.kind,
+        targetRef: json(target.target),
+        targetVersionDigest: resultVersion,
+        sourceActionId: actionId,
+        incidentId: target.incidentId,
+        state: "active",
+        originalState: json(changed.originalState),
+        activatedAt: time,
+        createdAt: time,
+        updatedAt: time,
+        ...(automaticExpiresAt ? { expiresAt: automaticExpiresAt } : {}),
+      });
+    } else {
+      const containment = target.containment;
+      if (!containment) throw conflict();
+      containmentId = containment.id;
+      const changed = await npRestoreCommunityContentV1(db as unknown as NpTransaction, {
+        siteId,
+        target: target.target,
+        user: viewer,
+        expectedVersionDigest: target.expectedVersionDigest,
+        originalState: containment.originalState as unknown as NpCommunityContentOriginalStateV1,
+      });
+      resultVersion = changed.restoredVersionDigest;
+      state = "compensated";
+      await db
+        .update(npAgentContainments)
+        .set({
+          state: "restored",
+          restoreActionId: actionId,
+          restoredAt: time,
+          updatedAt: time,
+        })
+        .where(eq(npAgentContainments.id, containmentId));
+      const compensationEvidence = [
+        {
+          containmentId,
+          restoredVersionDigest: resultVersion,
+          restoreActionId: actionId,
+        },
+      ];
+      await db
+        .update(npAgentActions)
+        .set({
+          state: "compensated",
+          compensatedAt: time,
+          compensationEvidence,
+          compensationResultDigest: digest(
+            "np.agent-moderation-compensation.v1",
+            compensationEvidence,
+          ),
+        })
+        .where(eq(npAgentActions.id, containment.sourceActionId));
+    }
+    // Quarantine verification already belongs to the rollback-capable savepoint.
+    if (capabilityId === "moderation.restore") {
+      const verified = await npInspectCommunityContentContainmentV1(
+        db as unknown as NpTransaction,
+        { siteId, target: target.target, user: viewer },
+      );
+      if (verified.versionDigest !== resultVersion) throw conflict();
+    }
+    const evidence = [{ containmentId, targetVersionDigest: resultVersion, originalStateDigest }];
+    const resultDigest = digest("np.agent-moderation-result.v1", {
+      actionId,
+      state,
+      evidence,
+    });
+    const output = {
+      schemaVersion: "np.agent-direct-action.v1",
+      actionId,
+      state,
+      containmentId,
+      resultDigest,
+      verificationRefs: [`containment:${containmentId}`],
+    };
+    await db
+      .update(npAgentActions)
+      .set({
+        state: capabilityId === "moderation.restore" ? "compensated" : "succeeded",
+        executionInvocationId: invocationId,
+        executionInvocationFingerprint: requestHash,
+        containmentId,
+        effectDigest: resultDigest,
+        targetVersionDigest: resultVersion,
+        verifierId:
+          capabilityId === "moderation.quarantine"
+            ? "containment.verify"
+            : "containment.restore.verify",
+        verificationState: "passed",
+        verificationResultDigest: resultDigest,
+        verificationEvidence: evidence,
+        verifiedAt: time,
+        startedAt: time,
+        finishedAt: time,
+        ...(capabilityId === "moderation.quarantine"
+          ? { undoRef: { containmentId }, compensatorId: "containment.compensate" }
+          : {
+              compensatedAt: time,
+              compensationResultDigest: resultDigest,
+              compensationEvidence: evidence,
+            }),
+      })
+      .where(eq(npAgentActions.id, actionId));
+    if (runId && !runtime)
+      await db
+        .update(npAgentRuns)
+        .set({ state: "succeeded", result: json(output), finishedAt: time })
+        .where(eq(npAgentRuns.id, runId));
+    if (target.incidentId)
+      await options.incidents!.appendContainmentEvent({
+        db,
+        siteId,
+        incidentId: target.incidentId,
+        actionId,
+        containmentId,
+        phase: capabilityId === "moderation.quarantine" ? "quarantined" : "restored",
+        auditEventId: auditId,
+      });
+    const validated = npRequireAgentModerationCapabilityOutputV1(capabilityId, output);
+    const outputHash = digest("np.agent-capability-output.v1", validated);
+    await db
+      .update(npAgentActions)
+      .set({ outputRedacted: json(validated), outputHash })
+      .where(eq(npAgentActions.id, actionId));
+    return { actionId, runId, output: json(validated), outputHash };
+  }
+  async function automaticPolicy(
+    db: Db,
+    siteId: string,
+    viewer: NpAuthUser,
+    principalId: string,
+    target: NpCommunityContentTargetV1,
+    capabilityId: NpAgentModerationCapabilityIdV1,
+  ) {
+    const resolved = npResolveAgentPolicyV1(
+      await options.resolvePolicy({ db, siteId, user: viewer, principalId, target }),
+    );
+    const mode = resolved.capabilityModes.find(
+      (entry) => entry.capabilityId === capabilityId,
+    )?.mode;
+    if (
+      !mode ||
+      !npAgentAutonomyAllowsV1(mode, "execute-automatic") ||
+      resolved.risk.automaticActionMaximum !== "reversible" ||
+      (capabilityId === "moderation.quarantine" &&
+        (resolved.automation.moderationAutoQuarantineMinBasisPoints === null ||
+          npIsAgentPolicyQuietTimeV1(resolved, now().toISOString()) ||
+          (options.automaticQuarantine!.deployment.qualification.reviewedTruePositives /
+            options.automaticQuarantine!.deployment.qualification.reviewedPredictedPositives) *
+            10000 <
+            resolved.automation.moderationAutoQuarantineMinBasisPoints)) ||
+      (resolved.resources.collections !== null &&
+        !resolved.resources.collections.includes(target.collection)) ||
+      (resolved.resources.incidentCategories !== null &&
+        !resolved.resources.incidentCategories.includes("spam")) ||
+      resolved.automation.moderationTargetsPerRun < 1 ||
+      (resolved.risk.requirePreviewAtOrAbove !== null &&
+        { reversible: 1, sensitive: 2, destructive: 3 }[resolved.risk.requirePreviewAtOrAbove] <=
+          (capabilityId === "moderation.quarantine" ? 1 : 2)) ||
+      (resolved.risk.requireRecentAuthAtOrAbove !== null &&
+        { reversible: 1, sensitive: 2, destructive: 3 }[resolved.risk.requireRecentAuthAtOrAbove] <=
+          (capabilityId === "moderation.quarantine" ? 1 : 2))
+    )
+      throw unavailable();
+    return digest("np.agent-moderation-policy.v1", { resolved, budget: await budget(db, siteId) });
+  }
+  type AutomaticInput = {
+    authentication: NpAgentCapabilityAuthenticationV1;
+    idempotencyKey: string;
+  } & (
+    | { mode: "quarantine"; signalId: string; proposal: unknown }
+    | { mode: "restore_expired"; containmentId: string }
+  );
+  async function invokeAutomatic(
+    input: AutomaticInput,
+  ): Promise<NpAgentModerationCapabilityInvocationResultV1> {
+    npAssertAgentPreviewEffectsAllowed();
+    const authority = options.automaticQuarantine;
+    if (
+      !npIsAgentAutomaticQuarantineAuthorityV1(authority) ||
+      !["quarantine", "restore_expired"].includes(input.mode)
+    )
+      throw unavailable();
+    if (
+      typeof input.idempotencyKey !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(input.idempotencyKey)
+    )
+      throw conflict();
+    const authentication = input.authentication;
+    if (authentication.principal.authority.kind !== "user") throw unavailable();
+    const siteId = authentication.principal.siteId;
+    const principalId = authentication.principal.id;
+    const userId = authentication.principal.authority.userId;
+    if (!userId) throw unavailable();
+    const capabilityId =
+      input.mode === "quarantine" ? "moderation.quarantine" : "moderation.restore";
+    const definition = await entry(capabilityId);
+    const operationInput =
+      input.mode === "quarantine"
+        ? {
+            mode: input.mode,
+            signalId: input.signalId,
+            proposal: npRequireAgentQuarantineProposalV1(input.proposal),
+          }
+        : { mode: input.mode, containmentId: input.containmentId };
+    return withCurrentSite(siteId, () =>
+      withDeferredPostCommit(() =>
+        options.admission.withCurrentAuthority({
+          authentication,
+          requiredScopes: ["incident:read", "moderation:execute"],
+          minimumExposure: "approved-execute",
+          prepareTransaction: (db) => prepare(db, siteId),
+          mutate: async (db, time) => {
+            await db.execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-automatic-quarantine:${siteId}:${principalId}:${input.idempotencyKey}`},0))`,
+            );
+            const viewer = await user(db, siteId, userId);
+            await authority.assertCurrent({
+              db,
+              siteId,
+              principalId,
+              now: time,
+              purpose: input.mode === "quarantine" ? "quarantine" : "compensate",
+            });
+            const [prior] = await db
+              .select()
+              .from(npAgentInvocations)
+              .where(
+                and(
+                  eq(npAgentInvocations.siteId, siteId),
+                  eq(
+                    npAgentInvocations.actorFingerprint,
+                    authentication.authorizationContext.actor.actorFingerprint,
+                  ),
+                  eq(
+                    npAgentInvocations.authorizationContextFingerprint,
+                    authentication.authorizationContextFingerprint,
+                  ),
+                  eq(npAgentInvocations.operationId, capabilityId),
+                  eq(npAgentInvocations.idempotencyKey, input.idempotencyKey),
+                ),
+              )
+              .limit(1);
+            if (prior) {
+              const checked = await invocation(db, siteId, prior.id);
+              if (
+                checked.state !== "completed" ||
+                checked.expiresAt <= time ||
+                !same(checked.requestBody.input.operationInput, operationInput) ||
+                checked.requestBody.input.deploymentDigest !== authority.deploymentDigest ||
+                !checked.outputRedacted ||
+                checked.outputHash !==
+                  digest("np.agent-capability-output.v1", checked.outputRedacted)
+              )
+                throw conflict();
+              const action = await loadAction(db, siteId, checked.resultId!);
+              const facts = await review(db, action, viewer, false);
+              await automaticPolicy(db, siteId, viewer, principalId, facts.target, capabilityId);
+              return {
+                schemaVersion: "np.agent-moderation-invocation-result.v1" as const,
+                invocationId: checked.id,
+                capabilityId,
+                output: npRequireAgentModerationCapabilityOutputV1(
+                  capabilityId,
+                  checked.outputRedacted,
+                ),
+              };
+            }
+            let proposal:
+              | ReturnType<typeof npRequireAgentQuarantineProposalV1>
+              | ReturnType<typeof npRequireAgentRestoreProposalV1>;
+            let automaticAuthorization: object;
+            let expiresAt: Date | undefined;
+            let compensationPolicyHash: string | null = null;
+            if (operationInput.mode === "quarantine") {
+              proposal = operationInput.proposal;
+              if (!proposal.incidentId) throw unavailable();
+              // Existing target owner independently checks the full Incident and current item ACL.
+              await resolveTarget(db, siteId, capabilityId, proposal, viewer);
+              const evidence = await authority.authorize({
+                db,
+                siteId,
+                principalId,
+                user: viewer,
+                now: time,
+                incidentId: proposal.incidentId,
+                signalId: operationInput.signalId,
+                target: proposal.target,
+                expectedVersionDigest: proposal.expectedVersionDigest,
+              });
+              automaticAuthorization = evidence;
+              expiresAt = new Date(evidence.expiresAt);
+              const [counts] = await db
+                .select({ active: sql<number>`count(*)::int` })
+                .from(npAgentContainments)
+                .where(
+                  and(
+                    eq(npAgentContainments.siteId, siteId),
+                    eq(npAgentContainments.state, "active"),
+                  ),
+                );
+              const [hour] = await db
+                .select({ total: sql<number>`count(*)::int` })
+                .from(npAgentActions)
+                .where(
+                  and(
+                    eq(npAgentActions.siteId, siteId),
+                    eq(npAgentActions.capabilityId, "moderation.quarantine"),
+                    sql`${npAgentActions.approvalId} is null and ${npAgentActions.createdAt} >= ${new Date(time.getTime() - 3600000)}`,
+                  ),
+                );
+              if (
+                (counts?.active ?? 0) >= authority.deployment.limits.activeContainments ||
+                (hour?.total ?? 0) >= authority.deployment.limits.actionsPerHour
+              )
+                throw unavailable();
+            } else {
+              const [containment] = await db
+                .select()
+                .from(npAgentContainments)
+                .where(
+                  and(
+                    eq(npAgentContainments.siteId, siteId),
+                    eq(npAgentContainments.id, operationInput.containmentId),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              if (
+                !containment ||
+                containment.state !== "active" ||
+                !containment.expiresAt ||
+                containment.expiresAt > time
+              )
+                throw conflict();
+              const source = await loadAction(db, siteId, containment.sourceActionId);
+              const original = await invocation(db, siteId, source.invocationId);
+              const proof = original.requestBody.input.automaticAuthorization;
+              if (
+                source.approvalId !== null ||
+                original.principalId !== principalId ||
+                original.requestBody.input.deploymentDigest !== authority.deploymentDigest ||
+                original.requestHash !== source.invocationFingerprint ||
+                !same(
+                  original.requestBody.input.automaticAuthorization,
+                  source.inputRedacted.automaticAuthorization,
+                ) ||
+                typeof proof !== "object" ||
+                proof === null ||
+                Array.isArray(proof) ||
+                proof.schemaVersion !== "np.agent-automatic-quarantine-authorization.v1" ||
+                proof.expiresAt !== containment.expiresAt.toISOString() ||
+                proof.incidentId !== containment.incidentId ||
+                !original.requestBody.input.automaticAuthorization ||
+                typeof original.requestBody.input.operationInput !== "object" ||
+                original.requestBody.input.operationInput === null ||
+                Array.isArray(original.requestBody.input.operationInput) ||
+                original.requestBody.input.operationInput.mode !== "quarantine"
+              )
+                throw unavailable();
+              automaticAuthorization = {
+                schemaVersion: "np.agent-automatic-quarantine-compensation.v1",
+                deploymentDigest: authority.deploymentDigest,
+                sourceActionId: source.id,
+                sourceInvocationFingerprint: original.requestHash,
+                containmentId: containment.id,
+                expiredAt: containment.expiresAt.toISOString(),
+                authorizedAt: time.toISOString(),
+              };
+              proposal = npRequireAgentRestoreProposalV1({
+                containmentKind: "content_quarantine",
+                containmentId: containment.id,
+                expectedVersionDigest: containment.targetVersionDigest,
+              });
+            }
+            const target = await resolveTarget(db, siteId, capabilityId, proposal, viewer);
+            const policyHash = await automaticPolicy(
+              db,
+              siteId,
+              viewer,
+              principalId,
+              target.target,
+              capabilityId,
+            );
+            if (input.mode === "quarantine") {
+              compensationPolicyHash = await automaticPolicy(
+                db,
+                siteId,
+                viewer,
+                principalId,
+                target.target,
+                "moderation.restore",
+              );
+              // The trusted host also attests its durable expiry processor is registered/ready.
+              await authority.assertCurrent({
+                db,
+                siteId,
+                principalId,
+                now: time,
+                purpose: "compensate",
+              });
+            }
+            const requestBody = npRequireAgentInvocationRequestCanonical({
+              schemaVersion: "np.agent-idempotency-request.v1",
+              siteId,
+              actorKind: "principal",
+              actorFingerprint: authentication.authorizationContext.actor.actorFingerprint,
+              authorizationContextFingerprint: authentication.authorizationContextFingerprint,
+              operationKind: "capability",
+              operationId: capabilityId,
+              contractVersion: 1,
+              contractFingerprint: definition.fingerprint,
+              effectProfile: {
+                id:
+                  capabilityId === "moderation.quarantine"
+                    ? "containment.create"
+                    : "containment.restore",
+                contractVersion: 1,
+              },
+              input: json({
+                operationInput,
+                deploymentDigest: authority.deploymentDigest,
+                policyHash,
+                compensationPolicyHash,
+                automaticAuthorization,
+              }),
+            });
+            const requestHash = await npDigestAgentInvocationRequestCanonical(requestBody);
+            const invocationId = randomUUID();
+            const [audit] = await db
+              .insert(npAuditEvents)
+              .values({
+                siteId,
+                actorKind: "agent-principal",
+                action:
+                  input.mode === "quarantine"
+                    ? "agents.moderation.automatic_quarantine"
+                    : "agents.moderation.automatic_compensate",
+                targetType: "agent-capability",
+                targetId: capabilityId,
+                payload: json({
+                  schemaVersion: "np.agent-automatic-quarantine-audit.v1",
+                  invocationId,
+                  requestHash,
+                  deploymentDigest: authority.deploymentDigest,
+                  policyHash,
+                  compensationPolicyHash,
+                  automaticAuthorization,
+                }),
+                createdAt: time,
+              })
+              .returning({ id: npAuditEvents.id });
+            if (!audit) throw conflict();
+            await db.insert(npAgentInvocations).values({
+              id: invocationId,
+              siteId,
+              actorKind: "principal",
+              principalId,
+              actorFingerprint: requestBody.actorFingerprint,
+              authorizationContextBody: authentication.authorizationContext,
+              authorizationContextFingerprint: authentication.authorizationContextFingerprint,
+              authorityRef: authentication.authorizationContext.authorityRef,
+              operationKind: "capability",
+              operationId: capabilityId,
+              contractVersion: 1,
+              contractFingerprint: definition.fingerprint,
+              capabilityDefinitionBody: definition.canonical,
+              effectProfileId: requestBody.effectProfile!.id,
+              effectContractVersion: 1,
+              transport: authentication.authorizationContext.transport,
+              mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
+                authentication.authorizationContext.transport,
+              )
+                ? "normal"
+                : null,
+              idempotencyKey: input.idempotencyKey,
+              requestBody,
+              requestHash,
+              state: "started",
+              auditEventId: audit.id,
+              requestedAt: time,
+              expiresAt: new Date(time.getTime() + 365 * 86400000),
+            });
+            const targetRef: NpAgentTargetRef =
+              target.target.kind === "document"
+                ? {
+                    kind: "document",
+                    collection: target.target.collection,
+                    documentId: target.target.id,
+                  }
+                : {
+                    kind: "comment",
+                    collection: target.target.collection,
+                    commentId: target.target.id,
+                  };
+            const run = await npCreateModerationGatewayRunV1({
+              db,
+              siteId,
+              principalId,
+              invocationId,
+              capabilityId,
+              now: time,
+              target: targetRef,
+              budget: await budget(db, siteId),
+            });
+            const actionId = randomUUID();
+            const canonical = npRequireAgentActionCanonical({
+              schemaVersion: "np.agent-action.v1",
+              siteId,
+              actionId,
+              invocationFingerprint: requestHash,
+              runFingerprint: run.fingerprint,
+              sequence: 1,
+              capabilityId,
+              capabilityContractVersion: 1,
+              capabilityFingerprint: definition.fingerprint,
+              effectProfile: requestBody.effectProfile,
+              risk: definition.descriptor.risk,
+              requiredScopes: ["moderation:execute"],
+              targetRefs: [{ ...targetRef }],
+              targetVersionFacts: [
+                { targetRef: { ...targetRef }, versionDigest: target.expectedVersionDigest },
+              ],
+              input: json(proposal),
+            });
+            const [action] = await db
+              .insert(npAgentActions)
+              .values({
+                id: actionId,
+                siteId,
+                runId: run.id,
+                runFingerprint: run.fingerprint,
+                invocationId,
+                invocationFingerprint: requestHash,
+                sequence: 1,
+                capabilityId,
+                capabilityContractVersion: 1,
+                capabilityFingerprint: definition.fingerprint,
+                capabilityDefinitionBody: definition.canonical,
+                effectProfileId: requestBody.effectProfile!.id,
+                effectContractVersion: 1,
+                risk: definition.descriptor.risk,
+                state: "executing",
+                idempotencyKey: input.idempotencyKey,
+                inputRedacted: json({ ...proposal, automaticAuthorization }),
+                inputCanonical: json(proposal),
+                requiredScopes: canonical.requiredScopes,
+                targetRefs: canonical.targetRefs,
+                targetVersionFacts: canonical.targetVersionFacts,
+                inputHash: await npDigestAgentActionCanonical(canonical),
+                approvalId: null,
+                containmentId: target.containment?.id ?? null,
+                compensatesActionId: target.containment?.sourceActionId ?? null,
+                auditEventId: audit.id,
+                createdAt: time,
+              })
+              .returning();
+            if (!action) throw conflict();
+            const result = await performEffect({
+              db,
+              siteId,
+              time,
+              viewer,
+              action,
+              target,
+              capabilityId,
+              invocationId,
+              requestHash,
+              auditId: audit.id,
+              automaticExpiresAt: expiresAt,
+            });
+            // Revocation during a domain hook rolls the complete effect and evidence back.
+            await authority.assertCurrent({
+              db,
+              siteId,
+              principalId,
+              now: now(),
+              purpose: input.mode === "quarantine" ? "quarantine" : "compensate",
+            });
+            if (
+              (await automaticPolicy(
+                db,
+                siteId,
+                viewer,
+                principalId,
+                target.target,
+                capabilityId,
+              )) !== policyHash
+            )
+              throw conflict();
+            if (input.mode === "quarantine") {
+              await authority.assertCurrent({
+                db,
+                siteId,
+                principalId,
+                now: now(),
+                purpose: "compensate",
+              });
+              if (
+                (await automaticPolicy(
+                  db,
+                  siteId,
+                  viewer,
+                  principalId,
+                  target.target,
+                  "moderation.restore",
+                )) !== compensationPolicyHash
+              )
+                throw conflict();
+            }
+            await db
+              .update(npAuditEvents)
+              .set({
+                payload: sql`${npAuditEvents.payload} || ${JSON.stringify({ actionId: action.id, outcome: result.output.state, containmentId: result.output.containmentId })}::jsonb`,
+              })
+              .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.id, audit.id)));
+            await db
+              .update(npAgentInvocations)
+              .set({
+                state: "completed",
+                resultKind: "action",
+                resultId: action.id,
+                runId: run.id,
+                outputRedacted: result.output,
+                outputHash: result.outputHash,
+                completedAt: time,
+              })
+              .where(eq(npAgentInvocations.id, invocationId));
+            return {
+              schemaVersion: "np.agent-moderation-invocation-result.v1" as const,
+              invocationId,
+              capabilityId,
+              output: npRequireAgentModerationCapabilityOutputV1(capabilityId, result.output),
+            };
+          },
+        }),
+      ),
+    );
+  }
+  async function processExpiredAutomatic(input: {
+    authentication: NpAgentCapabilityAuthenticationV1;
+    siteId: string;
+    limit?: number;
+    cursor?: string | null;
+  }) {
+    npAssertAgentPreviewEffectsAllowed();
+    const authority = options.automaticQuarantine;
+    const limit = input.limit ?? 20;
+    if (
+      !npIsAgentAutomaticQuarantineAuthorityV1(authority) ||
+      input.siteId !== input.authentication.principal.siteId ||
+      input.siteId !== authority.deployment.siteId ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100 ||
+      (input.cursor != null &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+          input.cursor,
+        ))
+    )
+      throw unavailable();
+    const rows = await withCurrentSite(input.siteId, () =>
+      options.admission.withCurrentAuthority({
+        authentication: input.authentication,
+        requiredScopes: ["incident:read", "moderation:execute"],
+        minimumExposure: "approved-execute",
+        prepareTransaction: (db) => prepare(db, input.siteId),
+        mutate: async (db, time) => {
+          if (
+            input.authentication.principal.authority.kind !== "user" ||
+            !input.authentication.principal.authority.userId
+          )
+            throw unavailable();
+          await user(db, input.siteId, input.authentication.principal.authority.userId);
+          await authority.assertCurrent({
+            db,
+            siteId: input.siteId,
+            principalId: input.authentication.principal.id,
+            now: time,
+            purpose: "compensate",
+          });
+          return db
+            .select({ id: npAgentContainments.id })
+            .from(npAgentContainments)
+            .innerJoin(
+              npAgentActions,
+              and(
+                eq(npAgentActions.siteId, npAgentContainments.siteId),
+                eq(npAgentActions.id, npAgentContainments.sourceActionId),
+              ),
+            )
+            .innerJoin(
+              npAgentInvocations,
+              and(
+                eq(npAgentInvocations.siteId, npAgentActions.siteId),
+                eq(npAgentInvocations.id, npAgentActions.invocationId),
+              ),
+            )
+            .where(
+              and(
+                eq(npAgentContainments.siteId, input.siteId),
+                eq(npAgentInvocations.principalId, input.authentication.principal.id),
+                eq(npAgentContainments.state, "active"),
+                sql`${npAgentContainments.expiresAt} <= ${time} and ${npAgentActions.approvalId} is null and ${npAgentActions.inputRedacted}->'automaticAuthorization'->>'deploymentDigest' = ${authority.deploymentDigest}`,
+                input.cursor ? gt(npAgentContainments.id, input.cursor) : undefined,
+              ),
+            )
+            .orderBy(asc(npAgentContainments.id))
+            .limit(limit + 1);
+        },
+      }),
+    );
+    const items: { containmentId: string; state: "restored" | "blocked"; code: string | null }[] =
+      [];
+    for (const row of rows.slice(0, limit)) {
+      try {
+        const result = await invokeAutomatic({
+          authentication: input.authentication,
+          mode: "restore_expired",
+          containmentId: row.id,
+          idempotencyKey: `automatic-expiry:${authority.deploymentDigest}:${row.id}`,
+        });
+        items.push({
+          containmentId: row.id,
+          state: result.output.state === "compensated" ? "restored" : "blocked",
+          code: result.output.state === "compensated" ? null : "AUTOMATIC_COMPENSATION_BLOCKED",
+        });
+      } catch (error) {
+        items.push({
+          containmentId: row.id,
+          state: "blocked",
+          code:
+            error instanceof NpAgentGatewayError ? error.code : "AUTOMATIC_COMPENSATION_BLOCKED",
+        });
+      }
+    }
+    return {
+      siteId: input.siteId,
+      items,
+      nextCursor: rows.length > limit ? rows[limit - 1].id : null,
+    };
   }
   async function invokeRequest(input: {
     authentication?: NpAgentCapabilityAuthenticationV1;
@@ -1923,6 +2611,11 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
   return {
     capabilityIds: ["moderation.quarantine", "moderation.restore"] as const,
     runtimeEnabled: Boolean(options.runtimeAdmission),
+    automatic: {
+      enabled: npIsAgentAutomaticQuarantineAuthorityV1(options.automaticQuarantine),
+      invoke: invokeAutomatic,
+      processExpired: processExpiredAutomatic,
+    },
     invokeCapability,
     invokeRuntimeCapability,
     inspectRuntimeApproval,

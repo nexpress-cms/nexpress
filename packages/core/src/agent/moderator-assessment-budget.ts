@@ -16,6 +16,24 @@ import type {
   NpAgentProviderRequestCanonicalV1,
 } from "../agent-contract/types.js";
 
+import {
+  npRequireAgentModeratorAssessmentEvidenceV2,
+  type NpAgentModeratorAssessmentEvidenceV2,
+} from "../agent-contract/moderator-segmented-assessment-contract.js";
+import {
+  npAgentModeratorAssessmentInstructionV1,
+  npAgentModeratorAssessmentInstructionV2,
+} from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npReadAgentModeratorSegmentProgressV2 } from "./moderator-segmented-assessment-proof.js";
+type Evidence = NpAgentModeratorAssessmentEvidenceV1 | NpAgentModeratorAssessmentEvidenceV2;
+function parseEvidence(value: unknown): Evidence {
+  return value &&
+    typeof value === "object" &&
+    "schemaVersion" in value &&
+    value.schemaVersion === "np.agent-moderator-assessment-evidence.v2"
+    ? npRequireAgentModeratorAssessmentEvidenceV2(value)
+    : npRequireAgentModeratorAssessmentEvidenceV1(value);
+}
 const TEMPLATE = "moderator.semantic-assessment";
 const PENDING = ["reserved", "in_flight", "ambiguous"] as const;
 function unavailable(): never {
@@ -35,7 +53,7 @@ function blocked(): never {
 function requestEvidence(
   context: NpAgentRuntimeRunContextV1,
   request: NpAgentProviderRequestCanonicalV1,
-): NpAgentModeratorAssessmentEvidenceV1 {
+): Evidence {
   npAssertAgentModeratorAssessmentContextV1(context);
   const entries = request.trustedContext.filter((entry) => entry.id === "moderator-assessment");
   if (
@@ -46,16 +64,16 @@ function requestEvidence(
     request.recipe.version !== context.run.recipeVersion ||
     request.recipe.fingerprint !== context.run.recipeFingerprint ||
     request.instruction.templateId !== TEMPLATE ||
-    request.instruction.templateVersion !== 1 ||
+    request.instruction.templateVersion !== context.run.instructionTemplateVersion ||
     request.instruction.digest !== context.run.instructionDigest ||
     entries.length !== 1 ||
     entries[0].kind !== "server-fact" ||
     entries[0].classification.dataClass !== "sensitive-approved"
   )
     return unavailable();
-  let metadata: NpAgentModeratorAssessmentEvidenceV1;
+  let metadata: Evidence;
   try {
-    metadata = npRequireAgentModeratorAssessmentEvidenceV1(JSON.parse(entries[0].text));
+    metadata = parseEvidence(JSON.parse(entries[0].text));
   } catch {
     return unavailable();
   }
@@ -110,7 +128,7 @@ async function analysisHistory(context: NpAgentRuntimeRunContextV1) {
       retryable: npAgentProviderCalls.retryable,
       createdAt: npAgentProviderCalls.createdAt,
       requestDigest: npAgentProviderCalls.requestDigest,
-      diagnostic: sql<NpAgentJsonObject | null>`case when octet_length(${npAgentProviderCalls.requestRedacted}::text)<=20000 then ${npAgentProviderCalls.requestRedacted} else null end`,
+      diagnostic: sql<NpAgentJsonObject | null>`case when octet_length(${npAgentProviderCalls.requestRedacted}::text)<=32768 then ${npAgentProviderCalls.requestRedacted} else null end`,
       templateVersion: npAgentProviderCalls.instructionTemplateVersion,
       instructionDigest: npAgentProviderCalls.instructionDigest,
       startedAt: sql<Date>`(select min(anchor.created_at) from np_agent_provider_calls anchor where anchor.site_id=${context.siteId} and anchor.run_id=${npAgentProviderCalls.runId} and anchor.instruction_template_id=${TEMPLATE})`,
@@ -138,22 +156,32 @@ async function analysisHistory(context: NpAgentRuntimeRunContextV1) {
     .limit(1001);
   if (rows.length > 1000) unavailable();
   const analyses = new Map<string, Analysis>();
-  const evidences = new Map<string, NpAgentModeratorAssessmentEvidenceV1>();
+  const evidences = new Map<string, Evidence>();
   for (const row of rows) {
     // Do not interpret a missing/expired/unknown diagnostic as a different or zero-cost target.
     if (
       !row.agentId ||
-      row.templateVersion !== 1 ||
-      row.instructionDigest !== context.run.instructionDigest ||
+      ![1, 2].includes(row.templateVersion) ||
+      row.instructionDigest !==
+        `cj1:sha256:${createHash("sha256")
+          .update(
+            row.templateVersion === 2
+              ? npAgentModeratorAssessmentInstructionV2
+              : npAgentModeratorAssessmentInstructionV1,
+          )
+          .digest("base64url")}` ||
       !row.diagnostic ||
-      row.diagnostic.schemaVersion !== "np.agent-moderator-assessment-diagnostic.v1" ||
+      row.diagnostic.schemaVersion !==
+        (row.templateVersion === 2
+          ? "np.agent-moderator-assessment-diagnostic.v2"
+          : "np.agent-moderator-assessment-diagnostic.v1") ||
       row.diagnostic.requestDigest !== row.requestDigest ||
       Object.keys(row.diagnostic).length !== 3
     )
       unavailable();
-    let evidence: NpAgentModeratorAssessmentEvidenceV1;
+    let evidence: Evidence;
     try {
-      evidence = npRequireAgentModeratorAssessmentEvidenceV1(row.diagnostic.assessmentEvidence);
+      evidence = parseEvidence(row.diagnostic.assessmentEvidence);
     } catch {
       return unavailable();
     }
@@ -242,7 +270,54 @@ export async function npRequireAgentModeratorAssessmentBudgetV1(
     )
       unavailable();
   }
-  if (ownOtherCalls.length) {
+  if (metadata.schemaVersion === "np.agent-moderator-assessment-evidence.v2") {
+    const fullOwn = await context.db
+      .select()
+      .from(npAgentProviderCalls)
+      .where(
+        and(
+          eq(npAgentProviderCalls.siteId, context.siteId),
+          eq(npAgentProviderCalls.runId, context.run.id),
+        ),
+      )
+      .orderBy(asc(npAgentProviderCalls.sequence))
+      .limit(1001);
+    if (fullOwn.length > 1000) unavailable();
+    const progress = await npReadAgentModeratorSegmentProgressV2(
+      fullOwn.filter((call) => call.id !== options.existingCallId),
+    );
+    if (
+      metadata.segmentIndex !== progress.nextIndex ||
+      (progress.anchor &&
+        serializeAgentCanonicalJson({
+          incident: progress.anchor.incident,
+          manifest: progress.anchor.manifest,
+          observedAt: progress.anchor.observedAt,
+        }) !==
+          serializeAgentCanonicalJson({
+            incident: metadata.incident,
+            manifest: metadata.manifest,
+            observedAt: metadata.observedAt,
+          }))
+    )
+      unavailable();
+    if (progress.latest && progress.latest.state !== "succeeded") {
+      if (
+        progress.latest.state !== "failed" ||
+        !progress.latest.retryable ||
+        !["not-dispatched", "dispatched"].includes(progress.latest.dispatchState) ||
+        request.retryOfId !== progress.latest.id ||
+        serializeAgentCanonicalJson(progress.latestEvidence) !==
+          serializeAgentCanonicalJson(metadata)
+      )
+        blocked();
+    } else if (request.retryOfId !== null) unavailable();
+    if (
+      request.sequence !==
+      fullOwn.filter((call) => call.id !== options.existingCallId).length + 1
+    )
+      unavailable();
+  } else if (ownOtherCalls.length) {
     // A second classification turn is not a free retry. Only the retained owning failure may retry.
     const parent = ownOtherCalls.find((row) => row.id === request.retryOfId);
     if (

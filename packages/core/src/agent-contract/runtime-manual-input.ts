@@ -2,7 +2,7 @@ import { canonicalBodyRecord, failCanonicalBody } from "./canonical-body-validat
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
 import { digestAgentCanonicalSha256 } from "./canonical-digest.js";
-import { npIsAgentModeratorAssessmentRecipeV1 } from "./moderator-assessment-recipe-contract.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "./moderator-assessment-recipe-contract.js";
 import type {
   NpAgentJsonObject,
   NpAgentJsonSchema,
@@ -157,7 +157,7 @@ export function npIsAgentRuntimeManualRecipeSupportedV1(
   recipe: NpAgentRecipeDefinitionCanonicalV1,
 ): boolean {
   if (
-    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentRecipeV1(recipe)) ||
+    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe)) ||
     !recipe.triggerKinds.includes("manual")
   )
     return false;

@@ -1,5 +1,10 @@
 # Read-only Moderator semantic assessment
 
+This document describes the unchanged bounded V1 profile. The separately selected
+[V2 segmented profile](r6-moderator-automatic-segmented-flow.md#large-incident-semantic-assessment)
+adds durable multi-call coverage; it does not upgrade V1 installations or grant
+execution authority.
+
 ## Explicit alternative
 
 `npCreateAgentModeratorAssessmentRecipeDefinitionV1` supplies an alternative to

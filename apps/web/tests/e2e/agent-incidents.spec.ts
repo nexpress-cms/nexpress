@@ -2048,3 +2048,101 @@ test("incident summaries and response target pages keep unknown evidence and tar
   await expect(page.getByText("Active containments: Unknown", { exact: true })).toBeVisible();
   await expect(page.getByText("AI assessment: Unknown", { exact: true })).toBeVisible();
 });
+
+test("segmented Incident assessment distinguishes full snapshot coverage from incomplete review", async ({
+  page,
+}, testInfo) => {
+  await signInAsE2EAdmin(page);
+  const result = detail();
+  const digest = `cj1:sha256:${"A".repeat(43)}`;
+  const callIds = Array.from(
+    { length: 16 },
+    (_, index) => `01900000-0000-7000-8000-${(index + 1).toString().padStart(12, "0")}`,
+  );
+  const assessment = {
+    schemaVersion: "np.agent-moderator-segmented-assessment.v2" as const,
+    incidentId: id,
+    incidentVersion: result.incident.versionNumber,
+    observedAt: at,
+    label: "spam" as const,
+    confidenceBasisPoints: 6000,
+    reasonCodes: ["repeated-template" as const],
+    summary: "All sixteen recorded batches support the same advisory classification.",
+    coverage: {
+      manifestDigest: digest,
+      signalCount: 2,
+      eventCount: 151,
+      targetCount: 151,
+      segmentCount: 16,
+      incomplete: false,
+      complete: true,
+    },
+    segmentProviderCallIds: callIds,
+    proofDigest: digest,
+    provenance: {
+      runId: id,
+      provider: "synthetic-browser-fixture",
+      model: "no-inference",
+      recipeFingerprint: digest,
+      instructionDigest: digest,
+      policyDigests: [digest],
+    },
+  };
+  result.timeline = [
+    {
+      id: signalId,
+      sequence: 3,
+      kind: "agent_assessment",
+      createdAt: at,
+      approvalId: null,
+      actionId: null,
+      decision: null,
+      segmentedAssessment: assessment,
+    },
+  ];
+  let denied = false;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    denied
+      ? route.fulfill({ status: 403, json: {} })
+      : route.fulfill({ json: npRequireAgentIncidentStudioDetailV1(result) }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await expect(page.getByText("AI assessment across batches: spam", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Coverage: 16 of 16 batches; 151 content targets/)).toBeVisible();
+  await expect(
+    page.getByText("All evidence in this recorded snapshot was covered.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Review assessment batches in Run" }),
+  ).toHaveAttribute("href", `/admin/agents/runs/${id}`);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`segmented-assessment-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  result.timeline[0].segmentedAssessment = {
+    ...assessment,
+    label: "uncertain",
+    confidenceBasisPoints: 0,
+    reasonCodes: ["insufficient-evidence"],
+    summary: "Incomplete evidence cannot establish a verdict for the entire Incident.",
+    coverage: { ...assessment.coverage, complete: false },
+    segmentProviderCallIds: callIds.slice(0, 15),
+  };
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("AI assessment across batches: uncertain", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Evidence coverage is incomplete/)).toBeVisible();
+  denied = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText(/AI assessment across batches:/)).toHaveCount(0);
+});

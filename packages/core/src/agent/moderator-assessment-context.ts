@@ -1,4 +1,4 @@
-import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import type { NpAgentIncidentReadContextV1 } from "./incident-service.js";
 import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
@@ -18,11 +18,11 @@ export function npAssertAgentModeratorAssessmentContextV1(
     (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
   );
   if (
-    !npIsAgentModeratorAssessmentRecipeV1(recipe) ||
+    !npIsAgentModeratorAssessmentProfileV1(recipe) ||
     context.run.siteId !== context.siteId ||
     principal.siteId !== context.siteId ||
     context.run.instructionTemplateId !== "moderator.semantic-assessment" ||
-    context.run.instructionTemplateVersion !== 1 ||
+    context.run.instructionTemplateVersion !== recipe?.instruction?.templateVersion ||
     context.run.instructionDigest !== recipe?.instruction?.digest ||
     principal.authorityKind !== "user" ||
     !context.staffUser ||

@@ -1,3 +1,6 @@
+import { npRecordAgentModeratorSegmentedAssessmentV2 } from "./moderator-segmented-assessment-service.js";
+export { npRequireAgentIncidentSegmentedAssessmentEntryV2 } from "./moderator-segmented-assessment-service.js";
+import type { NpAgentModeratorSegmentedAssessmentV2 } from "../agent-contract/moderator-segmented-assessment-contract.js";
 import { and, eq, sql } from "drizzle-orm";
 import { canonicalBodyUuid } from "../agent-contract/canonical-body-validation.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -6,7 +9,10 @@ import {
   npDigestAgentRecipeRegistryCanonical,
   npRequireAgentRecipeRegistryCanonical,
 } from "../agent-contract/canonical-recipe-registry.js";
-import { npIsAgentModeratorAssessmentRecipeV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import {
+  npIsAgentModeratorAssessmentRecipeV1,
+  npIsAgentModeratorAssessmentRecipeV2,
+} from "../agent-contract/moderator-assessment-recipe-contract.js";
 import {
   npRequireAgentModeratorAssessmentEvidenceV1,
   npRequireAgentModeratorAssessmentV1,
@@ -43,6 +49,8 @@ export interface NpAgentIncidentAssessmentRecordResultV1 {
   recorded: boolean;
   replayed: boolean;
   assessment: NpAgentModeratorAssessmentV1 | null;
+  segmentedAssessment?: NpAgentModeratorSegmentedAssessmentV2;
+  complete?: boolean;
 }
 export interface NpAgentIncidentAssessmentServiceV1 {
   /** Called only inside the live Runtime authority transaction after a confirmed provider success. */
@@ -200,6 +208,15 @@ export function createAgentIncidentAssessmentServiceV1(options: {
       npAssertAgentModeratorAssessmentContextV1(context);
       canonicalBodyUuid(input.providerCallId, "moderator.assessment.providerCallId");
       await npWithAgentRuntimeControlTransactionV1(context.siteId, async () => {}, context.db);
+      if (
+        npIsAgentModeratorAssessmentRecipeV2(
+          context.evidence.registry.recipes.find(
+            (entry) =>
+              entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+          ),
+        )
+      )
+        return npRecordAgentModeratorSegmentedAssessmentV2(options, context, input.providerCallId);
       const [call] = await context.db
         .select()
         .from(npAgentProviderCalls)

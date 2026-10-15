@@ -115,3 +115,57 @@ export function npIsAgentModeratorAssessmentRecipeV1(
       serializeAgentCanonicalJson(npAgentModeratorAssessmentResponseSchemaV1())
   );
 }
+
+/** Explicit opt-in sequential segmented profile; V1 instruction and evaluation identities are unchanged. */
+export const npAgentModeratorAssessmentRecipeSetupV2 = structuredClone(
+  npAgentModeratorAssessmentRecipeSetupV1,
+);
+export const npAgentModeratorAssessmentInstructionV2 = [
+  npAgentModeratorAssessmentInstructionV1,
+  "This request is exactly one segment of a versioned Incident evidence manifest. Classify only this segment's admitted excerpts; do not infer a whole-Incident verdict or any result for other segments. A server-owned aggregate checks all segment proofs and treats missing, conflicting, incomplete or uncertain evidence as uncertain.",
+].join("\n");
+const instructionDigestV2 = "cj1:sha256:rZRWN1YeG8TlN5FXaoxs_F8SB5ZArsKNGyjj4nH0wE8";
+export async function npCreateAgentModeratorAssessmentRecipeDefinitionV2(): Promise<NpAgentRecipeDefinitionCanonicalV1> {
+  const definition = await npCreateAgentModeratorAssessmentRecipeDefinitionV1();
+  definition.instruction = {
+    templateId: "moderator.semantic-assessment",
+    templateVersion: 2,
+    text: npAgentModeratorAssessmentInstructionV2,
+    digest: await digestAgentCanonicalSha256(
+      new TextEncoder().encode(npAgentModeratorAssessmentInstructionV2),
+    ),
+  };
+  return npRequireAgentRecipeRegistryCanonical({
+    schemaVersion: "np.agent-recipe-registry.v1",
+    projection: "definition",
+    recipes: [definition],
+  }).recipes[0];
+}
+export function npIsAgentModeratorAssessmentRecipeV2(
+  recipe: NpAgentRecipeDefinitionCanonicalV1 | undefined,
+): boolean {
+  if (
+    !recipe ||
+    recipe.instruction?.templateId !== "moderator.semantic-assessment" ||
+    recipe.instruction.templateVersion !== 2 ||
+    recipe.instruction.text !== npAgentModeratorAssessmentInstructionV2 ||
+    recipe.instruction.digest !== instructionDigestV2
+  )
+    return false;
+  return npIsAgentModeratorAssessmentRecipeV1({
+    ...recipe,
+    instruction: {
+      templateId: "moderator.semantic-assessment",
+      templateVersion: 1,
+      text: npAgentModeratorAssessmentInstructionV1,
+      digest: instructionDigestV1,
+    },
+  });
+}
+export function npIsAgentModeratorAssessmentProfileV1(
+  recipe: NpAgentRecipeDefinitionCanonicalV1 | undefined,
+): boolean {
+  return (
+    npIsAgentModeratorAssessmentRecipeV1(recipe) || npIsAgentModeratorAssessmentRecipeV2(recipe)
+  );
+}
