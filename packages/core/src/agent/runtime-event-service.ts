@@ -34,6 +34,9 @@ import {
   type NpAgentRuntimeServiceOptionsV1,
 } from "./runtime-service.js";
 import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
+import type { NpAgentModeratorCombinedContentCollectorV1 } from "./moderator-combined-collector.js";
+import { npRequireAgentModeratorSettingsV1 } from "../agent-contract/moderator-contract.js";
+import { npAgentModeratorWindowStartedAtV1 } from "./moderator-detector.js";
 
 type Db = ReturnType<typeof getDb>;
 type Trigger = typeof npAgentTriggers.$inferSelect;
@@ -85,6 +88,9 @@ export interface NpAgentRuntimeEventServiceOptionsV1 {
   deploymentAuthority: NpAgentRuntimeServiceOptionsV1["deploymentAuthority"];
   now?: () => Date;
   enqueueRun?: (input: { siteId: string; runId: string }) => Promise<string>;
+  /** Explicit deterministic source owner. Collects closed windows before Moderator admission;
+   * installation never enables a trigger, worker or provider. */
+  moderatorCollector?: NpAgentModeratorCombinedContentCollectorV1;
 }
 /** Explicit host service. Durable events and Runs are the delivery outbox; queue failures retain them. */
 export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventServiceOptionsV1) {
@@ -130,6 +136,70 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
         recipe.triggerKinds.includes(trigger.kind as "manual" | "event" | "schedule") &&
         evidence.definition.settings.some((branch) => branch.recipeId === recipe.id),
     );
+  }
+  async function prepareModerator(
+    trigger: Trigger,
+    recipeId: string,
+    idempotencyKey: string,
+    windowStartedAt: string,
+  ) {
+    if (recipeId !== "moderator.repeated-link-spam" || !options.moderatorCollector) return;
+    const settings = await npWithAgentRuntimeControlTransactionV1(
+      trigger.siteId,
+      async ({ db }) => {
+        const [liveTrigger] = await db
+          .select()
+          .from(npAgentTriggers)
+          .where(
+            and(eq(npAgentTriggers.siteId, trigger.siteId), eq(npAgentTriggers.id, trigger.id)),
+          )
+          .limit(1);
+        if (
+          !liveTrigger?.enabled ||
+          digest(definition(liveTrigger)) !== digest(definition(trigger))
+        )
+          fail("RUNTIME_TRIGGER_UNAVAILABLE");
+        if (!(await current(db, trigger)).some((recipe) => recipe.id === recipeId))
+          fail("RUNTIME_TRIGGER_UNAVAILABLE");
+        const [prior] = await db
+          .select({ id: npAgentRuns.id })
+          .from(npAgentRuns)
+          .where(
+            and(
+              eq(npAgentRuns.siteId, trigger.siteId),
+              eq(npAgentRuns.agentId, trigger.agentId),
+              eq(npAgentRuns.triggerId, trigger.id),
+              eq(npAgentRuns.idempotencyKey, idempotencyKey),
+            ),
+          )
+          .limit(1);
+        if (prior) {
+          await options.admission.withRunAuthority(
+            { db, siteId: trigger.siteId, runId: prior.id, allowTerminal: true },
+            () => Promise.resolve(undefined),
+          );
+          return null;
+        }
+        const evidence = await npRequireAgentRuntimeVersionV1({
+          db,
+          siteId: trigger.siteId,
+          agentId: trigger.agentId,
+          versionId: trigger.agentVersionId,
+        });
+        return npRequireAgentModeratorSettingsV1(
+          evidence.definition.settings.find((entry) => entry.recipeId === recipeId),
+        );
+      },
+    );
+    if (!settings) return;
+    // Collect outside the Runtime-control transaction. The source owner rechecks
+    // staff/site authority and takes its own ordered locks. Admission subsequently
+    // repeats current trigger/version/policy checks; collection grants no authority.
+    await options.moderatorCollector.collect({
+      siteId: trigger.siteId,
+      windowStartedAt,
+      settings,
+    });
   }
   async function registerTrigger(input: {
     siteId: string;
@@ -383,17 +453,23 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
           if (!recipes.length) skipped++;
           for (const recipe of recipes) {
             try {
+              const event = snapshot.event;
+              const window = trigger.coalesceSeconds
+                ? Math.floor(event.recordedAt.getTime() / (trigger.coalesceSeconds * 1000))
+                : event.id;
+              const key = `event:${digest({ triggerId: trigger.id, recipeId: recipe.id, window, subject: event.subject, parent: event.causalRunId, action: event.causalActionId }).slice(11)}`;
+              await prepareModerator(
+                trigger,
+                recipe.id,
+                key,
+                npAgentModeratorWindowStartedAtV1(event.occurredAt.toISOString()),
+              );
               const runId = await npWithAgentRuntimeControlTransactionV1(
                 input.siteId,
                 async ({ db }) => {
                   const eligible = await current(db, trigger);
                   if (!eligible.some((entry) => entry.id === recipe.id))
                     fail("RUNTIME_RECIPE_UNAVAILABLE");
-                  const event = snapshot.event;
-                  const window = trigger.coalesceSeconds
-                    ? Math.floor(event.recordedAt.getTime() / (trigger.coalesceSeconds * 1000))
-                    : event.id;
-                  const key = `event:${digest({ triggerId: trigger.id, recipeId: recipe.id, window, subject: event.subject, parent: event.causalRunId, action: event.causalActionId }).slice(11)}`;
                   const [prior] = await db
                     .select()
                     .from(npAgentRuns)
@@ -578,6 +654,15 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
           let unresolved = false;
           for (const recipe of plan.recipes) {
             try {
+              const idempotencyKey = `schedule:${digest({ triggerId: plan.trigger.id, recipeId: recipe.id, scheduledFor: plan.scheduledFor }).slice(11)}`;
+              await prepareModerator(
+                plan.trigger,
+                recipe.id,
+                idempotencyKey,
+                npAgentModeratorWindowStartedAtV1(
+                  new Date(Date.parse(plan.scheduledFor) - 600_000).toISOString(),
+                ),
+              );
               const admitted = await npWithAgentRuntimeControlTransactionV1(
                 input.siteId,
                 async ({ db }) => {
@@ -605,7 +690,7 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
                     agentId: trigger.agentId,
                     expectedVersionId: trigger.agentVersionId,
                     recipeId: recipe.id,
-                    idempotencyKey: `schedule:${digest({ triggerId: trigger.id, recipeId: recipe.id, scheduledFor: plan.scheduledFor }).slice(11)}`,
+                    idempotencyKey,
                     source: { triggerId: trigger.id, scheduledFor: plan.scheduledFor },
                   });
                 },

@@ -1109,7 +1109,7 @@ test("document report evidence reviews actual visibility, selects the exact targ
   expect(prepared).toHaveLength(1);
 });
 
-test("member report evidence separates an unverified claim from current account and site report states without account actions", async ({
+test("member report evidence connects bounded site restrictions and authorized management while claims remain read-only", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -1158,6 +1158,21 @@ test("member report evidence separates an unverified claim from current account 
       updatedAt: at,
       versionDigest: targetDigest,
       report: { status: "unresolved", resolvedAt: null },
+      reviewContext: {
+        siteId: "default",
+        snapshotAt: at,
+        activeRestrictions: [
+          { scopeType: "site", scopeId: null, kind: "permanent", expiresAt: null },
+          {
+            scopeType: "collection",
+            scopeId: "posts",
+            kind: "temporary",
+            expiresAt: "2026-09-28T00:00:00.000Z",
+          },
+        ],
+        hasMoreRestrictions: false,
+        canOpenMemberManagement: true,
+      },
     },
     responseEligible: false,
   };
@@ -1175,9 +1190,11 @@ test("member report evidence separates an unverified claim from current account 
   let evidenceVersion = 1;
   let evidenceStatus = 200;
   const posts: string[] = [];
+  const memberRequests: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().includes("/api/admin/agents/"))
       posts.push(request.url());
+    if (request.url().includes(`/admin/members/${memberId}`)) memberRequests.push(request.url());
   });
   await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
     route.fulfill({ json: memberDetail }),
@@ -1218,6 +1235,16 @@ test("member report evidence separates an unverified claim from current account 
   ).toBeVisible();
   await expect(evidence.getByText("Global account status: active", { exact: true })).toBeVisible();
   await expect(evidence.getByText("Site report status: unresolved", { exact: true })).toBeVisible();
+  const restrictions = evidence.getByRole("region", { name: "Current site restrictions" });
+  await expect(restrictions.getByText("Scope: site — this site", { exact: true })).toBeVisible();
+  await expect(restrictions.getByText("Scope: collection — posts", { exact: true })).toBeVisible();
+  await expect(restrictions.getByText("Expires: No expiry", { exact: true })).toBeVisible();
+  await expect(restrictions.locator('time[datetime="2026-09-28T00:00:00.000Z"]')).toBeVisible();
+  await expect(restrictions.getByRole("link", { name: "Open member management" })).toHaveAttribute(
+    "href",
+    `/admin/members/${memberId}`,
+  );
+  await expect(restrictions.getByText(/does not establish prior restrictions/)).toBeVisible();
   await expect(
     evidence.getByText("Claim: unverified. No abuse assessment was recorded.", { exact: true }),
   ).toBeVisible();
@@ -1243,6 +1270,18 @@ test("member report evidence separates an unverified claim from current account 
     path: testInfo.outputPath("incident-member-report-evidence-320.png"),
     animations: "disabled",
   });
+  expect(memberRequests).toEqual([]);
+  filed.current!.reviewContext = {
+    ...filed.current!.reviewContext!,
+    activeRestrictions: Array.from({ length: 25 }, (_, index) => ({
+      scopeType: "collection",
+      scopeId: `bounded-scope-${index}`,
+      kind: "permanent",
+      expiresAt: null,
+    })),
+    hasMoreRestrictions: true,
+    canOpenMemberManagement: false,
+  };
   filed.current!.state = "changed";
   filed.current!.status = "suspended";
   filed.current!.updatedAt = "2026-09-27T01:00:00.000Z";
@@ -1256,6 +1295,9 @@ test("member report evidence separates an unverified claim from current account 
     evidence.getByText("Global account status: suspended", { exact: true }),
   ).toBeVisible();
   await expect(evidence.getByText("Site report status: resolved", { exact: true })).toBeVisible();
+  await expect(restrictions.getByRole("link", { name: "Open member management" })).toHaveCount(0);
+  await expect(restrictions.getByText(/unavailable with your current permissions/)).toBeVisible();
+  await expect(restrictions.getByText(/Only the first 25 active restrictions/)).toBeVisible();
   await expect(
     evidence.getByText("Recorded account status: active", { exact: true }),
   ).toBeVisible();
@@ -1292,6 +1334,7 @@ test("member report evidence separates an unverified claim from current account 
   await expect(page.getByRole("heading", { name: "Current member" })).toHaveCount(0);
   await expect(page.getByText(memberId, { exact: false })).toHaveCount(0);
   expect(posts).toEqual([]);
+  expect(memberRequests).toEqual([]);
 });
 
 test("incident evidence failure clears its selection, stale generations require review, and access loss clears detail", async ({

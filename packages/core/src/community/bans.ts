@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
 
 import { npRequireBanRow } from "../community-contract/contract.js";
 import type { BanKind, BanScope, NpBanRow } from "../community-contract/types.js";
@@ -7,6 +7,7 @@ import { npBans } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 import { recordAuditEvent } from "./audit.js";
 import type { Principal } from "./principal.js";
@@ -149,6 +150,50 @@ export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
     )
     .orderBy(desc(npBans.createdAt))) as NpBanRow[];
   return rows.map(npRequireBanRow);
+}
+
+/**
+ * Bounded same-site snapshot for composing staff review. The caller supplies its
+ * existing DB/transaction and clock; no bootstrap, mutations or history inference.
+ * One extra row reports whether the active result is incomplete.
+ */
+export async function npReadActiveMemberBansBounded(input: {
+  db: ReturnType<typeof getDb>;
+  siteId: string;
+  memberId: string;
+  now: Date;
+  limit: number;
+}): Promise<{ rows: NpBanRow[]; hasMore: boolean }> {
+  if (
+    !npIsCanonicalSiteId(input.siteId) ||
+    !(input.now instanceof Date) ||
+    Number.isNaN(input.now.valueOf()) ||
+    !Number.isInteger(input.limit) ||
+    input.limit < 1 ||
+    input.limit > 100
+  )
+    throw new NpValidationError("Invalid bounded member restriction read", [
+      {
+        field: "memberRestrictions",
+        message: "Canonical site, clock and a 1..100 limit are required",
+      },
+    ]);
+  const rows = await input.db
+    .select()
+    .from(npBans)
+    .where(
+      and(
+        eq(npBans.memberId, input.memberId),
+        eq(npBans.siteId, input.siteId),
+        or(isNull(npBans.expiresAt), gt(npBans.expiresAt, input.now)),
+      ),
+    )
+    .orderBy(desc(npBans.createdAt), asc(npBans.id))
+    .limit(input.limit + 1);
+  return {
+    rows: rows.slice(0, input.limit).map(npRequireBanRow),
+    hasMore: rows.length > input.limit,
+  };
 }
 
 export interface RevokeBanInput {

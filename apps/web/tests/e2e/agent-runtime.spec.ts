@@ -259,7 +259,7 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
         ...catalog,
         recipes: catalog.recipes.map((recipe) => ({
           ...recipe,
-          triggerKinds: ["manual", "event"],
+          triggerKinds: ["event", "manual", "schedule"],
         })),
       },
     }),
@@ -333,6 +333,16 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await tabTo(page, enableTrigger);
   await page.keyboard.press("Space");
   await expect(enableTrigger).toBeChecked();
+  await page.getByRole("button", { name: "Add schedule trigger", exact: true }).click();
+  const cron = page.getByLabel("Five-field UTC cron", { exact: true });
+  await expect(cron).toHaveValue("*/5 * * * *");
+  await cron.fill("*/15 * * * *");
+  await page.getByRole("combobox", { name: "Missed schedule handling", exact: true }).click();
+  await page.getByRole("option", { name: "Catch up once", exact: true }).click();
+  await expect(
+    page.getByLabel("Enable after activation", { exact: true }).nth(1),
+  ).not.toBeChecked();
+  expect(writes).toHaveLength(0);
   await page.getByRole("button", { name: "Add event trigger", exact: true }).click();
   await page.getByRole("combobox", { name: "Registered event kind", exact: true }).click();
   await page.getByRole("option", { name: "security.edge.signal", exact: true }).click();
@@ -369,6 +379,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
     reviewedPolicyRefs: [],
     triggers: [
       { definition: { type: "manual" }, enabled: true },
+      {
+        definition: { type: "schedule", cron: "*/15 * * * *", catchUp: "once" },
+        enabled: false,
+      },
       {
         definition: {
           type: "event",

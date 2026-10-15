@@ -1,4 +1,5 @@
 import type * as WorkerObservationModule from "./operator-worker-observation";
+import type * as ProgressObservationModule from "./operator-progress-observation";
 import type * as JobsModule from "@nexpress/core/jobs";
 import type * as MediaModule from "@nexpress/core/media";
 import type * as CacheModule from "@nexpress/core/cache";
@@ -19,10 +20,15 @@ const mocks = vi.hoisted(() => ({
   jobs: vi.fn(),
   media: vi.fn(),
   worker: vi.fn(),
+  progress: vi.fn(),
 }));
 vi.mock("./operator-worker-observation", async (original) => ({
   ...(await original<typeof WorkerObservationModule>()),
   collectOperatorWorkerObservation: mocks.worker,
+}));
+vi.mock("./operator-progress-observation", async (original) => ({
+  ...(await original<typeof ProgressObservationModule>()),
+  collectOperatorProgressObservation: mocks.progress,
 }));
 vi.mock("@nexpress/core/jobs", async (original) => ({
   ...(await original<typeof JobsModule>()),
@@ -585,5 +591,281 @@ describe("Operator recipe worker deployment boundary", () => {
     expect(revoked.report.checks[0]?.state).toBe("ok");
     expect(revoked.report.checks[1]?.detail).toContain("unknown");
     expect(JSON.stringify(revoked)).not.toContain("secret facts");
+  });
+  it("keeps site transitions visible without deployment permission and requires explicit source selection", async () => {
+    mocks.jobs.mockResolvedValue({
+      state: "observed",
+      complete: true,
+      inspectedCount: 0,
+      failed: 0,
+      coveredQueues: [],
+    });
+    mocks.progress.mockResolvedValue({
+      check: {
+        id: "operator.jobs.progress",
+        state: "ok",
+        label: "Site transitions",
+        detail: "Site evidence only",
+      },
+      targetCount: 1,
+      evidenceRefs: ["progress:observed"],
+    });
+    const options = {
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(false),
+      observationOwners: { jobs: "pg-boss" as const },
+    };
+    await npCreateAgentOperatorAppHostV1(options).status({ families: ["jobs"] }, context);
+    expect(mocks.progress).not.toHaveBeenCalled();
+    const result = await npCreateAgentOperatorAppHostV1({
+      ...options,
+      progressDiagnostics: "pg-boss",
+      workerDiagnostics: "pg-boss",
+    }).status({ families: ["jobs"] }, context);
+    expect(result.report.checks.map((check) => check.id)).toEqual([
+      "operator.jobs",
+      "operator.jobs.progress",
+      "operator.worker",
+    ]);
+    expect(result.report.checks[1]?.detail).toBe("Site evidence only");
+    expect(mocks.progress).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ scope: { kind: "site", siteId: "default" } }),
+    );
+    expect(mocks.worker).not.toHaveBeenCalled();
+  });
+  it("withholds deployment transition evidence when deployment authority is revoked", async () => {
+    let allowed = true;
+    mocks.worker.mockResolvedValue({
+      checks: [{ id: "operator.worker", state: "ok", label: "Workers" }],
+    });
+    mocks.progress.mockImplementation(() => {
+      allowed = false;
+      return Promise.resolve({
+        check: {
+          id: "operator.worker.progress",
+          state: "ok",
+          label: "Transitions",
+          detail: "private-deployment-evidence",
+        },
+        targetCount: 1,
+        evidenceRefs: ["progress:observed"],
+      });
+    });
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(allowed),
+      workerDiagnostics: "pg-boss",
+      progressDiagnostics: "pg-boss",
+      scopedReaders: { jobs: () => Promise.resolve({ state: "ok", evidenceRefs: [] }) },
+    });
+    const result = await host.status({ families: ["jobs"] }, context);
+    expect(mocks.progress).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ scope: { kind: "deployment" } }),
+    );
+    expect(JSON.stringify(result)).not.toContain("private-deployment-evidence");
+    expect(result.report.checks.map((check) => check.id)).toEqual([
+      "operator.jobs",
+      "operator.worker",
+    ]);
+  });
+  it("retains transition facts in a separate audit check and charges both samples against the shared target bound", async () => {
+    mocks.jobs.mockImplementation(({ maxTargets }: { maxTargets: number }) =>
+      Promise.resolve({
+        state: "observed",
+        complete: true,
+        inspectedCount: maxTargets,
+        failed: 0,
+        coveredQueues: [],
+      }),
+    );
+    mocks.progress.mockResolvedValue({
+      check: { id: "operator.jobs.progress", state: "ok", label: "Transitions" },
+      targetCount: 2,
+      evidenceRefs: ["observation:job-progress:v1", "progress:observed", "fact:completed:2"],
+    });
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      observationOwners: { jobs: "pg-boss" },
+      progressDiagnostics: "pg-boss",
+    });
+    const request = {
+      ...context,
+      input: { families: ["jobs" as const], collections: [], maxTargets: 6 },
+      auditId: uuid,
+    };
+    const audit = host.audit?.bind(host);
+    if (!audit) throw new Error("Expected the explicit audit owner");
+    const result = await audit(request);
+    expect(mocks.jobs).toHaveBeenCalledWith({ siteId: "default", maxTargets: 3 });
+    expect(mocks.progress).toHaveBeenCalledWith(
+      expect.objectContaining({ maxTargets: 3, scope: { kind: "site", siteId: "default" } }),
+    );
+    expect(result.checks[1]).toMatchObject({
+      id: "operator.jobs.progress",
+      family: "jobs",
+      status: "pass",
+      evidenceRefs: expect.arrayContaining(["fact:completed:2"]),
+    });
+    mocks.progress.mockClear();
+    const bounded = await audit({ ...request, input: { ...request.input, maxTargets: 1 } });
+    expect(mocks.progress).not.toHaveBeenCalled();
+    expect(bounded.checks[1]).toMatchObject({
+      status: "unknown",
+      evidenceRefs: expect.arrayContaining(["progress:unknown"]),
+    });
+    mocks.progress.mockResolvedValueOnce({
+      check: { id: "operator.jobs.progress", state: "ok", label: "Transitions" },
+      targetCount: 4,
+      evidenceRefs: ["progress:observed"],
+    });
+    await expect(audit(request)).rejects.toMatchObject({ code: "OPERATOR_UNAVAILABLE" });
+  });
+  it("reserves an unknown snapshot's allocation before attempting progress without inventing inspected facts", async () => {
+    mocks.jobs.mockResolvedValue({
+      state: "unavailable",
+      complete: false,
+      inspectedCount: null,
+      failed: null,
+      coveredQueues: [],
+    });
+    mocks.progress.mockImplementation(({ maxTargets }: { maxTargets: number }) =>
+      Promise.resolve({
+        check: { id: "operator.jobs.progress", state: "warn", label: "Unknown transitions" },
+        targetCount: 0,
+        consumedTargets: maxTargets,
+        evidenceRefs: ["progress:unknown", "fact:inspectedCount:unknown"],
+      }),
+    );
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      observationOwners: { jobs: "pg-boss" },
+      progressDiagnostics: "pg-boss",
+    });
+    const audit = host.audit?.bind(host);
+    if (!audit) throw new Error("Expected the explicit audit owner");
+    const result = await audit({
+      ...context,
+      input: { families: ["jobs"], collections: [], maxTargets: 6 },
+      auditId: uuid,
+    });
+    expect(mocks.jobs).toHaveBeenCalledExactlyOnceWith({ siteId: "default", maxTargets: 3 });
+    expect(mocks.progress).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ maxTargets: 3 }),
+    );
+    expect(result.checks[0]?.evidenceRefs).toContain("fact:inspectedCount:unknown");
+    expect(result.checks[1]).toMatchObject({
+      status: "unknown",
+      evidenceRefs: expect.arrayContaining(["fact:inspectedCount:unknown"]),
+    });
+  });
+  it("does not reuse an unknown snapshot's attempted budget for later audit families", async () => {
+    mocks.jobs.mockResolvedValue({
+      state: "unavailable",
+      complete: false,
+      inspectedCount: null,
+      failed: null,
+      coveredQueues: [],
+    });
+    const storage = vi.fn(() =>
+      Promise.resolve({
+        state: "ok" as const,
+        targetCount: 1,
+        evidenceRefs: ["storage:observed"],
+      }),
+    );
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      observationOwners: { jobs: "pg-boss" },
+      auditReaders: { storage },
+    });
+    const audit = host.audit?.bind(host);
+    if (!audit) throw new Error("Expected the explicit audit owner");
+    await expect(
+      audit({
+        ...context,
+        input: { families: ["jobs", "storage"], collections: [], maxTargets: 6 },
+        auditId: uuid,
+      }),
+    ).rejects.toMatchObject({ code: "OPERATOR_UNAVAILABLE" });
+    expect(mocks.jobs).toHaveBeenCalledExactlyOnceWith({ siteId: "default", maxTargets: 6 });
+    expect(storage).not.toHaveBeenCalled();
+  });
+  it("reserves unknown progress inspection before considering a later family", async () => {
+    mocks.jobs.mockResolvedValue({
+      state: "observed",
+      complete: true,
+      inspectedCount: 2,
+      failed: 0,
+      coveredQueues: [],
+    });
+    mocks.progress.mockImplementation(({ maxTargets }: { maxTargets: number }) =>
+      Promise.resolve({
+        check: { id: "operator.jobs.progress", state: "warn", label: "Unknown transitions" },
+        targetCount: 0,
+        consumedTargets: maxTargets,
+        evidenceRefs: ["progress:unknown"],
+      }),
+    );
+    const storage = vi.fn(() =>
+      Promise.resolve({
+        state: "ok" as const,
+        targetCount: 1,
+        evidenceRefs: ["storage:observed"],
+      }),
+    );
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      observationOwners: { jobs: "pg-boss" },
+      progressDiagnostics: "pg-boss",
+      auditReaders: { storage },
+    });
+    const audit = host.audit?.bind(host);
+    if (!audit) throw new Error("Expected the explicit audit owner");
+    await expect(
+      audit({
+        ...context,
+        input: { families: ["jobs", "storage"], collections: [], maxTargets: 6 },
+        auditId: uuid,
+      }),
+    ).rejects.toMatchObject({ code: "OPERATOR_UNAVAILABLE" });
+    expect(mocks.progress).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ maxTargets: 4 }),
+    );
+    expect(storage).not.toHaveBeenCalled();
+  });
+  it("preserves explicitly installed custom readers' measured target contract and precedence", async () => {
+    const jobs = vi.fn(() =>
+      Promise.resolve({
+        state: "warn" as const,
+        targetCount: 0,
+        evidenceRefs: ["jobs:unavailable"],
+      }),
+    );
+    const storage = vi.fn(() =>
+      Promise.resolve({
+        state: "ok" as const,
+        targetCount: 1,
+        evidenceRefs: ["storage:observed"],
+      }),
+    );
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      observationOwners: { jobs: "pg-boss" },
+      progressDiagnostics: "pg-boss",
+      auditReaders: { jobs, storage },
+    });
+    const audit = host.audit?.bind(host);
+    if (!audit) throw new Error("Expected the explicit audit owner");
+    const result = await audit({
+      ...context,
+      input: { families: ["jobs", "storage"], collections: [], maxTargets: 6 },
+      auditId: uuid,
+    });
+    expect(result.checks.map((check) => check.id)).toEqual(["operator.jobs", "operator.storage"]);
+    expect(storage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ input: expect.objectContaining({ maxTargets: 6 }) }),
+    );
+    expect(mocks.jobs).not.toHaveBeenCalled();
+    expect(mocks.progress).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import { createAgentRuntimeEventServiceV1 } from "../../../packages/core/src/age
 import {
   createAgentModeratorCollectorV1,
   createAgentModeratorCommentObserverV1,
+  type NpAgentModeratorCollectionResultV1,
 } from "../../../packages/core/src/agent/moderator-collector.js";
 import {
   createAgentModeratorCombinedCommentCollectorV1,
@@ -84,6 +85,8 @@ import {
   npAgentDisabledGatewaySettingsV1,
   type NpAgentJsonObject,
   type NpAgentProviderInvokeOutcomeV1,
+  type NpAgentRecipeDefinitionCanonicalV1,
+  type NpAgentRecipeRegistryCanonicalV1,
 } from "../../../packages/core/src/agent-contract/types.js";
 import { type NpAgentQuarantineProposalV1 } from "../../../packages/core/src/agent-contract/moderator-contract.js";
 import { npRequireAgentModerationCapabilityOutputV1 } from "../../../packages/core/src/agent-contract/moderation-capability-contract.js";
@@ -119,6 +122,10 @@ export async function moderatorRecipeFixture(
     sourceAvailable?: boolean;
     itemCount?: number;
     bootstrapClockAheadSeconds?: number;
+    recipe?: NpAgentRecipeDefinitionCanonicalV1;
+    recipeRegistry?: NpAgentRecipeRegistryCanonicalV1;
+    /** Leave source observations intact so the explicit Runtime collector owns first collection. */
+    deferInitialCollection?: boolean;
     contentCounts?: { documents: number; observedComments: number; reportedComments: number };
     source?:
       | "observations"
@@ -145,7 +152,7 @@ export async function moderatorRecipeFixture(
     },
   ];
   definition.budget = structuredClone(npAgentModeratorRecipeSetupV1.budget);
-  const recipe = await npCreateAgentModeratorRecipeDefinitionV1();
+  const recipe = options.recipe ?? (await npCreateAgentModeratorRecipeDefinitionV1());
   const responseSchema = recipe.responseSchema;
   const providerInvoke = vi.fn<NpAgentProviderInferenceFacetV1["invoke"]>(async () =>
     providerOutcome({ kind: "complete", summary: "Reviewed containment completed." }),
@@ -155,6 +162,7 @@ export async function moderatorRecipeFixture(
     delegated: true,
     definition,
     recipe,
+    recipeRegistry: options.recipeRegistry,
     responseSchema,
     budget,
     dataClassCeiling: "sensitive-approved",
@@ -641,16 +649,18 @@ export async function moderatorRecipeFixture(
     incidents,
     now: runtime.options.now,
   });
-  const collected = await collector.collect({
-    siteId,
-    windowStartedAt,
-    settings: {
-      ...structuredClone(npAgentModeratorRecipeSetupV1.settings),
-      collectionSlugs: ["discussions"],
-    },
-  });
+  const collected: NpAgentModeratorCollectionResultV1 = options.deferInitialCollection
+    ? { inspectedEvents: 0, acceptedFacts: 0, observations: [] }
+    : await collector.collect({
+        siteId,
+        windowStartedAt,
+        settings: {
+          ...structuredClone(npAgentModeratorRecipeSetupV1.settings),
+          collectionSlugs: ["discussions"],
+        },
+      });
   const reportCollected =
-    source === "mixed" || source === "document-mixed"
+    !options.deferInitialCollection && (source === "mixed" || source === "document-mixed")
       ? await (
           source === "document-mixed"
             ? createAgentModeratorDocumentReportCollectorV1
@@ -709,6 +719,12 @@ export async function moderatorRecipeFixture(
       );
     },
     collected,
+    windowStartedAt,
+    runtimeCollector: createAgentModeratorCombinedContentCollectorV1({
+      staffUserId: runtime.actor.actor.user.id,
+      incidents,
+      now: runtime.options.now,
+    }),
     moderatorEvidence,
     rules: hostRules,
     budget,
@@ -721,8 +737,8 @@ export async function moderatorRecipeFixture(
         }),
       );
     },
-    async read() {
-      return admission.withRunAuthority({ siteId, runId: admitted.runId }, (context) =>
+    async read(runId = admitted.runId) {
+      return admission.withRunAuthority({ siteId, runId }, (context) =>
         moderatorEvidence.read(context),
       );
     },

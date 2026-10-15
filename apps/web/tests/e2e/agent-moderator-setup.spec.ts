@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { npAgentModeratorRecipeSetupV1 } from "@nexpress/core/agent-contract";
+import {
+  npAgentModeratorRecipeSetupV1,
+  npCreateAgentR6UnattendedRecipeRegistryV1,
+} from "@nexpress/core/agent-contract";
 import { agent, catalog, id } from "./fixtures/runtime-studio.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -12,6 +15,9 @@ test("Moderator human approval setup creates only an explicit bounded draft", as
     124 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
   );
   const setup = npAgentModeratorRecipeSetupV1;
+  const registry = await npCreateAgentR6UnattendedRecipeRegistryV1();
+  const installed = registry.recipes.find((recipe) => recipe.id === setup.recipeId);
+  if (!installed) throw new Error("Expected the installed Moderator profile.");
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   await page.route("**/api/admin/agents/capabilities", (route) =>
     route.fulfill({
@@ -23,7 +29,7 @@ test("Moderator human approval setup creates only an explicit bounded draft", as
             version: 1,
             allowedTemplates: ["moderator"],
             providerMode: "required",
-            triggerKinds: ["manual"],
+            triggerKinds: installed.triggerKinds,
             capabilityIds: setup.capabilityModes.map((entry) => entry.capabilityId),
           },
         ],

@@ -30,10 +30,15 @@ import {
   npSerializeAgentStudioConnectionDefinitionV1,
 } from "../../../packages/core/src/agent-contract/studio-contract.js";
 import { npDigestAgentProviderRequestCanonical } from "../../../packages/core/src/agent-contract/canonical-provider.js";
+import {
+  npRequireAgentRecipeRegistryCanonical,
+  npRequireAgentRecipeRegistryCanonicalForInstalledRecipes,
+} from "../../../packages/core/src/agent-contract/canonical-recipe-registry.js";
 import type { NpAgentBudgetV1 } from "../../../packages/core/src/agent-contract/wire-contract.js";
 import type { NpAgentConfigurationDefinitionV1 } from "../../../packages/core/src/agent-contract/runtime-contract.js";
 import type {
   NpAgentRecipeDefinitionCanonicalV1,
+  NpAgentRecipeRegistryCanonicalV1,
   NpAgentJsonSchema,
   NpAgentProviderRequestCanonicalV1,
   NpAgentProviderResponseCanonicalV1,
@@ -87,6 +92,7 @@ export async function runtimeUsageFixture(
     providerInference?: NpAgentConnectionAuthAdapterV1["inference"];
     responseSchema?: NpAgentJsonSchema;
     recipe?: NpAgentRecipeDefinitionCanonicalV1;
+    recipeRegistry?: NpAgentRecipeRegistryCanonicalV1;
   } = {},
 ) {
   const f = await runtimeFixture(options.budget ?? runtimeBudget());
@@ -244,6 +250,21 @@ export async function runtimeUsageFixture(
     };
   }
   if (options.recipe) recipes.recipes = [options.recipe];
+  if (options.recipeRegistry) {
+    const installed = npRequireAgentRecipeRegistryCanonical(options.recipeRegistry);
+    if (installed.projection !== "registry")
+      throw new Error("Expected a complete fixture registry");
+    if (options.recipe)
+      npRequireAgentRecipeRegistryCanonicalForInstalledRecipes(
+        {
+          schemaVersion: "np.agent-recipe-registry.v1",
+          projection: "definition",
+          recipes: [options.recipe],
+        },
+        installed.recipes,
+      );
+    recipes.recipes = installed.recipes;
+  }
   const runtimeOptions = {
     ...f.options,
     recipes,

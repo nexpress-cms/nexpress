@@ -1106,6 +1106,16 @@ function RuntimeTriggerPlan({
   const kinds = (["manual", "schedule", "event"] as const).filter((kind) =>
     recipes.some((recipe) => recipe.triggerKinds.includes(kind)),
   );
+  const hasModerator = recipes.some((recipe) => recipe.id === "moderator.repeated-link-spam");
+  const hasOperator = recipes.some((recipe) => recipe.id === "operator.worker-not-draining");
+  const hasPublisher = recipes.some((recipe) => recipe.id === "publisher.stale-content");
+  const scheduleCron = hasModerator
+    ? "*/10 * * * *"
+    : hasOperator
+      ? "*/5 * * * *"
+      : hasPublisher
+        ? "0 2 * * *"
+        : "0 * * * *";
   return (
     <fieldset className="space-y-3">
       <legend className="font-medium">Triggers for this activation</legend>
@@ -1113,6 +1123,12 @@ function RuntimeTriggerPlan({
         Trigger registration and enablement are saved atomically with activation. Editing an active
         trigger requires a replacement draft and fresh trigger identity.
       </p>
+      {kinds.some((kind) => kind !== "manual") && (
+        <p className="text-sm">
+          Event and scheduled runs use current evidence to prepare observations or proposals.
+          Content changes and operations execution still require their existing human approval.
+        </p>
+      )}
       {plan.map((entry, index) => (
         <div className="space-y-2 rounded border p-3" key={entry.definition.id}>
           <p>{entry.definition.type}</p>
@@ -1205,15 +1221,19 @@ function RuntimeTriggerPlan({
                         ? {
                             type: "schedule",
                             id: crypto.randomUUID(),
-                            cron: "0 * * * *",
+                            cron: scheduleCron,
                             catchUp: "skip",
                           }
                         : {
                             type: "event",
                             id: crypto.randomUUID(),
-                            eventKind: "agent.run.changed",
-                            filter: { op: "eq", field: "privacy", value: "internal" },
-                            coalesceSeconds: 0,
+                            eventKind: hasModerator
+                              ? "community.content.created"
+                              : "agent.run.changed",
+                            filter: hasModerator
+                              ? { op: "eq", field: "source.kind", value: "community" }
+                              : { op: "eq", field: "privacy", value: "internal" },
+                            coalesceSeconds: hasModerator ? 600 : 0,
                           },
                 },
               ])

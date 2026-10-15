@@ -8,6 +8,8 @@ import {
 import type {
   NpAgentJsonObject,
   NpAgentProviderInvokeOutcomeV1,
+  NpAgentRecipeDefinitionCanonicalV1,
+  NpAgentRecipeRegistryCanonicalV1,
 } from "../../../packages/core/src/agent-contract/types.js";
 import type { NpAgentProviderInferenceFacetV1 } from "../../../packages/core/src/agent/provider-auth-contract.js";
 import {
@@ -56,8 +58,13 @@ function outcome(decision: NpAgentJsonObject): NpAgentProviderInvokeOutcomeV1 {
     latencyMs: 0,
   };
 }
-export async function publisherRuntimeFixture() {
-  const recipe = await npCreateAgentPublisherRecipeDefinitionV1();
+export async function publisherRuntimeFixture(
+  options: {
+    recipe?: NpAgentRecipeDefinitionCanonicalV1;
+    recipeRegistry?: NpAgentRecipeRegistryCanonicalV1;
+  } = {},
+) {
+  const recipe = options.recipe ?? (await npCreateAgentPublisherRecipeDefinitionV1());
   const definition = {
     ...runtimeDefinition(),
     template: "publisher" as const,
@@ -174,6 +181,7 @@ export async function publisherRuntimeFixture() {
     definition,
     documentCollection: "posts",
     recipe,
+    recipeRegistry: options.recipeRegistry,
     responseSchema: recipe.responseSchema,
     dataClassCeiling: "sensitive-approved",
     providerInference: { invoke },
@@ -327,6 +335,9 @@ export async function publisherRuntimeFixture() {
     },
     setTarget(id: string) {
       targetOverride = id;
+    },
+    resetProviderStep() {
+      step = 0;
     },
     async rerun() {
       step = 0;
