@@ -478,6 +478,9 @@ The optional [external delivery foundation](r6-external-incident-notifications-f
 provides host-injected durable routing, retry/recovery and authorized delivery
 status. It installs no transport, credential, worker or recipient configuration,
 and its fake-transport tests do not establish actual external delivery.
+Its [retention owner](r6-history-retention-flow.md) also expires complete old
+terminal notification groups under an explicit host policy, preserving unknown
+effects, required references and a compact routing tombstone against re-delivery.
 
 Actual email/Slack delivery, broader audit families, Member account responses
 and durable authenticated evaluation-review history are separate extensions;

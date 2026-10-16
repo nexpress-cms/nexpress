@@ -20,7 +20,16 @@ import {
   type NpAgentIncidentRetentionPolicyV1,
 } from "../agent-contract/incident-retention-contract.js";
 import type { getDb } from "../db/runtime.js";
-import { npAgentNotifications, npAgentSignals } from "../db/schema/agent.js";
+import {
+  npAgentIncidentTimeline,
+  npAgentNotifications,
+  npAgentSignals,
+} from "../db/schema/agent.js";
+import {
+  NP_NOTIFICATION_ROUTING_EXPIRED_V1,
+  npNotificationTimelineFingerprintV1,
+} from "./notification-delivery-evidence.js";
+import { npAgentNotificationRetentionEvidenceV1 } from "./notification-retention-evidence.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npAgentSiteOwnedTableNamesV1 } from "./site-deletion.js";
@@ -87,15 +96,22 @@ export async function npPruneAgentIncidentRetentionV1(options: {
     and t.last_observed_at<=${historyBefore}
     and (t.contained_at is null or t.contained_at<=${historyBefore})`;
   const orphan = sql`t.incident_id is null and t.status in ('suppressed','resolved') and ${signalAge}`;
-  const localNotification = sql`t.channel='admin' and t.state='sent' and t.run_id is null and t.action_id is null
-    and not exists (select 1 from np_agent_notifications external where external.site_id=t.site_id
-      and external.channel<>'admin' and external.payload_redacted->>'sourceNotificationId'=t.id::text)
+  const notificationAge = sql`t.created_at<=${historyBefore} and t.updated_at<=${historyBefore}`;
+  const localReceipt = sql`t.channel='admin' and t.state='sent' and t.run_id is null and t.action_id is null
     and t.attempts=0 and t.last_error_code is null and t.next_attempt_at is null
     and t.delivery_digest_body is not null and t.delivery_result_digest is not null
-    and t.created_at<=${historyBefore} and t.updated_at<=${historyBefore} and t.sent_at<=${historyBefore}
+    and ${notificationAge} and t.sent_at<=${historyBefore}`;
+  const externalReceipt = sql`t.channel<>'admin' and t.state in ('sent','failed','suppressed')
+    and t.run_id is null and t.action_id is null and t.next_attempt_at is null
+    and t.delivery_digest_body is not null and t.delivery_result_digest is not null
+    and t.delivery_digest_body->'result'->>'state' in ('confirmed','permanent_failure','retryable_not_sent')
+    and ${notificationAge} and (t.sent_at is null or t.sent_at<=${historyBefore})`;
+  const localNotification = sql`${localReceipt}
     and exists (select 1 from np_agent_incidents parent where parent.site_id=t.site_id and parent.id=t.incident_id
       and parent.status in ('resolved','dismissed') and parent.resolved_at<=${historyBefore}
-      and parent.updated_at<=${historyBefore})
+      and parent.created_at<=${historyBefore} and parent.updated_at<=${historyBefore}
+      and parent.last_observed_at<=${historyBefore}
+      and (parent.contained_at is null or parent.contained_at<=${historyBefore}))
     and not exists (select 1 from np_agent_containments containment where containment.site_id=t.site_id
       and containment.incident_id=t.incident_id and containment.state<>'restored')`;
   let ids: string[];
@@ -232,6 +248,7 @@ export async function npPruneAgentIncidentRetentionV1(options: {
         );
       if (rows.length !== notifications.length) return false;
       for (const row of rows) {
+        if (row.channel !== "admin") continue;
         try {
           const body = npRequireAgentNotificationDeliveryCanonical(row.deliveryDigestBody);
           const item = npRequireAgentIncidentNotificationsV1({
@@ -267,6 +284,26 @@ export async function npPruneAgentIncidentRetentionV1(options: {
           throw error;
         }
       }
+      const timelineIds = cohort
+        .filter((entry) => entry.table === "np_agent_incident_timeline")
+        .map((entry) => entry.id);
+      await beforeStatement();
+      const timeline = timelineIds.length
+        ? await db
+            .select()
+            .from(npAgentIncidentTimeline)
+            .where(
+              and(
+                eq(npAgentIncidentTimeline.siteId, siteId),
+                inArray(npAgentIncidentTimeline.id, timelineIds),
+              ),
+            )
+        : [];
+      if (
+        timeline.length !== timelineIds.length ||
+        !(await npAgentNotificationRetentionEvidenceV1(rows, timeline))
+      )
+        return false;
     }
     return true;
   }
@@ -275,15 +312,20 @@ export async function npPruneAgentIncidentRetentionV1(options: {
     await beforeStatement();
     const incident = await db.execute(sql`select t.id from np_agent_incidents t
       where t.site_id=${siteId} and t.id=${id}::uuid and ${closed} for update nowait`);
+    await beforeStatement();
+    const local = incident.rows.length
+      ? null
+      : (
+          await db.execute(sql`select t.incident_id, t.deduplication_key from np_agent_notifications t
+      where t.site_id=${siteId} and t.id=${id}::uuid and ${localNotification} for update nowait`)
+        ).rows[0];
+    const groupRelation = sql`(t.id=${id}::uuid or (t.channel<>'admin' and t.payload_redacted->>'sourceNotificationId'=${id}))`;
     const sources: Source[] = incident.rows.length
       ? [
           {
             table: "np_agent_notifications",
             relation: sql`t.incident_id=${id}::uuid`,
-            eligible: sql`t.channel='admin' and t.state='sent' and t.run_id is null and t.action_id is null
-        and t.attempts=0 and t.last_error_code is null and t.next_attempt_at is null
-        and t.delivery_digest_body is not null and t.delivery_result_digest is not null
-        and t.created_at<=${historyBefore} and t.updated_at<=${historyBefore} and t.sent_at<=${historyBefore}`,
+            eligible: sql`(${localReceipt}) or (${externalReceipt})`,
           },
           {
             table: "np_agent_feedback",
@@ -320,26 +362,119 @@ export async function npPruneAgentIncidentRetentionV1(options: {
           },
           { table: "np_agent_incidents", relation: sql`t.id=${id}::uuid`, eligible: closed },
         ]
-      : [
-          {
-            table: "np_agent_signals",
-            relation: sql`t.id=${id}::uuid and ${orphan}`,
-            eligible: orphan,
-          },
-          {
-            table: "np_agent_notifications",
-            relation: sql`t.id=${id}::uuid and ${localNotification}`,
-            eligible: localNotification,
-          },
-        ];
+      : local
+        ? [
+            {
+              table: "np_agent_notifications",
+              relation: groupRelation,
+              eligible: sql`(t.id=${id}::uuid and ${localNotification}) or
+              (${externalReceipt} and t.incident_id=${local.incident_id}::uuid)`,
+            },
+            {
+              table: "np_agent_incident_timeline",
+              relation: sql`t.incident_id=${local.incident_id}::uuid and t.kind='notification'
+              and t.details->>'schemaVersion' in ('np.agent-notification-routing.v1','np.agent-notification-attempt.v1')
+              and t.source_id in (select t.id from np_agent_notifications t where t.site_id=${siteId} and ${groupRelation})`,
+              eligible: sql`t.created_at<=${historyBefore} and t.event_id is null and t.signal_id is null
+              and t.run_id is null and t.action_id is null and t.approval_id is null
+              and t.provider_call_id is null and t.audit_event_id is null`,
+            },
+          ]
+        : [
+            {
+              table: "np_agent_signals",
+              relation: sql`t.id=${id}::uuid and ${orphan}`,
+              eligible: orphan,
+            },
+            {
+              table: "np_agent_notifications",
+              relation: sql`t.id=${id}::uuid and ${localNotification}`,
+              eligible: localNotification,
+            },
+          ];
     const cohort = await members(sources, maximumRows - pruned);
     if (!cohort?.length || !(await canonical(cohort)) || !(await unreferenced(cohort))) continue;
     // Deleting each table's complete selected set also handles feedback supersession
     // links internal to the cohort. External children were checked under the fence.
     for (const source of sources) {
-      const selected = cohort
+      let selected = cohort
         .filter((entry) => entry.table === source.table)
         .map((entry) => entry.id);
+      if (!selected.length) continue;
+      if (local && source.table === "np_agent_incident_timeline") {
+        // The stable transition key survives receipt expiry/recreation, preventing
+        // historical local recording recovery from routing the same effect again.
+        await beforeStatement();
+        const facts = await db
+          .select({
+            id: npAgentIncidentTimeline.id,
+            sequence: npAgentIncidentTimeline.sequence,
+            sourceId: npAgentIncidentTimeline.sourceId,
+            details: npAgentIncidentTimeline.details,
+          })
+          .from(npAgentIncidentTimeline)
+          .where(
+            and(
+              eq(npAgentIncidentTimeline.siteId, siteId),
+              inArray(npAgentIncidentTimeline.id, selected),
+            ),
+          );
+        if (facts.length !== selected.length) invalid();
+        const markers = facts.filter(
+          (entry) =>
+            entry.sourceId === id &&
+            entry.details.schemaVersion === "np.agent-notification-routing.v1",
+        );
+        if (markers.length > 1) invalid();
+        const marker = markers[0];
+        if (marker) {
+          selected = selected.filter((member) => member !== marker.id);
+          // Free the unique sequence first, then move the tombstone to the
+          // deleted group's high-water mark. Later max(sequence)+1 appenders
+          // must not reuse a position already observed by a retained cursor.
+          if (selected.length) {
+            await beforeStatement();
+            const removed = await db
+              .delete(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, siteId),
+                  inArray(npAgentIncidentTimeline.id, selected),
+                ),
+              )
+              .returning({ id: npAgentIncidentTimeline.id });
+            if (removed.length !== selected.length) invalid();
+            pruned += removed.length;
+          }
+          const details = { localDeduplicationKey: String(local.deduplication_key) };
+          await beforeStatement();
+          const compacted = await db
+            .update(npAgentIncidentTimeline)
+            .set({
+              sequence: facts.reduce(
+                (maximum, entry) => Math.max(maximum, entry.sequence),
+                marker.sequence,
+              ),
+              sourceId: null,
+              sourceFingerprint: npNotificationTimelineFingerprintV1(
+                NP_NOTIFICATION_ROUTING_EXPIRED_V1,
+                details,
+              ),
+              summary: "External notification history expired; routing remains closed.",
+              details: { schemaVersion: NP_NOTIFICATION_ROUTING_EXPIRED_V1, ...details },
+            })
+            .where(
+              and(
+                eq(npAgentIncidentTimeline.siteId, siteId),
+                eq(npAgentIncidentTimeline.id, marker.id),
+              ),
+            )
+            .returning({ id: npAgentIncidentTimeline.id });
+          if (compacted.length !== 1) invalid();
+          pruned += compacted.length;
+          continue;
+        }
+      }
       if (!selected.length) continue;
       await beforeStatement();
       const deleted = await db.execute(sql`delete from ${sql.identifier(source.table)} t
