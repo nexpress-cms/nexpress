@@ -4,6 +4,11 @@ import {
   type NpAgentExecutableOpsPlanInputV1,
 } from "./operator-capability-contract.js";
 import {
+  npRequireAgentApprovalMemberResponseActionReviewV1,
+  npAgentMemberResponseOperationSchemaV1,
+  type NpAgentApprovalMemberResponseActionReviewV1,
+} from "./member-response-contract.js";
+import {
   npRequireAgentRollbackDetailV1,
   type NpAgentRollbackDetailV1,
 } from "./rollback-contract.js";
@@ -140,9 +145,19 @@ export interface NpAgentApprovalOpsActionReviewV1 {
   checks: Array<{ id: string; status: "pass" | "warn" | "fail" }>;
 }
 export type NpAgentApprovalActionReviewV1 =
-  NpAgentApprovalModerationActionReviewV1 | NpAgentApprovalOpsActionReviewV1;
+  | NpAgentApprovalModerationActionReviewV1
+  | NpAgentApprovalOpsActionReviewV1
+  | NpAgentApprovalMemberResponseActionReviewV1;
 function actionReview(value: unknown): NpAgentApprovalActionReviewV1 {
   const p = "agent.approval.actionReview";
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    (value.capabilityId === "moderation.member.restrict" ||
+      value.capabilityId === "moderation.member.revoke")
+  )
+    return npRequireAgentApprovalMemberResponseActionReviewV1(value);
   if (
     value &&
     typeof value === "object" &&
@@ -577,6 +592,21 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
           : action !== undefined
       )
         failCanonicalBody("invalid-field", p, "Action review must match target");
+      if (
+        action &&
+        (action.capabilityId === "moderation.member.restrict" ||
+          action.capabilityId === "moderation.member.revoke") &&
+        (item.target.kind !== "action" ||
+          item.target.runId !== null ||
+          item.target.agentId !== null ||
+          item.policyHashes.length !== 1 ||
+          item.policyHashes[0] !== action.policyDigest)
+      )
+        failCanonicalBody(
+          "invalid-field",
+          p,
+          "Member response review must match its staff target and policy",
+        );
       const review = r.review === null ? null : npRequireAgentChangeSetReviewV1(r.review);
       const rollbackReview =
         r.rollbackReview === null ? null : npRequireAgentRollbackDetailV1(r.rollbackReview);
@@ -880,6 +910,16 @@ const approvalDetailSchemaSource = JSON.parse(
           schema({
             actionId: approvalUuidSchema,
             proposalHash: digest,
+            capabilityId: { enum: ["moderation.member.restrict", "moderation.member.revoke"] },
+            incidentId: approvalUuidSchema,
+            memberId: approvalUuidSchema,
+            expectedMemberVersionDigest: digest,
+            operation: npAgentMemberResponseOperationSchemaV1(),
+            policyDigest: digest,
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
             capabilityId: { enum: ["moderation.quarantine", "moderation.restore"] },
             target: schema({
               kind: { enum: ["comment", "document"] },
@@ -936,4 +976,10 @@ const approvalDetailSchemaSource = JSON.parse(
 
 // Reuse repeated schema nodes through local refs so composing the existing full review
 // remains within the unchanged framework schema node bound.
-export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(approvalDetailSchemaSource);
+export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(
+  approvalDetailSchemaSource,
+  {
+    factorShortConstraints: true,
+    inlineSingleUseDefinitions: true,
+  },
+);

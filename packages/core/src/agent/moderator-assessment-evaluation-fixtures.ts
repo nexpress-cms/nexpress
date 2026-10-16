@@ -1,11 +1,11 @@
 import { npCreateAgentModeratorAssessmentFixtureCorpusV1 } from "./moderator-assessment-fixtures.js";
 import {
   npDigestAgentEvaluationValueV1,
+  npAgentEvaluationCapabilityIdsV1,
   npRequireAgentEvaluationSuiteV1,
   type NpAgentEvaluationCaseV1,
   type NpAgentEvaluationSuiteV1,
 } from "../agent-contract/evaluation-contract.js";
-import { npAgentCapabilityIds } from "../agent-contract/types.js";
 
 /** Explicit new profile; old detector/proposal corpus and instruction hashes stay unchanged. */
 export async function npCreateAgentModeratorAssessmentEvaluationSuiteV1(): Promise<NpAgentEvaluationSuiteV1> {
@@ -30,7 +30,7 @@ export async function npCreateAgentModeratorAssessmentEvaluationSuiteV1(): Promi
       evidence: [{ ...source, digest: await npDigestAgentEvaluationValueV1(source) }],
       expectedSignals: [],
       allowedActions: [],
-      forbiddenActions: [...npAgentCapabilityIds].sort(),
+      forbiddenActions: [...npAgentEvaluationCapabilityIdsV1].sort(),
       expectedDecision:
         item.expected.label === "uncertain"
           ? "observe"

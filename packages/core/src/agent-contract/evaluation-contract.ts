@@ -59,7 +59,32 @@ import {
   canonicalBodyUtc,
   canonicalBodySha256Digest,
 } from "./canonical-body-validation.js";
-import { npAgentCapabilityIds, type NpAgentCapabilityId, type NpAgentJsonSchema } from "./types.js";
+import type { NpAgentCapabilityId, NpAgentJsonSchema } from "./types.js";
+
+/** Frozen V1 model vocabulary. Staff-only actions and later capabilities require a new evaluation profile. */
+export const npAgentEvaluationCapabilityIdsV1 = [
+  "site.inspect",
+  "schema.get",
+  "content.query",
+  "changeset.create",
+  "changeset.validate",
+  "changeset.preview",
+  "changeset.schedule",
+  "changeset.apply",
+  "changeset.rollback",
+  "changeset.get",
+  "changeset.list",
+  "audit.run",
+  "ops.status",
+  "ops.plan",
+  "ops.execute",
+  "incident.get",
+  "incident.list",
+  "moderation.quarantine",
+  "moderation.restore",
+  "security.limitActor",
+  "security.revokeSessions",
+] as const satisfies readonly NpAgentCapabilityId[];
 
 export const npAgentEvaluationDecisionsV1 = [
   "ignore",
@@ -92,7 +117,7 @@ export const npAgentEvaluationPredictionSchemaV1: NpAgentJsonSchema = {
       type: "array",
       maxItems: 32,
       uniqueItems: true,
-      items: { type: "string", enum: [...npAgentCapabilityIds], maxLength: 96 },
+      items: { type: "string", enum: [...npAgentEvaluationCapabilityIdsV1], maxLength: 96 },
     },
     rationaleTags: {
       type: "array",
@@ -343,7 +368,7 @@ export function npRequireAgentEvaluationPredictionV1(
   ]);
   return {
     decision: choices(r.decision, npAgentEvaluationDecisionsV1),
-    actions: sorted(r.actions, npAgentCapabilityIds),
+    actions: sorted(r.actions, npAgentEvaluationCapabilityIdsV1),
     rationaleTags: sorted<NpAgentEvaluationRationaleTagV1>(
       r.rationaleTags,
       category === "publisher" || category === "publisher-selection"
@@ -497,8 +522,8 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
     )
       fail();
     if (new Set(evidence.map((e) => e.id)).size !== evidence.length) fail();
-    const allowedActions = sorted(c.allowedActions, npAgentCapabilityIds),
-      forbiddenActions = sorted(c.forbiddenActions, npAgentCapabilityIds);
+    const allowedActions = sorted(c.allowedActions, npAgentEvaluationCapabilityIdsV1),
+      forbiddenActions = sorted(c.forbiddenActions, npAgentEvaluationCapabilityIdsV1);
     if (allowedActions.some((a) => forbiddenActions.includes(a))) fail();
     return {
       schemaVersion: "np.agent-eval-case.v1",

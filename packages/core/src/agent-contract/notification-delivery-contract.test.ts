@@ -61,6 +61,16 @@ describe("external notification delivery evidence", () => {
       expect(() => npRequireAgentIncidentNotificationDeliveriesV1(value)).toThrow();
     }
   });
+  it("allows a suppressed retry to retain the unknown outcome of an earlier dispatch", () => {
+    const value = projection();
+    Object.assign(value.items[0], {
+      state: "suppressed",
+      outcome: "unknown",
+      attempts: 2,
+      lastErrorCode: "DELIVERY_AUTHORITY_REVOKED",
+    });
+    expect(npRequireAgentIncidentNotificationDeliveriesV1(value)).toEqual(value);
+  });
   it("rejects false confirmation, unbounded attempts, unsupported channels and impossible retry clocks", () => {
     for (const delta of [
       { state: "sent", outcome: "pending", sentAt: at },

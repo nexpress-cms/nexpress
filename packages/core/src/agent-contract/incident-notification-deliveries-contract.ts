@@ -89,7 +89,8 @@ export function npRequireAgentIncidentNotificationDeliveriesV1(
     if (
       (state === "sent") !== (sentAt !== null) ||
       (state === "sent") !== (outcome === "confirmed") ||
-      (state === "suppressed") !== (outcome === "suppressed") ||
+      (outcome === "suppressed" && state !== "suppressed") ||
+      (state === "suppressed" && !["suppressed", "unknown"].includes(outcome)) ||
       (nextAttemptAt !== null && state !== "queued") ||
       (state === "sending" && outcome !== "unknown") ||
       (state === "failed" && !["unknown", "not-sent"].includes(outcome)) ||

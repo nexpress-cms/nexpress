@@ -35,6 +35,7 @@ function queryClient(
     lifecycleEdges?: Record<string, unknown>[];
     missingReferenceGuards?: number;
     missingAdmissionKeyIndex?: number;
+    invalidEvaluationHistory?: number;
   } = {},
 ): NpAgentDiagnosticsQueryClientV1 {
   const castRows = <T extends Record<string, unknown>>(rows: Record<string, unknown>[]): T[] =>
@@ -43,6 +44,8 @@ function queryClient(
     Promise.resolve({ rows: castRows<T>(rows) });
   return {
     query: <T extends Record<string, unknown>>(text: string): Promise<{ rows: T[] }> => {
+      if (text.includes("evaluation_history_provenance"))
+        return result<T>([{ count: String(options.invalidEvaluationHistory ?? 0) }]);
       if (text.includes("reference_fence_coverage"))
         return result<T>([{ missing_count: String(options.missingReferenceGuards ?? 0) }]);
       if (text.includes("source_release_key_index"))
@@ -625,8 +628,8 @@ describe("Agent contract diagnostics", () => {
     expect(JSON.stringify(result)).not.toContain("private-event");
   });
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
-    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(52);
-    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(365);
+    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(54);
+    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(380);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );
@@ -739,4 +742,16 @@ describe("Agent contract diagnostics", () => {
       issues: [{ code: "AGENT_SCHEMA_UNAVAILABLE", count: 1 }],
     });
   });
+});
+
+it("counts evaluation review provenance failures without projecting uploaded source or labels", async () => {
+  const result = await npCollectAgentHealthSummaryV1({
+    client: queryClient({ invalidEvaluationHistory: 2 }),
+  });
+  expect(result.issues).toContainEqual({
+    code: "AGENT_RELATION_ORPHANED",
+    count: 2,
+    oldestAgeSeconds: null,
+  });
+  expect(result.state).toBe("error");
 });

@@ -482,12 +482,17 @@ Its [retention owner](r6-history-retention-flow.md) also expires complete old
 terminal notification groups under an explicit host policy, preserving unknown
 effects, required references and a compact routing tombstone against re-delivery.
 
-Actual email/Slack delivery, broader audit families, Member account responses
-and durable authenticated evaluation-review history are separate extensions;
-their absence does not invalidate the stated Admin-feed/human-approved R6 scope.
-Member restriction display uses the existing ban owner and grants no new policy
-or action authority. Guardian collectors/responses and Build-plane generation
-remain R7/R8 work.
+The [explicit review and operations extensions](r6-optional-extensions-flow.md)
+add reference Slack/Resend transports, installed content/SEO/link/static
+accessibility/security observations, authenticated evaluation decision history
+and narrowly human-approved temporary site Member restrictions/revocation.
+Each has a separate explicit host installation boundary. Actual email/Slack
+delivery remains unestablished; stored decisions are authenticated review, not
+capability approval. Member reports remain unverified claims, and the response
+owner requires current host policy and distinct-human approval. These optional
+extensions do not change the previously stated Admin-feed/human-approved R6
+acceptance. Their integrated verification is recorded in that owning flow.
+Guardian collectors/responses and Build-plane generation remain R7/R8 work.
 
 Automatic quarantine is a separate opt-in enablement gate: the predeclared rule,
 policy/locale-specific reviewed precision and confidence bounds, positive/hard

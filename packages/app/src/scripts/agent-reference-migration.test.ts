@@ -21,6 +21,8 @@ import {
   npEnsureAgentReferenceMigrationV8,
   npAgentReferenceMigrationSqlV9,
   npEnsureAgentReferenceMigrationV9,
+  npAgentReferenceMigrationSqlV10,
+  npEnsureAgentReferenceMigrationV10,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -345,4 +347,32 @@ it("requires and preserves Operator execution reference fencing", async () => {
   expect(createCustomMigration).toHaveBeenCalledTimes(1);
   await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- tampered");
   await expect(npEnsureAgentReferenceMigrationV9(options)).rejects.toThrow("differs");
+});
+
+it("appends evaluation history guards without changing the historical V1 inventory", async () => {
+  const migrationsFolder = await folder();
+  const baseline = npAgentReferenceMigrationSqlV1();
+  expect(baseline).not.toContain('ON public."np_agent_evaluation_sources"');
+  expect(baseline).not.toContain('ON public."np_agent_evaluation_reviews"');
+  await writeFile(
+    join(migrationsFolder, "0000.sql"),
+    baseline +
+      '\nCREATE TABLE "np_agent_evaluation_sources" ();\nCREATE TABLE "np_agent_evaluation_reviews" ();',
+  );
+  const createCustomMigration = vi.fn(() =>
+    writeFile(join(migrationsFolder, "0001.sql"), "-- custom shell"),
+  );
+  await npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration });
+  expect(await readFile(join(migrationsFolder, "0001.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV10(),
+  );
+  await npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration });
+  expect(createCustomMigration).toHaveBeenCalledOnce();
+  await writeFile(
+    join(migrationsFolder, "0001.sql"),
+    npAgentReferenceMigrationSqlV10() + "-- tampered",
+  );
+  await expect(
+    npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration }),
+  ).rejects.toThrow("differs");
 });

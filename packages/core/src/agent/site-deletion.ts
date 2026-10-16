@@ -1,6 +1,7 @@
+import { npRequireNotificationDeliveryAttemptHistoryV1 } from "./notification-delivery-evidence.js";
 import { createHash } from "node:crypto";
 
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { npAgentMcpTaskIdPatternV1 } from "../agent-contract/mcp-task-contract.js";
@@ -9,6 +10,8 @@ import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgents,
+  npAgentEvaluationSources,
+  npAgentEvaluationReviews,
   npAgentVersions,
   npAgentPolicies,
   npAgentTriggers,
@@ -75,6 +78,8 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_evaluation_reviews",
+  "np_agent_evaluation_sources",
   "np_agent_operator_executions",
   "np_agent_operator_plans",
   "np_agent_notifications",
@@ -133,6 +138,16 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_evaluation_reviews: {
+    table: npAgentEvaluationReviews,
+    id: npAgentEvaluationReviews.id,
+    siteId: npAgentEvaluationReviews.siteId,
+  },
+  np_agent_evaluation_sources: {
+    table: npAgentEvaluationSources,
+    id: npAgentEvaluationSources.id,
+    siteId: npAgentEvaluationSources.siteId,
+  },
   np_agent_notifications: {
     table: npAgentNotifications,
     id: npAgentNotifications.id,
@@ -529,6 +544,55 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
     `);
     if (unsafeNotification.rows.length)
       throw new Error("Agent site deletion requires terminal known notification deliveries.");
+    // The latest receipt alone cannot clear an earlier ambiguous dispatch.
+    // Page rows and cap each history read; the outer site fence owns deletion.
+    let afterNotification: string | undefined;
+    for (;;) {
+      const notifications = await tx
+        .select()
+        .from(npAgentNotifications)
+        .where(
+          and(
+            eq(npAgentNotifications.siteId, siteId),
+            sql`${npAgentNotifications.channel}<>'admin'`,
+            afterNotification ? gt(npAgentNotifications.id, afterNotification) : undefined,
+          ),
+        )
+        .orderBy(asc(npAgentNotifications.id))
+        .limit(100);
+      if (!notifications.length) break;
+      const facts = await tx
+        .select()
+        .from(npAgentIncidentTimeline)
+        .where(
+          and(
+            eq(npAgentIncidentTimeline.siteId, siteId),
+            inArray(
+              npAgentIncidentTimeline.sourceId,
+              notifications.map((row) => row.id),
+            ),
+          ),
+        )
+        .orderBy(asc(npAgentIncidentTimeline.sourceId), asc(npAgentIncidentTimeline.sequence))
+        .limit(501);
+      if (facts.length > 500)
+        throw new Error("Agent site deletion requires terminal known notification deliveries.");
+      for (const row of notifications) {
+        try {
+          const { result, unresolvedAmbiguity } =
+            await npRequireNotificationDeliveryAttemptHistoryV1(
+              row,
+              facts.filter((entry) => entry.sourceId === row.id),
+            );
+          if (!result || unresolvedAmbiguity || result.state === "ambiguous")
+            throw new Error("Unknown notification outcome");
+        } catch {
+          throw new Error("Agent site deletion requires terminal known notification deliveries.");
+        }
+      }
+      if (notifications.length < 100) break;
+      afterNotification = notifications.at(-1)!.id;
+    }
     const unsafeRuntime = await tx.execute(sql`
       select 1 from public.np_agent_runs where site_id=${siteId} and origin='runtime' and state not in ('succeeded','failed','cancelled','policy_blocked','budget_blocked')
       union all select 1 from public.np_agent_provider_calls c where c.site_id=${siteId} and (

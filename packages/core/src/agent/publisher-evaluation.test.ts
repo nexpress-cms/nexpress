@@ -11,6 +11,8 @@ import {
   npRequireAgentEvaluationArtifactV1,
   npRequireAgentEvaluationCommandResultV1,
   npRequireAgentEvaluationSuiteV1,
+  npRequireAgentEvaluationPredictionV1,
+  npAgentEvaluationResponseSchemaV1,
   type NpAgentEvaluationArtifactV1,
 } from "../agent-contract/evaluation-contract.js";
 import {
@@ -55,6 +57,55 @@ function source(a: NpAgentEvaluationArtifactV1) {
 }
 
 describe("Publisher evaluation through the shared runner", () => {
+  it("keeps staff-only Member responses outside V1 model output and benchmark policy", async () => {
+    const baseline = await evaluate();
+    const prediction = baseline.caseResults.find(
+      (entry) => entry.prediction?.proposal,
+    )!.prediction!;
+    const schema = npAgentEvaluationResponseSchemaV1("publisher");
+    for (const action of ["moderation.member.restrict", "moderation.member.revoke"]) {
+      const injected = { ...prediction, actions: [action] };
+      expect(() => npRequireAgentEvaluationPredictionV1(injected, "publisher")).toThrow();
+      expect(() =>
+        npRequireAgentProviderSchemaValueV1(
+          schema,
+          npRequireAgentContractResult(analyzeAgentCanonicalJsonValue(injected)),
+        ),
+      ).toThrow();
+      const suite = structuredClone(baseline.suite);
+      for (const field of ["allowedActions", "forbiddenActions"] as const) {
+        expect(() =>
+          npRequireAgentEvaluationSuiteV1({
+            ...suite,
+            cases: [{ ...suite.cases[0], [field]: [action] }],
+          }),
+        ).toThrow();
+      }
+    }
+    const result = await runAgentEvaluationV1({
+      suite: { ...baseline.suite, cases: [baseline.suite.cases[0]] },
+      mode: "provider",
+      providerId: "local-stub",
+      model: "fixture",
+      confirmNetwork: true,
+      provider: {
+        id: "local-stub",
+        model: "fixture",
+        quote: () => ({ inputTokens: 2, outputTokens: 2, costMicros: 0 }),
+        invoke: () =>
+          Promise.resolve({
+            prediction: { ...prediction, actions: ["moderation.member.restrict"] },
+            usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 },
+          }),
+      },
+      budget,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.caseResults[0]).toMatchObject({
+      prediction: null,
+      error: "STRUCTURED_OUTPUT_INVALID",
+    });
+  });
   it("evaluates grounded bilingual proposals offline without reading expected answers", async () => {
     const artifact = await evaluate();
     expect(artifact.ok).toBe(true);

@@ -26,6 +26,7 @@ import { withCurrentSite } from "../sites/context.js";
 import {
   NpAgentGatewayError,
   npResolveAgentStaffSessionAuthorizationV1,
+  npResolveLiveAgentStaffAuthorizationV1,
 } from "./admin-admission.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 import {
@@ -43,6 +44,14 @@ type Ref = Extract<NpAgentEvidenceRef, { kind: "event" }>;
 type Group = { eventId: string; signalIds: string[]; refs: Ref[] };
 export interface NpAgentIncidentMemberReportEvidenceServiceV1 {
   canReadStaffIncident: NonNullable<NpAgentIncidentServiceOptionsV1["canReadStaffIncident"]>;
+  /** Existing signed Approval owns the session proof; this internal read rechecks live approver authority and all source facts. */
+  canReviewStaffUser(input: {
+    db: Db;
+    siteId: string;
+    userId: string;
+    incident: NpAgentIncidentV1;
+    signals: readonly NpAgentSignalEvidenceCanonicalV1[];
+  }): Promise<boolean>;
   get(input: Input & { cursor?: string | null }): Promise<NpAgentIncidentMemberReportEvidenceV1>;
 }
 const unavailable = () =>
@@ -333,54 +342,86 @@ export function createAgentIncidentMemberReportEvidenceServiceV1(options: {
       ),
     };
   }
+  async function readableSources(
+    db: Db,
+    siteId: string,
+    incident: NpAgentIncidentV1,
+    signals: readonly NpAgentSignalEvidenceCanonicalV1[],
+  ): Promise<boolean> {
+    if (!valid(incident, signals, siteId)) return false;
+    const rows = await db
+      .select({ signal: npAgentSignals })
+      .from(npAgentIncidentSignals)
+      .innerJoin(
+        npAgentSignals,
+        and(
+          eq(npAgentSignals.siteId, npAgentIncidentSignals.siteId),
+          eq(npAgentSignals.id, npAgentIncidentSignals.signalId),
+        ),
+      )
+      .where(
+        and(
+          eq(npAgentIncidentSignals.siteId, siteId),
+          eq(npAgentIncidentSignals.incidentId, incident.id),
+        ),
+      )
+      .orderBy(asc(npAgentSignals.id))
+      .limit(101);
+    if (
+      serializeAgentCanonicalJson(rows.map(({ signal }) => signal.id)) !==
+      serializeAgentCanonicalJson(incident.signalIds)
+    )
+      return false;
+    for (const [index, { signal }] of rows.entries()) {
+      if (
+        !claimsOnly(signal) ||
+        signal.siteId !== siteId ||
+        signal.incidentId !== incident.id ||
+        serializeAgentCanonicalJson(await npReadAgentIncidentSignalEvidenceV1(signal)) !==
+          serializeAgentCanonicalJson(signals[index])
+      )
+        return false;
+    }
+    const grouped = groups(
+      signals.map((canonical, index) => ({ id: incident.signalIds[index], canonical })),
+    );
+    const sources = await sourceRows(db, siteId, grouped);
+    for (const group of grouped)
+      if ((await project(db, incident, sources, group)).availability !== "available") return false;
+    return true;
+  }
   return {
+    async canReviewStaffUser(input) {
+      return withCurrentSite(input.siteId, async () => {
+        try {
+          const initial = await npResolveLiveAgentStaffAuthorizationV1(
+            input.db,
+            input.siteId,
+            input.userId,
+          );
+          if (
+            !initial.authority.capabilities.includes("admin.manage") ||
+            !initial.authority.capabilities.includes("community.moderate") ||
+            !(await readableSources(input.db, input.siteId, input.incident, input.signals))
+          )
+            return false;
+          return (
+            serializeAgentCanonicalJson(initial) ===
+            serializeAgentCanonicalJson(
+              await npResolveLiveAgentStaffAuthorizationV1(input.db, input.siteId, input.userId),
+            )
+          );
+        } catch {
+          return false;
+        }
+      });
+    },
     canReadStaffIncident: ({ incident, signals, context }) =>
       withCurrentSite(context.siteId, async () => {
         try {
           const db = context.transaction ?? getDb();
           const initial = await authorize(db, context);
-          if (!valid(incident, signals, context.siteId)) return false;
-          const rows = await db
-            .select({ signal: npAgentSignals })
-            .from(npAgentIncidentSignals)
-            .innerJoin(
-              npAgentSignals,
-              and(
-                eq(npAgentSignals.siteId, npAgentIncidentSignals.siteId),
-                eq(npAgentSignals.id, npAgentIncidentSignals.signalId),
-              ),
-            )
-            .where(
-              and(
-                eq(npAgentIncidentSignals.siteId, context.siteId),
-                eq(npAgentIncidentSignals.incidentId, incident.id),
-              ),
-            )
-            .orderBy(asc(npAgentSignals.id))
-            .limit(101);
-          if (
-            serializeAgentCanonicalJson(rows.map(({ signal }) => signal.id)) !==
-            serializeAgentCanonicalJson(incident.signalIds)
-          )
-            return false;
-          for (const [index, { signal }] of rows.entries()) {
-            if (
-              !claimsOnly(signal) ||
-              signal.siteId !== context.siteId ||
-              signal.incidentId !== incident.id ||
-              serializeAgentCanonicalJson(await npReadAgentIncidentSignalEvidenceV1(signal)) !==
-                serializeAgentCanonicalJson(signals[index])
-            )
-              return false;
-          }
-          const grouped = groups(
-            signals.map((canonical, index) => ({ id: incident.signalIds[index], canonical })),
-          );
-          const sources = await sourceRows(db, context.siteId, grouped);
-          for (const group of grouped) {
-            if ((await project(db, incident, sources, group)).availability !== "available")
-              return false;
-          }
+          if (!(await readableSources(db, context.siteId, incident, signals))) return false;
           return (
             serializeAgentCanonicalJson(initial) ===
             serializeAgentCanonicalJson(await authorize(db, context))

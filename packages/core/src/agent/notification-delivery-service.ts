@@ -1,6 +1,7 @@
 import {
   NP_NOTIFICATION_ROUTING_EXPIRED_V1,
   npNotificationTimelineFingerprintV1,
+  npRequireNotificationDeliveryAttemptHistoryV1,
   npNotificationDeliverySnapshotV1 as snapshot,
   npNotificationDeliveryBodyV1 as body,
   npNotificationDeliveryImmutableV1 as immutable,
@@ -1059,7 +1060,22 @@ export function createAgentNotificationDeliveryServiceV1(
       try {
         const receipt = await source(db, row);
         await visible(db, receipt.item, input);
-        const result = await ledger(row);
+        const facts = await db
+          .select()
+          .from(npAgentIncidentTimeline)
+          .where(
+            and(
+              eq(npAgentIncidentTimeline.siteId, row.siteId),
+              eq(npAgentIncidentTimeline.incidentId, row.incidentId!),
+              eq(npAgentIncidentTimeline.sourceId, row.id),
+            ),
+          )
+          .orderBy(asc(npAgentIncidentTimeline.sequence))
+          .limit(6);
+        const { result, unresolvedAmbiguity } = await npRequireNotificationDeliveryAttemptHistoryV1(
+          row,
+          facts,
+        );
         items.push({
           notificationId: row.id,
           connectionId: row.connectionId!,
@@ -1067,7 +1083,7 @@ export function createAgentNotificationDeliveryServiceV1(
           incidentVersion: row.transitionVersion,
           state: row.state as NpAgentIncidentNotificationDeliveriesV1["items"][number]["state"],
           outcome:
-            row.state === "sending"
+            row.state === "sending" || unresolvedAmbiguity
               ? "unknown"
               : row.state === "sent"
                 ? "confirmed"

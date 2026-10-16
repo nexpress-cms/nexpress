@@ -1,3 +1,5 @@
+import type { NpAgentNotificationConnectionSnapshotV1 } from "./notification-connection-snapshot.js";
+export type { NpAgentNotificationConnectionSnapshotV1 } from "./notification-connection-snapshot.js";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { and, asc, desc, eq, gt, inArray, lte, or } from "drizzle-orm";
@@ -7,7 +9,6 @@ import {
   npRequireAgentConnectionV1,
   npAgentProviderDataClasses,
   type NpAgentConnectionKind,
-  type NpAgentConnectionDestinationDescriptorV1,
   type NpAgentConnectionOperationKind,
   type NpAgentConnectionOperationRequestCanonicalV1,
   type NpAgentConnectionV1,
@@ -80,21 +81,7 @@ export interface NpAgentProviderStateHashKeyringV1 {
 }
 
 /** Server-only safe admission binding; credentials and projection-key bytes never cross this seam. */
-export interface NpAgentNotificationConnectionSnapshotV1 {
-  siteId: string;
-  connectionId: string;
-  configSnapshotId: string;
-  adapterId: string;
-  adapterContractVersion: number;
-  adapterFingerprint: string;
-  configVersion: number;
-  configHash: string;
-  accountSubjectKeyId: string;
-  accountSubjectDigest: string;
-  destinationKeyId: string;
-  destinationDescriptor: NpAgentConnectionDestinationDescriptorV1;
-  destinationFingerprint: string;
-}
+
 export interface NpAgentNotificationConnectionDeliveryV1 {
   prepare(input: {
     siteId: string;

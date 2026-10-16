@@ -1,3 +1,11 @@
+import {
+  npAgentMemberResponsePlanInputSchemaV1,
+  npAgentMemberResponseExecuteInputSchemaV1,
+} from "./member-response-contract.js";
+import {
+  npAgentEvaluationHistorySaveSchemaV1,
+  npAgentEvaluationHistorySavedSchemaV1,
+} from "./evaluation-history-contract.js";
 import { npAgentIncidentSeverityInputSchemaV1 } from "./incident-severity-contract.js";
 import { npAgentIncidentAssignmentInputSchemaV1 } from "./incident-assignment-contract.js";
 import {
@@ -588,6 +596,9 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
       ...DESTRUCTIVE,
     },
   ),
+  operation("agents.evaluations.review", "POST", "/api/admin/agents/evaluations/history", {
+    preconditions: ROW,
+  }),
   operation("agents.incidents.feedback", "POST", "/api/admin/agents/incidents/{id}/feedback", {
     capability: "community.moderate",
     preconditions: ROW,
@@ -631,6 +642,29 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     preconditions: ROW_PLAN,
     ...SENSITIVE,
   }),
+  operation(
+    "agents.incidents.member_response_plan",
+    "POST",
+    "/api/admin/agents/incidents/{id}/member-response/plan",
+    {
+      capability: "community.moderate",
+      preconditions: ROW,
+      inputKind: "reason",
+      outputKind: "accepted",
+    },
+  ),
+  operation(
+    "agents.incidents.member_response_execute",
+    "POST",
+    "/api/admin/agents/incidents/{id}/member-response/execute",
+    {
+      capability: "community.moderate",
+      preconditions: ROW_PLAN,
+      inputKind: "approval-request",
+      outputKind: "accepted",
+      ...SENSITIVE,
+    },
+  ),
   operation("agents.budgets.update", "PATCH", "/api/admin/agents/budgets", {
     inputKind: "definition",
     preconditions: ROW,
@@ -906,7 +940,9 @@ function preconditionField(
     if (kind === "plan-hash") return "statementHash";
   }
   if (
-    (id === "agents.incidents.response_execute" || id === "agents.incidents.restore") &&
+    (id === "agents.incidents.response_execute" ||
+      id === "agents.incidents.restore" ||
+      id === "agents.incidents.member_response_execute") &&
     kind === "plan-hash"
   )
     return "proposalHash";
@@ -914,6 +950,12 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.incidents.member_response_plan")
+    return requireSchema(npAgentMemberResponsePlanInputSchemaV1());
+  if (seed.id === "agents.incidents.member_response_execute")
+    return requireSchema(npAgentMemberResponseExecuteInputSchemaV1());
+  if (seed.id === "agents.evaluations.review")
+    return requireSchema(npAgentEvaluationHistorySaveSchemaV1);
   if (seed.id === "agents.incidents.response_plan")
     return requireSchema(npAgentIncidentResponsePlanInputSchemaV1);
   if (seed.id === "agents.incidents.response_execute" || seed.id === "agents.incidents.restore")
@@ -1091,6 +1133,8 @@ function outputShape(kind: NpAgentAdminOperationOutputKindV1): {
 }
 
 function buildOutputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.evaluations.review")
+    return requireSchema(npAgentEvaluationHistorySavedSchemaV1);
   if (seed.id === "agents.policies.simulate")
     return requireSchema(npAgentPolicySimulationReportSchemaV1);
   if (seed.id === "agents.changesets.rollback_plans.request_approval")

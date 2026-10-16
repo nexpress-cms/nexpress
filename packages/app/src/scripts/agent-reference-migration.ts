@@ -31,6 +31,8 @@ export function npAgentReferenceMigrationSqlV1(): string {
       ...[
         ...npAgentSiteOwnedTableNamesV1.filter(
           (name) =>
+            name !== "np_agent_evaluation_sources" &&
+            name !== "np_agent_evaluation_reviews" &&
             name !== "np_agent_containments" &&
             name !== "np_agent_operator_plans" &&
             name !== "np_agent_operator_executions" &&
@@ -351,5 +353,45 @@ export async function npEnsureAgentReferenceMigrationV9(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent Operator execution reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append explicit evaluation evidence/review reference coverage, preserving historical SQL. */
+export function npAgentReferenceMigrationSqlV10(): string {
+  return (
+    "-- NexPress verified evaluation history reference lifecycle v10\n" +
+    ["np_agent_evaluation_sources", "np_agent_evaluation_reviews"]
+      .map(npAgentReferenceFenceTriggersSqlV1)
+      .join("\n--> statement-breakpoint\n") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV10(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  const tables = ["np_agent_evaluation_sources", "np_agent_evaluation_reviews"];
+  if (!tables.some((t) => texts.some((text) => text.includes(`CREATE TABLE "${t}"`)))) return;
+  if (
+    !tables.every((t) => texts.some((text) => text.includes(`CREATE TABLE "${t}"`))) ||
+    !texts.some((text) => text.includes(marker))
+  )
+    throw new Error("Evaluation history reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV10();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified evaluation history reference lifecycle v10"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Evaluation history reference migration differs from reviewed SQL.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated evaluation history reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

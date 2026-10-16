@@ -57,6 +57,8 @@ const AGENT_TABLES = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_containments",
+  "np_agent_evaluation_reviews",
+  "np_agent_evaluation_sources",
   "np_agent_events",
   "np_agent_feedback",
   "np_agent_incident_signals",
@@ -97,6 +99,22 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_evaluation_reviews_site_id_id_unique",
+  "np_agent_evaluation_reviews_source_id_id_unique",
+  "np_agent_evaluation_reviews_version_unique",
+  "np_agent_evaluation_reviews_invocation_unique",
+  "np_agent_evaluation_reviews_bounds_check",
+  "np_agent_evaluation_sources_site_id_id_unique",
+  "np_agent_evaluation_sources_source_unique",
+  "np_agent_evaluation_sources_bounds_check",
+  "np_agent_evaluation_reviews_site_id_np_sites_id_fk",
+  "np_agent_evaluation_reviews_recorded_by_user_id_np_users_id_fk",
+  "np_agent_evaluation_reviews_audit_fk",
+  "np_agent_evaluation_reviews_source_fk",
+  "np_agent_evaluation_reviews_previous_fk",
+  "np_agent_evaluation_reviews_invocation_fk",
+  "np_agent_evaluation_sources_site_id_np_sites_id_fk",
+
   "np_agent_operator_plans_approval_action_unique",
   "np_agent_operator_plans_approval_action_fk",
   "np_agent_operator_executions_site_id_id_unique",
@@ -1766,6 +1784,31 @@ async function collectRuntimeEventIssues(
     : [];
 }
 
+/** Relational provenance is checked in aggregate; exact body hashes are recomputed by the read owner. */
+async function collectEvaluationReviewIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  const result = await client.query<{ count: unknown }>(`/* evaluation_history_provenance */
+ select count(*)::text as count from (
+  select s.id from public.np_agent_evaluation_sources s
+  where s.version_number<1 or s.version_number<>(select count(*) from public.np_agent_evaluation_reviews r where r.site_id=s.site_id and r.source_id=s.id)
+    or s.version_number<>(select coalesce(max(r.version_number),0) from public.np_agent_evaluation_reviews r where r.site_id=s.site_id and r.source_id=s.id)
+  union all
+  select r.id from public.np_agent_evaluation_reviews r
+  left join public.np_agent_evaluation_sources s on s.site_id=r.site_id and s.id=r.source_id
+  left join public.np_agent_invocations i on i.site_id=r.site_id and i.id=r.invocation_id
+  left join public.np_audit_events a on a.id=r.audit_event_id
+  left join public.np_agent_evaluation_reviews p on p.site_id=r.site_id and p.source_id=r.source_id and p.id=r.previous_revision_id
+  where s.id is null or i.id is null or a.id is null or i.operation_id<>'agents.evaluations.review' or i.state<>'completed'
+   or i.actor_kind<>'staff' or i.actor_fingerprint<>r.actor_fingerprint or i.audit_event_id is distinct from r.audit_event_id or i.result_id is distinct from r.source_id
+   or a.site_id is distinct from r.site_id or a.action<>'agents.evaluations.review' or a.target_type is distinct from 'agent-evaluation' or a.target_id is distinct from r.source_id::text
+   or r.version_number>s.version_number or (r.label_body is not null and r.label_body->>'sourceHash' is distinct from s.source_hash)
+   or (r.previous_revision_id is not null and (p.id is null or p.version_number>=r.version_number or p.case_id<>r.case_id or p.case_version<>r.case_version or p.case_hash<>r.case_hash or p.prediction_hash<>r.prediction_hash))
+ ) violations`);
+  const count = integer(result.rows[0]?.count ?? 0);
+  return count ? [issue("AGENT_RELATION_ORPHANED", count)] : [];
+}
+
 /**
  * Collect one fail-closed, read-only Agent contract snapshot. Its projection
  * contains only aggregate counts, ages and adapter readiness; credentials,
@@ -1810,6 +1853,7 @@ export async function npCollectAgentHealthSummaryV1(
     runtimeIssues.push(...(await collectReleasedAttributionIssues(client)));
     runtimeIssues.push(...(await collectReleasedAuditIssues(client)));
     runtimeIssues.push(...(await collectReferenceGuardIssues(client)));
+    runtimeIssues.push(...(await collectEvaluationReviewIssues(client)));
     const issues = parseIssues([...schemaIssues, ...issueResult.rows, ...runtimeIssues]);
     const providers = readiness(
       parseRequiredAdapters(providerResult.rows),

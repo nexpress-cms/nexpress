@@ -1,3 +1,4 @@
+import { npNotificationTimelineFingerprintV1 } from "../../../packages/core/src/agent/notification-delivery-evidence.js";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +8,7 @@ import {
 } from "../../../packages/core/src/agent-contract/canonical-notification-policy.js";
 import {
   npAgentIncidents,
+  npAgentIncidentTimeline,
   npAgentNotifications,
   npAgentSiteDeletionSagas,
 } from "../../../packages/core/src/db/schema/agent.js";
@@ -172,8 +174,34 @@ describe.skipIf(skipIfNoTestDb())("external notification site deletion fence", (
           deliveryDigestBody: known,
           deliveryResultDigest: await npDigestAgentNotificationDeliveryCanonical(known),
           lastErrorCode: "SYNTHETIC_NOT_SENT",
+          updatedAt: new Date(known.observedAt),
         })
         .where(eq(npAgentNotifications.id, id));
+      await blocked(); // A latest receipt without its attempt proof is insufficient.
+      const details = {
+        notificationId: id,
+        attempt: 1,
+        state: "failed",
+        result: known.result,
+        deliveryResultDigest: await npDigestAgentNotificationDeliveryCanonical(known),
+        observedAt: known.observedAt,
+      };
+      await f.db.insert(npAgentIncidentTimeline).values({
+        id: randomUUID(),
+        siteId: f.siteId,
+        incidentId,
+        sequence: 1,
+        kind: "notification",
+        sourceKind: "system",
+        sourceId: id,
+        sourceFingerprint: npNotificationTimelineFingerprintV1(
+          "np.agent-notification-attempt.v1",
+          details,
+        ),
+        summary: "Synthetic completed attempt proof",
+        details: { schemaVersion: "np.agent-notification-attempt.v1", ...details },
+        createdAt: new Date(known.observedAt),
+      });
       await deleteSite(f.siteId, { cascade: true });
       expect(await getSiteById(f.siteId)).toBeNull();
       expect(f.send).not.toHaveBeenCalled();

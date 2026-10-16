@@ -4,7 +4,7 @@ import {
   npRequireAgentEventCanonical,
   npDigestAgentEventCanonical,
 } from "../../../packages/core/src/agent-contract/canonical-events.js";
-import { createSite } from "../../../packages/core/src/sites/registry.js";
+import { createSite, deleteSite, getSiteById } from "../../../packages/core/src/sites/registry.js";
 import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +29,7 @@ import type { NpAgentModeratorFactV1 } from "../../../packages/core/src/agent-co
 import type { NpAgentNotificationDeliveryResultV1 } from "../../../packages/core/src/agent-contract/notification-delivery-contract.js";
 import {
   npAgentNotifications,
+  npAgentIncidentTimeline,
   npAgentIncidents,
   npAgentEvents,
 } from "../../../packages/core/src/db/schema/agent.js";
@@ -452,8 +453,78 @@ describe.skipIf(skipIfNoTestDb())("explicit external Incident notification deliv
         expect(x.send.mock.calls[1]![0].deduplicationKey).toBe(
           x.send.mock.calls[0]![0].deduplicationKey,
         );
+      expect(
+        (
+          await x.service.list({
+            siteId: x.siteId,
+            actor: x.actor,
+            incidentId: observed.incidentId,
+          })
+        ).items[0]?.outcome,
+      ).toBe(idempotency === "enforced" ? "confirmed" : "unknown");
     },
   );
+
+  it.each(["permanent_failure", "suppressed"] as const)(
+    "keeps earlier ambiguity visible and blocks cascade after a later %s attempt",
+    async (ending) => {
+      const x = await setup({ siteId: `notification-history-${ending.replaceAll("_", "-")}` });
+      const observed = await x.observe();
+      x.result({ state: "ambiguous", errorCode: "SYNTHETIC_AMBIGUOUS" });
+      await x.process();
+      x.advance(30);
+      if (ending === "suppressed") x.state.dispatch = false;
+      else x.result({ state: "permanent_failure", errorCode: "SYNTHETIC_REJECTED" });
+      const row = await x.process();
+      expect(row.state).toBe(ending === "suppressed" ? "suppressed" : "failed");
+      expect(
+        (
+          await x.service.list({
+            siteId: x.siteId,
+            actor: x.actor,
+            incidentId: observed.incidentId,
+          })
+        ).items[0],
+      ).toMatchObject({ state: row.state, outcome: "unknown", attempts: 2 });
+      await expect(deleteSite(x.siteId, { cascade: true })).rejects.toThrow(
+        "Agent site deletion requires terminal known notification deliveries.",
+      );
+      expect(await getSiteById(x.siteId)).not.toBeNull();
+      expect(await x.external()).toHaveLength(1);
+    },
+  );
+
+  it("requires complete valid attempt proof for known-not-sent display and site deletion", async () => {
+    const x = await setup({ siteId: "notification-known-history" });
+    const observed = await x.observe();
+    x.result({ state: "permanent_failure", errorCode: "SYNTHETIC_REJECTED" });
+    const row = await x.process();
+    const list = () =>
+      x.service.list({ siteId: x.siteId, actor: x.actor, incidentId: observed.incidentId });
+    expect((await list()).items[0]?.outcome).toBe("not-sent");
+    const [attempt] = await x.db
+      .select()
+      .from(npAgentIncidentTimeline)
+      .where(eq(npAgentIncidentTimeline.sourceId, row.id));
+    if (!attempt) throw new Error("Expected completed attempt proof");
+    await x.db
+      .update(npAgentIncidentTimeline)
+      .set({ sourceFingerprint: "corrupt" })
+      .where(eq(npAgentIncidentTimeline.id, attempt.id));
+    expect((await list()).items).toEqual([]);
+    await expect(deleteSite(x.siteId, { cascade: true })).rejects.toThrow(
+      "Agent site deletion requires terminal known notification deliveries.",
+    );
+    await x.db.delete(npAgentIncidentTimeline).where(eq(npAgentIncidentTimeline.id, attempt.id));
+    expect((await list()).items).toEqual([]);
+    await expect(deleteSite(x.siteId, { cascade: true })).rejects.toThrow(
+      "Agent site deletion requires terminal known notification deliveries.",
+    );
+    await x.db.insert(npAgentIncidentTimeline).values(attempt);
+    expect((await list()).items[0]?.outcome).toBe("not-sent");
+    await deleteSite(x.siteId, { cascade: true });
+    expect(await getSiteById(x.siteId)).toBeNull();
+  });
 
   it("recovers a crashed sending claim as unknown and fences a late confirmation from overwriting its recovery", async () => {
     const x = await setup();

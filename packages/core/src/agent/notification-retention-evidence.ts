@@ -1,15 +1,10 @@
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
-import {
-  npDigestAgentNotificationDeliveryCanonical,
-  npRequireAgentNotificationDeliveryCanonical,
-} from "../agent-contract/canonical-notification-policy.js";
-import { npAgentNotificationDeliveryLimitsV1 } from "../agent-contract/notification-delivery-contract.js";
 import { NpAgentContractError } from "../agent-contract/contract.js";
 import type { npAgentIncidentTimeline, npAgentNotifications } from "../db/schema/agent.js";
-import { NpAgentGatewayError } from "./admin-admission.js";
+import { NpAgentGatewayError } from "./gateway-error.js";
 import {
   npNotificationTimelineFingerprintV1,
-  npRequireNotificationDeliveryLedgerV1,
+  npRequireNotificationDeliveryAttemptHistoryV1,
 } from "./notification-delivery-evidence.js";
 
 type Notification = typeof npAgentNotifications.$inferSelect;
@@ -41,10 +36,15 @@ export async function npAgentNotificationRetentionEvidenceV1(
       return false;
     const facts = timeline.filter((row) => knownSchema(row.details.schemaVersion));
     for (const row of external) {
-      const result = await npRequireNotificationDeliveryLedgerV1(row);
+      const attempts = facts.filter((entry) => entry.sourceId === row.id);
+      const { result, unresolvedAmbiguity } = await npRequireNotificationDeliveryAttemptHistoryV1(
+        row,
+        attempts,
+      );
       if (
         !["sent", "failed", "suppressed"].includes(row.state) ||
         !result ||
+        unresolvedAmbiguity ||
         result.state === "ambiguous"
       )
         return false;
@@ -66,61 +66,6 @@ export async function npAgentNotificationRetentionEvidenceV1(
         row.deduplicationKey !== `notification:${local.id}:${row.channel}:${row.connectionId}`
       )
         return false;
-      const attempts = facts
-        .filter((entry) => entry.details.schemaVersion === ATTEMPT && entry.sourceId === row.id)
-        .sort((a, b) => a.sequence - b.sequence);
-      if (attempts.length !== row.attempts) return false;
-      let previous = row.createdAt;
-      let ambiguous = false;
-      for (const [index, entry] of attempts.entries()) {
-        const receipt = npRequireAgentNotificationDeliveryCanonical({
-          ...row.deliveryDigestBody,
-          attempt: entry.details.attempt,
-          result: entry.details.result,
-          observedAt: entry.details.observedAt,
-        });
-        if (receipt.channel === "admin") return false;
-        ambiguous ||= receipt.result.state === "ambiguous";
-        if (ambiguous && result.state !== "confirmed") return false;
-        const digest = await npDigestAgentNotificationDeliveryCanonical(receipt);
-        const final = index === attempts.length - 1;
-        const state = final ? row.state : "queued";
-        const details = {
-          notificationId: row.id,
-          attempt: index + 1,
-          state,
-          result: receipt.result,
-          deliveryResultDigest: digest,
-          observedAt: entry.createdAt.toISOString(),
-        };
-        if (
-          !same(entry.details, { schemaVersion: ATTEMPT, ...details }) ||
-          entry.sourceFingerprint !== npNotificationTimelineFingerprintV1(ATTEMPT, details) ||
-          entry.createdAt < previous ||
-          entry.createdAt > row.updatedAt ||
-          (final && digest !== row.deliveryResultDigest)
-        )
-          return false;
-        // Reuse the sender's exact attempt/result/retry-clock consistency rules.
-        await npRequireNotificationDeliveryLedgerV1({
-          ...row,
-          state,
-          attempts: index + 1,
-          deliveryDigestBody: receipt,
-          deliveryResultDigest: digest,
-          updatedAt: entry.createdAt,
-          sentAt: state === "sent" ? entry.createdAt : null,
-          providerMessageId: state === "sent" ? row.providerMessageId : null,
-          lastErrorCode: receipt.result.state === "confirmed" ? null : receipt.result.errorCode,
-          nextAttemptAt: final
-            ? row.nextAttemptAt
-            : new Date(
-                entry.createdAt.getTime() +
-                  npAgentNotificationDeliveryLimitsV1.retryDelaySeconds[index] * 1000,
-              ),
-        });
-        previous = entry.createdAt;
-      }
     }
     for (const local of locals) {
       const routes = external.filter(

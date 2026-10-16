@@ -207,6 +207,60 @@ describe("Operator host owner boundary", () => {
     expect(result.checks[0]?.evidenceRefs).toEqual(["retained-evidence-1", "retained-evidence-2"]);
     expect(reader.mock.calls[0]?.[0].input.collections).toEqual(["posts"]);
   });
+  it("accepts explicitly installed canonical audit families and preserves legacy reader states", async () => {
+    const content = vi
+      .fn()
+      .mockResolvedValue({ state: "ok", targetCount: 1, evidenceRefs: ["owner:content"] });
+    const security = vi.fn().mockResolvedValue({
+      state: "unknown",
+      targetCount: 0,
+      consumedTargets: 1,
+      evidenceRefs: ["owner:security-unavailable"],
+    });
+    const jobs = vi.fn().mockResolvedValue({ state: "warn", evidenceRefs: ["owner:jobs"] });
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      auditReaders: { content, security, jobs },
+    });
+    const result = await host.audit!({
+      ...context,
+      auditId: uuid,
+      input: { families: ["content", "security", "jobs"], collections: ["posts"], maxTargets: 3 },
+    });
+    expect(result.checks.map((check) => [check.family, check.status])).toEqual([
+      ["content", "pass"],
+      ["security", "unknown"],
+      ["jobs", "warn"],
+    ]);
+    expect(jobs.mock.calls[0]?.[0].input.maxTargets).toBe(1);
+  });
+  it("retains unknown for an explicitly selected missing source and does not reuse its attempted budget", async () => {
+    const jobs = vi.fn().mockResolvedValue({ state: "ok", evidenceRefs: ["owner:jobs"] });
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      auditObservations: { families: ["accessibility"] },
+      auditReaders: { jobs },
+    });
+    const input = { families: ["accessibility" as const], collections: [], maxTargets: 1 };
+    expect((await host.audit!({ ...context, auditId: uuid, input })).checks[0]?.status).toBe(
+      "unknown",
+    );
+    await expect(
+      host.audit!({
+        ...context,
+        auditId: uuid,
+        input: { ...input, families: ["accessibility", "jobs"] },
+      }),
+    ).rejects.toThrow("unavailable");
+    expect(jobs).not.toHaveBeenCalled();
+    await expect(
+      host.assertAccess({
+        ...context,
+        capabilityId: "audit.run",
+        input: { ...input, families: ["security"] },
+      }),
+    ).rejects.toThrow("unavailable");
+  });
   it("audits actual collection schema fingerprints with existing schema visibility and target bounds", async () => {
     registerCollection(
       "operator-contracts",

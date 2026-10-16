@@ -6,6 +6,7 @@ import {
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentNotificationsV1,
   npRequireAgentIncidentNotificationDeliveriesV1,
+  npRequireAgentMemberResponseV1,
   type NpAgentIncidentEvidenceItemV1,
   type NpAgentIncidentMemberReportEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
@@ -104,6 +105,54 @@ function detail() {
     },
   });
 }
+
+test("Member response retains its duration draft while Incident polling refreshes current policy", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 214 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1_000));
+  const memberId = "b1111111-1111-4111-8111-111111111111";
+  const result = detail();
+  result.incident.primarySubject = { kind: "member", memberId };
+  let incidentReads = 0;
+  let maximumDurationSeconds = 600;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) => {
+    incidentReads++;
+    return route.fulfill({ json: result });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/member-response`, (route) =>
+    route.fulfill({
+      json: npRequireAgentMemberResponseV1({
+        schemaVersion: "np.agent-member-response.v1",
+        incidentId: id,
+        incidentVersion: 1,
+        memberId,
+        memberVersionDigest: `cj1:sha256:${"A".repeat(43)}`,
+        maximumDurationSeconds,
+        canRestrict: true,
+        revocable: [],
+        plans: [],
+        truncated: false,
+      }),
+    }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const panel = page.getByRole("region", { name: "Member site response", exact: true });
+  const duration = panel.getByRole("spinbutton", { name: "Restriction duration in seconds" });
+  await duration.fill("300");
+  maximumDurationSeconds = 450;
+  await page.clock.fastForward(2_000);
+  await expect.poll(() => incidentReads).toBe(2);
+  await expect(panel.getByText(/Current policy maximum: 450 seconds/)).toBeVisible();
+  await expect(duration).toHaveValue("300");
+  await expect(duration).toHaveAttribute("max", "450");
+  await expect(
+    panel.getByRole("button", { name: "Prepare temporary site restriction" }),
+  ).toBeEnabled();
+});
 
 test("incident list defaults to unresolved and filters without treating failures as empty", async ({
   page,

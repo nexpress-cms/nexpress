@@ -11,9 +11,9 @@ import type {
   NpAgentJsonObject,
   NpAgentNotificationDeliveryCanonicalV1,
 } from "../agent-contract/types.js";
-import type { npAgentNotifications } from "../db/schema/agent.js";
-import type { NpAgentNotificationConnectionSnapshotV1 } from "./connection-service.js";
-import { NpAgentGatewayError } from "./admin-admission.js";
+import type { npAgentIncidentTimeline, npAgentNotifications } from "../db/schema/agent.js";
+import type { NpAgentNotificationConnectionSnapshotV1 } from "./notification-connection-snapshot.js";
+import { NpAgentGatewayError } from "./gateway-error.js";
 
 type Row = typeof npAgentNotifications.$inferSelect;
 type ExternalBody = Extract<
@@ -225,5 +225,85 @@ export function npNotificationTimelineFingerprintV1(
 ): string {
   return `cj1:sha256:${createHash("sha256").update(schemaVersion).update("\0").update(serializeAgentCanonicalJson(details)).digest("base64url")}`;
 }
+
+/** Reconstruct every completed attempt before claiming a known operation outcome.
+ * A later not-sent/suppressed attempt cannot undo an earlier unknown effect. */
+export interface NpNotificationDeliveryAttemptHistoryV1 {
+  result: ExternalBody["result"] | null;
+  unresolvedAmbiguity: boolean;
+}
+export async function npRequireNotificationDeliveryAttemptHistoryV1(
+  row: Row,
+  facts: (typeof npAgentIncidentTimeline.$inferSelect)[],
+): Promise<NpNotificationDeliveryAttemptHistoryV1> {
+  const bad = () => unavailable("NOTIFICATION_EVIDENCE_INVALID");
+  const result = await npRequireNotificationDeliveryLedgerV1(row);
+  const count = row.state === "sending" ? row.attempts - 1 : row.attempts;
+  if (facts.length !== count) bad();
+  const attempts = [...facts].sort((a, b) => a.sequence - b.sequence);
+  let previous = row.createdAt;
+  let ambiguous = false;
+  for (const [index, entry] of attempts.entries()) {
+    const receipt = npRequireAgentNotificationDeliveryCanonical({
+      ...row.deliveryDigestBody,
+      attempt: entry.details.attempt,
+      result: entry.details.result,
+      observedAt: entry.details.observedAt,
+    });
+    if (receipt.channel === "admin") return bad();
+    ambiguous ||= receipt.result.state === "ambiguous";
+    const digest = await npDigestAgentNotificationDeliveryCanonical(receipt);
+    const final = index === attempts.length - 1;
+    const state = final && row.state !== "sending" ? row.state : "queued";
+    const details = {
+      notificationId: row.id,
+      attempt: index + 1,
+      state,
+      result: receipt.result,
+      deliveryResultDigest: digest,
+      observedAt: entry.createdAt.toISOString(),
+    };
+    if (
+      entry.siteId !== row.siteId ||
+      entry.incidentId !== row.incidentId ||
+      entry.kind !== "notification" ||
+      entry.sourceKind !== "system" ||
+      entry.sourceId !== row.id ||
+      entry.eventId ||
+      entry.signalId ||
+      entry.runId ||
+      entry.actionId ||
+      entry.approvalId ||
+      entry.providerCallId ||
+      entry.auditEventId ||
+      !same(entry.details, { schemaVersion: NP_NOTIFICATION_ATTEMPT_V1, ...details }) ||
+      entry.sourceFingerprint !==
+        npNotificationTimelineFingerprintV1(NP_NOTIFICATION_ATTEMPT_V1, details) ||
+      entry.createdAt < previous ||
+      entry.createdAt > row.updatedAt ||
+      (final && digest !== row.deliveryResultDigest)
+    )
+      bad();
+    await npRequireNotificationDeliveryLedgerV1({
+      ...row,
+      state,
+      attempts: index + 1,
+      deliveryDigestBody: receipt,
+      deliveryResultDigest: digest,
+      updatedAt: entry.createdAt,
+      sentAt: state === "sent" ? entry.createdAt : null,
+      providerMessageId: state === "sent" ? row.providerMessageId : null,
+      lastErrorCode: receipt.result.state === "confirmed" ? null : receipt.result.errorCode,
+      nextAttemptAt:
+        final && row.state !== "sending"
+          ? row.nextAttemptAt
+          : new Date(entry.createdAt.getTime() + LIMITS.retryDelaySeconds[index] * 1000),
+    });
+    previous = entry.createdAt;
+  }
+  return { result, unresolvedAmbiguity: ambiguous && result?.state !== "confirmed" };
+}
+
+export const NP_NOTIFICATION_ATTEMPT_V1 = "np.agent-notification-attempt.v1";
 
 export const NP_NOTIFICATION_ROUTING_EXPIRED_V1 = "np.agent-notification-routing-expired.v1";
