@@ -101,8 +101,11 @@ It does not poll or perform a mutation.
 
 External queued/sending/unknown records remain retained. A local source receipt
 referenced by any external row cannot be pruned independently. Existing snapshot,
-Connection and Incident references continue to protect dependent evidence. A
-broader terminal external-delivery retention policy remains separate. Legacy site
+Connection and Incident references continue to protect dependent evidence. The
+[history retention owner](r6-history-retention-flow.md) can expire a complete old
+terminal source/routing/attempt group under the explicit host policy. It preserves
+unknown effects and required references, and retains a stable routing tombstone
+to prevent historical source recreation from authorizing another delivery. Legacy site
 cascade deletion rejects queued, sending, missing-proof and unknown external
 deliveries, and rolls back the whole deletion without creating a deletion saga.
 

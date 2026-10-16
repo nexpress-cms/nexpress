@@ -299,14 +299,14 @@ describe.skipIf(skipIfNoTestDb())("explicit external Incident notification deliv
     });
   });
 
-  it("retains an external delivery's local source receipt when its workflow-closed Incident ages past retention", async () => {
+  it("retains a pending external delivery's local source receipt when its workflow-closed Incident ages past retention", async () => {
     const x = await setup();
     const incident = await x.observe();
     const [source] = await x.local();
-    const sent = await x.process();
+    const [pending] = await x.external();
     expect(source?.deliveryResultDigest).toBeTruthy();
-    expect(sent).toMatchObject({
-      state: "sent",
+    expect(pending).toMatchObject({
+      state: "queued",
       payloadRedacted: { sourceNotificationId: source!.id },
     });
     const workflow = createAgentIncidentWorkflowServiceV1({
@@ -351,11 +351,11 @@ describe.skipIf(skipIfNoTestDb())("explicit external Incident notification deliv
     );
     expect(pruned).toMatchObject({ pruned: 0 });
     expect((await x.local()).find((row) => row.id === source!.id)).toEqual(source);
-    expect((await x.external()).find((row) => row.id === sent.id)).toEqual(sent);
+    expect((await x.external()).find((row) => row.id === pending!.id)).toEqual(pending);
     expect(
       await x.db.select().from(npAgentIncidents).where(eq(npAgentIncidents.id, closed!.id)),
     ).toEqual([closed]);
-    expect(x.send).toHaveBeenCalledTimes(1);
+    expect(x.send).not.toHaveBeenCalled();
   });
 
   it("deduplicates concurrent queue/process replays and projects confirmed facts without private transport evidence", async () => {
