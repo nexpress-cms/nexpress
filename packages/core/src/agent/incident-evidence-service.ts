@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { npReadAgentEventRowsV1 } from "./event-evidence.js";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
-import { npAgentEvents, npAgentIncidentSignals, npAgentSignals } from "../db/schema/agent.js";
+import { type npAgentEvents, npAgentIncidentSignals, npAgentSignals } from "../db/schema/agent.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import {
   npInspectCommunityCommentEvidenceV1,
@@ -55,7 +56,6 @@ type Group = { eventId: string; signalIds: string[]; refs: EventRef[] };
 // 100 evidence references. This is a whole-Incident authority bound, distinct
 // from the ten items returned on one UI page.
 const MAXIMUM_INCIDENT_EVENTS = 100 * 100;
-const SOURCE_PAGE = 100;
 export interface NpAgentIncidentTargetPageV1 {
   targets: NpCommunityContentTargetV1[];
   nextCursor: string | null;
@@ -96,23 +96,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     options.cursorHmacKey,
     "np.agent-incident-evidence.cursor",
   );
-  async function sourceRows(db: Db, siteId: string, ids: string[]) {
-    const rows: Facts["sources"] = [];
-    for (let offset = 0; offset < ids.length; offset += SOURCE_PAGE)
-      rows.push(
-        ...(await db
-          .select()
-          .from(npAgentEvents)
-          .where(
-            and(
-              eq(npAgentEvents.siteId, siteId),
-              inArray(npAgentEvents.id, ids.slice(offset, offset + SOURCE_PAGE)),
-            ),
-          )
-          .orderBy(asc(npAgentEvents.id))),
-      );
-    return rows;
-  }
+  const sourceRows = npReadAgentEventRowsV1;
   async function snapshot(db: Db, input: Input) {
     canonicalBodyUuid(input.incidentId, "incidentId");
     const auth = await npResolveAgentStaffSessionAuthorizationV1(

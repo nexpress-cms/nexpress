@@ -18,6 +18,7 @@ import {
   type NpAgentIncidentV1,
   type NpAgentIncidentStudioListOutputV1,
 } from "@nexpress/core/agent-contract";
+import { IncidentNotificationDeliveries } from "./agent-incident-notification-deliveries.js";
 import { IncidentNotifications } from "./agent-incident-notifications.js";
 import { IncidentAssignment } from "./agent-incident-assignment.js";
 import { IncidentEvidence } from "./agent-incident-evidence.js";
@@ -460,6 +461,11 @@ function IncidentDetail({ id }: { id: string }) {
               </ul>
             )}
           </section>
+          <IncidentNotificationDeliveries
+            key={`deliveries:${detail.incident.id}`}
+            incidentId={detail.incident.id}
+            onAccessLost={evidenceAccessLost}
+          />
           {!writing && !state.loading ? (
             <IncidentEvidence
               key={`evidence:${state.generation}:${detail.incident.versionNumber}`}

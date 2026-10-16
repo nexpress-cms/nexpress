@@ -166,3 +166,10 @@ export {
   npIsAgentAutomaticQuarantineAuthorityV1,
   type NpAgentAutomaticQuarantineAuthorityV1,
 } from "./automatic-quarantine-service.js";
+export { createAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
+export type {
+  NpAgentNotificationDeliveryServiceV1,
+  NpAgentNotificationDeliveryRoutingOptionsV1,
+  NpAgentNotificationDeliveryAuthorizationV1,
+  NpAgentNotificationRouteV1,
+} from "./notification-delivery-service.js";

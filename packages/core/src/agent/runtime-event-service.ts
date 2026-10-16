@@ -1,3 +1,4 @@
+import { npAgentEventRowEnvelopeV1 as envelope } from "./event-evidence.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import {
@@ -41,7 +42,6 @@ import { npAgentModeratorWindowStartedAtV1 } from "./moderator-detector.js";
 
 type Db = ReturnType<typeof getDb>;
 type Trigger = typeof npAgentTriggers.$inferSelect;
-type Event = typeof npAgentEvents.$inferSelect;
 function fail(code = "RUNTIME_EVENT_INVALID"): never {
   throw new NpAgentGatewayError(code, 409, "Agent event operation is unavailable.");
 }
@@ -67,22 +67,6 @@ function definition(row: Trigger): NpAgentTrigger {
         ? { type: row.kind, id: row.id, cron: row.cron, catchUp: row.catchUp }
         : { type: row.kind, id: row.id },
   );
-}
-function envelope(row: Event): NpAgentEventCanonicalV1 {
-  return npRequireAgentEventCanonical({
-    version: "np.agent-event.v1",
-    siteId: row.siteId,
-    kind: row.kind,
-    occurredAt: row.occurredAt.toISOString(),
-    source: { kind: row.sourceKind, component: row.sourceComponent },
-    subject: row.subject,
-    actor: row.actor,
-    causation: row.causation,
-    correlationId: row.correlationId,
-    deduplicationKey: row.deduplicationKey,
-    privacy: row.privacy,
-    payload: row.payload,
-  });
 }
 export interface NpAgentRuntimeEventServiceOptionsV1 {
   admission: NpAgentRuntimeAdmissionV1;

@@ -5,6 +5,7 @@ import {
   npRequireAgentIncidentMemberReportEvidenceV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentNotificationsV1,
+  npRequireAgentIncidentNotificationDeliveriesV1,
   type NpAgentIncidentEvidenceItemV1,
   type NpAgentIncidentMemberReportEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
@@ -13,6 +14,9 @@ import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/admin/agents/incidents/notifications*", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.route("**/api/admin/agents/incidents/*/deliveries*", (route) =>
     route.fulfill({ status: 503, json: {} }),
   );
   await page.route("**/api/admin/agents/incidents/*/assignment", (route) =>
@@ -2145,4 +2149,89 @@ test("segmented Incident assessment distinguishes full snapshot coverage from in
   denied = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByText(/AI assessment across batches:/)).toHaveCount(0);
+});
+
+test("Incident external delivery status stays distinct from local recording and unknown delivery outcomes", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    212 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: detail() }),
+  );
+  let mode: "records" | "absent" | "denied" = "records";
+  const queries: Array<string | null> = [];
+  const item = {
+    notificationId: id,
+    connectionId: signalId,
+    channel: "slack",
+    incidentVersion: 1,
+    state: "failed",
+    outcome: "unknown",
+    attempts: 1,
+    lastErrorCode: "DELIVERY_OUTCOME_UNKNOWN",
+    nextAttemptAt: null,
+    sentAt: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  await page.route(`**/api/admin/agents/incidents/${id}/deliveries*`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    queries.push(cursor);
+    if (mode !== "records")
+      return route.fulfill({ status: mode === "denied" ? 403 : 503, json: {} });
+    const items = cursor
+      ? [{ ...item, state: "sent", outcome: "confirmed", sentAt: at, lastErrorCode: null }]
+      : [item];
+    return route.fulfill({
+      json: npRequireAgentIncidentNotificationDeliveriesV1({
+        schemaVersion: "np.agent-incident-notification-deliveries.v1",
+        incidentId: id,
+        items,
+        nextCursor: cursor ? null : "delivery-page-2",
+      }),
+    });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const panel = page.getByRole("region", { name: "External notification delivery", exact: true });
+  await expect(panel.getByText("Slack · Failed", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/Delivery outcome unknown/)).toContainText(
+    "may have been delivered",
+  );
+  await expect(panel.getByText("Confirmed not sent.", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText(/Local Admin notification recording is separate/)).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await panel.screenshot({
+      path: testInfo.outputPath(`incident-external-delivery-${width}.png`),
+      animations: "disabled",
+    });
+  }
+  await panel.getByRole("button", { name: "Next delivery page" }).click();
+  await expect(panel.getByText("Delivery confirmed.", { exact: true })).toBeVisible();
+  expect(queries.at(-1)).toBe("delivery-page-2");
+  mode = "absent";
+  await panel.getByRole("button", { name: "Refresh delivery status" }).click();
+  await expect(panel.getByRole("alert")).toContainText("disabled or unavailable");
+  await expect(panel.getByText("Delivery confirmed.", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText(/No visible external delivery records/)).toHaveCount(0);
+  mode = "records";
+  await panel.getByRole("button", { name: "First delivery page" }).click();
+  await expect(panel.getByText(/Delivery outcome unknown/)).toBeVisible();
+  mode = "denied";
+  await panel.getByRole("button", { name: "Refresh delivery status" }).click();
+  await expect(page.getByRole("heading", { name: "Repeated links", exact: true })).toHaveCount(0);
+  await expect(page.getByText("DELIVERY_OUTCOME_UNKNOWN", { exact: true })).toHaveCount(0);
+  mode = "records";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(panel.getByText(/Delivery outcome unknown/)).toBeVisible();
 });

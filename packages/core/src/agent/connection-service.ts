@@ -5,13 +5,16 @@ import { and, asc, desc, eq, gt, inArray, lte, or } from "drizzle-orm";
 import {
   npDigestAgentConnectionOperationCanonical,
   npRequireAgentConnectionV1,
+  npAgentProviderDataClasses,
   type NpAgentConnectionKind,
+  type NpAgentConnectionDestinationDescriptorV1,
   type NpAgentConnectionOperationKind,
   type NpAgentConnectionOperationRequestCanonicalV1,
   type NpAgentConnectionV1,
   type NpAgentJsonObject,
   type NpAgentProviderDataClass,
 } from "../agent-contract/index.js";
+import { canonicalBodyEnum } from "../agent-contract/canonical-body-validation.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import { getDb } from "../db/runtime.js";
@@ -74,6 +77,40 @@ export interface NpAgentProviderStateHashKeyV1 {
 export interface NpAgentProviderStateHashKeyringV1 {
   active: NpAgentProviderStateHashKeyV1;
   previous?: Readonly<Record<string, Uint8Array>>;
+}
+
+/** Server-only safe admission binding; credentials and projection-key bytes never cross this seam. */
+export interface NpAgentNotificationConnectionSnapshotV1 {
+  siteId: string;
+  connectionId: string;
+  configSnapshotId: string;
+  adapterId: string;
+  adapterContractVersion: number;
+  adapterFingerprint: string;
+  configVersion: number;
+  configHash: string;
+  accountSubjectKeyId: string;
+  accountSubjectDigest: string;
+  destinationKeyId: string;
+  destinationDescriptor: NpAgentConnectionDestinationDescriptorV1;
+  destinationFingerprint: string;
+}
+export interface NpAgentNotificationConnectionDeliveryV1 {
+  prepare(input: {
+    siteId: string;
+    connectionId: string;
+    transaction?: NpAgentDb;
+  }): Promise<NpAgentNotificationConnectionSnapshotV1>;
+  assertCurrent(input: {
+    siteId: string;
+    snapshot: NpAgentNotificationConnectionSnapshotV1;
+    transaction?: NpAgentDb;
+  }): Promise<{
+    snapshot: NpAgentNotificationConnectionSnapshotV1;
+    connection: NpAgentParsedConnectionConfigV1;
+    secretVersionId: string;
+    dataProcessingCeiling: NpAgentProviderDataClass;
+  }>;
 }
 
 export interface NpAgentConnectionServiceOptionsV1 {
@@ -424,6 +461,166 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
       snapshot: config,
     });
   }
+
+  async function readNotificationConnection(
+    db: NpAgentDb,
+    siteId: string,
+    connectionId: string,
+    expected?: NpAgentNotificationConnectionSnapshotV1,
+  ): Promise<{
+    snapshot: NpAgentNotificationConnectionSnapshotV1;
+    connection: NpAgentParsedConnectionConfigV1;
+    secretVersionId: string;
+    dataProcessingCeiling: NpAgentProviderDataClass;
+  }> {
+    requireIdentity(siteId, connectionId);
+    if (expected && (expected.siteId !== siteId || expected.connectionId !== connectionId))
+      fail("NOTIFICATION_CONNECTION_CHANGED", "The frozen notification connection changed.");
+    const [connection] = await db
+      .select()
+      .from(npAgentConnections)
+      .where(and(eq(npAgentConnections.siteId, siteId), eq(npAgentConnections.id, connectionId)))
+      .limit(1)
+      .for("update");
+    if (
+      !connection ||
+      connection.kind !== "notification" ||
+      connection.status !== "ready" ||
+      !connection.activeSecretVersionId ||
+      !connection.credentialVersion ||
+      connection.lastVerifiedConfigVersion !== connection.configVersion ||
+      connection.lastVerifiedCredentialVersion !== connection.credentialVersion ||
+      !connection.activeAccountSubjectKeyId ||
+      !connection.activeAccountSubjectDigest ||
+      !connection.activeDestinationKeyId ||
+      !connection.activeDestinationDescriptor ||
+      !connection.activeDestinationFingerprint
+    )
+      fail("NOTIFICATION_CONNECTION_UNAVAILABLE", "The notification connection is unavailable.");
+    const { config } = await loadConnectionConfig(db, siteId, connectionId);
+    const frozen = expected
+      ? (await loadConnectionConfig(db, siteId, connectionId, expected.configSnapshotId)).config
+      : config;
+    if (
+      config.state !== "active" ||
+      config.id !== connection.activeConfigSnapshotId ||
+      config.version !== connection.configVersion ||
+      config.configHash !== connection.configHash ||
+      config.dataProcessingCeiling !== connection.dataProcessingCeiling ||
+      config.pricingCatalogFingerprint !== connection.pricingCatalogFingerprint ||
+      !jsonEqual(config.config, connection.config) ||
+      frozen.id !== config.id ||
+      frozen.version !== config.version ||
+      frozen.configHash !== config.configHash
+    )
+      fail("NOTIFICATION_CONNECTION_CHANGED", "The notification connection config changed.");
+    const current = await parseStoredConfig(connection, config);
+    const retained = await parseStoredConfig(connection, frozen);
+    if (
+      !current.adapter.notification ||
+      !retained.adapter.notification ||
+      !jsonEqual(current.parsed, retained.parsed)
+    )
+      fail(
+        "NOTIFICATION_CONNECTION_UNAVAILABLE",
+        "The frozen notification adapter is unavailable.",
+      );
+    // The account key must still exist even though its one-way digest cannot expose the provider subject.
+    accountSubjectProjectionKey(connection.activeAccountSubjectKeyId);
+    const projected = await npProjectAgentConnectionDestinationV1({
+      adapter: retained.adapter,
+      siteId,
+      connectionKind: "notification",
+      parsedConfig: retained.parsed,
+      accountSubjectKeyId: connection.activeAccountSubjectKeyId,
+      accountSubjectDigest: connection.activeAccountSubjectDigest,
+      destinationKey: destinationProjectionKey(connection.activeDestinationKeyId),
+    });
+    if (
+      !projected.descriptor ||
+      !projected.fingerprint ||
+      projected.keyId !== connection.activeDestinationKeyId ||
+      projected.fingerprint !== connection.activeDestinationFingerprint ||
+      !jsonEqual(projected.descriptor, connection.activeDestinationDescriptor)
+    )
+      fail("NOTIFICATION_DESTINATION_CHANGED", "The notification destination binding changed.");
+    const snapshot: NpAgentNotificationConnectionSnapshotV1 = {
+      siteId,
+      connectionId,
+      configSnapshotId: config.id,
+      adapterId: config.adapterId,
+      adapterContractVersion: config.adapterContractVersion,
+      adapterFingerprint: config.adapterFingerprint,
+      configVersion: config.version,
+      configHash: config.configHash,
+      accountSubjectKeyId: connection.activeAccountSubjectKeyId,
+      accountSubjectDigest: connection.activeAccountSubjectDigest,
+      destinationKeyId: projected.keyId,
+      destinationDescriptor: projected.descriptor,
+      destinationFingerprint: projected.fingerprint,
+    };
+    if (expected && !jsonEqual(snapshot, expected))
+      fail("NOTIFICATION_CONNECTION_CHANGED", "The frozen notification connection changed.");
+    const [secret] = await db
+      .select()
+      .from(npAgentConnectionSecretVersions)
+      .where(
+        and(
+          eq(npAgentConnectionSecretVersions.siteId, siteId),
+          eq(npAgentConnectionSecretVersions.connectionId, connectionId),
+          eq(npAgentConnectionSecretVersions.id, connection.activeSecretVersionId),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    const at = now();
+    if (
+      !Number.isFinite(at.getTime()) ||
+      !secret ||
+      secret.status !== "active" ||
+      secret.purpose !== "connection-credential" ||
+      !secret.secretRef ||
+      secret.materialKind !== connection.authKind ||
+      secret.credentialEnvelopeVersion !== 1 ||
+      secret.version !== connection.credentialVersion ||
+      secret.accountSubjectKeyId !== snapshot.accountSubjectKeyId ||
+      secret.accountSubjectDigest !== snapshot.accountSubjectDigest ||
+      (secret.expiresAt !== null && secret.expiresAt <= at) ||
+      (secret.materialKind === "oauth" && (!secret.accessExpiresAt || secret.accessExpiresAt <= at))
+    )
+      fail(
+        "NOTIFICATION_CREDENTIAL_UNAVAILABLE",
+        "The current notification credential is unavailable.",
+      );
+    const dataProcessingCeiling = canonicalBodyEnum<NpAgentProviderDataClass>(
+      config.dataProcessingCeiling,
+      "notification.connection.dataProcessingCeiling",
+      new Set(npAgentProviderDataClasses),
+    );
+    return {
+      snapshot,
+      connection: current.parsed,
+      secretVersionId: secret.id,
+      dataProcessingCeiling,
+    };
+  }
+  const notificationDelivery: NpAgentNotificationConnectionDeliveryV1 = Object.freeze({
+    async prepare(input: Parameters<NpAgentNotificationConnectionDeliveryV1["prepare"]>[0]) {
+      const read = (db: NpAgentDb) =>
+        readNotificationConnection(db, input.siteId, input.connectionId);
+      const result = input.transaction
+        ? await read(input.transaction)
+        : await resolveDb().transaction((tx) => read(tx as NpAgentDb));
+      return result.snapshot;
+    },
+    assertCurrent(input: Parameters<NpAgentNotificationConnectionDeliveryV1["assertCurrent"]>[0]) {
+      const read = (db: NpAgentDb) =>
+        readNotificationConnection(db, input.siteId, input.snapshot.connectionId, input.snapshot);
+      return input.transaction
+        ? read(input.transaction)
+        : resolveDb().transaction((tx) => read(tx as NpAgentDb));
+    },
+  });
 
   async function resolveOAuthClientConfigDigest(
     siteId: string,
@@ -2523,6 +2720,7 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
   }
 
   return {
+    notificationDelivery,
     async admitCreateConnection(
       input: NpAgentConnectionCreateAdmissionInputV1,
     ): Promise<NpAgentConnectionCreateAdmissionV1> {

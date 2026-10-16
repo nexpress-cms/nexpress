@@ -113,3 +113,8 @@ opt-in unit skips do not count as integration coverage.
 The optional [recording recovery flow](r6-incident-notification-recovery-flow.md)
 adds bounded retries for new confirmed containment failures. Other notification
 transitions retain their existing transaction and recording ownership.
+
+The optional [external delivery foundation](r6-external-incident-notifications-flow.md)
+uses verified local receipts as durable outbox sources. Its host-injected
+transport attempts and delivery state remain separate from local recording;
+no transport, recipient configuration or worker is activated automatically.
