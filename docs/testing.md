@@ -149,8 +149,11 @@ historical duration, assigning each next file to the lighter group. The timing
 seed in `scripts/integration-durations.json` comes from PR #1455; it is a weight,
 not an allowlist or a wall-time prediction. New files use the median known weight,
 and removed files are ignored. Core runs once in partition 1 and Redis once in
-partition 2. Worker isolation, fixture cleanup, timeouts and native-preview gating
-remain unchanged; the E2E job still explicitly enables native preview.
+partition 2. Each Web partition runs at most two forks, matching the complete
+local acceptance configuration. This bounds contention between CPU-heavy recipe
+journeys and other DB/contract files without extending their deadlines. Worker
+isolation, fixture cleanup, timeouts and native-preview gating remain unchanged;
+the E2E job still explicitly enables native preview.
 
 The runner requires database settings (and Redis for partition 2), rejects new
 unassigned integration package owners, and verifies that Vitest's actual file

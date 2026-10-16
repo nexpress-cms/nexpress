@@ -171,6 +171,10 @@ function main() {
     "exec",
     "vitest",
     "run",
+    // Match the complete local acceptance run: CPU-heavy recipe journeys must
+    // not compete with every host CPU worth of DB/contract workers. Preserve
+    // each test deadline and the exact selected-file coverage below.
+    "--maxWorkers=2",
     ...selected.map((f) => path.join(webRoot, f)),
   ]);
   if (args.partition === 2)

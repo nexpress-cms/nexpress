@@ -156,6 +156,14 @@ status. The Member approval and history screens fit 320/390 px viewports; dialog
 wrapping and keyboard focus were inspected. This is bounded browser evidence,
 not spoken assistive-technology or real-operator acceptance.
 
+The CI partition runner now explicitly caps Web integration work at two forks,
+matching the completed local gate. Its first PR attempt at the platform's default
+parallelism timed out one Publisher journey at its unchanged sixty-second limit;
+the still-running body then overlapped later fixture cleanup and produced two
+secondary deadlocks. The cap preserves test bodies, file coverage, isolation and
+deadlines. This bounds concurrency; cancellation of a test's outstanding
+asynchronous work after its timeout remains separate.
+
 No Runtime runs, provider calls or actual external messages occurred. Synthetic
 fixtures do not establish model usefulness, production automatic-action precision
 or full R6 acceptance. Versions, changesets and the lockfile remain unchanged;
