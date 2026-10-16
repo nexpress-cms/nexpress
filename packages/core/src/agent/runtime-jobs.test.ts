@@ -57,6 +57,35 @@ describe("explicit Runtime job registration", () => {
     expect(f.handlers.getJobHandler("agent:eventDispatch")).toBeUndefined();
     expect(f.handlers.getAllJobHandlers().size).toBe(1);
   });
+  it("registers delivery only for an explicit host owner and carries the persisted site and attempt", async () => {
+    const send = vi.fn(() => Promise.resolve());
+    expect(f.handlers.getJobHandler("agent:notificationSend")).toBeUndefined();
+    f.createAgentRuntimeJobsV1({
+      ...f.options,
+      notificationDelivery: { process: send, reconcile: () => Promise.resolve() },
+    }).register();
+    expect(send).not.toHaveBeenCalled();
+    await f.context.withCurrentSite("site-a", async () => {
+      await f.handlers.getJobHandler("agent:notificationSend")!({
+        siteId: "site-b",
+        notificationId: eventId,
+        expectedAttempt: 2,
+      });
+    });
+    expect(send).toHaveBeenCalledExactlyOnceWith({
+      siteId: "site-b",
+      notificationId: eventId,
+      expectedAttempt: 2,
+    });
+    const invalidPayloads: NpJobData[] = [
+      { siteId: "site-b", notificationId: eventId, expectedAttempt: 6 },
+      { siteId: "site-b", notificationId: eventId, expectedAttempt: 1.5 },
+      { siteId: "site-b", notificationId: eventId, expectedAttempt: 0, authority: "staff" },
+    ];
+    for (const payload of invalidPayloads)
+      await expect(f.handlers.getJobHandler("agent:notificationSend")!(payload)).rejects.toThrow();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
   it("rejects invalid explicit coordination site with a stable error", () => {
     expect(() =>
       f.createAgentRuntimeJobsV1({ ...f.options, coordinationSiteId: "_system" }),

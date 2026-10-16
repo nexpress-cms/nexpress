@@ -1,4 +1,5 @@
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
+import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
 import { and, asc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import { npSites, npSettings } from "../db/schema/system.js";
@@ -34,6 +35,8 @@ export interface NpAgentRuntimeJobsOptionsV1 {
   events: Pick<NpAgentRuntimeEventServiceV1, "dispatch" | "schedule">;
   executor: Pick<ReturnType<typeof createAgentRuntimeExecutorV1>, "process">;
   incidentNotifications?: Pick<NpAgentIncidentNotificationsServiceV1, "recover">;
+  /** Explicit outbox installation; omission never registers a sender or scans delivery rows. */
+  notificationDelivery?: Pick<NpAgentNotificationDeliveryServiceV1, "process" | "reconcile">;
   /** Explicit source/monitor owner; absence never polls operational sources. */
   operator?: {
     observe(input: { siteId: string }): Promise<unknown>;
@@ -195,6 +198,13 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
           failed = true;
         }
       }
+      if (options.notificationDelivery) {
+        try {
+          await options.notificationDelivery.reconcile({ siteId });
+        } catch {
+          failed = true;
+        }
+      }
       for (const event of rows.events) {
         try {
           await enqueue("agent:eventDispatch", { siteId, eventId: event.id });
@@ -246,6 +256,7 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
     register() {
       npAssertAgentPreviewEffectsAllowed();
       if (installed) return;
+      if (options.notificationDelivery && getJobHandler("agent:notificationSend")) unavailable();
       for (const name of [
         "agent:eventDispatch",
         "agent:runExecute",
@@ -257,6 +268,14 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
         if (getJobHandler(name)) unavailable();
       }
       registerJobHandler("agent:eventDispatch", dispatch, { resolveSiteId });
+      if (options.notificationDelivery)
+        registerJobHandler(
+          "agent:notificationSend",
+          safe<NpBuiltinJobPayloadMap["agent:notificationSend"]>((input) =>
+            options.notificationDelivery!.process(input),
+          ),
+          { resolveSiteId },
+        );
       registerJobHandler("agent:runExecute", execute, { resolveSiteId, quota: "site" });
       registerJobHandler("agent:retentionPrune", prune, { resolveSiteId });
       registerJobHandler("agent:eventReconcile", reconcile);

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   ensure: vi.fn(),
   list: vi.fn(),
   notifications: vi.fn(),
+  deliveries: vi.fn(),
   get: vi.fn(),
   evidence: vi.fn(),
   memberReportEvidence: vi.fn(),
@@ -1002,5 +1003,97 @@ describe("Incident notification HTTP boundary", () => {
     mocks.staff.mockResolvedValue(staff);
     mocks.runtime.mockReturnValue(null);
     expect((await handleAgentIncidentAdminRequest(request(), "notifications")).status).toBe(503);
+  });
+});
+
+describe("Incident external delivery HTTP boundary", () => {
+  const at = "2026-10-16T00:00:00.000Z";
+  const item = {
+    notificationId: id,
+    connectionId: id,
+    channel: "slack",
+    incidentVersion: 2,
+    state: "failed",
+    outcome: "unknown",
+    attempts: 1,
+    lastErrorCode: "DELIVERY_OUTCOME_UNKNOWN",
+    nextAttemptAt: null,
+    sentAt: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  const page = {
+    schemaVersion: "np.agent-incident-notification-deliveries.v1",
+    incidentId: id,
+    items: [item],
+    nextCursor: "next-page",
+  };
+  it("reads only retained facts with current staff/site, exact Incident binding and an independent cursor", async () => {
+    mocks.deliveries.mockResolvedValue(page);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?cursor=sealed-page"),
+      "deliveries",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.deliveries).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "sealed-page",
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(await response.json()).toEqual(page);
+    for (const mutation of [
+      mocks.feedback,
+      mocks.transition,
+      mocks.responsePlan,
+      mocks.responseExecute,
+      mocks.restore,
+    ])
+      expect(mutation).not.toHaveBeenCalled();
+  });
+  it.each([
+    "?siteId=other",
+    "?limit=20",
+    "?cursor=",
+    "?cursor=a&cursor=b",
+    "?responseCursor=timeline",
+    `?cursor=${"x".repeat(2049)}`,
+  ])("rejects unsupported delivery query %s", async (query) => {
+    expect((await handleAgentIncidentAdminRequest(request(query), "deliveries", id)).status).toBe(
+      400,
+    );
+    expect(mocks.deliveries).not.toHaveBeenCalled();
+  });
+  it("keeps absent/denied delivery owners distinct from empty records", async () => {
+    mocks.runtime.mockReturnValue({ incidents: { ...mocks, deliveries: undefined } });
+    const absent = await handleAgentIncidentAdminRequest(request(), "deliveries", id);
+    expect(absent.status).toBe(503);
+    expect(JSON.parse(absent.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "retry-read",
+    });
+    mocks.runtime.mockReturnValue({ incidents: mocks });
+    mocks.staff.mockRejectedValue(new NpForbiddenError("incident", "read"));
+    expect((await handleAgentIncidentAdminRequest(request(), "deliveries", id)).status).toBe(403);
+    expect(mocks.deliveries).not.toHaveBeenCalled();
+    mocks.staff.mockResolvedValue(staff);
+    expect((await handleAgentIncidentAdminRequest(request(), "deliveries", "bad-id")).status).toBe(
+      400,
+    );
+  });
+  it("rejects cross-Incident results, unsafe metadata and inconsistent unknown/sent outcomes", async () => {
+    for (const malformed of [
+      { ...page, incidentId: "10000000-0000-4000-8000-000000000002" },
+      { ...page, items: [{ ...item, destination: "private-delivery@example.test" }] },
+      { ...page, items: [{ ...item, receipt: "private-delivery@example.test" }] },
+      { ...page, items: [{ ...item, state: "sent", sentAt: at }] },
+    ]) {
+      mocks.deliveries.mockResolvedValue(malformed);
+      const response = await handleAgentIncidentAdminRequest(request(), "deliveries", id);
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("private-delivery@example.test");
+    }
   });
 });

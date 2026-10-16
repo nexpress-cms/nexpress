@@ -515,6 +515,20 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
     if (workingTask) {
       throw new Error("Agent site deletion requires every MCP task to be terminal.");
     }
+    // A sending attempt may still finish outside this transaction. Pending or
+    // unknown deliveries retain their source/config/receipt evidence until the
+    // delivery owner converges them; deleting the site is not a cancellation.
+    const unsafeNotification = await tx.execute(sql`
+      select 1 from public.np_agent_notifications n where n.site_id=${siteId}
+        and n.channel<>'admin' and (
+          n.state in ('queued','sending')
+          or n.delivery_digest_body is null or n.delivery_result_digest is null
+          or coalesce(n.delivery_digest_body->'result'->>'state','') not in ('confirmed','retryable_not_sent','permanent_failure')
+          or n.last_error_code='DELIVERY_AMBIGUOUS'
+        ) limit 1
+    `);
+    if (unsafeNotification.rows.length)
+      throw new Error("Agent site deletion requires terminal known notification deliveries.");
     const unsafeRuntime = await tx.execute(sql`
       select 1 from public.np_agent_runs where site_id=${siteId} and origin='runtime' and state not in ('succeeded','failed','cancelled','policy_blocked','budget_blocked')
       union all select 1 from public.np_agent_provider_calls c where c.site_id=${siteId} and (

@@ -1,3 +1,4 @@
+import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
 import type { NpAgentIncidentMemberReportEvidenceServiceV1 } from "./incident-member-report-evidence-service.js";
 import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
@@ -63,6 +64,7 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 export interface NpAgentIncidentStudioServiceV1 {
   notifications: NpAgentIncidentNotificationsServiceV1["list"];
+  deliveries?: NpAgentNotificationDeliveryServiceV1["list"];
   assignment: NpAgentIncidentAssignmentServiceV1["get"];
   assign: NpAgentIncidentAssignmentServiceV1["assign"];
   evidence: NpAgentIncidentEvidenceServiceV1["get"];
@@ -95,6 +97,7 @@ export interface NpAgentIncidentStudioServiceOptionsV1 {
   memberReportEvidence?: NpAgentIncidentMemberReportEvidenceServiceV1;
   assignment?: NpAgentIncidentAssignmentServiceV1;
   notifications?: NpAgentIncidentNotificationsServiceV1;
+  notificationDelivery?: NpAgentNotificationDeliveryServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -622,6 +625,15 @@ export function createAgentIncidentStudioServiceV1(
     });
   }
   return {
+    deliveries: (input) => {
+      if (!options.notificationDelivery)
+        throw new NpAgentGatewayError(
+          "INCIDENT_NOTIFICATION_DELIVERIES_UNAVAILABLE",
+          503,
+          "External notification delivery is disabled or unavailable.",
+        );
+      return options.notificationDelivery.list(input);
+    },
     notifications: (input) => {
       if (!options.notifications)
         throw new NpAgentGatewayError(

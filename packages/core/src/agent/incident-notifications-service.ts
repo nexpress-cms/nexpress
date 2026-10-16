@@ -39,6 +39,7 @@ import type {
 } from "./incident-service.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
 type Db = ReturnType<typeof getDb>;
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 type Notification = typeof npAgentNotifications.$inferSelect;
@@ -62,6 +63,8 @@ export interface NpAgentIncidentNotificationsServiceV1 {
   ): Promise<NpAgentIncidentNotificationRecoveryV1 | null>;
 }
 export interface NpAgentIncidentNotificationsServiceOptionsV1 {
+  /** Optional durable external outbox. Failures cannot roll back the local feed/source transition. */
+  delivery?: Pick<NpAgentNotificationDeliveryServiceV1, "queue">;
   reads: NpAgentIncidentStaffReadServiceV1;
   /** Required to expose failed-action outcomes. Recheck the current action target ACL. */
   canReviewAction?(
@@ -320,6 +323,17 @@ export function createAgentIncidentNotificationsServiceV1(
       serializeAgentCanonicalJson(item)
     )
       fail();
+    if (options.delivery) {
+      try {
+        await options.delivery.queue({
+          db: input.db,
+          siteId: input.siteId,
+          notificationId: stored.id,
+        });
+      } catch {
+        // Its savepoint rolls back independently; the explicit reconciler recovers committed local facts.
+      }
+    }
   }
   const recovery = options.recoverFailures
     ? npCreateIncidentNotificationRecovery({

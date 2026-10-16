@@ -88,6 +88,8 @@ export async function npPruneAgentIncidentRetentionV1(options: {
     and (t.contained_at is null or t.contained_at<=${historyBefore})`;
   const orphan = sql`t.incident_id is null and t.status in ('suppressed','resolved') and ${signalAge}`;
   const localNotification = sql`t.channel='admin' and t.state='sent' and t.run_id is null and t.action_id is null
+    and not exists (select 1 from np_agent_notifications external where external.site_id=t.site_id
+      and external.channel<>'admin' and external.payload_redacted->>'sourceNotificationId'=t.id::text)
     and t.attempts=0 and t.last_error_code is null and t.next_attempt_at is null
     and t.delivery_digest_body is not null and t.delivery_result_digest is not null
     and t.created_at<=${historyBefore} and t.updated_at<=${historyBefore} and t.sent_at<=${historyBefore}

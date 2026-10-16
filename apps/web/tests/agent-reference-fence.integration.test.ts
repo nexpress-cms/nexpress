@@ -33,7 +33,7 @@ const tables = [
  * fixture-only receipts prove the owning canonical evidence verifiers.
  */
 describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQL protocol", () => {
-  const database = `np_fence_${randomUUID().replaceAll("-", "")}`;
+  let database: string;
   let admin: pg.Client;
   let observer: pg.Client;
   let cleaner: pg.Client;
@@ -41,6 +41,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   let databaseUrl: string;
 
   beforeAll(async () => {
+    // The existing integration global teardown removes every database in this
+    // run namespace after all workers stop. Dropping this I/O-heavy protocol
+    // database mid-run can wait for a shared-cluster checkpoint beyond the
+    // ordinary hook budget, even when every producer/client is already closed.
+    const runId = process.env.NP_TEST_DB_RUN_ID;
+    if (!runId || !/^r[a-z0-9]+$/u.test(runId))
+      throw new Error("Reference fence tests require the integration database run namespace.");
+    database = `np_fence_${runId}_${randomUUID().replaceAll("-", "")}`;
+    if (database.length > 63)
+      throw new Error("Reference fence database identity exceeds the PostgreSQL name limit.");
     const url = new URL(process.env.TEST_DATABASE_URL!);
     url.pathname = "/postgres";
     admin = new pg.Client({ connectionString: url.href });
@@ -90,11 +100,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   });
 
   afterAll(async () => {
-    for (const client of [writer, cleaner, observer]) await client?.end();
-    if (admin) {
-      await admin.query(`DROP DATABASE IF EXISTS ${database}`);
-      await admin.end();
-    }
+    const results = await Promise.allSettled(
+      [writer, cleaner, observer, admin].map((client) => client?.end()),
+    );
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length) throw new AggregateError(errors, "Reference fence client cleanup failed.");
   });
 
   async function waitForPid(pid: number): Promise<void> {

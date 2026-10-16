@@ -122,6 +122,13 @@ transaction would make those paths look cleaner than production. Per-worker
 databases plus truncate cleanup are a little heavier, but they match the app
 runtime more closely.
 
+Independent protocol-test databases can share that cleanup ownership by
+including the exact `_${NP_TEST_DB_RUN_ID}_` namespace in a validated database
+name within PostgreSQL's 63-character limit. Close their clients in `afterAll`
+and let existing global teardown drop the databases after all workers stop.
+Dropping a database mid-run can wait for a cluster-wide checkpoint while other
+workers write, exceeding the normal hook budget even when no client leaked.
+
 The `apps/web` integration global setup also creates a disposable local-media
 root under the operating-system temp directory. Each Vitest worker receives a
 separate subdirectory through `NP_STORAGE_DIR`, regardless of storage settings

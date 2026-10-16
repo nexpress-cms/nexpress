@@ -7,6 +7,7 @@ import {
   npRequireAgentIncidentEvidenceV1,
   npRequireAgentIncidentMemberReportEvidenceV1,
   npRequireAgentIncidentNotificationsV1,
+  npRequireAgentIncidentNotificationDeliveriesV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentAssignmentInputV1,
   npRequireAgentIncidentFeedbackInputV1,
@@ -103,6 +104,7 @@ export async function handleAgentIncidentAdminRequest(
   operation:
     | "list"
     | "notifications"
+    | "deliveries"
     | "detail"
     | "evidence"
     | "member-report-evidence"
@@ -123,6 +125,7 @@ export async function handleAgentIncidentAdminRequest(
     "member-report-evidence",
     "assignment",
     "notifications",
+    "deliveries",
   ].includes(operation);
   const headers = {
     "cache-control": "private, no-store",
@@ -153,7 +156,19 @@ export async function handleAgentIncidentAdminRequest(
       } catch {
         throw invalid();
       }
-      if (operation === "assignment") {
+      if (operation === "deliveries") {
+        const cursor = query(request, true).cursor;
+        if (!service.deliveries)
+          throw new NpServiceUnavailableError(
+            "External notification delivery is disabled or unavailable.",
+          );
+        const deliveries = npRequireAgentIncidentNotificationDeliveriesV1(
+          await service.deliveries({ ...staff, incidentId, cursor }),
+        );
+        if (deliveries.incidentId !== incidentId)
+          throw new Error("Incident delivery response binding is invalid.");
+        result = deliveries;
+      } else if (operation === "assignment") {
         if (request.nextUrl.search) throw invalid();
         const assignment = npRequireAgentIncidentAssignmentV1(
           await service.assignment({ ...staff, incidentId }),

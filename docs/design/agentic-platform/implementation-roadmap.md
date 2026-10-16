@@ -720,8 +720,12 @@ upward-only decisions and their local notifications without changing authority.
 The optional [notification recording recovery flow](r6-incident-notification-recovery-flow.md)
 retains bounded local recording retries for new confirmed quarantine failures
 and connects them to host-owned maintenance and authorized Studio state.
-Other source evidence viewers, external notification delivery, automatic escalation,
-unknown execution outcomes and recipe/evaluation gates stay open.
+The optional [external notification delivery foundation](r6-external-incident-notifications-flow.md)
+adds a durable, current-authority outbox, bounded retry/recovery and read-only
+Studio delivery state through host-injected Connection/vault/transport owners.
+Actual email/Slack integration and delivery remain separate; no transport or
+worker is activated by default. Other source evidence viewers, automatic
+escalation, unknown execution outcomes and recipe/evaluation gates stay open.
 
 The [member report review flow](r6-incident-member-report-flow.md) adds transactional
 filing observations, bounded unscored advisory Incidents and current global

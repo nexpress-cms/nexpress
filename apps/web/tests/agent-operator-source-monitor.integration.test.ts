@@ -295,6 +295,9 @@ describe.skipIf(skipIfNoTestDb())("Operator canonical source and bounded recover
   });
   it("reports missing canonical storage as unknown without installing queues or workers", async () => {
     const f = await setup();
+    // Worker databases are reused across files; truncateAll() preserves pg-boss storage.
+    // This case owns the missing-storage precondition, regardless of prior producers.
+    await f.db.execute(sql`drop schema if exists pgboss cascade`);
     const result = await npCollectAgentOperatorEventObservationV1({ db: f.db });
     expect(result.snapshot).toMatchObject({ complete: false, paused: null });
     expect(result.failuresComplete).toBe(false);

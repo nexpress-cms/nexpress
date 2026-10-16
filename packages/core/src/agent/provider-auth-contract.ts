@@ -31,6 +31,11 @@ import type {
   NpProviderOAuthPkceLeaseV1,
 } from "./vault-contract.js";
 
+import type {
+  NpAgentExternalNotificationChannelV1,
+  NpAgentNotificationDeliveryResultV1,
+} from "../agent-contract/notification-delivery-contract.js";
+
 const TEXT_ENCODER = new TextEncoder();
 const IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
 const SAFE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/u;
@@ -230,8 +235,30 @@ export interface NpAgentProviderInferenceFacetV1 {
   shutdown?(): void | Promise<void>;
 }
 
+/** Optional explicit external notification transport on the same immutable adapter tuple. */
+export interface NpAgentProviderNotificationFacetV1 {
+  readonly channels: readonly NpAgentExternalNotificationChannelV1[];
+  readonly idempotency: "enforced" | "none";
+  send(
+    request: {
+      schemaVersion: "np.agent-notification-delivery.v1";
+      notificationId: string;
+      channel: NpAgentExternalNotificationChannelV1;
+      deduplicationKey: string;
+      payloadRedacted: NpAgentJsonObject;
+    },
+    context: {
+      connection: NpAgentParsedConnectionConfigV1;
+      credentialLease: NpProviderCredentialLeaseV1;
+      signal: AbortSignal;
+    },
+  ): Promise<NpAgentNotificationDeliveryResultV1>;
+  shutdown?(): Promise<void>;
+}
+
 export interface NpAgentConnectionAuthAdapterV1 {
   readonly inference?: NpAgentProviderInferenceFacetV1;
+  readonly notification?: NpAgentProviderNotificationFacetV1;
   readonly id: string;
   readonly contractVersion: number;
   readonly fingerprint: string;
@@ -1645,7 +1672,45 @@ function requireAdapter(value: NpAgentConnectionAuthAdapterV1): NpAgentConnectio
     )
       fail("PROVIDER_CONTRACT_INVALID", "The inference facet must support model connections.");
   }
+  if (value.notification !== undefined) hardenNotificationFacet(value.notification, kinds);
   return value;
+}
+
+function hardenNotificationFacet(
+  value: NpAgentProviderNotificationFacetV1,
+  kinds: readonly string[],
+): NpAgentProviderNotificationFacetV1 {
+  const row = exactRecord(
+    value,
+    "agent.provider.adapter.notification",
+    value && Object.hasOwn(value, "shutdown")
+      ? ["channels", "idempotency", "send", "shutdown"]
+      : ["channels", "idempotency", "send"],
+  );
+  const channels = requireSortedUnique(
+    row.channels,
+    "agent.provider.adapter.notification.channels",
+    4,
+    16,
+    new Set(["email", "siem", "slack", "webhook"]),
+  );
+  if (
+    !kinds.includes("notification") ||
+    channels.length === 0 ||
+    (row.idempotency !== "enforced" && row.idempotency !== "none") ||
+    typeof row.send !== "function" ||
+    (row.shutdown !== undefined && typeof row.shutdown !== "function")
+  )
+    fail(
+      "PROVIDER_CONTRACT_INVALID",
+      "The notification facet must declare a supported transport and exact delivery semantics.",
+    );
+  return Object.freeze({
+    channels: Object.freeze([...channels]) as readonly NpAgentExternalNotificationChannelV1[],
+    idempotency: row.idempotency,
+    send: value.send.bind(value),
+    ...(value.shutdown ? { shutdown: value.shutdown.bind(value) } : {}),
+  });
 }
 
 function deepFreeze<T>(value: T): T {
@@ -1669,6 +1734,10 @@ function hardenAdapter(adapter: NpAgentConnectionAuthAdapterV1): NpAgentConnecti
         refreshCredential: adapter.oauth.refreshCredential.bind(adapter.oauth),
       })
     : null;
+  const notification =
+    adapter.notification === undefined
+      ? undefined
+      : hardenNotificationFacet(adapter.notification, adapter.supportedConnectionKinds);
   const credentialEnvelopeVersions: readonly [1] = Object.freeze([1]);
   return Object.freeze({
     id: adapter.id,
@@ -1683,6 +1752,7 @@ function hardenAdapter(adapter: NpAgentConnectionAuthAdapterV1): NpAgentConnecti
     parseConfig: adapter.parseConfig.bind(adapter),
     deriveDestinationDescriptor: adapter.deriveDestinationDescriptor.bind(adapter),
     probeCredential: adapter.probeCredential.bind(adapter),
+    ...(notification ? { notification } : {}),
     ...(adapter.inference
       ? {
           inference: Object.freeze({
