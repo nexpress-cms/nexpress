@@ -61,7 +61,7 @@ being treated as absent.
 Unapplied edits, invalid input and pending work block exports. Rejected edits
 retain previously validated labels for correction or explicit draft discard.
 Access loss clears imported files, results and review drafts. The page has no
-polling, persisted browser storage or server-side review history. Download URLs
+polling or persisted browser storage. Optional server-side history requires the explicit host installation described below. Download URLs
 are revoked after use and at unmount.
 
 Downloads are the existing owner's labels array, review artifact and unified
@@ -104,13 +104,70 @@ thin matching wrappers. No versions, changesets, lockfile or migrations change.
 
 ## Acceptance boundary
 
-All review attribution is self-reported offline data. Fixture checks, human
+Imported and ordinary exported review attribution remains self-reported offline data. Fixture checks, human
 labels, model usefulness and production moderation precision remain separate.
 This screen grants no approval, activation or automatic action authority and
 does not close AP-606 or full R6 acceptance. Provider calls, new credentials,
-workers and durable storage are outside this slice.
+and workers remain outside this flow; optional durable history has its own explicit owner below.
 
-## Verification
+## Optional authenticated review history
+
+The stateless import/review/export flow remains usable with no Agent services
+installed. A host may explicitly pass
+`evaluationHistory: createAgentEvaluationHistoryServiceV1()` to
+`createAgentStudioServerRuntimeV1`. The reference host does not install this
+service automatically. The page shows storage as disabled when the owner is
+absent; `/api/admin/agents/evaluations/history` also refuses access without it.
+No Connection, provider, Runtime worker or credentials are required.
+
+An explicit **Save my decision** action persists the validated evaluation and
+only the selected case decision. It uses the current staff account and server
+time, ignoring the editable offline reviewer name. Imported labels never acquire
+authenticated original authorship. The separate history envelope says
+`authenticated-staff-review-no-approval`; compatible label/review/report exports
+keep their existing offline authority and full R6 remains unestablished.
+
+Sources bind the original owner's exact source hash; case revisions additionally
+bind case ID/version, case hash and prediction hash. The original recipe owner
+still checks eligibility, allowed outcomes and meaningful grounded edits.
+Replacements and clear operations append revisions rather than overwriting an
+older decision. Source-wide expected-version CAS prevents a stale reviewer from
+silently overwriting another save. The existing Admin admission owns idempotency,
+current site/staff authorization and immutable audit. Its request journal retains
+safe source/case hashes and a decision digest, rather than uploaded evidence or
+notes. Exact replay rechecks live authority. Reads also recheck authority before
+returning the bounded result, verify retained source/revision integrity and retain
+actor fingerprints when an account reference is removed.
+
+**Browse saved evaluations** loads a stored source for the existing validation
+flow. **Load current case history** retrieves the exact selected case, including
+clears and previous revisions; ten revisions per page and twenty-five sources
+per page keep responses bounded. Unknown save outcomes retain the same request
+and idempotency key for an explicit retry. Access loss clears source, history and
+review drafts. Offline labels and exports change only through their existing
+controls.
+
+Durable source JSON has a tighter limit of 2,000,000 characters inside the 4 MiB
+request bound; larger artifacts remain usable in the offline Workbench. Edited
+proposal JSON is bounded to 256 KiB. Storage permits at most 1,000 sources per site
+and 10,000 appended revisions per source. Hitting these limits does not authorize
+automatic deletion or evidence compaction. History is preserved by default and
+is removed in dependency order only by the existing explicit site-deletion owner.
+New source/review reference guards participate in existing retention fences and
+Doctor checks schema and relational provenance without projecting uploaded
+content. Exact source/revision hashes are checked by the history read owner.
+
+The focused persistence gate passed seven PostgreSQL journeys with no skips,
+including exact replay, competing CAS, clear revisions, grounded edit rejection,
+current authority loss and actual staff-account deletion after Gateway authority
+containment. A different authorized staff session can still inspect the retained
+fingerprint and immutable history; that reader's role loss denies the read.
+Corrupting the stored canonical request, authorization-context or output digest
+also denies authenticated history. Four HTTP cases and sixteen reference-migration
+cases passed against the complete Core producer. These checks required no Runtime
+or provider calls and cover this optional history slice only.
+
+## Original stateless workspace verification
 
 The local gate passed `pnpm verify --concurrency=2` (113 tasks) and `pnpm lint`
 (41 tasks). Core ran 2,290 unit tests, Admin 191, App 686 and CLI 153. Focused

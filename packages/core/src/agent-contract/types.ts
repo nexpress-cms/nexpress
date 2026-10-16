@@ -1908,6 +1908,8 @@ export const npAgentCapabilityIds = [
   "incident.list",
   "moderation.quarantine",
   "moderation.restore",
+  "moderation.member.restrict",
+  "moderation.member.revoke",
   "security.limitActor",
   "security.revokeSessions",
 ] as const;
@@ -2103,6 +2105,8 @@ export const npAgentCapabilityScopeDerivations = {
   "incident.list": "incident-target",
   "moderation.quarantine": "moderation-target",
   "moderation.restore": "moderation-target",
+  "moderation.member.restrict": "incident-target",
+  "moderation.member.revoke": "incident-target",
   "security.limitActor": "security-target",
   "security.revokeSessions": "security-target",
 } as const satisfies Record<NpAgentCapabilityId, NpAgentScopeDerivation>;

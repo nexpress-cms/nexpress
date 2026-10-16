@@ -173,3 +173,16 @@ export type {
   NpAgentNotificationDeliveryAuthorizationV1,
   NpAgentNotificationRouteV1,
 } from "./notification-delivery-service.js";
+
+export * from "./evaluation-history-service.js";
+export { npAnalyzeAgentPublisherContentV1 } from "./publisher-content.js";
+export {
+  npInspectAgentRenderedAccessibilityV1,
+  type NpAgentRenderedAccessibilityReportV1,
+} from "./preview-checks.js";
+export {
+  createAgentSlackNotificationProviderAdapterV1,
+  createAgentResendNotificationProviderAdapterV1,
+} from "./provider-notification-reference.js";
+
+export * from "./member-response-service.js";

@@ -135,6 +135,16 @@ test("evaluation workspace reviews synthetic document and mixed content proposal
   await page.goto("/admin/agents");
   await page.getByRole("link", { name: "Review evaluation artifacts" }).click();
   await expect(page.getByRole("heading", { name: "Evaluation review workspace" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "History storage is disabled until the host installs the evaluation history service.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save my decision", exact: true })).toHaveCount(0);
+  const disabledHistory = await page.request.get("/api/admin/agents/evaluations/history");
+  expect(disabledHistory.status()).toBe(503);
+
   await expect(page.getByLabel("Recipe", { exact: true })).toHaveValue("moderator-proposal");
   await importArtifact(
     page,

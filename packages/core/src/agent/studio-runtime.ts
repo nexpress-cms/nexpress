@@ -1,3 +1,5 @@
+import type { NpAgentMemberResponseServiceV1 } from "./member-response-service.js";
+import type { NpAgentEvaluationHistoryServiceV1 } from "./evaluation-history-service.js";
 import type { NpAgentIncidentStudioServiceV1 } from "./incident-studio-service.js";
 import type { NpAgentApprovalServiceV1 } from "./approval-service.js";
 import type { NpAgentRuntimeControlsV1 } from "./runtime-controls.js";
@@ -25,6 +27,8 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import { NpServiceUnavailableError } from "../errors.js";
 
 export interface NpAgentStudioServerRuntimeV1 {
+  evaluationHistory?: NpAgentEvaluationHistoryServiceV1 | null;
+  memberResponses?: NpAgentMemberResponseServiceV1 | null;
   incidents: NpAgentIncidentStudioServiceV1 | null;
   runtimeStudio: NpAgentRuntimeStudioServiceV1 | null;
   runtimeControls: NpAgentRuntimeControlsV1 | null;
@@ -46,6 +50,8 @@ export interface NpAgentStudioServerRuntimeV1 {
 }
 
 export interface NpAgentStudioServerRuntimeOptionsV1 {
+  evaluationHistory?: NpAgentEvaluationHistoryServiceV1;
+  memberResponses?: NpAgentMemberResponseServiceV1;
   incidents?: NpAgentIncidentStudioServiceV1;
   runtimeStudio?: NpAgentRuntimeStudioServiceV1;
   runtimeControls?: NpAgentRuntimeControlsV1;
@@ -105,6 +111,8 @@ export function createAgentStudioServerRuntimeV1(
     throw new Error("Agent preview runtime requires the ChangeSet service.");
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
+    evaluationHistory: options.evaluationHistory ?? null,
+    memberResponses: options.memberResponses ?? null,
     incidents: options.incidents ?? null,
     runtimeStudio: options.runtimeStudio ?? null,
     runtimeControls: options.runtimeControls ?? null,

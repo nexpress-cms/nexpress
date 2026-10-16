@@ -10,6 +10,7 @@ import {
   type NpAgentEvaluationWorkbenchOutcomeV1,
 } from "@nexpress/core/agent-contract";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
+import { AgentEvaluationHistoryPanel } from "./agent-evaluation-history-panel.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { useAgentRetryBlocked } from "./agent-recovery.js";
 import {
@@ -59,7 +60,9 @@ const emptyDraft = (): EvaluationReviewDraft => ({
 const jsonPanelClass =
   "max-h-72 overflow-auto rounded-md bg-neutral-50 p-3 text-xs whitespace-pre-wrap break-all dark:bg-neutral-900";
 
-export function AgentEvaluationWorkbenchView() {
+export function AgentEvaluationWorkbenchView({
+  historyAvailable = false,
+}: { historyAvailable?: boolean } = {}) {
   const [recipe, setRecipe] = React.useState<NpAgentEvaluationReportRecipeV1>("moderator-proposal");
   const [files, setFiles] = React.useState<ImportedFiles>(emptyFiles);
   const [fileKey, setFileKey] = React.useState(0);
@@ -257,8 +260,8 @@ export function AgentEvaluationWorkbenchView() {
         <p className="max-w-[85ch] text-sm text-neutral-500">
           Inspect imported evaluation evidence, compare a baseline and record self-reported reviews.
           Fixture conformance does not establish production quality or model usefulness. Reviews
-          never approve or execute capabilities. Files are processed in server memory; no review
-          history is saved.
+          never approve or execute capabilities. Files remain in memory unless you explicitly save a
+          current authenticated decision below.
         </p>
       </div>
       <Card>
@@ -361,6 +364,38 @@ export function AgentEvaluationWorkbenchView() {
           {error}
         </p>
       ) : null}
+      <AgentEvaluationHistoryPanel
+        enabled={historyAvailable}
+        evaluation={files.evaluation?.value ?? null}
+        result={result}
+        entry={entry}
+        draft={draft}
+        disabled={busy || reading.length > 0 || invalidFiles.length > 0 || retryBlocked}
+        onLoad={(saved) => {
+          invalidate();
+          resetFiles();
+          setRecipe(saved.source.recipe);
+          setFiles({
+            ...emptyFiles(),
+            evaluation: {
+              name: `saved-${saved.source.id}.json`,
+              value: JSON.parse(saved.evaluationJson) as unknown,
+            },
+          });
+          setFailure(undefined);
+          setStatus(
+            "Saved evaluation loaded. Validate it before inspecting cases or recording another decision.",
+          );
+        }}
+        onAccessLost={() => {
+          invalidate();
+          resetFiles();
+          setStatus("Access lost. Imported files and review drafts were cleared.");
+          setError(
+            "Restore access and reload this page before importing evaluation evidence again.",
+          );
+        }}
+      />
       {result ? (
         <>
           <Card>

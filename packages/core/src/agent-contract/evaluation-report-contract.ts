@@ -1,4 +1,8 @@
 import type { NpAgentProfileEvaluationReviewArtifactV1 } from "./profile-evaluation-review-contract.js";
+import {
+  npAgentEvaluationReportRecipesV1,
+  type NpAgentEvaluationReportRecipeV1,
+} from "./evaluation-report-recipe-contract.js";
 import { canonicalBodyRecord } from "./canonical-body-validation.js";
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import type {
@@ -32,15 +36,7 @@ import type {
 } from "./moderator-proposal-evaluation-review-contract.js";
 
 export const npAgentEvaluationReportMaxBytesV1 = 4 * 1024 * 1024;
-export const npAgentEvaluationReportRecipesV1 = [
-  "moderator",
-  "moderator-proposal",
-  "operator",
-  "publisher",
-  "moderator-assessment",
-  "publisher-selection",
-] as const;
-export type NpAgentEvaluationReportRecipeV1 = (typeof npAgentEvaluationReportRecipesV1)[number];
+export { npAgentEvaluationReportRecipesV1, type NpAgentEvaluationReportRecipeV1 };
 export interface NpAgentEvaluationReportManifestV1 {
   schemaVersion: "np.agent-eval-report-manifest.v1";
   entries: {

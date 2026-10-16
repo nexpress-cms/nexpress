@@ -17,6 +17,7 @@ import type {
 } from "@nexpress/core/agents";
 import type {
   NpAgentAuditRunInputV1,
+  NpAgentAuditCheckFamily,
   NpAgentAuditCheckV1,
   NpAgentJsonObject,
   NpAgentOpsPlanInputV1,
@@ -48,6 +49,18 @@ import {
   collectOperatorProgressObservation,
   unavailableOperatorProgressObservation,
 } from "./operator-progress-observation";
+import {
+  collectOperatorAuditObservation,
+  type NpAgentOperatorAuditObservationOwnersV1,
+  type NpAgentOperatorAuditObservationV1,
+} from "./operator-audit-observations";
+export {
+  npDigestAgentOperatorRenderedHtmlV1,
+  type NpAgentOperatorAuditObservationOwnersV1,
+  type NpAgentOperatorAuditObservationV1,
+  type NpAgentOperatorRenderedAccessibilityReportV1,
+  type NpAgentOperatorSecurityReportV1,
+} from "./operator-audit-observations";
 export type { NpAgentOperatorObservationOwnersV1 } from "./operator-observations";
 
 import { collectOperatorQueuePlanV1 } from "./operator-queue-plan";
@@ -115,12 +128,14 @@ export interface NpAgentOperatorAppHostOptionsV1 {
   >;
   auditReaders?: Partial<
     Record<
-      "contracts" | "jobs" | "storage" | "plugins",
+      NpAgentAuditCheckFamily,
       (
         request: NpAgentOperatorHostContextV1 & { input: NpAgentAuditRunInputV1; auditId: string },
-      ) => Promise<NpAgentOperatorScopedObservationV1>
+      ) => Promise<NpAgentOperatorAuditObservationV1>
     >
   >;
+  /** Explicit bounded audit families and actual read/render/report owners; missing sources report unknown. */
+  auditObservations?: NpAgentOperatorAuditObservationOwnersV1;
   /** Install the existing Core schema.get executor, retaining its current collection ACL. */
   readSchema?: NpAgentReadCapabilityExecutorsV1["schema.get"];
   /** Host configuration only: never taken from a capability input. */
@@ -290,16 +305,10 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
         )
           unavailable();
         if (
-          family !== "contracts" &&
-          family !== "jobs" &&
-          family !== "storage" &&
-          family !== "plugins"
-        )
-          unavailable();
-        if (
           !options.auditReaders?.[family] &&
           !hasObservation(family) &&
-          !(family === "contracts" && options.readSchema)
+          !(family === "contracts" && options.readSchema) &&
+          !options.auditObservations?.families.includes(family)
         )
           unavailable();
       }
@@ -360,20 +369,10 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
     },
     async audit(request) {
       const authorization = { ...request, capabilityId: "audit.run" as const };
-      await options.authorize(authorization);
-      const supported = new Set(["contracts", "jobs", "storage", "plugins"]);
-      // Audit never upgrades a configuration-only check into a measured content or security audit.
-      if (request.input.families.some((family) => !supported.has(family))) unavailable();
+      await assertAccess(authorization);
       const checks: NpAgentAuditCheckV1[] = [];
       let targets = 0;
       for (const family of request.input.families) {
-        if (
-          family !== "contracts" &&
-          family !== "jobs" &&
-          family !== "storage" &&
-          family !== "plugins"
-        )
-          unavailable();
         if (family === "contracts" && !options.auditReaders?.contracts && options.readSchema) {
           if (
             request.input.collections.length === 0 ||
@@ -396,14 +395,17 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
         const reader = options.auditReaders?.[family];
         const remaining = request.input.maxTargets - targets;
         if (remaining < 1) unavailable();
-        let observation: NpAgentOperatorScopedObservationV1;
+        let observation: NpAgentOperatorAuditObservationV1;
         let consumedTargets: number | undefined;
         if (reader) {
           observation = await reader({
             ...request,
             input: { ...request.input, maxTargets: remaining },
           });
-        } else if (family !== "contracts" && hasObservation(family)) {
+        } else if (
+          (family === "jobs" || family === "storage" || family === "plugins") &&
+          hasObservation(family)
+        ) {
           if (family === "plugins" && !(await options.authorizeDeployment?.(authorization)))
             unavailable();
           const observationBound =
@@ -421,9 +423,20 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           consumedTargets = concrete.consumedTargets;
           if (family === "plugins" && !(await options.authorizeDeployment?.(authorization)))
             unavailable();
+        } else if (options.auditObservations?.families.includes(family)) {
+          observation = await collectOperatorAuditObservation(
+            options.auditObservations,
+            family,
+            { ...request, input: { ...request.input, maxTargets: remaining } },
+            () => options.authorize(authorization),
+          );
+          consumedTargets = observation.consumedTargets;
         } else unavailable();
         const count = observation.targetCount ?? observation.evidenceRefs.length;
-        const consumed = consumedTargets ?? count;
+        const consumed =
+          consumedTargets ??
+          observation.consumedTargets ??
+          (observation.state === "unknown" ? remaining : count);
         if (
           !Number.isSafeInteger(count) ||
           count < 0 ||
@@ -433,7 +446,7 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           unavailable();
         targets += consumed;
         if (
-          !["ok", "warn", "error"].includes(observation.state) ||
+          !["ok", "warn", "error", "unknown"].includes(observation.state) ||
           observation.evidenceRefs.length === 0 ||
           targets > request.input.maxTargets
         )
@@ -444,9 +457,11 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           status:
             observation.state === "ok"
               ? ("pass" as const)
-              : observation.state === "error"
-                ? ("fail" as const)
-                : ("warn" as const),
+              : observation.state === "unknown"
+                ? ("unknown" as const)
+                : observation.state === "error"
+                  ? ("fail" as const)
+                  : ("warn" as const),
           evidenceRefs: observation.evidenceRefs,
         });
         if (family === "jobs" && !reader && options.progressDiagnostics === "pg-boss") {

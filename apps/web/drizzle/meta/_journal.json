@@ -484,6 +484,20 @@
       "when": 1791977590435,
       "tag": "0068_tricky_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792118311535,
+      "tag": "0069_agent-evaluation-history",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792118365938,
+      "tag": "0070_agent-evaluation-history-reference-lifecycle",
+      "breakpoints": true
     }
   ]
 }

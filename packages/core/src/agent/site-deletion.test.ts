@@ -24,6 +24,8 @@ const expectedTables = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_containments",
+  "np_agent_evaluation_reviews",
+  "np_agent_evaluation_sources",
   "np_agent_events",
   "np_agent_feedback",
   "np_agent_incident_signals",

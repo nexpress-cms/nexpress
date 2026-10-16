@@ -298,6 +298,54 @@ function ApprovalActionFacts({
 }: {
   review: NonNullable<NpAgentApprovalDetailV1["actionReview"]>;
 }) {
+  if ("memberId" in review) {
+    const restrict = review.operation.kind === "restrict";
+    return (
+      <section className="space-y-3" aria-label="Member site restriction action">
+        <h2 className="text-lg font-semibold">
+          {restrict
+            ? "Temporarily restrict Member on this site"
+            : "Revoke this workflow’s Member restriction"}
+        </h2>
+        <p>
+          {restrict
+            ? "This temporary site restriction blocks Community writes on the current site until its expiry. It does not change the global account or revoke sessions."
+            : "Remove only the exact temporary site restriction created by the selected approved workflow. Other restrictions remain effective."}
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Member</dt>
+          <dd className="break-all">{review.memberId}</dd>
+          <dt>Incident</dt>
+          <dd className="break-all">{review.incidentId}</dd>
+          {review.operation.kind === "restrict" ? (
+            <>
+              <dt>Duration after execution</dt>
+              <dd>{review.operation.durationSeconds} seconds</dd>
+            </>
+          ) : (
+            <>
+              <dt>Original restriction action</dt>
+              <dd className="break-all">{review.operation.sourceActionId}</dd>
+              <dt>Exact restriction</dt>
+              <dd className="break-all">{review.operation.banId}</dd>
+            </>
+          )}
+          <dt>Current facts version</dt>
+          <dd className="break-all">{review.expectedMemberVersionDigest}</dd>
+          <dt>Policy</dt>
+          <dd className="break-all">{review.policyDigest}</dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+        <p>
+          A different authorized staff member must approve. Execution is a separate explicit request
+          and checks current evidence again.
+        </p>
+      </section>
+    );
+  }
   if (review.capabilityId === "ops.execute") {
     const operation = review.operation;
     const target = operation.target;

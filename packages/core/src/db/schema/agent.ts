@@ -1,3 +1,4 @@
+import type { NpAgentEvaluationReportRecipeV1 } from "../../agent-contract/evaluation-report-recipe-contract.js";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -4131,6 +4132,7 @@ export const npAgentIncidentTimeline = pgTable(
   (t) => [
     unique("np_agent_incident_timeline_site_id_id_unique").on(t.siteId, t.id),
     unique("np_agent_incident_timeline_sequence_unique").on(t.siteId, t.incidentId, t.sequence),
+    index("np_agent_timeline_site_source_sequence_idx").on(t.siteId, t.sourceId, t.sequence),
     foreignKey({
       name: "np_agent_incident_timeline_incident_fk",
       columns: [t.siteId, t.incidentId],
@@ -4510,6 +4512,98 @@ export const npAgentOperatorExecutions = pgTable(
     check(
       "np_agent_operator_executions_run_check",
       sql`${t.resultRunId} is null or (${t.sourceRunId} is not null and ${t.resultRunId}<>${t.sourceRunId})`,
+    ),
+  ],
+);
+
+/** AP-606 explicitly stored offline evaluation evidence; immutable source body, CAS review head. */
+export const npAgentEvaluationSources = pgTable(
+  "np_agent_evaluation_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    recipe: text("recipe").$type<NpAgentEvaluationReportRecipeV1>().notNull(),
+    sourceHash: text("source_hash").notNull(),
+    evaluationBody: jsonb("evaluation_body").$type<unknown>().notNull(),
+    versionNumber: integer("version_number").notNull(),
+    caseCount: integer("case_count").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_evaluation_sources_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_evaluation_sources_source_unique").on(t.siteId, t.recipe, t.sourceHash),
+    index("np_agent_evaluation_sources_page_idx").on(t.siteId, t.id),
+    check(
+      "np_agent_evaluation_sources_bounds_check",
+      sql`(${t.versionNumber} between 0 and 10000 and ${t.caseCount} between 1 and 100 and ${t.recipe} in ('moderator','moderator-proposal','operator','publisher','moderator-assessment','publisher-selection') and ${t.sourceHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.evaluationBody})='object' and octet_length(${t.evaluationBody}::text)<=4194304) is true`,
+    ),
+  ],
+);
+/** Append-only per-case decisions; label compatibility never upgrades offline artifact authority. */
+export const npAgentEvaluationReviews = pgTable(
+  "np_agent_evaluation_reviews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    sourceId: uuid("source_id").notNull(),
+    versionNumber: integer("version_number").notNull(),
+    caseId: text("case_id").notNull(),
+    caseVersion: integer("case_version").notNull(),
+    caseHash: text("case_hash").notNull(),
+    predictionHash: text("prediction_hash").notNull(),
+    previousRevisionId: uuid("previous_revision_id"),
+    recordedByUserId: uuid("recorded_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    actorFingerprint: text("actor_fingerprint").notNull(),
+    labelBody: jsonb("label_body").$type<Record<string, unknown> | null>(),
+    revisionHash: text("revision_hash").notNull(),
+    invocationId: uuid("invocation_id").notNull(),
+    auditEventId: uuid("audit_event_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: "np_agent_evaluation_reviews_audit_fk",
+      columns: [t.auditEventId],
+      foreignColumns: [npAuditEvents.id],
+    }).onDelete("restrict"),
+    unique("np_agent_evaluation_reviews_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_evaluation_reviews_source_id_id_unique").on(t.siteId, t.sourceId, t.id),
+    unique("np_agent_evaluation_reviews_version_unique").on(t.siteId, t.sourceId, t.versionNumber),
+    unique("np_agent_evaluation_reviews_invocation_unique").on(t.siteId, t.invocationId),
+    uniqueIndex("np_agent_evaluation_reviews_supersedes_unique")
+      .on(t.siteId, t.previousRevisionId)
+      .where(sql`${t.previousRevisionId} is not null`),
+    index("np_agent_evaluation_reviews_case_idx").on(
+      t.siteId,
+      t.sourceId,
+      t.caseId,
+      t.caseVersion,
+      t.versionNumber,
+    ),
+    foreignKey({
+      name: "np_agent_evaluation_reviews_source_fk",
+      columns: [t.siteId, t.sourceId],
+      foreignColumns: [npAgentEvaluationSources.siteId, npAgentEvaluationSources.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_evaluation_reviews_previous_fk",
+      columns: [t.siteId, t.sourceId, t.previousRevisionId],
+      foreignColumns: [t.siteId, t.sourceId, t.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_evaluation_reviews_invocation_fk",
+      columns: [t.siteId, t.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_evaluation_reviews_bounds_check",
+      sql`(${t.versionNumber} between 1 and 10000 and ${t.caseVersion} between 1 and 2147483646 and char_length(${t.caseId}) between 1 and 128 and ${t.caseHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.predictionHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.actorFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.revisionHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.previousRevisionId} is null or ${t.previousRevisionId}<>${t.id}) and (${t.labelBody} is null or (jsonb_typeof(${t.labelBody})='object' and octet_length(${t.labelBody}::text)<=393216 and ${t.labelBody}->>'reviewer'='staff:'||${t.actorFingerprint} and ${t.labelBody}->>'caseId'=${t.caseId} and ${t.labelBody}->>'caseHash'=${t.caseHash} and ${t.labelBody}->>'predictionHash'=${t.predictionHash}))) is true`,
     ),
   ],
 );

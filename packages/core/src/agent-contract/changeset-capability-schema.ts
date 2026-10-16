@@ -591,7 +591,13 @@ export const npAgentChangeSetListOutputSchemaV1: NpAgentJsonSchema = {
   $defs: outputDefs,
 };
 
-export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJsonSchema {
+export function npCompactAgentWireSchemaV1(
+  source: NpAgentJsonSchema,
+  options: {
+    factorShortConstraints?: boolean;
+    inlineSingleUseDefinitions?: boolean;
+  } = {},
+): NpAgentJsonSchema {
   type Node = Record<string, unknown>;
   function signatureOf(value: unknown): string {
     return JSON.stringify(value, (_key, child: unknown) => {
@@ -619,7 +625,7 @@ export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJs
   }
   function count(node: Node): Node {
     const signature = signatureOf(node);
-    if (signature.length >= 40 && !node.$ref) {
+    if ((options.factorShortConstraints || signature.length >= 40) && !node.$ref) {
       const prior = counts.get(signature);
       counts.set(signature, { node, count: (prior?.count ?? 0) + 1 });
     }
@@ -703,10 +709,80 @@ export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJs
     for (const child of Object.values(value)) visitReferences(child);
   }
   visitReferences(root);
+  let compactedRoot = root;
+  let compactedDefinitions: Node = Object.fromEntries(
+    [...reachable].map((name) => [name, defs[name]]),
+  );
+  if (options.inlineSingleUseDefinitions) {
+    const referenceName = (node: Node): string | null => {
+      if (Object.keys(node).length !== 1 || typeof node.$ref !== "string") return null;
+      const encoded = node.$ref.match(/^#\/\$defs\/([^/]+)$/u)?.[1];
+      return encoded ? encoded.replace(/~1/gu, "/").replace(/~0/gu, "~") : null;
+    };
+    function references(value: unknown, counts: Map<string, number>): void {
+      if (!value || typeof value !== "object") return;
+      if (!Array.isArray(value)) {
+        const name = referenceName(value as Node);
+        if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+      for (const child of Object.values(value)) references(child, counts);
+    }
+    const depth = (value: unknown): number =>
+      !value || typeof value !== "object"
+        ? 0
+        : Math.max(0, ...Object.values(value).map((child) => 1 + depth(child)));
+    const cyclic = (origin: string): boolean => {
+      const visited = new Set<string>();
+      function reaches(name: string): boolean {
+        if (visited.has(name)) return false;
+        visited.add(name);
+        const direct = new Map<string, number>();
+        references(compactedDefinitions[name], direct);
+        return [...direct.keys()].some(
+          (child) =>
+            child === origin || (Object.hasOwn(compactedDefinitions, child) && reaches(child)),
+        );
+      }
+      return reaches(origin);
+    };
+    // Parent factoring can leave a formerly repeated child reachable only once.
+    // Remove that ref/definition overhead only when the complete JSON remains shallower
+    // than the existing limit. Cycles and shared definitions retain their references.
+    for (;;) {
+      const counts = new Map<string, number>();
+      references(compactedRoot, counts);
+      references(compactedDefinitions, counts);
+      let changed = false;
+      for (const [name, count] of counts) {
+        if (count !== 1 || !Object.hasOwn(compactedDefinitions, name) || cyclic(name)) continue;
+        const replace = (node: Node): Node =>
+          referenceName(node) === name
+            ? structuredClone(compactedDefinitions[name] as Node)
+            : children(node, replace);
+        const candidateRoot = replace(compactedRoot);
+        const candidateDefinitions = Object.fromEntries(
+          Object.entries(compactedDefinitions)
+            .filter(([key]) => key !== name)
+            .map(([key, value]) => [key, replace(value as Node)]),
+        );
+        const candidate = { ...candidateRoot, $defs: candidateDefinitions };
+        if (
+          depth(candidate) > npAgentContractLimits.jsonSchemaDepth ||
+          nodeCount(candidate) >= nodeCount({ ...compactedRoot, $defs: compactedDefinitions })
+        )
+          continue;
+        compactedRoot = candidateRoot;
+        compactedDefinitions = candidateDefinitions;
+        changed = true;
+        break;
+      }
+      if (!changed) break;
+    }
+  }
   return npRequireAgentContractResult(
     npAnalyzeAgentJsonSchema({
-      ...root,
-      $defs: Object.fromEntries([...reachable].map((name) => [name, defs[name]])),
+      ...compactedRoot,
+      $defs: compactedDefinitions,
     }),
     "Invalid approval detail schema",
   );
