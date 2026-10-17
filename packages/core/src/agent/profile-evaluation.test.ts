@@ -9,7 +9,6 @@ import {
 import { npBuildAgentEvaluationWorkbenchV1 } from "./evaluation-workbench.js";
 import {
   npBuildAgentProfileEvaluationReviewArtifactV1,
-  npRequireAgentProfileEvaluationReviewArtifactV1,
   npCompareAgentProfileEvaluationReviewArtifactsV1,
 } from "../agent-contract/profile-evaluation-review-contract.js";
 import { npCreateAgentModeratorAssessmentEvaluationPredictionV1 } from "../agent-contract/moderator-assessment-evaluation-contract.js";
@@ -188,69 +187,88 @@ describe("explicit semantic and Publisher selection evaluation profiles", () => 
       "failed",
     );
   });
-  it.each(["moderator-assessment", "publisher-selection"] as const)(
-    "binds %s review, report and Workbench without claiming live authority",
-    async (recipe) => {
-      const full = recipe === "moderator-assessment" ? semantic : publisher;
-      const index =
-        recipe === "moderator-assessment"
-          ? 0
-          : full.caseResults.findIndex(
-              (result) =>
-                result.prediction?.publisherSelectionResponse?.decision.kind ===
-                "propose-capability",
-            );
-      if (index < 0) throw new Error("Missing proposal fixture");
-      // Full corpus conformance is covered above; exercise review composition on one exact case.
-      const source = await evaluate({ ...full.suite, cases: [full.suite.cases[index]] });
-      const empty = await npBuildAgentProfileEvaluationReviewArtifactV1(source);
-      expect(empty.summary.reviewed).toBe(0);
-      const entry = empty.entries.find((e) => e.eligible);
-      if (!entry) throw new Error("Missing reviewable fixture");
-      const label = {
-        caseId: entry.caseId,
-        caseHash: entry.caseHash,
-        predictionHash: entry.predictionHash,
-        sourceHash: entry.sourceHash,
-        outcome: "accept",
-        reviewer: "synthetic-review-test",
-        reviewedAt: "2026-10-15T00:00:00.000Z",
-        notes: "Fixture conformance only, not authenticated human acceptance.",
-        editedProposal: null,
+  describe.each(["moderator-assessment", "publisher-selection"] as const)(
+    "%s review composition",
+    (recipe) => {
+      const prepare = async () => {
+        const full = recipe === "moderator-assessment" ? semantic : publisher;
+        const index =
+          recipe === "moderator-assessment"
+            ? 0
+            : full.caseResults.findIndex(
+                (result) =>
+                  result.prediction?.publisherSelectionResponse?.decision.kind ===
+                  "propose-capability",
+              );
+        if (index < 0) throw new Error("Missing proposal fixture");
+        // Corpus conformance is covered above. Review and composition share
+        // one exact immutable case, rather than reconstructing its artifacts.
+        const source = await evaluate({ ...full.suite, cases: [full.suite.cases[index]] });
+        const empty = await npBuildAgentProfileEvaluationReviewArtifactV1(source);
+        const entry = empty.entries.find((e) => e.eligible);
+        if (!entry) throw new Error("Missing reviewable fixture");
+        const label = {
+          caseId: entry.caseId,
+          caseHash: entry.caseHash,
+          predictionHash: entry.predictionHash,
+          sourceHash: entry.sourceHash,
+          outcome: "accept",
+          reviewer: "synthetic-review-test",
+          reviewedAt: "2026-10-15T00:00:00.000Z",
+          notes: "Fixture conformance only, not authenticated human acceptance.",
+          editedProposal: null,
+        };
+        const review = await npBuildAgentProfileEvaluationReviewArtifactV1(source, [label]);
+        return { source, empty, entry, label, review };
       };
-      const review = await npBuildAgentProfileEvaluationReviewArtifactV1(source, [label]);
-      expect(review.summary.reviewed).toBe(1);
-      expect(await npRequireAgentProfileEvaluationReviewArtifactV1(review)).toEqual(review);
-      await expect(
-        npBuildAgentProfileEvaluationReviewArtifactV1(source, [
-          { ...label, predictionHash: `cj1:sha256:${"x".repeat(43)}` },
-        ]),
-      ).rejects.toThrow();
-      const comparison = await npCompareAgentProfileEvaluationReviewArtifactsV1(review, review);
-      expect(comparison.matchedCaseKeys).toEqual([`${entry.caseId}@${entry.caseVersion}`]);
-      const input = {
-        schemaVersion: "np.agent-eval-report-input.v1",
-        entries: [{ recipe, current: { evaluation: source, review }, baseline: null }],
-      };
-      const report = await npBuildAgentEvaluationReportV1(input);
-      expect(report.fullR6).toBe("not-established");
-      expect(report.modelUsefulness).toBe("not-established");
-      expect(report.rows.find((row) => row.recipe === recipe)?.fixtureGate).toBe("passed");
-      expect(await npRequireAgentEvaluationReportV1(report)).toEqual(report);
-      const workbench = await npBuildAgentEvaluationWorkbenchV1({
-        schemaVersion: "np.agent-eval-workbench-request.v1",
-        recipe,
-        evaluation: source,
-        review,
-        baseline: null,
-        baselineReview: null,
-        labels: null,
+      let fixture: Awaited<ReturnType<typeof prepare>>;
+      beforeAll(async () => {
+        fixture = await prepare();
       });
-      expect(workbench.recipe).toBe(recipe);
-      expect(workbench.authority).toBe("offline-self-reported-no-approval");
-      expect(workbench.cases.find((c) => c.caseId === entry.caseId)?.labelJson).toContain(
-        "synthetic-review-test",
-      );
+
+      it("rejects forged review bindings and compares the exact reviewed cohort", async () => {
+        const { source, empty, entry, label, review } = fixture;
+        expect(empty.summary.reviewed).toBe(0);
+        expect(review.summary.reviewed).toBe(1);
+        await expect(
+          npBuildAgentProfileEvaluationReviewArtifactV1(source, [
+            { ...label, predictionHash: `cj1:sha256:${"x".repeat(43)}` },
+          ]),
+        ).rejects.toThrow();
+        const comparison = await npCompareAgentProfileEvaluationReviewArtifactsV1(review, review);
+        expect(comparison.matchedCaseKeys).toEqual([`${entry.caseId}@${entry.caseVersion}`]);
+      });
+
+      it("round-trips the review, report and Workbench without claiming live authority", async () => {
+        const { source, entry, review } = fixture;
+        const workbench = await npBuildAgentEvaluationWorkbenchV1({
+          schemaVersion: "np.agent-eval-workbench-request.v1",
+          recipe,
+          evaluation: source,
+          review,
+          baseline: null,
+          baselineReview: null,
+          labels: null,
+        });
+        expect(workbench.recipe).toBe(recipe);
+        expect(workbench.authority).toBe("offline-self-reported-no-approval");
+        expect(workbench.cases.find((c) => c.caseId === entry.caseId)?.labelJson).toContain(
+          "synthetic-review-test",
+        );
+        // Workbench already builds the report and validates its imported review.
+        // Round-trip those exact exports instead of rebuilding the same report
+        // separately and replaying its source/review validation once more.
+        const exportedReport = JSON.parse(workbench.reportArtifactJson);
+        const report = await npRequireAgentEvaluationReportV1(exportedReport);
+        expect(report).toEqual(exportedReport);
+        expect(report.input.entries).toEqual([
+          { recipe, current: { evaluation: source, review }, baseline: null },
+        ]);
+        expect(JSON.parse(workbench.reviewArtifactJson!)).toEqual(review);
+        expect(report.fullR6).toBe("not-established");
+        expect(report.modelUsefulness).toBe("not-established");
+        expect(report.rows.find((row) => row.recipe === recipe)?.fixtureGate).toBe("passed");
+      });
     },
   );
 });

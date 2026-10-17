@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -12,6 +13,7 @@ import {
 } from "../agent/site-deletion.js";
 import { setDb } from "../db/runtime.js";
 import { splitMigrationStatements } from "./migration-split.js";
+import { settleIntegrationWork } from "./work-scope.js";
 
 /**
  * Integration tests reuse the same Postgres that `docker compose up -d db`
@@ -126,6 +128,44 @@ let db: NodePgDatabase<Record<string, unknown>> | null = null;
 let migrated = false;
 let workerDbReady = false;
 
+const databaseTimings = new Map<string, { count: number; totalMs: number; maxMs: number }>();
+
+async function timeDatabasePhase<T>(phase: string, operation: () => Promise<T>): Promise<T> {
+  if (process.env.NP_TEST_DB_TIMINGS !== "1") return operation();
+  const started = performance.now();
+  try {
+    return await operation();
+  } finally {
+    const elapsed = performance.now() - started;
+    const timing = databaseTimings.get(phase) ?? { count: 0, totalMs: 0, maxMs: 0 };
+    timing.count++;
+    timing.totalMs += elapsed;
+    timing.maxMs = Math.max(timing.maxMs, elapsed);
+    databaseTimings.set(phase, timing);
+  }
+}
+
+function reportDatabaseTimings(): void {
+  if (!databaseTimings.size) return;
+  console.log(
+    "[integration-db]",
+    JSON.stringify({
+      worker: process.env.VITEST_POOL_ID ?? null,
+      phases: Object.fromEntries(
+        [...databaseTimings].map(([phase, value]) => [
+          phase,
+          {
+            count: value.count,
+            totalMs: Math.round(value.totalMs),
+            maxMs: Math.round(value.maxMs),
+          },
+        ]),
+      ),
+    }),
+  );
+  databaseTimings.clear();
+}
+
 /**
  * On a parallel run, clone the migrated template into a per-worker DB.
  * When global setup assigned a run id but Vitest did not expose a
@@ -174,7 +214,7 @@ export async function getTestDb(): Promise<NodePgDatabase<Record<string, unknown
   if (!url) {
     throw new Error("TEST_DATABASE_URL not set — did you forget to call skipIfNoTestDb()?");
   }
-  await ensureWorkerDatabase();
+  await timeDatabasePhase("workerSetup", ensureWorkerDatabase);
   // max=3 keeps the per-fork connection budget tight: with 8 forks ×
   // (3 harness + 4 bootstrap) + admin pools we stay comfortably below
   // Postgres' default max_connections=100 (CI containers often ship
@@ -186,10 +226,16 @@ export async function getTestDb(): Promise<NodePgDatabase<Record<string, unknown
 }
 
 export async function closeTestDb(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    db = null;
+  try {
+    await timeDatabasePhase("drain", settleIntegrationWork);
+    if (pool) {
+      const closingPool = pool;
+      await timeDatabasePhase("connectionClose", () => closingPool.end());
+      pool = null;
+      db = null;
+    }
+  } finally {
+    reportDatabaseTimings();
   }
 }
 
@@ -247,6 +293,11 @@ export async function ensureMigrated(): Promise<void> {
  * children before parents so FK constraints don't bite.
  */
 export async function truncateAll(): Promise<void> {
+  await timeDatabasePhase("drain", settleIntegrationWork);
+  await timeDatabasePhase("reset", resetTables);
+}
+
+async function resetTables(): Promise<void> {
   await getTestDb();
   if (!pool) throw new Error("Pool not initialised.");
   const tables = [
@@ -337,6 +388,21 @@ export function skipIfNoTestDb(): boolean {
  * worker databases.
  */
 export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
+  try {
+    const teardown = await timeDatabasePhase("template", prepareTemplate);
+    return async () => {
+      try {
+        await timeDatabasePhase("drop", teardown);
+      } finally {
+        reportDatabaseTimings();
+      }
+    };
+  } finally {
+    reportDatabaseTimings();
+  }
+}
+
+async function prepareTemplate(): Promise<() => Promise<void>> {
   const baseUrl = process.env.TEST_DATABASE_URL;
   if (!baseUrl) {
     return async () => {

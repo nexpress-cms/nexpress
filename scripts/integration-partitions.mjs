@@ -163,6 +163,9 @@ function main() {
   }
   console.log(JSON.stringify({ inventoryCount: inventory.length, partitions: groups }, null, 2));
   if (args.mode === "plan") return;
+  // Separate DB setup/reset/connection-close/drop costs from Vitest test time.
+  // The harness emits aggregates only, with no connection strings or row data.
+  process.env.NP_TEST_DB_TIMINGS = "1";
   const selected = groups[args.partition - 1].files;
   if (args.partition === 1) runCommand("pnpm", ["--filter", "@nexpress/core", "test:integration"]);
   runCommand("pnpm", [

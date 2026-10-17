@@ -161,8 +161,8 @@ matching the completed local gate. Its first PR attempt at the platform's defaul
 parallelism timed out one Publisher journey at its unchanged sixty-second limit;
 the still-running body then overlapped later fixture cleanup and produced two
 secondary deadlocks. The cap preserves test bodies, file coverage, isolation and
-deadlines. This bounds concurrency; cancellation of a test's outstanding
-asynchronous work after its timeout remains separate.
+deadlines. At that merge, cancellation of a test's outstanding asynchronous work
+after its timeout remained separate; the follow-up below addresses that boundary.
 
 No Runtime runs, provider calls or actual external messages occurred. Synthetic
 fixtures do not establish model usefulness, production automatic-action precision
@@ -173,3 +173,73 @@ links, the 62-case repository check and `git diff --check` passed. Existing
 handoff changes were preserved. Temporary consumer servers, browser sessions,
 PostgreSQL and Redis were shut down after verification; the user's existing
 PostgreSQL service was preserved.
+
+## Test lifecycle and CI follow-up
+
+[PR CI 38939292923](https://github.com/nexpress-cms/nexpress/actions/runs/38939292923)
+passed all four required checks at `a636c43b`; PR #1542 was squash-merged as
+`8c872426`. Its [main CI 38942471534](https://github.com/nexpress-cms/nexpress/actions/runs/38942471534)
+passed both PostgreSQL partitions and their exact-coverage aggregate, as well as
+the packed scaffold. One Core Publisher review/report/Workbench unit test exceeded
+its unchanged five-second deadline. The separate
+[Release run 38942471594](https://github.com/nexpress-cms/nexpress/actions/runs/38942471594)
+passed. This does not make the failed main CI green.
+
+The test-only follow-up shares one exact immutable review fixture per profile
+and separates forged-binding/comparison from Workbench export/report round-trip
+checks. It removes duplicate report construction and repeated validation of the
+same review, retaining source/review equality and non-authorizing assertions.
+One local baseline Publisher composition took 1,430 ms; the two revised checks
+took 365 ms and 583 ms. Vitest's reported file interval moved from 2,188 ms for
+eight cases to 2,038 ms for ten, including the shared composition setup within
+that interval. The case split adds deadline headroom; its body timings alone
+are not a whole-file or hosted CI speedup claim.
+
+A private integration work scope now owns all six unattended journey bodies,
+including assertions after Runtime returns. Cancellation requests executor
+shutdown; cleanup waits for the complete body and fixture disposal before the
+shared reset/connection-close barrier opens. Late fixture construction observes
+cancellation. Cleanup failures keep later resets blocked, and original test
+failures and deadlines remain visible. No production Runtime API changed.
+
+The partition duration seed now uses all 211 actual file timings from the two
+successful main PostgreSQL jobs, replacing median estimates for 48 newer files.
+The resulting 104/107-file plan retains exact coverage and the two-fork limit.
+An ideal two-worker calculation, including Core/Redis ownership, suggests about
+30 seconds less imbalance; build time, runner load, imports and teardown prevent
+claiming that as an actual CI reduction. Opt-in native preview remains zero in
+the ordinary timing seed and still requires its enabled browser gate.
+
+The harness also reports separate optional database phase timings, enabled in
+CI partitions, so relation-file cleanup is not confused with test execution.
+The existing multi-connection transaction coverage and `TRUNCATE` isolation are
+preserved. This bundle does not establish faster PostgreSQL storage or a full
+R6 production gate.
+
+Final follow-up validation:
+
+- `pnpm verify --concurrency=1`: all 113 tasks passed, including 2,458 Core
+  unit cases. `pnpm lint`: all 41 tasks passed.
+- Core PostgreSQL: 11 files / 64 cases passed. The added real-DB regression
+  confirms reset waits for a cancelled body's final write. Full Web PostgreSQL:
+  210 ordinary files / 1,811 cases passed, including all twelve theme files /
+  79 cases. Its one native-preview opt-in skip was covered by the separately
+  enabled real-browser gate: one case passed without skips. Redis: sixteen
+  cases passed without skips. All processes exited successfully after teardown.
+- All six unattended journeys passed with their original assertions and limits.
+  Publisher profiles 1/2 took 26,485 / 26,058 ms in this local full run.
+- Web phase probes recorded 1,856 resets totaling 698,507 ms across two workers,
+  template preparation of 714 ms and final DB drop of 168,734 ms. Vitest reported
+  954.57 seconds before final teardown; command wall time was 1,125.117 seconds.
+  These overlapping aggregate/elapsed measurements are not additive, and this
+  run does not isolate a causal speedup over earlier hardware/load conditions.
+- The 652 JS/type declaration files in all forty rebuilt packages matched the
+  frozen accepted consumer archives byte-for-byte, with identical inventories.
+  Production browser and packed-scaffold journeys were not repeated for this
+  test-only change; their preceding evidence still describes the same package
+  runtime bytes. Self-review found no remaining issue. Repository checks,
+  formatting, links and `git diff --check` passed.
+
+No paid/live provider test or external message was run. Versions, changesets,
+lockfile, migrations and the pre-existing handoff diff are preserved. These local
+results do not establish a hosted CI run for the follow-up.
