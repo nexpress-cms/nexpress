@@ -104,3 +104,56 @@ No live provider/model call or external message was run. These results do not
 establish new production Runtime/model acceptance or automatic-action enablement.
 Controlled reproductions are not successful acceptance gates; the final exact-head
 hosted checks must pass before merge.
+
+## Moderator retention lock follow-up
+
+After PR #1544, its exact-head PR and main CI passed, but the
+[Version PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/39000441129)
+failed the mixed Moderator collector's successful retention assertion with
+`55P03` at `LOCK TABLE np_settings IN SHARE MODE NOWAIT`. The CI log does not
+identify the lock holder. It cannot establish that another test, a writer or
+autovacuum was responsible.
+
+[PostgreSQL's lock contract](https://www.postgresql.org/docs/16/explicit-locking.html#LOCKING-TABLES)
+makes that share lock incompatible with both an ordinary writer's row-exclusive
+lock and the share-update-exclusive lock used by VACUUM. A private reproduction
+keeps the original 151-target fixture, starts an actual `VACUUM (TRUNCATE FALSE)`
+on its settings table, and records the vacuum command and granted lock from
+`pg_locks`/`pg_stat_activity` before invoking the unchanged owner. It reproduces
+the exact SQL and `55P03` error. This proves a legal competing operation can
+cause the failure; it does not retrospectively identify the CI lock holder.
+
+The success fixture now acquires the existing control/source fence in the same
+order as the owner, then waits at most five seconds for the settings share lock
+in that transaction. The actual pruning owner still runs with `NOWAIT`.
+The corrected actual-VACUUM replay observes the fixture's blocked share request,
+releases only its owned diagnostic vacuum, and passes the original 151-target
+assertions. Its initial diagnostic had waited for an artificially slowed vacuum
+to finish and hit the original 90-second deadline; that attempt is not a passing
+gate. Corrected diagnostic cleanup cancels its owned vacuum after recording the
+expected error or wait. No committed fixture starts or disables VACUUM.
+
+One small combined regression uses two actual connections and a protected
+setting. It exercises writer and VACUUM-class locks, requires the original
+NOWAIT error rather than a statement timeout, checks unchanged settings after
+denial, and observes the success fixture waiting for the exact blocker before
+release. Its polling barrier is scoped to the worker database, relation and
+blocking PID. A local one-second statement timeout bounds an accidental blocking
+regression; the success fixture's five-second lock timeout is transaction-local.
+There is no retry or higher case deadline.
+
+All six original collector cases, their 151-target cardinality and retention,
+source, ACL and replay assertions remain. The added lock case uses one small
+setting rather than rebuilding the large fixture. Production services, policy,
+retention rules, versions, changesets, lockfile and migrations are unchanged.
+
+Local follow-up verification passed all seven mixed collector cases and fourteen
+cases in the three adjacent Moderator/Incident/Runtime retention suites, without
+skips. The changed integration file passed an explicit Node-targeted typecheck;
+the first temporary project inherited the Web ES2017 target and rejected existing
+Core BigInt literals, so only that diagnostic project's target was corrected.
+Final `pnpm verify --concurrency=1` passed 113 tasks and `pnpm lint` passed 41.
+The actual-VACUUM replays select one case; their other cases are intentionally
+filtered, not counted as full-suite passes. Hosted validation belongs to the
+follow-up PR's exact head and does not retroactively turn the failed Version PR
+run into a pass.

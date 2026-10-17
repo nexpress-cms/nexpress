@@ -140,6 +140,17 @@ clears data before the next case or file. Restore mocks and collection/theme
 registries in their existing hooks. Suites without per-case teardown keep their
 existing `beforeEach` reset.
 
+A successful maintenance fixture must establish its own lock precondition when
+the real owner deliberately uses `NOWAIT`. The Moderator flood fixture acquires
+the existing source-release fence before waiting at most five seconds for its
+settings share lock, within the same transaction. The owner still uses `NOWAIT`;
+a separate two-connection regression checks denial without mutation under both
+a writer lock and a VACUUM-class lock. A database- and blocker-scoped `pg_locks`
+barrier proves the fixture waits for release. Do not replace contention checks
+with retries, disable VACUUM or raise the existing case deadlines. The
+[October cleanup evidence](agent-guidance/history/test-cleanup-2026-10.md#moderator-retention-lock-follow-up)
+records the actual VACUUM reproduction and the limit of CI attribution.
+
 Async journeys that can outlive a test timeout use the private Core integration
 work scope. Track the whole test body, including its final database assertions;
 an executor's cancellation request alone is not a drain. Closing the scope stops

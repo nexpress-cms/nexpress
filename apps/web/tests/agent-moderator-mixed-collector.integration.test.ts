@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, lt } from "drizzle-orm";
+import pg from "pg";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { npRequireAuthUser } from "../../../packages/core/src/auth-contract/contract.js";
 import {
@@ -21,6 +22,7 @@ import { npAgentModeratorWindowStartedAtV1 } from "../../../packages/core/src/ag
 import { npModeratorFloodScopeV1 } from "../../../packages/core/src/agent/moderator-flood-collection.js";
 import { npPruneAgentModeratorFloodCheckpointsV1 } from "../../../packages/core/src/agent/moderator-flood-retention.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "../../../packages/core/src/agent/runtime-controls.js";
+import { npLockAgentSourceReleaseFenceV1 } from "../../../packages/core/src/agent/source-release.js";
 import {
   createAgentModeratorCommentReportCollectorV1,
   createAgentModeratorCommentReportObserverV1,
@@ -60,6 +62,7 @@ import {
   closeTestDb,
   ensureMigrated,
   getTestDb,
+  getTestDatabaseUrl,
   registerTestCollections,
   seedActiveMember,
   seedUser,
@@ -228,6 +231,39 @@ async function stored(db: Awaited<ReturnType<typeof getTestDb>>) {
   };
 }
 
+type FloodRetentionOptions = Omit<
+  Parameters<typeof npPruneAgentModeratorFloodCheckpointsV1>[0],
+  "db"
+>;
+
+async function pruneFloodFixture(options: FloodRetentionOptions) {
+  return npWithAgentRuntimeControlTransactionV1(options.siteId, async ({ db }) => {
+    // Success-fixture precondition: a writer or VACUUM may still hold the table.
+    // Keep the owner's fence -> settings order and bound fixture waiting only;
+    // the production owner's NOWAIT and all test deadlines remain unchanged.
+    await db.execute(sql`set local lock_timeout = '5s'`);
+    await npLockAgentSourceReleaseFenceV1(db, options.beforeStatement);
+    await db.execute(sql`lock table np_settings in share mode`);
+    return npPruneAgentModeratorFloodCheckpointsV1({ ...options, db });
+  });
+}
+
+async function waitForSettingsWaiter(client: pg.Client, blockerPid: number) {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const { rows } = await client.query(
+      `select pid from pg_locks
+       where database = (select oid from pg_database where datname = current_database())
+         and relation = 'np_settings'::regclass and mode = 'ShareLock' and not granted
+         and $1 = any(pg_blocking_pids(pid))`,
+      [blockerPid],
+    );
+    if (rows.length === 1) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Retention success fixture did not wait for the controlled settings lock");
+}
+
 describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -240,6 +276,62 @@ describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", (
     registerTestCollections();
   });
   afterAll(closeTestDb);
+
+  it("keeps NOWAIT fail-closed under writer and vacuum-class locks while the success fixture waits for release", async () => {
+    const db = await getTestDb();
+    const [protectedSetting] = await db
+      .insert(npSettings)
+      .values({ siteId, key: "np-test.retention-protected", value: { retained: true } })
+      .returning();
+    const options: FloodRetentionOptions = {
+      siteId,
+      now: new Date(),
+      signalDays: 90,
+      limit: 25,
+      maximumRows: 100,
+      beforeStatement: () => Promise.resolve(),
+    };
+    const client = new pg.Client({ connectionString: getTestDatabaseUrl()! });
+    await client.connect();
+    try {
+      const { rows } = await client.query<{ pid: number }>("select pg_backend_pid() as pid");
+      for (const mode of ["row exclusive", "share update exclusive"]) {
+        await client.query(`begin; lock table np_settings in ${mode} mode`);
+        const before = await db
+          .select()
+          .from(npSettings)
+          .orderBy(npSettings.siteId, npSettings.key);
+        await expect(
+          npWithAgentRuntimeControlTransactionV1(siteId, async ({ db }) => {
+            await db.execute(sql`set local statement_timeout = '1s'`);
+            return npPruneAgentModeratorFloodCheckpointsV1({ ...options, db });
+          }),
+        ).rejects.toMatchObject({
+          cause: { code: "55P03", message: 'could not obtain lock on relation "np_settings"' },
+        });
+        expect(
+          await db.select().from(npSettings).orderBy(npSettings.siteId, npSettings.key),
+        ).toEqual(before);
+        const outcome = pruneFloodFixture(options).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason: unknown) => ({ status: "rejected" as const, reason }),
+        );
+        try {
+          await waitForSettingsWaiter(client, rows[0]!.pid);
+        } finally {
+          await client.query("rollback").finally(() => outcome);
+        }
+        const result = await outcome;
+        if (result.status === "rejected") throw result.reason;
+        expect(result.value).toEqual({ pruned: 0 });
+        expect(
+          await db.select().from(npSettings).where(eq(npSettings.key, protectedSetting!.key)),
+        ).toEqual([protectedSetting]);
+      }
+    } finally {
+      await client.query("rollback").finally(() => client.end());
+    }
+  });
 
   it("joins a 3-observation plus 2-report campaign once without counting duplicate targets or reporters", async () => {
     const f = await fixture({ duplicates: true });
@@ -596,17 +688,14 @@ describe.skipIf(skipIfNoTestDb())("Moderator combined actual comment sources", (
     const beforeEvents = await f.db.select().from(npAgentEvents);
     let deletedMetadata = 0;
     for (let page = 0; page < 100; page++) {
-      const result = await npWithAgentRuntimeControlTransactionV1(siteId, ({ db }) =>
-        npPruneAgentModeratorFloodCheckpointsV1({
-          db,
-          siteId,
-          now: new Date(Date.parse(f.input.windowStartedAt) + 600_000 + 90 * 86_400_000),
-          signalDays: 90,
-          limit: 25,
-          maximumRows: 100,
-          beforeStatement: () => Promise.resolve(),
-        }),
-      );
+      const result = await pruneFloodFixture({
+        siteId,
+        now: new Date(Date.parse(f.input.windowStartedAt) + 600_000 + 90 * 86_400_000),
+        signalDays: 90,
+        limit: 25,
+        maximumRows: 100,
+        beforeStatement: () => Promise.resolve(),
+      });
       expect(result.pruned).toBeLessThanOrEqual(100);
       deletedMetadata += result.pruned;
       if (!result.pruned) break;
