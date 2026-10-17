@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   createSite,
@@ -139,11 +139,7 @@ async function serviceFixture() {
 describe.skipIf(skipIfNoTestDb())("Agent provider connection lifecycle", () => {
   beforeAll(async () => {
     await ensureMigrated();
-  });
-
-  // Workers reuse the database across files; the preceding suite may only
-  // truncate before its tests, leaving its final fixture behind.
-  beforeEach(async () => {
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
   });
 
