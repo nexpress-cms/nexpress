@@ -115,6 +115,9 @@ describe.skipIf(skipIfNoTestDb())("Operator canonical source and bounded recover
   afterAll(closeTestDb);
   it("emits canonical threshold/stale/failure events, deduplicates exact evidence across polls and records real status/backup transitions", async () => {
     const f = await setup();
+    // Deduplication is scoped to five-minute windows. Keep the repeated polls
+    // inside one window regardless of the wall clock; cross it explicitly below.
+    f.advance(360 - (Math.floor(f.options.now().getTime() / 1000) % 300));
     await f.source.observe({ siteId });
     let events = await f.db.select().from(npAgentEvents);
     expect(events.map((e) => e.kind).sort()).toEqual([
@@ -149,6 +152,13 @@ describe.skipIf(skipIfNoTestDb())("Operator canonical source and bounded recover
     f.advance(1);
     await f.source.observe({ siteId });
     expect(await f.db.select().from(npAgentEvents)).toHaveLength(6);
+    f.advance(300);
+    await f.source.observe({ siteId });
+    const nextWindow = await f.db.select().from(npAgentEvents);
+    expect(nextWindow.filter((event) => event.kind === "jobs.backlog.threshold")).toHaveLength(2);
+    f.advance(1);
+    await f.source.observe({ siteId });
+    expect(await f.db.select().from(npAgentEvents)).toHaveLength(nextWindow.length);
   });
   it("suppresses stale/backlog signals when paused or incomplete and performs no reads for uninstalled sites", async () => {
     const f = await setup();

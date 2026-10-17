@@ -76,9 +76,12 @@ async function noArtifacts(f: Awaited<ReturnType<typeof fixture>>) {
   expect(row.checkSummary).toMatchObject({ checksRun: 0 });
 }
 describe.skipIf(skipIfNoTestDb())("sealed framework preview checks", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     registerTestCollections();
   });
   afterEach(async () => {

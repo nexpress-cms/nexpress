@@ -58,10 +58,12 @@ async function oneAttempt(f: Awaited<ReturnType<typeof fixture>>) {
 const validationCommand = () => ({ idempotencyKey: randomUUID(), expectedVersion: 1 });
 const digest = "cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 describe.skipIf(skipIfNoTestDb())("ChangeSet validation lifecycle", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
-    // Forks reuse the test database across files; prior suites may clean only before cases.
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     registerTestCollections();
   });
   afterEach(async () => {

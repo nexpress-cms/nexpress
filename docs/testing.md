@@ -122,6 +122,24 @@ transaction would make those paths look cleaner than production. Per-worker
 databases plus truncate cleanup are a little heavier, but they match the app
 runtime more closely.
 
+The reset locks the complete current foreign-key/inheritance closure before
+inspecting storage. It omits a heap from `TRUNCATE` only when its physical main
+fork has zero bytes. Row-count estimates, RLS-filtered reads and a remembered
+"tables touched" list cannot prove this. Deleted or rolled-back tuples still
+occupy heap pages and are truncated. Owned sequences always retain
+`RESTART IDENTITY`; unknown storage kinds stay included. A custom `ON TRUNCATE`
+trigger selects the original complete command and trigger order. Dependency
+discovery repeats after lock acquisition so a concurrently added descendant
+cannot escape cleanup. Site cleanup shares the same command transaction.
+This preserves ordinary PostgreSQL durability and multi-connection behavior.
+
+Suites that already reset in `afterEach` need one initial reset in `beforeAll`,
+not a second reset before every case. The initial reset protects against a prior
+file retaining its last fixture; per-case teardown still drains owned work and
+clears data before the next case or file. Restore mocks and collection/theme
+registries in their existing hooks. Suites without per-case teardown keep their
+existing `beforeEach` reset.
+
 Async journeys that can outlive a test timeout use the private Core integration
 work scope. Track the whole test body, including its final database assertions;
 an executor's cancellation request alone is not a drain. Closing the scope stops
@@ -131,6 +149,16 @@ acquiring database locks or closing connections. A failed cleanup keeps the rese
 barrier closed; it cannot turn the original timeout into a passing test. The six
 R6 unattended journeys use this ownership explicitly. Other suites must opt in
 when they own asynchronous work; the barrier cannot discover unregistered promises.
+
+A same-configuration PostgreSQL 16 comparison used 17 Web files / 150 identical
+registered cases with two forks. Both runs passed. Reset calls fell from 253 to
+161; overlapping worker reset aggregates fell from 121,970 to 65,275 ms. Command
+wall time was 158.341 and 127.349 seconds. These are observed local measurements,
+not a hosted-CI or whole-suite speedup. The
+[October cleanup evidence](agent-guidance/history/test-cleanup-2026-10.md) records
+method, validation and corrected-run limits. PostgreSQL 16 separately checks
+empty-parent descendants, deleted tuples/old snapshots, owned sequences,
+inheritance, trigger order, concurrent writes/DDL and atomic failure/quoting.
 
 Independent protocol-test databases can share that cleanup ownership by
 including the exact `_${NP_TEST_DB_RUN_ID}_` namespace in a validated database

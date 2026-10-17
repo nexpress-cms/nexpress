@@ -14,6 +14,7 @@ import {
 import { setDb } from "../db/runtime.js";
 import { splitMigrationStatements } from "./migration-split.js";
 import { settleIntegrationWork } from "./work-scope.js";
+import { createIntegrationTruncateSql } from "./table-reset.js";
 
 /**
  * Integration tests reuse the same Postgres that `docker compose up -d db`
@@ -345,13 +346,11 @@ async function resetTables(): Promise<void> {
     // `np_sites` itself is handled below so the default row survives.
     "np_site_memberships",
   ];
-  const list = tables.map((t) => `"${t}"`).join(", ");
-  // CASCADE handles any FK holdouts. RESTART IDENTITY resets any sequences
-  // (unused by the schema today but future-proof). Keep the site cleanup in
+  // Keep the complete reset (including site cleanup) in one transaction and
   // the same round trip; truncateAll() runs before almost every integration
   // case, so even small query-count savings add up.
   await pool.query(`
-    TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE;
+    ${createIntegrationTruncateSql(tables)}
     DELETE FROM "np_sites" WHERE id <> 'default';
     UPDATE "np_sites"
        SET "name" = 'Default site',

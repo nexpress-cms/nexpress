@@ -70,10 +70,12 @@ async function actor(): Promise<NpAuthUser> {
 const content = () => ({ title: "Atomic content", content: npCreateEmptyRichTextContent() });
 
 describe.skipIf(skipIfNoTestDb())("existing resource transaction boundaries", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
-    // Files share a worker database; prior suites may leave unrelated resource rows behind.
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     effects.length = 0;
     registerTestCollections();
     const registration = getCollectionRegistration("posts");
