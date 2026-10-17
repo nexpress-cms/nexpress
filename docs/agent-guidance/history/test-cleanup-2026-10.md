@@ -62,6 +62,20 @@ fixture/reset. Supplying all four fixture timestamps from one captured instant
 passes the same controlled case. Production validation and authority are unchanged.
 The failing controlled reproductions are diagnostic evidence, not successful gates.
 
+## Cross-file isolation found in hosted CI
+
+The initial [PR #1544 CI run](https://github.com/nexpress-cms/nexpress/actions/runs/38997310934)
+found one Activity failure after the Operator Runtime suite. Operator resets
+before its cases and may leave its final fixture behind; Activity previously
+reset only after its cases. Its first unfiltered Action read could therefore
+select another site's row, which the unchanged Activity owner correctly denies.
+
+An ordered two-file replay reproduces the same failure with both the original
+full TRUNCATE and the optimized reset. Activity now resets once before its first
+case and keeps its seven cases and per-case cleanup unchanged. The corrected
+ordered replay passes all fourteen cases. This fixes the file's missing initial
+isolation without adding repeated per-case resets or weakening visibility.
+
 ## Verification and limits
 
 - Final `pnpm verify --concurrency=1`: 113 tasks passed, including 2,458 Core unit
@@ -87,5 +101,6 @@ The failing controlled reproductions are diagnostic evidence, not successful gat
   changed; the pre-existing handoff edit is preserved.
 
 No live provider/model call or external message was run. These results do not
-establish new production Runtime/model acceptance, automatic-action enablement or
-a hosted CI run for the pending working-tree changes.
+establish new production Runtime/model acceptance or automatic-action enablement.
+Controlled reproductions are not successful acceptance gates; the final exact-head
+hosted checks must pass before merge.

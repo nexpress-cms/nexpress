@@ -221,6 +221,7 @@ async function seedRun(f: Awaited<ReturnType<typeof fixture>>) {
 describe.skipIf(skipIfNoTestDb())("Agent Activity", () => {
   beforeAll(async () => {
     await ensureMigrated();
+    await truncateAll();
     registerTestCollections();
   });
   afterEach(async () => {
