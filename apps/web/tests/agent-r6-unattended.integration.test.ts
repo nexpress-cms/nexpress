@@ -49,6 +49,10 @@ import {
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npComments } from "../../../packages/core/src/db/schema/community.js";
 import { postsTable } from "../../../packages/core/src/integration/fixtures.js";
+import {
+  createIntegrationWorkScope,
+  type IntegrationWorkScope,
+} from "../../../packages/core/src/integration/work-scope.js";
 import { setJobsPauseState } from "../../../packages/core/src/jobs/pause-state.js";
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
 import { moderatorRecipeFixture } from "./agent-moderator-recipe-fixture.js";
@@ -68,7 +72,28 @@ type RuntimeFixture = Pick<
   "admission" | "runtimeOptions" | "options" | "runInput" | "advance" | "agentId"
 >;
 type Events = ReturnType<typeof createAgentRuntimeEventServiceV1>;
-const active: Array<{ dispose(): Promise<void> }> = [];
+interface ActiveFixture {
+  executor: { shutdown(): void };
+  dispose(): Promise<void>;
+}
+const active: ActiveFixture[] = [];
+let work: IntegrationWorkScope | undefined;
+
+function journey<Args extends unknown[]>(operation: (...args: Args) => Promise<void>) {
+  return (...args: Args) => {
+    if (!work) throw new Error("Expected an active integration work scope");
+    return work.run(() => operation(...args));
+  };
+}
+
+function track<T extends ActiveFixture>(fixture: T): T {
+  active.push(fixture);
+  if (!work || work.signal.aborted) {
+    fixture.executor.shutdown();
+    throw new Error("Integration journey was cancelled during fixture setup");
+  }
+  return fixture;
+}
 
 async function recipe(id: NpAgentRecipeId, profile: 1 | 2 = 1) {
   const registry = await (profile === 2
@@ -293,21 +318,53 @@ describe.skipIf(skipIfNoTestDb())("Explicit R6 unattended recipe journeys", () =
   beforeAll(ensureMigrated);
   beforeEach(async () => {
     await truncateAll();
+    work = createIntegrationWorkScope(
+      () => {
+        const errors: unknown[] = [];
+        for (const fixture of active) {
+          try {
+            fixture.executor.shutdown();
+          } catch (error) {
+            errors.push(error);
+          }
+        }
+        if (errors.length) throw new AggregateError(errors, "Unattended recipe shutdown failed");
+      },
+      async () => {
+        const errors: unknown[] = [];
+        const disposed = await Promise.allSettled(
+          active.splice(0).map((fixture) => Promise.resolve().then(() => fixture.dispose())),
+        );
+        for (const result of disposed) {
+          if (result.status === "rejected") errors.push(result.reason);
+        }
+        for (const reset of [() => vi.restoreAllMocks(), () => vi.useRealTimers()]) {
+          try {
+            reset();
+          } catch (error) {
+            errors.push(error);
+          }
+        }
+        if (errors.length) {
+          throw new AggregateError(errors, "Unattended recipe fixture cleanup failed");
+        }
+      },
+    );
     registerTestCollections();
     vi.useFakeTimers({ toFake: ["Date"] });
   });
   afterEach(async () => {
-    for (const f of active.splice(0)) await f.dispose();
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    await work?.close();
+    work = undefined;
   });
   afterAll(closeTestDb);
 
   it.each([1, 2] as const)(
     "schedules Publisher profile %i into an exact draft and ready preview, preserving public content and same-base cooldown",
-    async (profile) => {
-      const f = await publisherRuntimeFixture(await recipe("publisher.stale-content", profile));
-      active.push(f);
+    journey(async (profile: 1 | 2) => {
+      const f = track(
+        await publisherRuntimeFixture(await recipe("publisher.stale-content", profile)),
+      );
       await f.store.cancel({ siteId, runId: f.runId });
       const id = await f.document();
       const before = await f.db.select().from(postsTable).where(eq(postsTable.id, id));
@@ -354,254 +411,271 @@ describe.skipIf(skipIfNoTestDb())("Explicit R6 unattended recipe journeys", () =
       ).toBe("PUBLISHER_PROPOSAL_DUPLICATE");
       expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
       expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
-    },
+    }),
     60_000,
   );
 
-  it("collects a closed Moderator schedule before proposing one exact fresh human-approved quarantine", async () => {
-    const f = await moderatorRecipeFixture({
-      ...(await recipe("moderator.repeated-link-spam")),
-      deferInitialCollection: true,
-    });
-    active.push(f);
-    await f.store.cancel({ siteId, runId: f.runId });
-    expect(await f.db.select().from(npAgentSignals)).toEqual([]);
-    const collect = vi.spyOn(f.runtimeCollector, "collect");
-    const { events, enqueue } = eventService(f, f.runtimeCollector);
-    const trigger = await registerSchedule(f, events);
-    advance(f, 60);
-    const [due] = await f.db
-      .select()
-      .from(npAgentTriggers)
-      .where(eq(npAgentTriggers.id, trigger.id));
-    const runCount = (await f.db.select().from(npAgentRuns)).length;
-    collect.mockRejectedValueOnce(new Error("fixture closed-window source unavailable"));
-    const unavailable = await events.schedule({ siteId });
-    expect(unavailable).toMatchObject({ failed: 1, runIds: [] });
-    expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
-    expect(await f.db.select().from(npAgentSignals)).toEqual([]);
-    expect(f.providerInvoke).not.toHaveBeenCalled();
-    expect(
-      (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
-        .nextRunAt,
-    ).toEqual(due.nextRunAt);
-    collect.mockResolvedValueOnce({
-      inspectedEvents: 100,
-      acceptedFacts: 100,
-      observations: [],
-      complete: false,
-    });
-    expect(await events.schedule({ siteId })).toMatchObject({ failed: 1, runIds: [] });
-    expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
-    expect(await f.db.select().from(npAgentProviderCalls)).toEqual([]);
-    expect(f.providerInvoke).not.toHaveBeenCalled();
-    expect(
-      (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
-        .nextRunAt,
-    ).toEqual(due.nextRunAt);
-    // Cross a complete source bucket before retrying this unchanged occurrence.
-    // Selecting by retry time would collect another bucket and miss its evidence.
-    advance(f, 600);
-    const retried = await events.schedule({ siteId });
-    expect(retried).toMatchObject({ failed: 0 });
-    expect(retried.runIds).toHaveLength(1);
-    const runId = retried.runIds[0];
-    expect(
-      (await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId)))[0].eventRef
-        ?.scheduledFor,
-    ).toBe(due.nextRunAt!.toISOString());
-    expect(collect).toHaveBeenLastCalledWith(
-      expect.objectContaining({ siteId, windowStartedAt: f.windowStartedAt }),
-    );
-    expect(await f.db.select().from(npAgentSignals)).toHaveLength(1);
-    expect(f.providerInvoke).not.toHaveBeenCalled();
-    const current = await f.read(runId);
-    const proposal = current.candidates[0].proposal;
-    f.propose(proposal);
-    expect(enqueue).toHaveBeenCalledWith({ siteId, runId });
-    expect(await f.executor.process({ siteId, runId })).toEqual({ state: "waiting_approval" });
-    expect(await f.db.select().from(npAgentContainments)).toEqual([]);
-    const pending = await f.pending(runId);
-    await f.decide(pending.output.approvalId);
-    const resumed = { siteId, runId, requestActionId: pending.action.id };
-    expect(await f.executor.resumeApproval(resumed)).toEqual({ state: "succeeded" });
-    expect(await f.executor.resumeApproval(resumed)).toEqual({ state: "succeeded" });
-    expect(f.providerInvoke).toHaveBeenCalledTimes(2);
-    expect(await f.db.select().from(npAgentContainments)).toHaveLength(1);
-    expect(
-      (await f.db.select().from(npComments).where(eq(npComments.id, proposal.target.id)))[0].status,
-    ).toBe("hidden");
-    expect((await events.schedule({ siteId })).runIds).toEqual([]);
-  }, 60_000);
-
-  it("retains failed collection for actual content Events and coalesces repeated same-target edits without duplicate work", async () => {
-    const f = await moderatorRecipeFixture({
-      ...(await recipe("moderator.repeated-link-spam")),
-      deferInitialCollection: true,
-    });
-    active.push(f);
-    await f.store.cancel({ siteId, runId: f.runId });
-    const collect = vi
-      .spyOn(f.runtimeCollector, "collect")
-      .mockRejectedValueOnce(new Error("fixture source unavailable"));
-    const { events } = eventService(f, f.runtimeCollector);
-    const register = async (
-      eventKind: "community.content.created" | "community.content.moderated",
-    ) =>
-      events.registerTrigger({
-        siteId,
-        agentId: f.agentId,
-        expectedVersionId: f.runInput.expectedVersionId,
-        enabled: true,
-        trigger: {
-          type: "event",
-          id: randomUUID(),
-          eventKind,
-          filter: { op: "eq", field: "source.kind", value: "community" },
-          coalesceSeconds: 600,
-        },
-      });
-    await register("community.content.created");
-    const [source] = await f.db
-      .select()
-      .from(npAgentEvents)
-      .where(
-        and(
-          eq(npAgentEvents.kind, "community.content.created"),
-          eq(npAgentEvents.sourceComponent, "community.comments"),
-        ),
-      );
-    const beforeRuns = await f.db.select().from(npAgentRuns);
-    await expect(events.dispatch({ siteId, eventId: source.id })).rejects.toBeDefined();
-    expect(
-      (await f.db.select().from(npAgentEvents).where(eq(npAgentEvents.id, source.id)))[0]
-        .dispatchedAt,
-    ).toBeNull();
-    expect(await f.db.select().from(npAgentRuns)).toHaveLength(beforeRuns.length);
-    expect(await f.db.select().from(npAgentProviderCalls)).toEqual([]);
-    const retried = await events.dispatch({ siteId, eventId: source.id });
-    expect(retried.runIds).toHaveLength(1);
-    expect(await f.db.select().from(npAgentSignals)).toHaveLength(1);
-    expect(collect).toHaveBeenCalledTimes(2);
-    expect(await f.executor.process({ siteId, runId: retried.runIds[0] })).toEqual({
-      state: "succeeded",
-    });
-    expect((await events.dispatch({ siteId, eventId: source.id })).replayed).toBe(true);
-    expect(f.providerInvoke).toHaveBeenCalledTimes(1);
-    await register("community.content.moderated");
-    const target = f.comments[0];
-    for (let i = 0; i < 2; i++) {
-      advance(f, 1);
-      await withCurrentSite(siteId, () =>
-        updateComment({
-          commentId: target.id,
-          memberId: target.memberId,
-          bodyMd: `Updated observation ${i}: https://offer.example/changed-${i}`,
+  it(
+    "collects a closed Moderator schedule before proposing one exact fresh human-approved quarantine",
+    journey(async () => {
+      const f = track(
+        await moderatorRecipeFixture({
+          ...(await recipe("moderator.repeated-link-spam")),
+          deferInitialCollection: true,
         }),
       );
-    }
-    const edits = await f.db
-      .select()
-      .from(npAgentEvents)
-      .where(eq(npAgentEvents.kind, "community.content.moderated"));
-    expect(edits).toHaveLength(2);
-    advance(f, 600);
-    const first = await events.dispatch({ siteId, eventId: edits[0].id });
-    const collectedCalls = collect.mock.calls.length;
-    // A new same-target Event may reuse an admitted exact Run. Fresh source
-    // failure must not replace its retained evidence or block that replay.
-    collect.mockRejectedValueOnce(new Error("fixture later collection unavailable"));
-    const second = await events.dispatch({ siteId, eventId: edits[1].id });
-    expect(first.runIds).toHaveLength(1);
-    expect(second.runIds).toEqual(first.runIds);
-    expect(collect).toHaveBeenCalledTimes(collectedCalls);
-    expect(await f.executor.process({ siteId, runId: first.runIds[0] })).toEqual({
-      state: "succeeded",
-    });
-    expect(await f.executor.process({ siteId, runId: first.runIds[0] })).toEqual({
-      state: "succeeded",
-    });
-    expect(f.providerInvoke).toHaveBeenCalledTimes(2);
-    expect(await f.db.select().from(npAgentContainments)).toEqual([]);
-    expect(await f.db.select().from(npAgentApprovals)).toEqual([]);
-  }, 60_000);
-
-  it("schedules Operator diagnostics and a local review plan, then leaves a budget-blocked occurrence retryable", async () => {
-    const f = await operatorFixture();
-    active.push(f);
-    await f.store.cancel({ siteId, runId: f.runId });
-    await setJobsPauseState({ paused: true });
-    const { events } = eventService(f);
-    const trigger = await registerSchedule(f, events);
-    const runId = await scheduledRun(f, events);
-    expect(await f.executor.process({ siteId, runId })).toEqual({ state: "succeeded" });
-    expect(f.plan).toHaveBeenCalledTimes(1);
-    expect(await f.db.select().from(npAgentOperatorExecutions)).toEqual([]);
-    expect(
-      (await f.db.select().from(npAgentActions).where(eq(npAgentActions.runId, runId)))
-        .map((row) => row.capabilityId)
-        .sort(),
-    ).toEqual(["ops.plan", "ops.status"]);
-    const calls = f.invoke.mock.calls.length;
-    advance(f, 60);
-    const [before] = await f.db
-      .select()
-      .from(npAgentTriggers)
-      .where(eq(npAgentTriggers.id, trigger.id));
-    await npWithAgentRuntimeControlTransactionV1(siteId, ({ db, revision, settings }) => {
-      settings.budgetCeiling.runsPerHour = 0;
-      return f.controls.updateInTransaction({
-        db,
-        siteId,
-        expectedRevision: revision,
-        actorFingerprint: runtimeFingerprint,
-        settings,
+      await f.store.cancel({ siteId, runId: f.runId });
+      expect(await f.db.select().from(npAgentSignals)).toEqual([]);
+      const collect = vi.spyOn(f.runtimeCollector, "collect");
+      const { events, enqueue } = eventService(f, f.runtimeCollector);
+      const trigger = await registerSchedule(f, events);
+      advance(f, 60);
+      const [due] = await f.db
+        .select()
+        .from(npAgentTriggers)
+        .where(eq(npAgentTriggers.id, trigger.id));
+      const runCount = (await f.db.select().from(npAgentRuns)).length;
+      collect.mockRejectedValueOnce(new Error("fixture closed-window source unavailable"));
+      const unavailable = await events.schedule({ siteId });
+      expect(unavailable).toMatchObject({ failed: 1, runIds: [] });
+      expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
+      expect(await f.db.select().from(npAgentSignals)).toEqual([]);
+      expect(f.providerInvoke).not.toHaveBeenCalled();
+      expect(
+        (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
+          .nextRunAt,
+      ).toEqual(due.nextRunAt);
+      collect.mockResolvedValueOnce({
+        inspectedEvents: 100,
+        acceptedFacts: 100,
+        observations: [],
+        complete: false,
       });
-    });
-    const runCount = (await f.db.select().from(npAgentRuns)).length;
-    const blocked = await events.schedule({ siteId });
-    expect(blocked.runIds).toEqual([]);
-    expect(blocked.failed).toBe(1);
-    expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
-    expect(f.invoke).toHaveBeenCalledTimes(calls);
-    expect(
-      (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
-        .nextRunAt,
-    ).toEqual(before.nextRunAt);
-  }, 60_000);
+      expect(await events.schedule({ siteId })).toMatchObject({ failed: 1, runIds: [] });
+      expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
+      expect(await f.db.select().from(npAgentProviderCalls)).toEqual([]);
+      expect(f.providerInvoke).not.toHaveBeenCalled();
+      expect(
+        (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
+          .nextRunAt,
+      ).toEqual(due.nextRunAt);
+      // Cross a complete source bucket before retrying this unchanged occurrence.
+      // Selecting by retry time would collect another bucket and miss its evidence.
+      advance(f, 600);
+      const retried = await events.schedule({ siteId });
+      expect(retried).toMatchObject({ failed: 0 });
+      expect(retried.runIds).toHaveLength(1);
+      const runId = retried.runIds[0];
+      expect(
+        (await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId)))[0].eventRef
+          ?.scheduledFor,
+      ).toBe(due.nextRunAt!.toISOString());
+      expect(collect).toHaveBeenLastCalledWith(
+        expect.objectContaining({ siteId, windowStartedAt: f.windowStartedAt }),
+      );
+      expect(await f.db.select().from(npAgentSignals)).toHaveLength(1);
+      expect(f.providerInvoke).not.toHaveBeenCalled();
+      const current = await f.read(runId);
+      const proposal = current.candidates[0].proposal;
+      f.propose(proposal);
+      expect(enqueue).toHaveBeenCalledWith({ siteId, runId });
+      expect(await f.executor.process({ siteId, runId })).toEqual({ state: "waiting_approval" });
+      expect(await f.db.select().from(npAgentContainments)).toEqual([]);
+      const pending = await f.pending(runId);
+      await f.decide(pending.output.approvalId);
+      const resumed = { siteId, runId, requestActionId: pending.action.id };
+      expect(await f.executor.resumeApproval(resumed)).toEqual({ state: "succeeded" });
+      expect(await f.executor.resumeApproval(resumed)).toEqual({ state: "succeeded" });
+      expect(f.providerInvoke).toHaveBeenCalledTimes(2);
+      expect(await f.db.select().from(npAgentContainments)).toHaveLength(1);
+      expect(
+        (await f.db.select().from(npComments).where(eq(npComments.id, proposal.target.id)))[0]
+          .status,
+      ).toBe("hidden");
+      expect((await events.schedule({ siteId })).runIds).toEqual([]);
+    }),
+    60_000,
+  );
 
-  it("refuses changed scheduled Publisher evidence and revoked delegated authority before an effect or further provider dispatch", async () => {
-    const f = await publisherRuntimeFixture(await recipe("publisher.stale-content"));
-    active.push(f);
-    await f.store.cancel({ siteId, runId: f.runId });
-    const id = await f.document();
-    const { events } = eventService(f);
-    await registerSchedule(f, events);
-    f.setBeforeProposal(() =>
-      withCurrentSite(siteId, async () => {
-        await saveDocument(
-          "posts",
-          id,
-          { title: "Human changed the current base" },
-          f.actor.actor.user,
-          { status: "published" },
+  it(
+    "retains failed collection for actual content Events and coalesces repeated same-target edits without duplicate work",
+    journey(async () => {
+      const f = track(
+        await moderatorRecipeFixture({
+          ...(await recipe("moderator.repeated-link-spam")),
+          deferInitialCollection: true,
+        }),
+      );
+      await f.store.cancel({ siteId, runId: f.runId });
+      const collect = vi
+        .spyOn(f.runtimeCollector, "collect")
+        .mockRejectedValueOnce(new Error("fixture source unavailable"));
+      const { events } = eventService(f, f.runtimeCollector);
+      const register = async (
+        eventKind: "community.content.created" | "community.content.moderated",
+      ) =>
+        events.registerTrigger({
+          siteId,
+          agentId: f.agentId,
+          expectedVersionId: f.runInput.expectedVersionId,
+          enabled: true,
+          trigger: {
+            type: "event",
+            id: randomUUID(),
+            eventKind,
+            filter: { op: "eq", field: "source.kind", value: "community" },
+            coalesceSeconds: 600,
+          },
+        });
+      await register("community.content.created");
+      const [source] = await f.db
+        .select()
+        .from(npAgentEvents)
+        .where(
+          and(
+            eq(npAgentEvents.kind, "community.content.created"),
+            eq(npAgentEvents.sourceComponent, "community.comments"),
+          ),
         );
-      }),
-    );
-    const changed = await scheduledRun(f, events);
-    expect(await f.executor.process({ siteId, runId: changed })).toEqual({ state: "failed" });
-    expect(await f.db.select().from(npAgentChangesets)).toEqual([]);
-    expect(await f.previews()).toEqual([]);
-    const calls = f.invoke.mock.calls.length;
-    const revoked = await scheduledRun(f, events);
-    const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, revoked));
-    await f.db
-      .update(npAgentPrincipals)
-      .set({ status: "suspended" })
-      .where(eq(npAgentPrincipals.id, run.principalId));
-    expect(await f.executor.process({ siteId, runId: revoked })).toEqual({ state: "failed" });
-    expect(f.invoke).toHaveBeenCalledTimes(calls);
-    expect(await f.db.select().from(npAgentChangesets)).toEqual([]);
-    expect(await f.previews()).toEqual([]);
-  }, 60_000);
+      const beforeRuns = await f.db.select().from(npAgentRuns);
+      await expect(events.dispatch({ siteId, eventId: source.id })).rejects.toBeDefined();
+      expect(
+        (await f.db.select().from(npAgentEvents).where(eq(npAgentEvents.id, source.id)))[0]
+          .dispatchedAt,
+      ).toBeNull();
+      expect(await f.db.select().from(npAgentRuns)).toHaveLength(beforeRuns.length);
+      expect(await f.db.select().from(npAgentProviderCalls)).toEqual([]);
+      const retried = await events.dispatch({ siteId, eventId: source.id });
+      expect(retried.runIds).toHaveLength(1);
+      expect(await f.db.select().from(npAgentSignals)).toHaveLength(1);
+      expect(collect).toHaveBeenCalledTimes(2);
+      expect(await f.executor.process({ siteId, runId: retried.runIds[0] })).toEqual({
+        state: "succeeded",
+      });
+      expect((await events.dispatch({ siteId, eventId: source.id })).replayed).toBe(true);
+      expect(f.providerInvoke).toHaveBeenCalledTimes(1);
+      await register("community.content.moderated");
+      const target = f.comments[0];
+      for (let i = 0; i < 2; i++) {
+        advance(f, 1);
+        await withCurrentSite(siteId, () =>
+          updateComment({
+            commentId: target.id,
+            memberId: target.memberId,
+            bodyMd: `Updated observation ${i}: https://offer.example/changed-${i}`,
+          }),
+        );
+      }
+      const edits = await f.db
+        .select()
+        .from(npAgentEvents)
+        .where(eq(npAgentEvents.kind, "community.content.moderated"));
+      expect(edits).toHaveLength(2);
+      advance(f, 600);
+      const first = await events.dispatch({ siteId, eventId: edits[0].id });
+      const collectedCalls = collect.mock.calls.length;
+      // A new same-target Event may reuse an admitted exact Run. Fresh source
+      // failure must not replace its retained evidence or block that replay.
+      collect.mockRejectedValueOnce(new Error("fixture later collection unavailable"));
+      const second = await events.dispatch({ siteId, eventId: edits[1].id });
+      expect(first.runIds).toHaveLength(1);
+      expect(second.runIds).toEqual(first.runIds);
+      expect(collect).toHaveBeenCalledTimes(collectedCalls);
+      expect(await f.executor.process({ siteId, runId: first.runIds[0] })).toEqual({
+        state: "succeeded",
+      });
+      expect(await f.executor.process({ siteId, runId: first.runIds[0] })).toEqual({
+        state: "succeeded",
+      });
+      expect(f.providerInvoke).toHaveBeenCalledTimes(2);
+      expect(await f.db.select().from(npAgentContainments)).toEqual([]);
+      expect(await f.db.select().from(npAgentApprovals)).toEqual([]);
+    }),
+    60_000,
+  );
+
+  it(
+    "schedules Operator diagnostics and a local review plan, then leaves a budget-blocked occurrence retryable",
+    journey(async () => {
+      const f = track(await operatorFixture());
+      await f.store.cancel({ siteId, runId: f.runId });
+      await setJobsPauseState({ paused: true });
+      const { events } = eventService(f);
+      const trigger = await registerSchedule(f, events);
+      const runId = await scheduledRun(f, events);
+      expect(await f.executor.process({ siteId, runId })).toEqual({ state: "succeeded" });
+      expect(f.plan).toHaveBeenCalledTimes(1);
+      expect(await f.db.select().from(npAgentOperatorExecutions)).toEqual([]);
+      expect(
+        (await f.db.select().from(npAgentActions).where(eq(npAgentActions.runId, runId)))
+          .map((row) => row.capabilityId)
+          .sort(),
+      ).toEqual(["ops.plan", "ops.status"]);
+      const calls = f.invoke.mock.calls.length;
+      advance(f, 60);
+      const [before] = await f.db
+        .select()
+        .from(npAgentTriggers)
+        .where(eq(npAgentTriggers.id, trigger.id));
+      await npWithAgentRuntimeControlTransactionV1(siteId, ({ db, revision, settings }) => {
+        settings.budgetCeiling.runsPerHour = 0;
+        return f.controls.updateInTransaction({
+          db,
+          siteId,
+          expectedRevision: revision,
+          actorFingerprint: runtimeFingerprint,
+          settings,
+        });
+      });
+      const runCount = (await f.db.select().from(npAgentRuns)).length;
+      const blocked = await events.schedule({ siteId });
+      expect(blocked.runIds).toEqual([]);
+      expect(blocked.failed).toBe(1);
+      expect(await f.db.select().from(npAgentRuns)).toHaveLength(runCount);
+      expect(f.invoke).toHaveBeenCalledTimes(calls);
+      expect(
+        (await f.db.select().from(npAgentTriggers).where(eq(npAgentTriggers.id, trigger.id)))[0]
+          .nextRunAt,
+      ).toEqual(before.nextRunAt);
+    }),
+    60_000,
+  );
+
+  it(
+    "refuses changed scheduled Publisher evidence and revoked delegated authority before an effect or further provider dispatch",
+    journey(async () => {
+      const f = track(await publisherRuntimeFixture(await recipe("publisher.stale-content")));
+      await f.store.cancel({ siteId, runId: f.runId });
+      const id = await f.document();
+      const { events } = eventService(f);
+      await registerSchedule(f, events);
+      f.setBeforeProposal(() =>
+        withCurrentSite(siteId, async () => {
+          await saveDocument(
+            "posts",
+            id,
+            { title: "Human changed the current base" },
+            f.actor.actor.user,
+            { status: "published" },
+          );
+        }),
+      );
+      const changed = await scheduledRun(f, events);
+      expect(await f.executor.process({ siteId, runId: changed })).toEqual({ state: "failed" });
+      expect(await f.db.select().from(npAgentChangesets)).toEqual([]);
+      expect(await f.previews()).toEqual([]);
+      const calls = f.invoke.mock.calls.length;
+      const revoked = await scheduledRun(f, events);
+      const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, revoked));
+      await f.db
+        .update(npAgentPrincipals)
+        .set({ status: "suspended" })
+        .where(eq(npAgentPrincipals.id, run.principalId));
+      expect(await f.executor.process({ siteId, runId: revoked })).toEqual({ state: "failed" });
+      expect(f.invoke).toHaveBeenCalledTimes(calls);
+      expect(await f.db.select().from(npAgentChangesets)).toEqual([]);
+      expect(await f.previews()).toEqual([]);
+    }),
+    60_000,
+  );
 });

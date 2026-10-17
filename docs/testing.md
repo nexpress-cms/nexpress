@@ -122,6 +122,16 @@ transaction would make those paths look cleaner than production. Per-worker
 databases plus truncate cleanup are a little heavier, but they match the app
 runtime more closely.
 
+Async journeys that can outlive a test timeout use the private Core integration
+work scope. Track the whole test body, including its final database assertions;
+an executor's cancellation request alone is not a drain. Closing the scope stops
+its executors, awaits the body, then disposes fixtures and restores test state.
+The shared `truncateAll()` and `closeTestDb()` wait for registered scopes before
+acquiring database locks or closing connections. A failed cleanup keeps the reset
+barrier closed; it cannot turn the original timeout into a passing test. The six
+R6 unattended journeys use this ownership explicitly. Other suites must opt in
+when they own asynchronous work; the barrier cannot discover unregistered promises.
+
 Independent protocol-test databases can share that cleanup ownership by
 including the exact `_${NP_TEST_DB_RUN_ID}_` namespace in a validated database
 name within PostgreSQL's 63-character limit. Close their clients in `afterAll`
@@ -146,7 +156,9 @@ coverage runs on two independent runners, each with its own PostgreSQL 16 and
 Redis 7 containers. After the usual full build, `scripts/integration-partitions.mjs`
 uses Vitest's configured file discovery and splits Web files by descending
 historical duration, assigning each next file to the lighter group. The timing
-seed in `scripts/integration-durations.json` comes from PR #1455; it is a weight,
+seed in `scripts/integration-durations.json` comes from the successful PostgreSQL
+jobs in [main CI 38942471534](https://github.com/nexpress-cms/nexpress/actions/runs/38942471534)
+at `8c872426`, covering all 211 discovered files; it is a weight,
 not an allowlist or a wall-time prediction. New files use the median known weight,
 and removed files are ignored. Core runs once in partition 1 and Redis once in
 partition 2. Each Web partition runs at most two forks, matching the complete
@@ -154,6 +166,15 @@ local acceptance configuration. This bounds contention between CPU-heavy recipe
 journeys and other DB/contract files without extending their deadlines. Worker
 isolation, fixture cleanup, timeouts and native-preview gating remain unchanged;
 the E2E job still explicitly enables native preview.
+
+Partition runs enable `NP_TEST_DB_TIMINGS=1`. The shared harness emits
+`[integration-db]` aggregates for template preparation, worker setup, async drain,
+table reset, connection close and final database drop. Counts, total and maximum
+milliseconds contain no connection strings or fixture data. Worker setup includes
+reuse checks; file summaries and database timings are separate measurements and
+must not be added as independent wall times. Local per-package runs can enable the same flag
+to distinguish SQL/reset work from post-test filesystem cleanup. The measurements
+do not disable durability, constraints or per-test isolation.
 
 The runner requires database settings (and Redis for partition 2), rejects new
 unassigned integration package owners, and verifies that Vitest's actual file
