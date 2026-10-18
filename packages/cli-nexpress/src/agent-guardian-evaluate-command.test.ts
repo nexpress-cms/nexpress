@@ -74,6 +74,8 @@ describe("Guardian offline evaluation CLI boundary", () => {
     artifact = await runAgentGuardianEvaluationV1();
   });
 
+  // Like the profile/Moderator CLI suites, these cases repeatedly validate the
+  // full Guardian corpus. Their harness budget is not a Runtime performance gate.
   it("binds evaluation and comparisons to the actual installed synthetic corpus and closed result shape", async () => {
     const cwd = await directory();
     await writeFile(join(cwd, "baseline.json"), JSON.stringify(artifact));
@@ -114,7 +116,7 @@ describe("Guardian offline evaluation CLI boundary", () => {
     expect(evaluationResultFailed(failure)).toBe(true);
     await expect(verify({ ...failure, artifact })).rejects.toThrow();
     expect(evaluationResultFailed({ ...result, artifact: { ...artifact, ok: false } })).toBe(true);
-  });
+  }, 20_000);
 
   it("binds reviews to the requested source, exact labels and matched prior review without granting approval", async () => {
     const cwd = await directory();
@@ -182,7 +184,7 @@ describe("Guardian offline evaluation CLI boundary", () => {
         cwd,
       ),
     ).rejects.toThrow();
-  });
+  }, 20_000);
 
   it("rejects output aliases of source or comparison artifacts before child execution", async () => {
     const cwd = await directory();
@@ -245,7 +247,7 @@ describe("Guardian offline evaluation CLI boundary", () => {
     output.reset();
     expect(await runNexpressCli(args(["--dataset", "guardian.v1"]), { cwd })).toBe(0);
     expect(output.read()).toContain("model usefulness and enablement are not established");
-  }, 30_000);
+  }, 60_000);
 
   it("lists Guardian in both help surfaces and rejects effect/provider flags before starting a child", async () => {
     const cwd = await directory();
