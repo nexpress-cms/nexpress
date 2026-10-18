@@ -20,6 +20,15 @@ export type EnsureForFn = (intent: "read" | "plugins" | "write") => Promise<void
  */
 export type GetDbFn = () => unknown;
 
+/** A rejected credentials attempt. The consumed request is supplied for trusted
+ * host/site metadata; the callback receives no password or auth result details. */
+export interface NpLoginFailureObservation {
+  request: NextRequest;
+  audience: "staff" | "member";
+  loginIdentifier: string;
+}
+export type NpLoginFailureObserver = (input: NpLoginFailureObservation) => void | Promise<void>;
+
 /**
  * Subset of the per-app member-auth helpers the factory consumes.
  * The app already creates the full set via `createMemberAuthHelpers`
@@ -46,6 +55,8 @@ export interface MemberAuthRoutesConfig {
   getDb: GetDbFn;
   ensureFor: EnsureForFn;
   authHelpers: MemberAuthHelpersForRoutes;
+  /** Optional observation only. Failures never change the authentication outcome. */
+  onLoginFailure?: NpLoginFailureObserver;
   /**
    * Site name and URL for emailed links. The framework can't
    * read these from `nexpressConfig` itself because the routes

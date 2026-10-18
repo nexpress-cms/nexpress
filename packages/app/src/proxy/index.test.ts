@@ -81,6 +81,64 @@ describe("shared application proxy rate limiting", () => {
     expect(() => proxyModule.npCreateProxy(Object.create({ rateLimiter }) as never)).toThrow(
       /exact \{ rateLimiter \}/u,
     );
+    for (const onRateLimited of [null, undefined, {}, "observer"]) {
+      expect(() => proxyModule.npCreateProxy({ rateLimiter, onRateLimited } as never)).toThrow(
+        /exact \{ rateLimiter \}/u,
+      );
+    }
+    expect(() =>
+      proxyModule.npCreateProxy({ rateLimiter, onRateLimited: vi.fn(), extra: true } as never),
+    ).toThrow(/exact \{ rateLimiter \}/u);
+  });
+
+  it("observes only enforced decisions with the fixed first-match family and contains observer failure", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 17 });
+    const onRateLimited = vi.fn().mockRejectedValue(new Error("observation unavailable"));
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onRateLimited,
+    });
+    const req = request("/api/admin/jobs/secret-job/retry?token=private");
+    const response = await handler(req);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("17");
+    expect(check).toHaveBeenCalledExactlyOnceWith(
+      "203.0.113.8:^\\/api\\/admin\\/jobs\\/[^/]+\\/retry",
+      30,
+      60_000,
+    );
+    expect(onRateLimited).toHaveBeenCalledExactlyOnceWith({
+      request: req,
+      routeFamily: "job-retry",
+    });
+    check.mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    expect((await handler(request())).status).toBe(200);
+    expect((await handler(request("/api/unknown"))).status).toBe(200);
+    expect(onRateLimited).toHaveBeenCalledOnce();
+    expect(check).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps private plugin paths out of the bounded observer family", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 5 });
+    const onRateLimited = vi.fn();
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "memory", check },
+      onRateLimited,
+    });
+    for (const [path, routeFamily, limit] of [
+      ["/api/plugins/private-plugin/webhooks/private-id", "plugin-public", 30],
+      ["/api/plugins/private-plugin/actions/private-action", "plugins", 60],
+      ["/api/auth/login", "staff-auth", 10],
+    ] as const) {
+      const req = request(path);
+      expect((await handler(req)).status).toBe(429);
+      expect(onRateLimited).toHaveBeenLastCalledWith({ request: req, routeFamily });
+      expect(check).toHaveBeenLastCalledWith(expect.any(String), limit, 60_000);
+    }
   });
 
   it("fails closed when custom runtime intent has no proxy-local adapter", async () => {

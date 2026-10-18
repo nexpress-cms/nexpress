@@ -106,6 +106,124 @@ function detail() {
   });
 }
 
+test("Guardian observations show verified lower bounds without content response controls", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    216 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const base = detail();
+  const actorBucket = "G".repeat(43);
+  const observedEnd = "2026-09-27T00:09:59.000Z";
+  const result = npRequireAgentIncidentStudioDetailV1({
+    ...base,
+    incident: {
+      ...base.incident,
+      category: "traffic",
+      severity: "medium",
+      title: "Repeated request limits",
+      summary:
+        "At least 5 request-limit decisions observed in one ten-minute window. This rule does not establish malicious intent.",
+      eventCount: 5,
+      lastObservedAt: observedEnd,
+      createdAt: observedEnd,
+      updatedAt: observedEnd,
+      primarySubject: {
+        kind: "actor-bucket",
+        purpose: "network-address",
+        projectionVersion: 1,
+        projectionFingerprint: `cj1:sha256:${"P".repeat(43)}`,
+        keyId: "guardian-fixture",
+        bucket: actorBucket,
+      },
+    },
+    signals: [
+      {
+        ...base.signals[0],
+        detectorId: "guardian.rate-limits",
+        category: "traffic",
+        scoreBasisPoints: null,
+        createdAt: observedEnd,
+      },
+    ],
+    timeline: [{ ...base.timeline[0], createdAt: observedEnd }],
+    feedbackAvailable: false,
+    workflow: {
+      availableTransitions: ["investigating", "resolved", "dismissed"],
+      containment: {
+        reviewHash: `cj1:sha256:${"a".repeat(43)}`,
+        total: 0,
+        active: 0,
+        restored: 0,
+        unresolved: 0,
+        pendingActions: 0,
+      },
+    },
+    guardianEvidence: [
+      {
+        schemaVersion: "np.agent-guardian-evidence.v1",
+        signalId,
+        detectorId: "guardian.rate-limits",
+        audience: null,
+        routeFamily: "mcp",
+        window: { startedAt: at, endedAt: observedEnd },
+        observedCount: 5,
+        threshold: 5,
+        countBasis: "at-least",
+      },
+    ],
+  });
+  const contentRequests: string[] = [];
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (/\/(?:evidence|member-report-evidence|member-response)$/.test(url.pathname))
+      contentRequests.push(url.pathname);
+    if (request.method() === "POST" && url.pathname.startsWith("/api/admin/agents/"))
+      mutations.push(url.pathname);
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const observations = page.getByRole("region", { name: "Guardian observations", exact: true });
+  await expect(observations.getByText("Requests limited", { exact: true })).toBeVisible();
+  await expect(observations.getByText("Route family: mcp", { exact: true })).toBeVisible();
+  await expect(
+    observations.getByText("At least 5 observations · Rule threshold: 5", { exact: true }),
+  ).toBeVisible();
+  await expect(observations.getByText(/not proof of an attack/)).toBeVisible();
+  await expect(observations.getByText(/lower bound, not the total activity/)).toBeVisible();
+  await expect(observations.locator(`time[datetime="${at}"]`)).toBeVisible();
+  await expect(observations.locator("button, form")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Content evidence", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Response plans", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /Prepare response plan|Execute approved|Record feedback/ }),
+  ).toHaveCount(0);
+  await expect(page.getByText(actorBucket, { exact: false })).toHaveCount(0);
+  const handling = page.getByRole("region", { name: "Incident handling", exact: true });
+  await expect(handling.getByRole("combobox", { name: "Incident decision" })).toBeVisible();
+  await handling.getByLabel("Decision note").fill("Reviewing the observed request limits.");
+  await expect(handling.getByRole("button", { name: "Record incident decision" })).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 900 });
+  if (await page.locator('[data-np-admin-sidebar][data-open="true"]').count())
+    await page.getByRole("button", { name: "Close navigation" }).last().click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  const screenshot = testInfo.outputPath("incident-guardian-observations-390.png");
+  await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+  await testInfo.attach("Guardian observations and Incident handling", {
+    path: screenshot,
+    contentType: "image/png",
+  });
+  expect(contentRequests).toEqual([]);
+  expect(mutations).toEqual([]);
+});
+
 test("Member response retains its duration draft while Incident polling refreshes current policy", async ({
   page,
 }, testInfo) => {

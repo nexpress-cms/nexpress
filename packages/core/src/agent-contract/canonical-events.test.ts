@@ -50,6 +50,8 @@ it("preserves actual camelCase queue names and rejects shell/whitespace handler 
 
 function payload(kind: NpAgentEventKind): NpAgentEventPayload {
   switch (kind) {
+    case "api.rate-limited":
+      return { kind, routeFamily: "staff-auth", ipBucket: actorBucket };
     case "auth.login.failed":
       return {
         kind,
@@ -216,8 +218,8 @@ function expectIssue(result: NpAgentContractResult<unknown>, code: string, path:
 }
 
 describe("Agent event and signal-evidence canonical bodies", () => {
-  it("publishes the closed 22-kind inventory and exact field fixtures", () => {
-    expect(npAgentEventKinds).toHaveLength(22);
+  it("publishes the closed event inventory and exact field fixtures", () => {
+    expect(npAgentEventKinds).toHaveLength(23);
     expect(new Set(npAgentEventKinds).size).toBe(npAgentEventKinds.length);
     expect(npAgentEventCanonicalIncludedKeysV1).toHaveLength(12);
     expect(npAgentSignalEvidenceCanonicalIncludedKeysV1).toHaveLength(8);

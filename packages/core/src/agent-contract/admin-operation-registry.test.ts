@@ -257,7 +257,8 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:YYiq-sqmKh6aVKN0tKUVyU7F40h8FKZxbpxDWput5ms",
+      // Only configuration activation's trigger-kind enum adds api.rate-limited.
+      "cj1:sha256:3jCE1w_IapgXDIfGOhCuu04ZEplbf5f4UyPzsG3Hv48",
     );
 
     await expect(

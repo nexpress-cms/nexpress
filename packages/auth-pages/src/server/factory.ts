@@ -105,6 +105,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
   // ─── login ──────────────────────────────────────────────────
   const login = async (request: NextRequest): Promise<NextResponse> => {
+    let rejectedIdentifier: string | null = null;
     try {
       await ensureFor("write");
       const { email, password } = validateLoginBody(await readJsonBody(request));
@@ -129,9 +130,13 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
       // Anti-enumeration: missing-account / wrong-password / pending
       // / suspended / deleted all surface the same generic error.
-      if (!member || !member.password) throw new NpAuthError("Invalid credentials");
+      if (!member || !member.password) {
+        rejectedIdentifier = email;
+        throw new NpAuthError("Invalid credentials");
+      }
 
       if (member.lockUntil && member.lockUntil > new Date()) {
+        rejectedIdentifier = email;
         throw new NpAuthError("Account is temporarily locked");
       }
 
@@ -146,10 +151,12 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
             updatedAt: new Date(),
           })
           .where(eq(npMembers.id, member.id));
+        rejectedIdentifier = email;
         throw new NpAuthError("Invalid credentials");
       }
 
       if (member.status !== "active") {
+        rejectedIdentifier = email;
         throw new NpAuthError("Invalid credentials");
       }
 
@@ -196,6 +203,17 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       });
       return response;
     } catch (error) {
+      if (rejectedIdentifier !== null && config.onLoginFailure) {
+        try {
+          await config.onLoginFailure({
+            request,
+            audience: "member",
+            loginIdentifier: rejectedIdentifier,
+          });
+        } catch {
+          // Observations cannot change the result or retry credential verification.
+        }
+      }
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
   };

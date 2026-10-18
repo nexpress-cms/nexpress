@@ -6,6 +6,8 @@ export type {
   MemberAuthHelpersForRoutes,
   EnsureForFn,
   GetDbFn,
+  NpLoginFailureObservation,
+  NpLoginFailureObserver,
   NpAuthErrorCode,
   NpAuthMember,
   NpMemberSessionUser,

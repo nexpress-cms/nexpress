@@ -813,6 +813,11 @@ no live approval, provider activation or R6 acceptance is inferred.
 Outcome: application signals are correlated into incidents, with narrowly
 reversible responses.
 
+The first [request-observation slice](r7-guardian-observation-flow.md) connects
+bounded, PII-minimized login failures and existing rate-limit decisions to
+deterministic Incidents and the staff workspace. This is observation only;
+broader collectors, response capabilities and the full R7 gate remain open.
+
 | ID     | Scope                                                                                                                                              |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AP-701 | Extend shared signal/incident contracts with PII-minimized security subjects and actor-restriction persistence, including exact `restriction_hash` |

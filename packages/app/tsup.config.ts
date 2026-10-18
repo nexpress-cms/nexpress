@@ -81,6 +81,7 @@ const scriptEntries = {
 const libEntries = {
   "lib/agents/operator-host": "src/lib/agents/operator-host.ts",
   "lib/agents/operator-event-source": "src/lib/agents/operator-event-source.ts",
+  "lib/agents/guardian-request-observer": "src/lib/agents/guardian-request-observer.ts",
   "lib/agents/operator-queue-plan": "src/lib/agents/operator-queue-plan.ts",
   "lib/agents/publisher-route-inventory": "src/lib/agents/publisher-route-inventory.ts",
   "lib/agents/preview-http": "src/lib/agents/preview-http.ts",

@@ -1,4 +1,6 @@
 import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
+import { npReadAgentGuardianIncidentEvidenceV1 } from "./guardian-observation-service.js";
+import type { NpAgentGuardianEvidenceV1 } from "../agent-contract/guardian-contract.js";
 import type { NpAgentIncidentMemberReportEvidenceServiceV1 } from "./incident-member-report-evidence-service.js";
 import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
@@ -583,6 +585,25 @@ export function createAgentIncidentStudioServiceV1(
           throw error;
       }
     }
+    let guardianEvidence: NpAgentGuardianEvidenceV1[] | null | undefined;
+    if (
+      signals.some(
+        (signal) =>
+          signal.detectorId === "guardian.login-failures" ||
+          signal.detectorId === "guardian.rate-limits",
+      )
+    ) {
+      guardianEvidence = null;
+      try {
+        guardianEvidence = await npReadAgentGuardianIncidentEvidenceV1({
+          db,
+          siteId: input.siteId,
+          incident,
+        });
+      } catch {
+        // Missing or corrupt sources are unavailable; no invented aggregate crosses the wire.
+      }
+    }
     // Reread all evidence and item ACLs after composing related records; do not return a mixed generation.
     const current = await options.reads.get({ incidentId: incident.id }, input);
     if (
@@ -594,6 +615,7 @@ export function createAgentIncidentStudioServiceV1(
       throw unavailable();
     return npRequireAgentIncidentStudioDetailV1({
       schemaVersion: "np.agent-incident-studio-detail.v1",
+      ...(guardianEvidence === undefined ? {} : { guardianEvidence }),
       incident,
       workflow,
       response,
