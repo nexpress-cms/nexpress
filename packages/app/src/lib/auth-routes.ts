@@ -18,6 +18,7 @@ import {
   setMemberAuthCookies,
 } from "./member-auth-helpers";
 import { resetTtlMs, verifyTtlMs } from "./token-ttl";
+import { npObserveInstalledAgentGuardianLoginFailureV1 } from "./agents/guardian-request-observer";
 
 /**
  * Bootstrapped member-auth route handlers. Each
@@ -33,6 +34,7 @@ import { resetTtlMs, verifyTtlMs } from "./token-ttl";
 export const memberAuthRoutes = createMemberAuthRoutes({
   getDb,
   ensureFor,
+  onLoginFailure: npObserveInstalledAgentGuardianLoginFailureV1,
   authHelpers: {
     setMemberAuthCookies,
     clearMemberAuthCookies,
@@ -60,6 +62,7 @@ export const memberAuthRoutes = createMemberAuthRoutes({
 export const staffAuthRoutes = createStaffAuthRoutes({
   getDb,
   ensureFor,
+  onLoginFailure: npObserveInstalledAgentGuardianLoginFailureV1,
   authHelpers: {
     setAuthCookies,
     clearAuthCookies,

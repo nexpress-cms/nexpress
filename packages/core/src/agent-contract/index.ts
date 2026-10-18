@@ -74,6 +74,7 @@ export * from "./incident-feedback-contract.js";
 export * from "./moderator-contract.js";
 export * from "./moderation-capability-contract.js";
 export * from "./incident-studio-contract.js";
+export * from "./guardian-contract.js";
 export * from "./incident-studio-query-contract.js";
 export * from "./incident-retention-contract.js";
 

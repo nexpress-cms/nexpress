@@ -49,6 +49,11 @@ import {
   npRequireAgentModeratorSegmentedAssessmentV2,
   type NpAgentModeratorSegmentedAssessmentV2,
 } from "./moderator-segmented-assessment-contract.js";
+import {
+  npRequireAgentGuardianEvidenceV1,
+  NP_AGENT_GUARDIAN_THRESHOLD_V1,
+  type NpAgentGuardianEvidenceV1,
+} from "./guardian-contract.js";
 
 export const npAgentIncidentTimelineKindsV1 = [
   "observed",
@@ -170,6 +175,7 @@ export interface NpAgentIncidentStudioDetailV1 {
   feedbackAvailable: boolean;
   workflow: NpAgentIncidentWorkflowV1 | null;
   response?: NpAgentIncidentResponseV1 | null;
+  guardianEvidence?: NpAgentGuardianEvidenceV1[] | null;
 }
 /** Exact allowlist: source bodies, raw timeline details and private containment state cannot cross this wire. */
 export function npRequireAgentIncidentStudioDetailV1(
@@ -185,6 +191,7 @@ export function npRequireAgentIncidentStudioDetailV1(
       keys.filter(
         (k) =>
           k !== "response" &&
+          k !== "guardianEvidence" &&
           k !== "assignment" &&
           k !== "containmentFailure" &&
           k !== "notificationRecovery" &&
@@ -210,6 +217,7 @@ export function npRequireAgentIncidentStudioDetailV1(
     "feedbackAvailable",
     "workflow",
     "response",
+    "guardianEvidence",
   ]);
   const incident = npRequireAgentIncidentV1(row.incident);
   const signals = canonicalBodyArray(row.signals, `${p}.signals`, 100, state).map((v, i) => {
@@ -452,7 +460,59 @@ export function npRequireAgentIncidentStudioDetailV1(
   }
   if (timeline.some((t) => t.decision !== null && t.kind !== "state_transition"))
     failCanonicalBody("invalid-field", p, "Invalid decision kind");
+  let guardianEvidence: NpAgentGuardianEvidenceV1[] | null | undefined;
+  if (row.guardianEvidence !== undefined) {
+    if (
+      !["authentication", "traffic"].includes(incident.category) ||
+      !signals.length ||
+      signals.some(
+        (signal) =>
+          !["guardian.login-failures", "guardian.rate-limits"].includes(signal.detectorId),
+      )
+    )
+      failCanonicalBody("invalid-field", p, "Invalid Guardian Incident binding");
+    guardianEvidence =
+      row.guardianEvidence === null
+        ? null
+        : canonicalBodyArray(row.guardianEvidence, `${p}.guardianEvidence`, 100, state).map(
+            npRequireAgentGuardianEvidenceV1,
+          );
+    if (
+      guardianEvidence &&
+      (guardianEvidence.length !== signals.length ||
+        incident.eventCount !== guardianEvidence.length * NP_AGENT_GUARDIAN_THRESHOLD_V1 ||
+        new Set(guardianEvidence.map((entry) => entry.signalId)).size !== signals.length ||
+        guardianEvidence.some(
+          (entry) =>
+            !signals.some(
+              (signal) =>
+                signal.id === entry.signalId &&
+                signal.detectorId === entry.detectorId &&
+                signal.detectorVersion === 1 &&
+                signal.confidenceBasis === "exact-rule" &&
+                signal.scoreBasisPoints === null &&
+                signal.category === incident.category &&
+                signal.category ===
+                  (entry.detectorId === "guardian.login-failures" ? "authentication" : "traffic"),
+            ),
+        ))
+    )
+      failCanonicalBody("invalid-field", p, "Invalid Guardian evidence binding");
+    if (
+      guardianEvidence?.some(
+        (entry) =>
+          entry.window.startedAt < incident.firstObservedAt ||
+          entry.window.endedAt > incident.lastObservedAt,
+      )
+    )
+      failCanonicalBody(
+        "invalid-field",
+        p,
+        "Guardian evidence is outside the Incident observation window",
+      );
+  }
   return {
+    ...(guardianEvidence === undefined ? {} : { guardianEvidence }),
     workflow,
     response: row.response == null ? null : npRequireAgentIncidentResponseV1(row.response),
     schemaVersion: canonicalBodyEnum(

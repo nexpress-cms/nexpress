@@ -1,7 +1,7 @@
 import type { AuthHelpers, AuthRuntimeConfig } from "@nexpress/next";
 import type { NextRequest, NextResponse } from "next/server";
 
-import type { EnsureForFn, GetDbFn } from "./types.js";
+import type { EnsureForFn, GetDbFn, NpLoginFailureObserver } from "./types.js";
 
 /**
  * Subset of the per-app staff-auth helpers the factory consumes.
@@ -31,6 +31,8 @@ export interface StaffAuthRoutesConfig {
   getDb: GetDbFn;
   ensureFor: EnsureForFn;
   authHelpers: StaffAuthHelpersForRoutes;
+  /** Optional observation only. Failures never change the authentication outcome. */
+  onLoginFailure?: NpLoginFailureObserver;
   /**
    * Site name and URL for emailed links. Staff reset emails build
    * a link to `/admin/set-password?token=…` against this base.

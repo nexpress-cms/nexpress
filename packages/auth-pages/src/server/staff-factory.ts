@@ -115,6 +115,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 
   // ─── login ──────────────────────────────────────────────────
   const login = async (request: NextRequest): Promise<NextResponse> => {
+    let rejectedIdentifier: string | null = null;
     try {
       // The pre-migration login route called `getDb()` directly
       // without `ensureFor` and relied on cold-start ordering
@@ -137,10 +138,14 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       // Anti-enumeration on the missing-user branch (mirrors member
       // login). Wrong password takes the explicit lockout branch
       // below since incrementing attempts is the correct behavior.
-      if (!user) throw new NpAuthError("Invalid email or password");
+      if (!user) {
+        rejectedIdentifier = email;
+        throw new NpAuthError("Invalid email or password");
+      }
 
       const now = new Date();
       if (user.lockUntil && user.lockUntil > now) {
+        rejectedIdentifier = email;
         throw new NpError("Too many login attempts", "TOO_MANY_REQUESTS", 429);
       }
 
@@ -162,6 +167,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
             user.id,
           ],
         );
+        rejectedIdentifier = email;
         throw new NpAuthError("Invalid email or password");
       }
 
@@ -210,6 +216,17 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 
       return response;
     } catch (error) {
+      if (rejectedIdentifier !== null && config.onLoginFailure) {
+        try {
+          await config.onLoginFailure({
+            request,
+            audience: "staff",
+            loginIdentifier: rejectedIdentifier,
+          });
+        } catch {
+          // Observations cannot change the result or retry credential verification.
+        }
+      }
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
   };

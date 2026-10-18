@@ -70,6 +70,7 @@ export * from "./runtime-event-service.js";
 export * from "./runtime-jobs.js";
 export * from "./operator-event-source.js";
 export * from "./operator-event-observation.js";
+export * from "./guardian-observation-service.js";
 export * from "./runtime-maintenance.js";
 export * from "./incident-retention.js";
 export * from "./moderator-assessment-source.js";

@@ -22,6 +22,7 @@ import { IncidentNotificationDeliveries } from "./agent-incident-notification-de
 import { IncidentNotifications } from "./agent-incident-notifications.js";
 import { IncidentAssignment } from "./agent-incident-assignment.js";
 import { IncidentEvidence } from "./agent-incident-evidence.js";
+import { IncidentGuardianEvidence } from "./agent-incident-guardian-evidence.js";
 import { IncidentResponse } from "./agent-incident-response.js";
 import { IncidentMemberResponse } from "./agent-incident-member-response.js";
 import { IncidentWorkflow } from "./agent-incident-workflow.js";
@@ -419,55 +420,61 @@ function IncidentDetail({ id }: { id: string }) {
               {detail.incident.lastObservedAt}
             </p>
           </header>
-          <section className="space-y-3" aria-labelledby="incident-signals">
-            <h3 id="incident-signals" className="font-semibold">
-              Signal evidence
-            </h3>
-            <p className="text-sm text-neutral-500">
-              Source references are shown below. Private signal payloads and raw logs are not
-              included in this view.
-            </p>
-            {detail.signals.length === 0 ? (
-              <p>No visible signals.</p>
-            ) : (
-              <ul className="space-y-2">
-                {detail.signals.map((signal) => {
-                  const memberReport = signal.detectorId === "moderator.member-report-review";
-                  return (
-                    <li key={signal.id} className="break-words rounded-lg border p-3 text-sm">
-                      <p>
-                        {signal.category} · Detector {signal.detectorId} · Version{" "}
-                        {signal.detectorVersion}
-                      </p>
-                      <p>
-                        {memberReport ? "Report evidence basis" : "Deterministic confidence basis"}:{" "}
-                        {signal.confidenceBasis}
-                      </p>
-                      <p>
-                        {memberReport ? "Abuse assessment score" : "Deterministic score"}:{" "}
-                        {signal.scoreBasisPoints === null
-                          ? memberReport
-                            ? "Not assessed"
-                            : "Unknown"
-                          : `${signal.scoreBasisPoints} basis points`}
-                      </p>
-                      {memberReport ? (
-                        <p>A filed report is an unverified claim requiring human review.</p>
-                      ) : null}
-                      <p>Signal {signal.id}</p>
-                      <time dateTime={signal.createdAt}>{signal.createdAt}</time>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          {detail.guardianEvidence !== undefined ? (
+            <IncidentGuardianEvidence evidence={detail.guardianEvidence} />
+          ) : (
+            <section className="space-y-3" aria-labelledby="incident-signals">
+              <h3 id="incident-signals" className="font-semibold">
+                Signal evidence
+              </h3>
+              <p className="text-sm text-neutral-500">
+                Source references are shown below. Private signal payloads and raw logs are not
+                included in this view.
+              </p>
+              {detail.signals.length === 0 ? (
+                <p>No visible signals.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {detail.signals.map((signal) => {
+                    const memberReport = signal.detectorId === "moderator.member-report-review";
+                    return (
+                      <li key={signal.id} className="break-words rounded-lg border p-3 text-sm">
+                        <p>
+                          {signal.category} · Detector {signal.detectorId} · Version{" "}
+                          {signal.detectorVersion}
+                        </p>
+                        <p>
+                          {memberReport
+                            ? "Report evidence basis"
+                            : "Deterministic confidence basis"}
+                          : {signal.confidenceBasis}
+                        </p>
+                        <p>
+                          {memberReport ? "Abuse assessment score" : "Deterministic score"}:{" "}
+                          {signal.scoreBasisPoints === null
+                            ? memberReport
+                              ? "Not assessed"
+                              : "Unknown"
+                            : `${signal.scoreBasisPoints} basis points`}
+                        </p>
+                        {memberReport ? (
+                          <p>A filed report is an unverified claim requiring human review.</p>
+                        ) : null}
+                        <p>Signal {signal.id}</p>
+                        <time dateTime={signal.createdAt}>{signal.createdAt}</time>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
           <IncidentNotificationDeliveries
             key={`deliveries:${detail.incident.id}`}
             incidentId={detail.incident.id}
             onAccessLost={evidenceAccessLost}
           />
-          {!writing && !state.loading ? (
+          {!writing && !state.loading && detail.guardianEvidence === undefined ? (
             <IncidentEvidence
               key={`evidence:${state.generation}:${detail.incident.versionNumber}`}
               detail={detail}
@@ -492,7 +499,8 @@ function IncidentDetail({ id }: { id: string }) {
               onConflict={assignmentConflict}
             />
           ) : null}
-          {detail.incident.primarySubject?.kind !== "member" ? (
+          {detail.guardianEvidence === undefined &&
+          detail.incident.primarySubject?.kind !== "member" ? (
             <IncidentResponse
               responsePage={Boolean(responseCursor)}
               onResponsePage={(next) => {
@@ -528,7 +536,8 @@ function IncidentDetail({ id }: { id: string }) {
               }
             />
           ) : null}
-          {detail.incident.primarySubject?.kind === "member" ? (
+          {detail.guardianEvidence === undefined &&
+          detail.incident.primarySubject?.kind === "member" ? (
             <IncidentMemberResponse
               key={`member-response:${detail.incident.id}:${detail.incident.versionNumber}`}
               incidentId={detail.incident.id}

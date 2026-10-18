@@ -6,6 +6,7 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { npCreateApiError } from "@nexpress/core/api-contract";
+import type { NpAgentGuardianRouteFamilyV1 } from "@nexpress/core/agent-contract";
 
 import {
   getOptionalRateLimiter,
@@ -23,7 +24,15 @@ import { i18nConfig, isLocale } from "../i18n-config";
 export interface NpProxyOptions {
   /** Adapter used by this proxy entrypoint; lifecycle remains caller-owned. */
   readonly rateLimiter: NpRateLimiterAdapter;
+  /** Optional source installed in this proxy runtime. The host owns trusted
+   * site/address resolution and initialization; application registries may differ. */
+  readonly onRateLimited?: NpProxyRateLimitObserver;
 }
+
+export type NpProxyRateLimitObserver = (input: {
+  request: NextRequest;
+  routeFamily: NpAgentGuardianRouteFamilyV1;
+}) => void | Promise<void>;
 
 export type NpProxyHandler = (request: NextRequest) => Promise<NextResponse>;
 
@@ -145,13 +154,23 @@ function isCsrfExempt(pathname: string): boolean {
   return CSRF_EXEMPT_PATTERNS.some((p) => p.test(pathname));
 }
 
-const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> = [
-  { pattern: /^\/api\/mcp$/, limit: 120, windowMs: 60_000 },
-  { pattern: /^\/api\/agent-oauth\/(authorize|token|revoke)$/, limit: 30, windowMs: 60_000 },
-  { pattern: /^\/api\/auth\//, limit: 10, windowMs: 60_000 },
-  { pattern: /^\/api\/media\/upload/, limit: 20, windowMs: 60_000 },
-  { pattern: /^\/api\/import/, limit: 5, windowMs: 60_000 },
-  { pattern: /^\/api\/collections\//, limit: 100, windowMs: 60_000 },
+const RATE_LIMITS: Array<{
+  pattern: RegExp;
+  limit: number;
+  windowMs: number;
+  family: NpAgentGuardianRouteFamilyV1;
+}> = [
+  { pattern: /^\/api\/mcp$/, limit: 120, windowMs: 60_000, family: "mcp" },
+  {
+    pattern: /^\/api\/agent-oauth\/(authorize|token|revoke)$/,
+    limit: 30,
+    windowMs: 60_000,
+    family: "agent-oauth",
+  },
+  { pattern: /^\/api\/auth\//, limit: 10, windowMs: 60_000, family: "staff-auth" },
+  { pattern: /^\/api\/media\/upload/, limit: 20, windowMs: 60_000, family: "media-upload" },
+  { pattern: /^\/api\/import/, limit: 5, windowMs: 60_000, family: "import" },
+  { pattern: /^\/api\/collections\//, limit: 100, windowMs: 60_000, family: "collections" },
   // The plugin proxy catch-all (`/api/plugins/<id>/<...>` for paths
   // other than the CRUD route and `actions/*`) is exempt from CSRF
   // and frequently exposes webhook / public surfaces. Plugins
@@ -159,36 +178,56 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   // tighter than the staff-session paths above (#316). 30 req/min/IP
   // is a sane upper bound for typical webhook / health-check traffic;
   // plugins that need more should rate-limit inside their handler.
-  { pattern: /^\/api\/plugins\/[^/]+\/(?!actions(\/|$))/, limit: 30, windowMs: 60_000 },
+  {
+    pattern: /^\/api\/plugins\/[^/]+\/(?!actions(\/|$))/,
+    limit: 30,
+    windowMs: 60_000,
+    family: "plugin-public",
+  },
   // CRUD on the plugin metadata + plugin actions stay on the staff-
   // session limit (these go through requireAuth, so the IP bucket is
   // belt-and-braces to the session).
-  { pattern: /^\/api\/plugins(?:\/|$)/, limit: 60, windowMs: 60_000 },
-  { pattern: /^\/api\/users(?:\/|$)/, limit: 30, windowMs: 60_000 },
-  { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000 },
+  { pattern: /^\/api\/plugins(?:\/|$)/, limit: 60, windowMs: 60_000, family: "plugins" },
+  { pattern: /^\/api\/users(?:\/|$)/, limit: 30, windowMs: 60_000, family: "users" },
+  { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000, family: "search" },
   // Member-side report submissions — keep tight to discourage report-spam.
-  { pattern: /^\/api\/reports(?:\/|$)/, limit: 10, windowMs: 60_000 },
+  { pattern: /^\/api\/reports(?:\/|$)/, limit: 10, windowMs: 60_000, family: "reports" },
   // Newsletter subscribe — anonymous public form, no CSRF gate, so the
   // IP bucket is the only floor against subscribe-spam. Keep tight.
-  { pattern: /^\/api\/newsletter$/, limit: 5, windowMs: 60_000 },
+  { pattern: /^\/api\/newsletter$/, limit: 5, windowMs: 60_000, family: "newsletter" },
   // Each community SSE request remains open for up to 25 seconds. Bound
   // connection starts per IP while leaving enough room for normal automatic
   // reconnects across several tabs or users behind one shared address.
-  { pattern: /^\/api\/community\/events$/, limit: 60, windowMs: 60_000 },
-  { pattern: /^\/api\/views$/, limit: 120, windowMs: 60_000 },
+  {
+    pattern: /^\/api\/community\/events$/,
+    limit: 60,
+    windowMs: 60_000,
+    family: "community-events",
+  },
+  { pattern: /^\/api\/views$/, limit: 120, windowMs: 60_000, family: "views" },
   // Phase 20.1 — job actions that do real work or bulk fan-out get
   // tighter limits than the general /api/admin/ bucket. Each
   // retry-all call fires up to 200 retries; enqueue runs an
   // arbitrary registered handler. List these ABOVE the general
   // rule below — first-match wins in checkRequestRateLimit.
-  { pattern: /^\/api\/admin\/jobs\/retry-all/, limit: 5, windowMs: 60_000 },
-  { pattern: /^\/api\/admin\/jobs\/enqueue/, limit: 10, windowMs: 60_000 },
-  { pattern: /^\/api\/admin\/jobs\/[^/]+\/retry/, limit: 30, windowMs: 60_000 },
+  {
+    pattern: /^\/api\/admin\/jobs\/retry-all/,
+    limit: 5,
+    windowMs: 60_000,
+    family: "jobs-retry-all",
+  },
+  { pattern: /^\/api\/admin\/jobs\/enqueue/, limit: 10, windowMs: 60_000, family: "jobs-enqueue" },
+  {
+    pattern: /^\/api\/admin\/jobs\/[^/]+\/retry/,
+    limit: 30,
+    windowMs: 60_000,
+    family: "job-retry",
+  },
   // Staff moderation surface (queue browsing, action buttons in admin).
-  { pattern: /^\/api\/admin\//, limit: 60, windowMs: 60_000 },
+  { pattern: /^\/api\/admin\//, limit: 60, windowMs: 60_000, family: "admin" },
   // Bearer-token-protected cron triggers. Rate-limit on top of the token so
   // a leaked token can't be used to DoS the DB (e.g. reindex in a loop).
-  { pattern: /^\/api\/internal\//, limit: 10, windowMs: 60_000 },
+  { pattern: /^\/api\/internal\//, limit: 10, windowMs: 60_000, family: "internal" },
 ];
 
 function getClientIp(request: NextRequest): string {
@@ -203,7 +242,7 @@ async function checkRequestRateLimit(
   ip: string,
   path: string,
   rateLimiter?: NpRateLimiterAdapter,
-): Promise<NpRateLimitDecision | null> {
+): Promise<{ decision: NpRateLimitDecision; routeFamily: NpAgentGuardianRouteFamilyV1 } | null> {
   const rule = RATE_LIMITS.find((r) => r.pattern.test(path));
   if (!rule) return null;
 
@@ -211,10 +250,11 @@ async function checkRequestRateLimit(
   // contract before the proxy trusts the decision or emits a
   // Retry-After header.
   const key = `${ip}:${rule.pattern.source}`;
-  return npCheckRateLimit(
+  const decision = await npCheckRateLimit(
     { key, limit: rule.limit, windowMs: rule.windowMs },
     resolveProxyRateLimiter(rateLimiter),
   );
+  return { decision, routeFamily: rule.family };
 }
 
 /**
@@ -249,20 +289,31 @@ function resolveSiteLocale(pathname: string): {
   return { locale: i18nConfig.defaultLocale, rewrite: null };
 }
 
-async function runProxy(request: NextRequest, rateLimiter?: NpRateLimiterAdapter) {
+async function runProxy(
+  request: NextRequest,
+  rateLimiter?: NpRateLimiterAdapter,
+  onRateLimited?: NpProxyRateLimitObserver,
+) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
 
   if (pathname.startsWith("/api/")) {
     const ip = getClientIp(request);
-    const decision = await checkRequestRateLimit(ip, pathname, rateLimiter);
+    const result = await checkRequestRateLimit(ip, pathname, rateLimiter);
 
-    if (decision?.limited) {
+    if (result?.decision.limited) {
+      if (onRateLimited) {
+        try {
+          await onRateLimited({ request, routeFamily: result.routeFamily });
+        } catch {
+          // Observation must never change an enforcement decision or retry it.
+        }
+      }
       return NextResponse.json(npCreateApiError("RATE_LIMITED", "Too many requests", 429), {
         status: 429,
         headers: {
           ...securityHeaders,
-          "Retry-After": decision.retryAfterSeconds.toString(),
+          "Retry-After": result.decision.retryAfterSeconds.toString(),
         },
       });
     }
@@ -418,14 +469,19 @@ export function npCreateProxy(options: NpProxyOptions): NpProxyHandler {
     options === null ||
     Array.isArray(options) ||
     (prototype !== Object.prototype && prototype !== null) ||
-    keys.length !== 1 ||
-    keys[0] !== "rateLimiter"
+    !keys.includes("rateLimiter") ||
+    keys.some((key) => key !== "rateLimiter" && key !== "onRateLimited") ||
+    (keys.includes("onRateLimited") && typeof options.onRateLimited !== "function")
   ) {
-    rateLimitConfigurationError("proxy.options", "must be an exact { rateLimiter } object.");
+    rateLimitConfigurationError(
+      "proxy.options",
+      "must be an exact { rateLimiter } or { rateLimiter, onRateLimited } object.",
+    );
   }
   const rateLimiter = npRequireRateLimiterAdapter(options.rateLimiter);
+  const onRateLimited = options.onRateLimited;
   resolveProxyRateLimiter(rateLimiter);
-  return (request) => runProxy(request, rateLimiter);
+  return (request) => runProxy(request, rateLimiter, onRateLimited);
 }
 
 export default proxy;

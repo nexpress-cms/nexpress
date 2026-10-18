@@ -1,5 +1,6 @@
 import { npRequireAgentContractResult } from "./contract.js";
 
+import { npAgentGuardianRouteFamiliesV1 } from "./guardian-contract.js";
 import {
   analyzeCanonicalBody,
   canonicalBodyArray,
@@ -189,6 +190,21 @@ function parseEventPayload(
   const kind = Object.getOwnPropertyDescriptor(value, "kind")?.value;
   if (typeof kind !== "string" || !EVENT_KINDS.has(kind)) {
     failCanonicalBody("invalid-field", `${path}.kind`, "is not a supported event kind");
+  }
+  if (kind === "api.rate-limited") {
+    const record = payloadRecord(value, path, ["kind", "routeFamily", "ipBucket"], state);
+    return {
+      kind,
+      routeFamily: canonicalBodyEnum(
+        record.routeFamily,
+        `${path}.routeFamily`,
+        new Set(npAgentGuardianRouteFamiliesV1),
+      ),
+      ipBucket: {
+        ...parseActorBucket(record.ipBucket, `${path}.ipBucket`, state, "network-address"),
+        purpose: "network-address",
+      },
+    };
   }
   if (kind === "auth.login.failed" || kind === "auth.login.succeeded") {
     const record = payloadRecord(

@@ -1,6 +1,7 @@
 import type { NpCapability } from "../auth/capabilities.js";
 import type { NpNavigationItems } from "../navigation/types.js";
 import type { NpThemeTokensOverlay } from "../theme/types.js";
+import type { NpAgentGuardianRouteFamilyV1 } from "./guardian-contract.js";
 
 export type NpAgentJsonPrimitive = string | number | boolean | null;
 export type NpAgentJsonValue =
@@ -1046,6 +1047,11 @@ export const npAgentIncidentSeverityRank = {
 
 export type NpAgentEventPayload =
   | {
+      kind: "api.rate-limited";
+      routeFamily: NpAgentGuardianRouteFamilyV1;
+      ipBucket: NpAgentActorBucketRefV1 & { purpose: "network-address" };
+    }
+  | {
       kind: "auth.login.failed";
       audience: "staff" | "member";
       outcome: "failed";
@@ -1158,6 +1164,7 @@ export type NpAgentEventPayload =
 
 export type NpAgentEventKind = NpAgentEventPayload["kind"];
 export const npAgentEventKinds = [
+  "api.rate-limited",
   "agent.action.changed",
   "agent.policy.blocked",
   "agent.run.changed",
