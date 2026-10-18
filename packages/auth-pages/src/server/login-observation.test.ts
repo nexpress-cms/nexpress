@@ -50,11 +50,13 @@ function setup(audience: "staff" | "member") {
   const update = vi.fn(() => ({ set: () => ({ where: () => Promise.resolve() }) }));
   const ensureFor = vi.fn().mockResolvedValue(undefined);
   const onLoginFailure = vi.fn().mockResolvedValue(undefined);
+  const onLoginSuccess = vi.fn().mockResolvedValue(undefined);
   const cookies = vi.fn();
   const base = {
     getDb: () => ({ $client: { query }, select, update }),
     ensureFor,
     onLoginFailure,
+    onLoginSuccess,
     site: { name: "Test" },
   };
   const route =
@@ -86,6 +88,7 @@ function setup(audience: "staff" | "member") {
     select,
     update,
     onLoginFailure,
+    onLoginSuccess,
     ensureFor,
     cookies,
     setRows: (next: typeof rows) => {
@@ -97,7 +100,11 @@ function setup(audience: "staff" | "member") {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.verify.mockResolvedValue(false);
-  auth.session.mockResolvedValue({ access: "access", refresh: "refresh" });
+  auth.session.mockResolvedValue({
+    sessionId: "00000000-0000-4000-8000-000000000002",
+    access: "access",
+    refresh: "refresh",
+  });
   auth.hook.mockResolvedValue(undefined);
 });
 for (const audience of ["staff", "member"] as const) {
@@ -209,6 +216,46 @@ for (const audience of ["staff", "member"] as const) {
       expect(state.onLoginFailure).not.toHaveBeenCalled();
       expect(state.cookies).toHaveBeenCalledOnce();
       expect(auth.session).toHaveBeenCalledOnce();
+    });
+
+    it("observes only the persisted successful family and contains collector failures", async () => {
+      const state = setup(audience);
+      state.setRows([user()]);
+      auth.verify.mockResolvedValue(true);
+      state.onLoginSuccess.mockRejectedValueOnce(new Error("collector unavailable"));
+      const untrusted = req({
+        email: "person@example.test",
+        password: "private-candidate",
+        principalId: "untrusted",
+        sessionFamilyId: "untrusted",
+      });
+      expect((await state.route.login(untrusted)).status).toBe(400);
+      expect(state.onLoginSuccess).not.toHaveBeenCalled();
+      const request = req({ email: "person@example.test", password: "private-candidate" });
+      expect((await state.route.login(request)).status).toBe(200);
+      expect(state.onLoginSuccess).toHaveBeenCalledExactlyOnceWith({
+        request,
+        audience,
+        principalId: id,
+        sessionFamilyId: "00000000-0000-4000-8000-000000000002",
+      });
+      expect(Object.keys(state.onLoginSuccess.mock.calls[0][0]).sort()).toEqual([
+        "audience",
+        "principalId",
+        "request",
+        "sessionFamilyId",
+      ]);
+      expect(state.cookies).toHaveBeenCalledOnce();
+      expect(state.onLoginFailure).not.toHaveBeenCalled();
+      auth.session.mockRejectedValueOnce(new Error("session insert failed"));
+      expect(
+        (
+          await state.route.login(
+            req({ email: "person@example.test", password: "private-candidate" }),
+          )
+        ).status,
+      ).toBe(500);
+      expect(state.onLoginSuccess).toHaveBeenCalledOnce();
     });
   });
 }

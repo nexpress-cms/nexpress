@@ -298,6 +298,41 @@ export function ApprovalActionFacts({
 }: {
   review: NonNullable<NpAgentApprovalDetailV1["actionReview"]>;
 }) {
+  if (review.capabilityId === "security.revokeSessions") {
+    return (
+      <section className="space-y-3" aria-label="Guardian session revocation action">
+        <h2 className="text-lg font-semibold">Revoke this exact browser session</h2>
+        <p>
+          This action invalidates access and refresh for the selected session family across the
+          deployment. It cannot be undone. Other session families remain valid and a new sign-in
+          creates a new session. Approval requires a different super administrator with recent
+          staff-primary reauthentication. Execution is a separate explicit request.
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Incident</dt>
+          <dd className="break-all">{review.incidentId}</dd>
+          <dt>Session audience</dt>
+          <dd>{review.target.actorKind}</dd>
+          <dt>Exact session family</dt>
+          <dd className="break-all">{review.target.sessionFamilyId}</dd>
+          <dt>Session created</dt>
+          <dd>{review.target.createdAt}</dd>
+          <dt>Impact</dt>
+          <dd>Deployment · {review.target.affectedSiteCount} sites</dd>
+          <dt>Impact digest</dt>
+          <dd className="break-all">{review.target.impactDigest}</dd>
+          <dt>Current target facts version</dt>
+          <dd className="break-all">{review.expectedTargetVersionDigest}</dd>
+          <dt>Policy</dt>
+          <dd className="break-all">{review.policyDigest}</dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+      </section>
+    );
+  }
   if ("expectedTargetVersionDigest" in review) {
     return (
       <section className="space-y-3" aria-label="Guardian request restriction action">

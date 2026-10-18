@@ -138,3 +138,5 @@ export * from "./member-response-contract.js";
 export * from "./guardian-response-contract.js";
 
 export * from "./restriction-adapter-contract.js";
+
+export * from "./guardian-session-contract.js";

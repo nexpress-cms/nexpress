@@ -1,4 +1,10 @@
 import {
+  npRequireAgentGuardianSessionPlanInputV1,
+  npRequireAgentGuardianSessionExecuteInputV1,
+  type NpAgentGuardianSessionPlanInputV1,
+  type NpAgentGuardianSessionExecuteInputV1,
+} from "../agent-contract/guardian-session-contract.js";
+import {
   npRequireAgentGuardianResponsePlanInputV1,
   npRequireAgentGuardianResponseExecuteInputV1,
   type NpAgentGuardianResponsePlanInputV1,
@@ -114,6 +120,8 @@ type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
   | "agents.evaluations.review"
+  | "agents.incidents.guardian_session_plan"
+  | "agents.incidents.guardian_session_execute"
   | "agents.incidents.guardian_response_plan"
   | "agents.incidents.guardian_response_execute"
   | "agents.incidents.member_response_plan"
@@ -149,6 +157,8 @@ export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
     "agents.evaluations.review": NpAgentEvaluationHistorySaveV1;
+    "agents.incidents.guardian_session_plan": NpAgentGuardianSessionPlanInputV1;
+    "agents.incidents.guardian_session_execute": NpAgentGuardianSessionExecuteInputV1;
     "agents.incidents.guardian_response_plan": NpAgentGuardianResponsePlanInputV1;
     "agents.incidents.guardian_response_execute": NpAgentGuardianResponseExecuteInputV1;
     "agents.incidents.member_response_plan": NpAgentMemberResponsePlanInputV1;
@@ -185,6 +195,10 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.incidents.guardian_session_plan")
+    return npRequireAgentGuardianSessionPlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.guardian_session_execute")
+    return npRequireAgentGuardianSessionExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.guardian_response_plan")
     return npRequireAgentGuardianResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.guardian_response_execute")

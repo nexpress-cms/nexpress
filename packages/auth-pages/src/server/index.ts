@@ -8,6 +8,8 @@ export type {
   GetDbFn,
   NpLoginFailureObservation,
   NpLoginFailureObserver,
+  NpLoginSuccessObservation,
+  NpLoginSuccessObserver,
   NpAuthErrorCode,
   NpAuthMember,
   NpMemberSessionUser,

@@ -25,6 +25,7 @@ import { IncidentEvidence } from "./agent-incident-evidence.js";
 import { IncidentGuardianEvidence } from "./agent-incident-guardian-evidence.js";
 import { IncidentResponse } from "./agent-incident-response.js";
 import { IncidentGuardianResponse } from "./agent-incident-guardian-response.js";
+import { IncidentGuardianSession } from "./agent-incident-guardian-session.js";
 import { IncidentMemberResponse } from "./agent-incident-member-response.js";
 import { IncidentWorkflow } from "./agent-incident-workflow.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
@@ -475,7 +476,10 @@ function IncidentDetail({ id }: { id: string }) {
             incidentId={detail.incident.id}
             onAccessLost={evidenceAccessLost}
           />
-          {!writing && !state.loading && detail.guardianEvidence === undefined ? (
+          {!writing &&
+          !state.loading &&
+          detail.guardianEvidence === undefined &&
+          detail.incident.primarySubject?.kind !== "session" ? (
             <IncidentEvidence
               key={`evidence:${state.generation}:${detail.incident.versionNumber}`}
               detail={detail}
@@ -501,7 +505,8 @@ function IncidentDetail({ id }: { id: string }) {
             />
           ) : null}
           {detail.guardianEvidence === undefined &&
-          detail.incident.primarySubject?.kind !== "member" ? (
+          detail.incident.primarySubject?.kind !== "member" &&
+          detail.incident.primarySubject?.kind !== "session" ? (
             <IncidentResponse
               responsePage={Boolean(responseCursor)}
               onResponsePage={(next) => {
@@ -540,6 +545,23 @@ function IncidentDetail({ id }: { id: string }) {
           {detail.guardianEvidence !== undefined ? (
             <IncidentGuardianResponse
               key={`guardian-response:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              incidentVersion={detail.incident.versionNumber}
+              refreshGeneration={state.generation}
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
+            />
+          ) : null}
+          {detail.incident.primarySubject?.kind === "session" ? (
+            <IncidentGuardianSession
+              key={`guardian-session:${detail.incident.id}:${detail.incident.versionNumber}`}
               incidentId={detail.incident.id}
               incidentVersion={detail.incident.versionNumber}
               refreshGeneration={state.generation}

@@ -191,3 +191,6 @@ export * from "./member-response-service.js";
 export * from "./guardian-response-service.js";
 export * from "./guardian-restriction-adapter.js";
 export * from "./guardian-actor-projection.js";
+
+export * from "./guardian-session-service.js";
+export * from "./guardian-session-observation.js";

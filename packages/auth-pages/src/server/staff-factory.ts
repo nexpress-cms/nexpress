@@ -213,6 +213,18 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       await runHook("auth:afterLogin", {
         user: { id: user.id, email: user.email, role: user.role },
       });
+      if (config.onLoginSuccess) {
+        try {
+          await config.onLoginSuccess({
+            request,
+            audience: "staff",
+            principalId: user.id,
+            sessionFamilyId: session.sessionId,
+          });
+        } catch {
+          // A contained source observation cannot change the completed auth result.
+        }
+      }
 
       return response;
     } catch (error) {
@@ -539,6 +551,18 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       path: "/api/auth/oauth",
       maxAge: 0,
     });
+    if (config.onLoginSuccess) {
+      try {
+        await config.onLoginSuccess({
+          request,
+          audience: "staff",
+          principalId: resolved.user.id,
+          sessionFamilyId: session.sessionId,
+        });
+      } catch {
+        // A contained source observation cannot change the completed auth result.
+      }
+    }
     return response;
   };
 
