@@ -201,6 +201,18 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         refresh: session.refresh,
         csrf,
       });
+      if (config.onLoginSuccess) {
+        try {
+          await config.onLoginSuccess({
+            request,
+            audience: "member",
+            principalId: member.id,
+            sessionFamilyId: session.sessionId,
+          });
+        } catch {
+          // A contained source observation cannot change the completed auth result.
+        }
+      }
       return response;
     } catch (error) {
       if (rejectedIdentifier !== null && config.onLoginFailure) {
@@ -595,6 +607,18 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       refresh: session.refresh,
       csrf,
     });
+    if (config.onLoginSuccess) {
+      try {
+        await config.onLoginSuccess({
+          request,
+          audience: "member",
+          principalId: member.id,
+          sessionFamilyId: session.sessionId,
+        });
+      } catch {
+        // A contained source observation cannot change the completed auth result.
+      }
+    }
     return response;
   };
 

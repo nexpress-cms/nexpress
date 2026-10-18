@@ -8,7 +8,10 @@ import type {
 } from "@nexpress/core/agents";
 import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
 import { resolveSiteForHostname } from "@nexpress/core/sites";
-import type { NpLoginFailureObservation } from "@nexpress/auth-pages/server";
+import type {
+  NpLoginFailureObservation,
+  NpLoginSuccessObservation,
+} from "@nexpress/auth-pages/server";
 import type { NextRequest } from "next/server";
 
 import type { NpProxyRateLimitObserver } from "../../proxy/index.js";
@@ -82,13 +85,38 @@ export async function npObserveInstalledAgentGuardianLoginFailureV1(
   await npCreateAgentGuardianRequestObserverV1({
     guardian,
     ensureReady: () => Promise.resolve(),
-    resolveRequest: async (request) => {
-      // Identical extraction to the auth session's existing request metadata.
-      // The deployment must supply a trusted forwarding/proxy configuration.
-      const networkAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-      if (!networkAddress || isIP(networkAddress) === 0) return null;
-      const site = await resolveSiteForHostname(request.nextUrl.hostname);
-      return site ? { siteId: site.id, networkAddress } : null;
-    },
+    resolveRequest: resolveAuthRequestContext,
   }).onLoginFailure(input);
+}
+
+async function resolveAuthRequestContext(
+  request: NextRequest,
+): Promise<{ siteId: string; networkAddress: string } | null> {
+  // Same metadata as auth; forwarding headers require an explicitly trusted host proxy.
+  const networkAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (!networkAddress || isIP(networkAddress) === 0) return null;
+  const site = await resolveSiteForHostname(request.nextUrl.hostname);
+  return site ? { siteId: site.id, networkAddress } : null;
+}
+
+/** This observer receives a DB-created family from the auth factory, never an HTTP target. */
+export async function npObserveInstalledAgentGuardianLoginSuccessV1(
+  input: NpLoginSuccessObservation,
+): Promise<void> {
+  const guardian = getOptionalAgentStudioServerRuntimeV1()?.guardianSessionObservations;
+  if (!guardian) return;
+  try {
+    const context = await resolveAuthRequestContext(input.request);
+    if (!context) return;
+    await guardian.observe({
+      ...context,
+      audience: input.audience,
+      principalId: input.principalId,
+      sessionFamilyId: input.sessionFamilyId,
+      observationId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+    });
+  } catch {
+    // Observations cannot change a successfully persisted login or retry auth/provider calls.
+  }
 }

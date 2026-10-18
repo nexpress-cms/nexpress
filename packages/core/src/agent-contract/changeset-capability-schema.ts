@@ -596,6 +596,7 @@ export function npCompactAgentWireSchemaV1(
   options: {
     factorShortConstraints?: boolean;
     simplifyStringEnums?: boolean;
+    simplifyClosedRequiredObjects?: boolean;
     inlineSingleUseDefinitions?: boolean;
   } = {},
 ): NpAgentJsonSchema {
@@ -640,22 +641,59 @@ export function npCompactAgentWireSchemaV1(
     // Removing only proven redundant constraints preserves accepted wire values.
     if (
       options.simplifyStringEnums &&
-      Array.isArray(out.enum) &&
-      out.enum.length > 0 &&
-      out.enum.every((item) => typeof item === "string")
+      ((Array.isArray(out.enum) &&
+        out.enum.length > 0 &&
+        out.enum.every((item) => typeof item === "string")) ||
+        typeof out.const === "string")
     ) {
-      const values = out.enum;
+      const values = typeof out.const === "string" ? [out.const] : (out.enum as string[]);
       if (out.type === "string") delete out.type;
       if (
         typeof out.maxLength === "number" &&
-        values.every((value) => Array.from(value).length <= Number(out.maxLength))
+        values.every(
+          (value) =>
+            Array.from(value).length <= Number(out.maxLength) &&
+            value.length <= Number(out.maxLength),
+        )
       )
         delete out.maxLength;
       if (
         typeof out.minLength === "number" &&
-        values.every((value) => Array.from(value).length >= Number(out.minLength))
+        values.every(
+          (value) =>
+            Array.from(value).length >= Number(out.minLength) &&
+            value.length >= Number(out.minLength),
+        )
       )
         delete out.minLength;
+    }
+    // A closed object whose declared properties are all required accepts exactly
+    // the same keys when its property count must equal that declared key count.
+    // This removes repeated required-name arrays without widening validation.
+    if (
+      options.simplifyClosedRequiredObjects &&
+      out.type === "object" &&
+      out.additionalProperties === false &&
+      !out.patternProperties &&
+      out.properties &&
+      typeof out.properties === "object" &&
+      !Array.isArray(out.properties) &&
+      Array.isArray(out.required)
+    ) {
+      const names = Object.keys(out.properties);
+      const required = out.required;
+      if (
+        required.length === names.length &&
+        new Set(required).size === names.length &&
+        names.every((name) => required.includes(name))
+      ) {
+        delete out.required;
+        if (names.length > 0 || typeof out.minProperties === "number")
+          out.minProperties = Math.max(
+            names.length,
+            typeof out.minProperties === "number" ? out.minProperties : 0,
+          );
+      }
     }
     if (!root && out.$schema === inherited) delete out.$schema;
     return out;

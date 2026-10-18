@@ -1,4 +1,9 @@
 import {
+  npRequireAgentApprovalGuardianSessionActionReviewV1,
+  npAgentGuardianSessionTargetSchemaV1,
+  type NpAgentApprovalGuardianSessionActionReviewV1,
+} from "./guardian-session-contract.js";
+import {
   npRequireAgentApprovalGuardianResponseActionReviewV1,
   npAgentGuardianResponseOperationSchemaV1,
   type NpAgentApprovalGuardianResponseActionReviewV1,
@@ -153,9 +158,17 @@ export type NpAgentApprovalActionReviewV1 =
   | NpAgentApprovalModerationActionReviewV1
   | NpAgentApprovalOpsActionReviewV1
   | NpAgentApprovalMemberResponseActionReviewV1
-  | NpAgentApprovalGuardianResponseActionReviewV1;
+  | NpAgentApprovalGuardianResponseActionReviewV1
+  | NpAgentApprovalGuardianSessionActionReviewV1;
 function actionReview(value: unknown): NpAgentApprovalActionReviewV1 {
   const p = "agent.approval.actionReview";
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    value.capabilityId === "security.revokeSessions"
+  )
+    return npRequireAgentApprovalGuardianSessionActionReviewV1(value);
   if (
     value &&
     typeof value === "object" &&
@@ -924,6 +937,15 @@ const approvalDetailSchemaSource = JSON.parse(
           schema({
             actionId: approvalUuidSchema,
             proposalHash: digest,
+            capabilityId: { const: "security.revokeSessions" },
+            incidentId: approvalUuidSchema,
+            expectedTargetVersionDigest: digest,
+            target: npAgentGuardianSessionTargetSchemaV1(),
+            policyDigest: digest,
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
             capabilityId: { enum: ["security.limitActor", "security.removeActorLimit"] },
             incidentId: approvalUuidSchema,
             expectedTargetVersionDigest: digest,
@@ -1004,6 +1026,7 @@ export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(
   {
     factorShortConstraints: true,
     simplifyStringEnums: true,
+    simplifyClosedRequiredObjects: true,
     inlineSingleUseDefinitions: true,
   },
 );

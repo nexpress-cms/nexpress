@@ -1,4 +1,8 @@
 import {
+  npAgentGuardianSessionPlanInputSchemaV1,
+  npAgentGuardianSessionExecuteInputSchemaV1,
+} from "./guardian-session-contract.js";
+import {
   npAgentGuardianResponsePlanInputSchemaV1,
   npAgentGuardianResponseExecuteInputSchemaV1,
 } from "./guardian-response-contract.js";
@@ -647,6 +651,23 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     ...SENSITIVE,
   }),
   operation(
+    "agents.incidents.guardian_session_plan",
+    "POST",
+    "/api/admin/agents/incidents/{id}/guardian-session/plan",
+    { preconditions: ROW, inputKind: "reason", outputKind: "accepted" },
+  ),
+  operation(
+    "agents.incidents.guardian_session_execute",
+    "POST",
+    "/api/admin/agents/incidents/{id}/guardian-session/execute",
+    {
+      preconditions: ROW_PLAN,
+      inputKind: "approval-request",
+      outputKind: "accepted",
+      ...SENSITIVE,
+    },
+  ),
+  operation(
     "agents.incidents.guardian_response_plan",
     "POST",
     "/api/admin/agents/incidents/{id}/guardian-response/plan",
@@ -968,7 +989,8 @@ function preconditionField(
     (id === "agents.incidents.response_execute" ||
       id === "agents.incidents.restore" ||
       id === "agents.incidents.member_response_execute" ||
-      id === "agents.incidents.guardian_response_execute") &&
+      id === "agents.incidents.guardian_response_execute" ||
+      id === "agents.incidents.guardian_session_execute") &&
     kind === "plan-hash"
   )
     return "proposalHash";
@@ -976,6 +998,10 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.incidents.guardian_session_plan")
+    return requireSchema(npAgentGuardianSessionPlanInputSchemaV1());
+  if (seed.id === "agents.incidents.guardian_session_execute")
+    return requireSchema(npAgentGuardianSessionExecuteInputSchemaV1());
   if (seed.id === "agents.incidents.guardian_response_plan")
     return requireSchema(npAgentGuardianResponsePlanInputSchemaV1());
   if (seed.id === "agents.incidents.guardian_response_execute")

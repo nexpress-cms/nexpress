@@ -1410,6 +1410,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
             "TRANSPORT_UNAVAILABLE",
           ];
           const targetCodes = [
+            "APPROVAL_TARGET_CHANGED",
             "CHANGESET_CONFLICT",
             "CHANGESET_NOT_FOUND",
             "MODERATION_CONFLICT",

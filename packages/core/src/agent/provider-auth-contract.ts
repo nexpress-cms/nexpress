@@ -694,6 +694,11 @@ function validateSchemaValue(
       if (!Object.hasOwn(object, key))
         fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path}.${key} is required.`);
     if (
+      typeof schema.minProperties === "number" &&
+      Object.keys(object).length < schema.minProperties
+    )
+      fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} has too few properties.`);
+    if (
       typeof schema.maxProperties === "number" &&
       Object.keys(object).length > schema.maxProperties
     )
@@ -746,6 +751,7 @@ const SUPPORTED_SCHEMA_KEYS = new Set([
   "items",
   "format",
   "maxProperties",
+  "minProperties",
   "patternProperties",
   "maximum",
   "maxItems",
@@ -771,6 +777,11 @@ function requireSupportedSchema(schemaValue: NpAgentJsonSchema, path: string): v
   }
   if (schema.format !== undefined && schema.format !== "uuid" && schema.format !== "date-time")
     fail("PROVIDER_CONTRACT_INVALID", `${path}.format is not supported.`);
+  if (
+    schema.minProperties !== undefined &&
+    (!Number.isSafeInteger(schema.minProperties) || Number(schema.minProperties) < 0)
+  )
+    fail("PROVIDER_CONTRACT_INVALID", `${path}.minProperties is invalid.`);
   if (
     schema.maxProperties !== undefined &&
     (!Number.isSafeInteger(schema.maxProperties) || Number(schema.maxProperties) < 0)

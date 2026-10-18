@@ -10,6 +10,7 @@ vi.mock("@nexpress/core/sites", () => ({ resolveSiteForHostname: owners.publicSi
 import {
   npCreateAgentGuardianRequestObserverV1,
   npObserveInstalledAgentGuardianLoginFailureV1,
+  npObserveInstalledAgentGuardianLoginSuccessV1,
 } from "./guardian-request-observer.js";
 
 const request = (headers: Record<string, string> = {}) =>
@@ -23,6 +24,39 @@ const result = { disposition: "recorded" as const, eventId: null, incidentId: nu
 
 beforeEach(() => vi.resetAllMocks());
 describe("Guardian request source trust boundary", () => {
+  it("records a trusted successful family without copying cookies, query, identifiers, or tokens", async () => {
+    const req = request({
+      "x-forwarded-for": "203.0.113.8",
+      cookie: "private-cookie",
+      "x-np-admin-site": "hostile",
+    });
+    const source = {
+      request: req,
+      audience: "staff" as const,
+      principalId: "00000000-0000-4000-8000-000000000001",
+      sessionFamilyId: "00000000-0000-4000-8000-000000000002",
+    };
+    owners.runtime.mockReturnValue(null);
+    await npObserveInstalledAgentGuardianLoginSuccessV1(source);
+    expect(owners.publicSite).not.toHaveBeenCalled();
+    const observe = vi.fn().mockResolvedValue(result);
+    owners.runtime.mockReturnValue({ guardianSessionObservations: { observe } });
+    owners.publicSite.mockResolvedValue({ id: "public-site" });
+    await npObserveInstalledAgentGuardianLoginSuccessV1(source);
+    expect(observe).toHaveBeenCalledExactlyOnceWith({
+      siteId: "public-site",
+      networkAddress: "203.0.113.8",
+      audience: "staff",
+      principalId: source.principalId,
+      sessionFamilyId: source.sessionFamilyId,
+      observationId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+      occurredAt: expect.any(String),
+    });
+    expect(JSON.stringify(observe.mock.calls)).not.toMatch(/private|hostile/);
+    observe.mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(npObserveInstalledAgentGuardianLoginSuccessV1(source)).resolves.toBeUndefined();
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
   it("does no initialization or resolution when Guardian is unavailable", async () => {
     const ensureReady = vi.fn();
     const resolveRequest = vi.fn();

@@ -29,6 +29,15 @@ export interface NpLoginFailureObservation {
 }
 export type NpLoginFailureObserver = (input: NpLoginFailureObservation) => void | Promise<void>;
 
+/** A newly persisted browser session. This callback never receives passwords or tokens. */
+export interface NpLoginSuccessObservation {
+  request: NextRequest;
+  audience: "staff" | "member";
+  principalId: string;
+  sessionFamilyId: string;
+}
+export type NpLoginSuccessObserver = (input: NpLoginSuccessObservation) => void | Promise<void>;
+
 /**
  * Subset of the per-app member-auth helpers the factory consumes.
  * The app already creates the full set via `createMemberAuthHelpers`
@@ -57,6 +66,8 @@ export interface MemberAuthRoutesConfig {
   authHelpers: MemberAuthHelpersForRoutes;
   /** Optional observation only. Failures never change the authentication outcome. */
   onLoginFailure?: NpLoginFailureObserver;
+  /** Optional trusted session observation; failures never change authentication. */
+  onLoginSuccess?: NpLoginSuccessObserver;
   /**
    * Site name and URL for emailed links. The framework can't
    * read these from `nexpressConfig` itself because the routes

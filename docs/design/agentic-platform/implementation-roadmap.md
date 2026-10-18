@@ -820,7 +820,11 @@ broader collectors and the full R7 gate remain open. The subsequent
 [approved temporary request-limit slice](r7-guardian-request-limits-flow.md) adds
 explicit shared enforcement, distinct-human approval, exact early removal and
 TTL cleanup recovery. Session revocation and unattended responses remain outside
-that slice.
+that slice. The [approved exact-session slice](r7-guardian-session-revocation-flow.md)
+adds trusted login-after-failures evidence, deployment-impact super-admin
+approval, atomic browser-family termination and retained result verification.
+It does not complete the broader collectors, unattended-response policy,
+external integration or full R7 gate.
 
 | ID     | Scope                                                                                                                                              |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |

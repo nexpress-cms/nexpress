@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { npRequireAgentProviderSchemaValueV1 } from "../agent/provider-auth-contract.js";
 import { npCompactAgentWireSchemaV1 } from "./changeset-capability-schema.js";
-import type { NpAgentJsonObject, NpAgentJsonSchema } from "./types.js";
+import type { NpAgentJsonObject, NpAgentJsonSchema, NpAgentJsonValue } from "./types.js";
 
 const dialect = "https://json-schema.org/draft/2020-12/schema";
 
@@ -193,5 +193,103 @@ describe("closed string enum compaction", () => {
         expect(accepts(compact)).toBe(accepts(source));
       }
     expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(source).length);
+  });
+});
+
+describe("closed required object and constant compaction", () => {
+  it("preserves missing and extra property rejection and leaves partially optional shapes unchanged", () => {
+    const source: NpAgentJsonSchema = {
+      $schema: dialect,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        closed: {
+          type: "object",
+          additionalProperties: false,
+          properties: { first: { type: "string", maxLength: 10 }, second: { type: "boolean" } },
+          required: ["first", "second"],
+        },
+        optional: {
+          type: "object",
+          additionalProperties: false,
+          properties: { first: { type: "string", maxLength: 10 }, second: { type: "boolean" } },
+          required: ["first"],
+        },
+        constant: { type: "string", const: "safe", minLength: 1, maxLength: 4 },
+        impossible: { type: "string", const: "safe", maxLength: 3 },
+      },
+      required: ["closed", "optional", "constant"],
+    };
+    const compact = npCompactAgentWireSchemaV1(source, {
+      simplifyClosedRequiredObjects: true,
+      simplifyStringEnums: true,
+    });
+    const accepts = (schema: NpAgentJsonSchema, value: unknown) => {
+      try {
+        npRequireAgentProviderSchemaValueV1(
+          schema,
+          JSON.parse(JSON.stringify(value)) as NpAgentJsonValue,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const base = {
+      closed: { first: "ok", second: true },
+      optional: { first: "ok" },
+      constant: "safe",
+    };
+    for (const value of [
+      base,
+      { ...base, closed: { first: "ok" } },
+      { ...base, closed: { second: true } },
+      { ...base, closed: { ...base.closed, hidden: "private" } },
+      { ...base, optional: { first: "ok", second: false } },
+      { ...base, optional: {} },
+      { ...base, constant: "bad" },
+      { ...base, constant: 1 },
+      { ...base, impossible: "safe" },
+    ])
+      expect(accepts(compact, value)).toBe(accepts(source, value));
+    expect(accepts(compact, base)).toBe(true);
+    expect(
+      (compact.properties as Record<string, Record<string, unknown>>).optional.required,
+    ).toEqual(["first"]);
+    expect(JSON.stringify(compact)).not.toContain('"minLength":1');
+  });
+});
+
+describe("string compaction across Unicode length semantics", () => {
+  it("retains emoji bounds whenever either code-point or UTF-16 length makes the constraint meaningful", () => {
+    const source: NpAgentJsonSchema = {
+      $schema: dialect,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        constantMax: { type: "string", const: "🧪", maxLength: 1 },
+        constantMin: { type: "string", const: "🧪", minLength: 2 },
+        enumMax: { type: "string", enum: ["🧪", "a"], maxLength: 1 },
+        enumMin: { type: "string", enum: ["🧪"], minLength: 2 },
+      },
+      required: [],
+    };
+    const compact = npCompactAgentWireSchemaV1(source, { simplifyStringEnums: true });
+    const accepts = (schema: NpAgentJsonSchema, value: NpAgentJsonValue) => {
+      try {
+        npRequireAgentProviderSchemaValueV1(schema, value);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    for (const key of ["constantMax", "constantMin", "enumMax", "enumMin"]) {
+      for (const value of ["🧪", "a", "", 1, null])
+        expect(accepts(compact, { [key]: value })).toBe(accepts(source, { [key]: value }));
+    }
+    expect(accepts(compact, {})).toBe(true);
+    const properties = compact.properties as Record<string, Record<string, unknown>>;
+    expect(properties.constantMax.maxLength).toBe(1);
+    expect(properties.constantMin.minLength).toBe(2);
   });
 });

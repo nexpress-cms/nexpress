@@ -365,7 +365,7 @@ describe("approval request, challenge and safe review contracts", () => {
       string,
       Record<string, unknown>
     >;
-    expect(properties.item.required).toEqual(expect.arrayContaining(Object.keys(item())));
+    expect(properties.item.minProperties).toBe(Object.keys(item()).length);
     expect(properties.item.additionalProperties).toBe(false);
     for (const id of [
       "agents.changesets.request_approval",
