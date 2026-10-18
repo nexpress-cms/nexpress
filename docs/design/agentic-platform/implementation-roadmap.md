@@ -816,7 +816,11 @@ reversible responses.
 The first [request-observation slice](r7-guardian-observation-flow.md) connects
 bounded, PII-minimized login failures and existing rate-limit decisions to
 deterministic Incidents and the staff workspace. This is observation only;
-broader collectors, response capabilities and the full R7 gate remain open.
+broader collectors and the full R7 gate remain open. The subsequent
+[approved temporary request-limit slice](r7-guardian-request-limits-flow.md) adds
+explicit shared enforcement, distinct-human approval, exact early removal and
+TTL cleanup recovery. Session revocation and unattended responses remain outside
+that slice.
 
 | ID     | Scope                                                                                                                                              |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |

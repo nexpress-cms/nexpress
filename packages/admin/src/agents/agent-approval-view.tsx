@@ -293,11 +293,62 @@ function ApprovalPreview({
   );
 }
 
-function ApprovalActionFacts({
+export function ApprovalActionFacts({
   review,
 }: {
   review: NonNullable<NpAgentApprovalDetailV1["actionReview"]>;
 }) {
+  if ("expectedTargetVersionDigest" in review) {
+    return (
+      <section className="space-y-3" aria-label="Guardian request restriction action">
+        <h2 className="text-lg font-semibold">
+          {review.operation.kind === "limit"
+            ? "Temporarily limit requests on this site"
+            : "Remove this exact request limit"}
+        </h2>
+        <p>
+          {review.operation.kind === "limit"
+            ? "Limit the verified network target only within the selected request scopes and duration. Shared networks may include innocent users. This approval grants no permanent ban or session revocation."
+            : "Remove only the exact temporary request limit created by the selected workflow. Other limits remain effective."}
+        </p>
+        <p className="text-sm">
+          Scope coverage is limited to supported request routes in the installed proxy.
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Incident</dt>
+          <dd className="break-all">{review.incidentId}</dd>
+          {review.operation.kind === "limit" ? (
+            <>
+              <dt>Duration after execution</dt>
+              <dd>{review.operation.durationSeconds} seconds</dd>
+              <dt>Request scopes</dt>
+              <dd className="break-words">{review.operation.actionScopes.join(", ")}</dd>
+            </>
+          ) : (
+            <>
+              <dt>Original restriction action</dt>
+              <dd className="break-all">{review.operation.sourceActionId}</dd>
+              <dt>Exact restriction</dt>
+              <dd className="break-all">{review.operation.restrictionId}</dd>
+            </>
+          )}
+          <dt>Current target facts version</dt>
+          <dd className="break-all">{review.expectedTargetVersionDigest}</dd>
+          <dt>Policy</dt>
+          <dd className="break-all">{review.policyDigest}</dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+        <p>
+          A different authorized staff member must approve. Execution is a separate explicit request
+          and checks current evidence again. Expired access does not prove enforcement cleanup
+          completed.
+        </p>
+      </section>
+    );
+  }
   if ("memberId" in review) {
     const restrict = review.operation.kind === "restrict";
     return (

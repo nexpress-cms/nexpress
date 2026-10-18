@@ -166,3 +166,32 @@ describe("composed approval schema compaction", () => {
     ).toThrow();
   });
 });
+
+describe("closed string enum compaction", () => {
+  it("preserves exact values and conflicting constraints while removing proven redundant bounds", () => {
+    const source: NpAgentJsonSchema = {
+      $schema: dialect,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        valid: { type: "string", enum: ["a", "bb"], minLength: 1, maxLength: 2 },
+        conflicting: { type: "string", enum: ["a", "bb"], maxLength: 1 },
+      },
+      required: ["valid", "conflicting"],
+    };
+    const compact = npCompactAgentWireSchemaV1(source, { simplifyStringEnums: true });
+    for (const valid of ["a", "bb", "c", 1, null])
+      for (const conflicting of ["a", "bb", 1]) {
+        const accepts = (schema: NpAgentJsonSchema) => {
+          try {
+            npRequireAgentProviderSchemaValueV1(schema, { valid, conflicting });
+            return true;
+          } catch {
+            return false;
+          }
+        };
+        expect(accepts(compact)).toBe(accepts(source));
+      }
+    expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(source).length);
+  });
+});

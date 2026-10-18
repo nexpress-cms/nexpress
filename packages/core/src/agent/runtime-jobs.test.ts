@@ -1,3 +1,4 @@
+import type { NpAgentRuntimeControlContextV1 } from "./runtime-controls.js";
 import type { NpJobData } from "../jobs-contract/types.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,6 +86,76 @@ describe("explicit Runtime job registration", () => {
     for (const payload of invalidPayloads)
       await expect(f.handlers.getJobHandler("agent:notificationSend")!(payload)).rejects.toThrow();
     expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("reconciles only an installed Guardian owner for each persisted fanout site while Runtime is disabled", async () => {
+    vi.resetModules();
+    const schema = await import("../db/schema/system.js");
+    const { npCreateDisabledAgentRuntimeSettingsV1 } =
+      await import("../agent-contract/runtime-contract.js");
+    const settings = npCreateDisabledAgentRuntimeSettingsV1();
+    const siteRows = [{ id: "site-b" }, { id: "site-c" }];
+    interface Query {
+      where(): Query;
+      orderBy(): Query;
+      limit(): Promise<Array<{ id: string }>>;
+    }
+    const db = {
+      select: () => ({
+        from: (table: unknown) => {
+          const query: Query = {
+            where: () => query,
+            orderBy: () => query,
+            limit: () => Promise.resolve(table === schema.npSites ? siteRows : []),
+          };
+          return query;
+        },
+      }),
+      insert: () => ({ values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) }),
+    };
+    // Replace only the transaction/source seam. The registered job still owns actual fanout/context behavior.
+    vi.doMock("./runtime-controls.js", () => ({
+      npWithAgentRuntimeControlTransactionV1: <T>(
+        siteId: string,
+        operation: (context: NpAgentRuntimeControlContextV1) => Promise<T>,
+      ) =>
+        operation({
+          db: db as unknown as NpAgentRuntimeControlContextV1["db"],
+          siteId,
+          settings,
+          revision: 1,
+          control: { revision: 1, currentResumePlan: null, lastResumeReceipt: null },
+        }),
+    }));
+    try {
+      const local = await fixture();
+      const seen: Array<string | null> = [];
+      const reconcile = vi.fn(async (_input: { siteId: string; limit?: number }) => {
+        seen.push(await local.context.getCurrentSiteId());
+        return { checked: 0, resolved: 0 };
+      });
+      const installed = local.createAgentRuntimeJobsV1({
+        ...local.options,
+        guardianRestrictions: { reconcile },
+      });
+      expect(reconcile).not.toHaveBeenCalled();
+      await local.context.withCurrentSite("site-a", async () => {
+        await installed.reconcile();
+        expect(await local.context.getCurrentSiteId()).toBe("site-a");
+      });
+      expect(settings.enabled).toBe(false);
+      expect(reconcile.mock.calls.map(([input]) => input)).toEqual([
+        { siteId: "site-b", limit: 25 },
+        { siteId: "site-c", limit: 25 },
+      ]);
+      expect(seen).toEqual(["site-b", "site-c"]);
+      await local.createAgentRuntimeJobsV1(local.options).reconcile();
+      expect(reconcile).toHaveBeenCalledTimes(2);
+      expect(local.dispatch).not.toHaveBeenCalled();
+      expect(local.process).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("./runtime-controls.js");
+      vi.resetModules();
+    }
   });
   it("rejects invalid explicit coordination site with a stable error", () => {
     expect(() =>

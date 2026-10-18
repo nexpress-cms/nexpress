@@ -7,6 +7,12 @@ import {
   npRequireAgentIncidentNotificationsV1,
   npRequireAgentIncidentNotificationDeliveriesV1,
   npRequireAgentMemberResponseV1,
+  npRequireAgentGuardianResponseV1,
+  npRequireAgentGuardianResponsePlanInputV1,
+  npRequireAgentGuardianResponseExecuteInputV1,
+  npRequireAgentApprovalDetailV1,
+  type NpAgentGuardianResponsePlanInputV1,
+  type NpAgentGuardianResponseExecuteInputV1,
   type NpAgentIncidentEvidenceItemV1,
   type NpAgentIncidentMemberReportEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
@@ -106,7 +112,7 @@ function detail() {
   });
 }
 
-test("Guardian observations show verified lower bounds without content response controls", async ({
+test("Guardian observations and explicit temporary limits preserve approval and recovery boundaries", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -187,6 +193,134 @@ test("Guardian observations show verified lower bounds without content response 
   await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
     route.fulfill({ json: result }),
   );
+  const hash = `cj1:sha256:${"a".repeat(43)}`;
+  const expiresAt = "2026-10-18T01:00:00.000Z";
+  const approvalRequestedAt = "2026-10-18T00:50:00.000Z";
+  let planState: "approval_pending" | "approved" | "executing" | "succeeded" | null = null;
+  let operation: NpAgentGuardianResponsePlanInputV1["operation"] = {
+    kind: "limit",
+    durationSeconds: 600,
+    actionScopes: ["agent.gateway"],
+  };
+  let active = false;
+  const planCommands: NpAgentGuardianResponsePlanInputV1[] = [];
+  const executeCommands: NpAgentGuardianResponseExecuteInputV1[] = [];
+  const responseRoot = `**/api/admin/agents/incidents/${id}/guardian-response`;
+  await page.route(responseRoot, (route) =>
+    route.fulfill({
+      json: npRequireAgentGuardianResponseV1({
+        schemaVersion: "np.agent-guardian-response.v1",
+        incidentId: id,
+        incidentVersion: 1,
+        targetVersionDigest: hash,
+        maximumDurationSeconds: 600,
+        allowedScopes: ["agent.gateway"],
+        canLimit: !active && planState === null,
+        truncated: false,
+        restrictions: active
+          ? [
+              {
+                restrictionId: signalId,
+                sourceActionId: id,
+                expiresAt,
+                state: "active",
+                rowVersion: 2,
+                lastErrorCode: null,
+                canRemove: true,
+              },
+            ]
+          : [],
+        plans:
+          planState === null
+            ? []
+            : [
+                {
+                  actionId: id,
+                  approvalId: id,
+                  proposalHash: hash,
+                  capabilityId:
+                    operation.kind === "limit"
+                      ? "security.limitActor"
+                      : "security.removeActorLimit",
+                  operation,
+                  state: planState,
+                  approvalExpiresAt: expiresAt,
+                  canExecute: planState === "approved" || planState === "executing",
+                },
+              ],
+      }),
+    }),
+  );
+  await page.route(`${responseRoot}/plan`, (route) => {
+    const command = npRequireAgentGuardianResponsePlanInputV1(route.request().postDataJSON());
+    planCommands.push(command);
+    if (planCommands.length === 1) return route.abort("failed");
+    operation = command.operation;
+    planState = "approval_pending";
+    return route.fulfill({ json: { resourceId: id, replayed: planCommands.length === 2 } });
+  });
+  await page.route(`${responseRoot}/execute`, (route) => {
+    executeCommands.push(
+      npRequireAgentGuardianResponseExecuteInputV1(route.request().postDataJSON()),
+    );
+    planState = executeCommands.length === 1 ? "executing" : "succeeded";
+    active = executeCommands.length > 1;
+    return route.fulfill({ json: { resourceId: id, replayed: executeCommands.length > 1 } });
+  });
+  await page.route(`**/api/admin/agents/approvals/${id}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentApprovalDetailV1({
+        schemaVersion: "np.agent-approval-detail.v1",
+        review: null,
+        rollbackReview: null,
+        item: {
+          schemaVersion: "np.agent-approval-list-item.v1",
+          version: 1,
+          approval: {
+            id,
+            generation: 1,
+            state: "pending",
+            statementHash: hash,
+            requiredHumanCapabilities: ["admin.manage"],
+            requiredHumanPredicates: [],
+            requestedAt: approvalRequestedAt,
+            expiresAt,
+            decidedAt: null,
+          },
+          target: { kind: "action", actionId: id, runId: null, agentId: null, proposalHash: hash },
+          intendedOperation: null,
+          scheduledFor: null,
+          statementHash: hash,
+          reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+          allowedDecisions: [],
+          risk: "sensitive",
+          capabilityId: "security.limitActor",
+          capabilityContractVersion: 1,
+          capabilityFingerprint: hash,
+          policyHashes: [],
+          requiresLivePreview: false,
+          reviewSummary: {
+            operationCount: 1,
+            targetCount: 1,
+            previewState: null,
+            checksRun: null,
+            rollbackPlan: "unavailable",
+          },
+          requiredScopes: ["security:execute"],
+          requester: { kind: "staff", id },
+        },
+        actionReview: {
+          actionId: id,
+          proposalHash: hash,
+          capabilityId: "security.limitActor",
+          incidentId: id,
+          expectedTargetVersionDigest: hash,
+          operation: { kind: "limit", durationSeconds: 600, actionScopes: ["agent.gateway"] },
+          policyDigest: hash,
+        },
+      }),
+    }),
+  );
   await page.goto(`/admin/agents/incidents/${id}`);
   const observations = page.getByRole("region", { name: "Guardian observations", exact: true });
   await expect(observations.getByText("Requests limited", { exact: true })).toBeVisible();
@@ -214,6 +348,79 @@ test("Guardian observations show verified lower bounds without content response 
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     .toBe(true);
+  expect(contentRequests).toEqual([]);
+  expect(mutations).toEqual([]);
+  const response = page.getByRole("region", {
+    name: "Guardian temporary request limits",
+    exact: true,
+  });
+  await response.getByLabel("Restriction duration in seconds").fill("600");
+  await response.getByRole("checkbox", { name: "agent.gateway", exact: true }).check();
+  await response
+    .getByRole("button", { name: "Prepare temporary request limit", exact: true })
+    .click();
+  await response
+    .getByRole("button", { name: "Retry unchanged Guardian response request", exact: true })
+    .click();
+  await expect(
+    response.getByRole("link", { name: "Review human approval", exact: true }),
+  ).toBeVisible();
+  expect(planCommands).toHaveLength(2);
+  expect(planCommands[1]).toEqual(planCommands[0]);
+  expect(planCommands[0]).toMatchObject({
+    expectedVersion: 1,
+    expectedTargetVersionDigest: hash,
+    operation: { kind: "limit", durationSeconds: 600, actionScopes: ["agent.gateway"] },
+  });
+  await response.getByRole("link", { name: "Review human approval", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/approvals/${id}$`));
+  const approval = page.getByRole("region", {
+    name: "Guardian request restriction action",
+    exact: true,
+  });
+  await expect(
+    approval.getByRole("heading", { name: "Temporarily limit requests on this site", exact: true }),
+  ).toBeVisible();
+  await expect(approval.getByText("600 seconds", { exact: true })).toBeVisible();
+  await expect(approval.getByText("agent.gateway", { exact: true })).toBeVisible();
+  await expect(approval.locator("button")).toHaveCount(0);
+  // This UI fixture supplies externally approved facts. The database integration owns signed distinct-human approval proof.
+  planState = "approved";
+  await page.goBack();
+  await expect(
+    response.getByRole("button", { name: "Execute this approved Guardian response", exact: true }),
+  ).toBeVisible();
+  await response
+    .getByRole("button", { name: "Execute this approved Guardian response", exact: true })
+    .click();
+  await expect(response.getByText(/Awaiting verification/)).toBeVisible();
+  await response.getByRole("button", { name: "Check result", exact: true }).click();
+  await expect(
+    response.getByText(`Restriction ${signalId} · active`, { exact: true }),
+  ).toBeVisible();
+  expect(executeCommands).toHaveLength(2);
+  for (const command of executeCommands)
+    expect(command).toMatchObject({
+      expectedVersion: 1,
+      actionId: id,
+      approvalId: id,
+      proposalHash: hash,
+    });
+  await response
+    .getByRole("button", { name: "Prepare early removal of this limit", exact: true })
+    .click();
+  await expect(
+    response.getByText("Remove the selected request limit · approval_pending", { exact: true }),
+  ).toBeVisible();
+  expect(planCommands.at(-1)?.operation).toEqual({
+    kind: "remove",
+    sourceActionId: id,
+    restrictionId: signalId,
+  });
+  await expect(page.getByText(actorBucket, { exact: false })).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
   const screenshot = testInfo.outputPath("incident-guardian-observations-390.png");
   await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
   await testInfo.attach("Guardian observations and Incident handling", {
@@ -221,7 +428,7 @@ test("Guardian observations show verified lower bounds without content response 
     contentType: "image/png",
   });
   expect(contentRequests).toEqual([]);
-  expect(mutations).toEqual([]);
+  expect(mutations).toHaveLength(5);
 });
 
 test("Member response retains its duration draft while Incident polling refreshes current policy", async ({

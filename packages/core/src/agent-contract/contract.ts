@@ -37,7 +37,7 @@ import {
 } from "./types.js";
 
 export const npAgentContractLimits = {
-  coreCapabilityDescriptors: 23,
+  coreCapabilityDescriptors: 24,
   coreRecipeDefinitions: 5,
   changeSetOperations: 500,
   changeSetCollections: 64,

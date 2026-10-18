@@ -6,6 +6,7 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { npCreateApiError } from "@nexpress/core/api-contract";
+import { npAuthUuidPattern } from "@nexpress/core/auth-contract";
 import type { NpAgentGuardianRouteFamilyV1 } from "@nexpress/core/agent-contract";
 
 import {
@@ -27,7 +28,18 @@ export interface NpProxyOptions {
   /** Optional source installed in this proxy runtime. The host owns trusted
    * site/address resolution and initialization; application registries may differ. */
   readonly onRateLimited?: NpProxyRateLimitObserver;
+  /** Explicit request enforcement in this proxy's runtime. Absence performs no Guardian work. */
+  readonly onGuardianRequest?: NpProxyGuardianRequestGuard;
 }
+
+export interface NpProxyGuardianRequestDenialV1 {
+  schemaVersion: "np.agent-guardian-request-denial.v1";
+  restrictionId: string;
+  expiresAt: string;
+}
+export type NpProxyGuardianRequestGuard = (
+  request: NextRequest,
+) => Promise<NpProxyGuardianRequestDenialV1 | null>;
 
 export type NpProxyRateLimitObserver = (input: {
   request: NextRequest;
@@ -35,6 +47,25 @@ export type NpProxyRateLimitObserver = (input: {
 }) => void | Promise<void>;
 
 export type NpProxyHandler = (request: NextRequest) => Promise<NextResponse>;
+const guardianRestrictionIdPattern = new RegExp(npAuthUuidPattern, "u");
+
+/** Request latency stays bounded; the installed guard owns cancellation and in-flight limits. */
+function boundedGuardianGuard(guard: NpProxyGuardianRequestGuard): NpProxyGuardianRequestGuard {
+  return async (request) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = Promise.resolve().then(() => guard(request));
+    try {
+      return await Promise.race([
+        work,
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 500);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+}
 
 // Environment is immutable for the lifetime of a Next server process.
 // Parse once at module evaluation so malformed intent fails before the
@@ -293,11 +324,35 @@ async function runProxy(
   request: NextRequest,
   rateLimiter?: NpRateLimiterAdapter,
   onRateLimited?: NpProxyRateLimitObserver,
+  onGuardianRequest?: NpProxyGuardianRequestGuard,
 ) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
 
   if (pathname.startsWith("/api/")) {
+    if (onGuardianRequest) {
+      try {
+        const denial = await onGuardianRequest(request);
+        const remaining = denial ? Date.parse(denial.expiresAt) - Date.now() : 0;
+        if (
+          denial &&
+          Object.getPrototypeOf(denial) === Object.prototype &&
+          Object.keys(denial).length === 3 &&
+          denial.schemaVersion === "np.agent-guardian-request-denial.v1" &&
+          guardianRestrictionIdPattern.test(denial.restrictionId) &&
+          Number.isFinite(remaining) &&
+          remaining > 0 &&
+          remaining <= 3_600_000 &&
+          new Date(denial.expiresAt).toISOString() === denial.expiresAt
+        )
+          return NextResponse.json(npCreateApiError("RATE_LIMITED", "Too many requests", 429), {
+            status: 429,
+            headers: { ...securityHeaders, "Retry-After": Math.ceil(remaining / 1000).toString() },
+          });
+      } catch {
+        // Unavailable or malformed Guardian evidence falls back to existing controls.
+      }
+    }
     const ip = getClientIp(request);
     const result = await checkRequestRateLimit(ip, pathname, rateLimiter);
 
@@ -470,18 +525,24 @@ export function npCreateProxy(options: NpProxyOptions): NpProxyHandler {
     Array.isArray(options) ||
     (prototype !== Object.prototype && prototype !== null) ||
     !keys.includes("rateLimiter") ||
-    keys.some((key) => key !== "rateLimiter" && key !== "onRateLimited") ||
-    (keys.includes("onRateLimited") && typeof options.onRateLimited !== "function")
+    keys.some(
+      (key) => key !== "rateLimiter" && key !== "onRateLimited" && key !== "onGuardianRequest",
+    ) ||
+    (keys.includes("onRateLimited") && typeof options.onRateLimited !== "function") ||
+    (keys.includes("onGuardianRequest") && typeof options.onGuardianRequest !== "function")
   ) {
     rateLimitConfigurationError(
       "proxy.options",
-      "must be an exact { rateLimiter } or { rateLimiter, onRateLimited } object.",
+      "must be an exact { rateLimiter } object with optional onRateLimited and onGuardianRequest functions.",
     );
   }
   const rateLimiter = npRequireRateLimiterAdapter(options.rateLimiter);
   const onRateLimited = options.onRateLimited;
+  const onGuardianRequest = options.onGuardianRequest
+    ? boundedGuardianGuard(options.onGuardianRequest)
+    : undefined;
   resolveProxyRateLimiter(rateLimiter);
-  return (request) => runProxy(request, rateLimiter, onRateLimited);
+  return (request) => runProxy(request, rateLimiter, onRateLimited, onGuardianRequest);
 }
 
 export default proxy;

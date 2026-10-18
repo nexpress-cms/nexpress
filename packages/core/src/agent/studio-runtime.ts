@@ -1,3 +1,4 @@
+import type { NpAgentGuardianResponseServiceV1 } from "./guardian-response-service.js";
 import type { NpAgentMemberResponseServiceV1 } from "./member-response-service.js";
 import type { NpAgentGuardianObservationServiceV1 } from "./guardian-observation-service.js";
 import type { NpAgentEvaluationHistoryServiceV1 } from "./evaluation-history-service.js";
@@ -28,6 +29,7 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import { NpServiceUnavailableError } from "../errors.js";
 
 export interface NpAgentStudioServerRuntimeV1 {
+  guardianResponses?: NpAgentGuardianResponseServiceV1 | null;
   guardian?: NpAgentGuardianObservationServiceV1 | null;
   evaluationHistory?: NpAgentEvaluationHistoryServiceV1 | null;
   memberResponses?: NpAgentMemberResponseServiceV1 | null;
@@ -52,6 +54,7 @@ export interface NpAgentStudioServerRuntimeV1 {
 }
 
 export interface NpAgentStudioServerRuntimeOptionsV1 {
+  guardianResponses?: NpAgentGuardianResponseServiceV1;
   guardian?: NpAgentGuardianObservationServiceV1;
   evaluationHistory?: NpAgentEvaluationHistoryServiceV1;
   memberResponses?: NpAgentMemberResponseServiceV1;
@@ -114,6 +117,7 @@ export function createAgentStudioServerRuntimeV1(
     throw new Error("Agent preview runtime requires the ChangeSet service.");
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
+    guardianResponses: options.guardianResponses ?? null,
     guardian: options.guardian ?? null,
     evaluationHistory: options.evaluationHistory ?? null,
     memberResponses: options.memberResponses ?? null,

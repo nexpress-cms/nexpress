@@ -24,6 +24,7 @@ import { IncidentAssignment } from "./agent-incident-assignment.js";
 import { IncidentEvidence } from "./agent-incident-evidence.js";
 import { IncidentGuardianEvidence } from "./agent-incident-guardian-evidence.js";
 import { IncidentResponse } from "./agent-incident-response.js";
+import { IncidentGuardianResponse } from "./agent-incident-guardian-response.js";
 import { IncidentMemberResponse } from "./agent-incident-member-response.js";
 import { IncidentWorkflow } from "./agent-incident-workflow.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
@@ -534,6 +535,23 @@ function IncidentDetail({ id }: { id: string }) {
                   "This response plan or its target changed. Reload and review the current evidence before preparing or executing a response.",
                 )
               }
+            />
+          ) : null}
+          {detail.guardianEvidence !== undefined ? (
+            <IncidentGuardianResponse
+              key={`guardian-response:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              incidentVersion={detail.incident.versionNumber}
+              refreshGeneration={state.generation}
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
             />
           ) : null}
           {detail.guardianEvidence === undefined &&

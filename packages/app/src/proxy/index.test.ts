@@ -17,6 +17,7 @@ async function loadModules() {
 
 describe("shared application proxy rate limiting", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     const core = await import("@nexpress/core/rate-limit");
     core.setRateLimiter(null);
@@ -38,6 +39,80 @@ describe("shared application proxy rate limiting", () => {
       status: 429,
     });
     expect(check).toHaveBeenCalledWith(expect.any(String), 10, 60_000);
+  });
+
+  it("enforces an explicit temporary Guardian denial before counting ordinary requests", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    const onRateLimited = vi.fn();
+    const onGuardianRequest = vi.fn().mockResolvedValue({
+      schemaVersion: "np.agent-guardian-request-denial.v1",
+      restrictionId: "00000000-0000-4000-8000-000000000001",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onRateLimited,
+      onGuardianRequest,
+    });
+    const req = request();
+    const response = await handler(req);
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(Number(response.headers.get("Retry-After"))).toBeLessThanOrEqual(60);
+    expect(onGuardianRequest).toHaveBeenCalledExactlyOnceWith(req);
+    expect(check).not.toHaveBeenCalled();
+    expect(onRateLimited).not.toHaveBeenCalled();
+    expect(await response.text()).not.toContain("00000000");
+  });
+
+  it("falls back to ordinary controls for unavailable, malformed and expired Guardian decisions", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 17 });
+    const onGuardianRequest = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("unavailable"))
+      .mockResolvedValueOnce({
+        schemaVersion: "np.agent-guardian-request-denial.v1",
+        restrictionId: "arbitrary",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        schemaVersion: "np.agent-guardian-request-denial.v1",
+        restrictionId: "00000000-0000-4000-8000-000000000001",
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onGuardianRequest,
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await handler(request());
+      expect(response.status).toBe(429);
+      expect(response.headers.get("Retry-After")).toBe("17");
+    }
+    expect(check).toHaveBeenCalledTimes(3);
+    await handler(request("/en"));
+    expect(onGuardianRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds a stalled explicit Guardian guard and resumes ordinary rate limiting", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    vi.useFakeTimers();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 19 });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onGuardianRequest: () => new Promise(() => undefined),
+    });
+    const pending = handler(request());
+    await vi.advanceTimersByTimeAsync(500);
+    const response = await pending;
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("19");
+    expect(check).toHaveBeenCalledOnce();
   });
 
   it("rejects a custom adapter when runtime intent still says memory", async () => {

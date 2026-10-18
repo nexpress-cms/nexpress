@@ -1,4 +1,10 @@
 import {
+  npRequireAgentGuardianResponsePlanInputV1,
+  npRequireAgentGuardianResponseExecuteInputV1,
+  type NpAgentGuardianResponsePlanInputV1,
+  type NpAgentGuardianResponseExecuteInputV1,
+} from "../agent-contract/guardian-response-contract.js";
+import {
   npRequireAgentMemberResponsePlanInputV1,
   npRequireAgentMemberResponseExecuteInputV1,
   type NpAgentMemberResponsePlanInputV1,
@@ -108,6 +114,8 @@ type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
   | "agents.evaluations.review"
+  | "agents.incidents.guardian_response_plan"
+  | "agents.incidents.guardian_response_execute"
   | "agents.incidents.member_response_plan"
   | "agents.incidents.member_response_execute"
   | "agents.incidents.response_plan"
@@ -141,6 +149,8 @@ export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
     "agents.evaluations.review": NpAgentEvaluationHistorySaveV1;
+    "agents.incidents.guardian_response_plan": NpAgentGuardianResponsePlanInputV1;
+    "agents.incidents.guardian_response_execute": NpAgentGuardianResponseExecuteInputV1;
     "agents.incidents.member_response_plan": NpAgentMemberResponsePlanInputV1;
     "agents.incidents.member_response_execute": NpAgentMemberResponseExecuteInputV1;
     "agents.incidents.response_plan": NpAgentIncidentResponsePlanInputV1;
@@ -175,6 +185,10 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.incidents.guardian_response_plan")
+    return npRequireAgentGuardianResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.guardian_response_execute")
+    return npRequireAgentGuardianResponseExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.member_response_plan")
     return npRequireAgentMemberResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.member_response_execute")

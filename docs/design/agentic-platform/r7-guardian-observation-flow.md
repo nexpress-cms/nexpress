@@ -202,3 +202,8 @@ authz/audit/integrity/jobs/health collectors, external security adapters,
 model-assisted summaries, security export/Doctor/recovery and the complete
 adversarial/threat-review gate remain open. Automatic responses and actual
 production attack-detection usefulness have not been established.
+
+The later [approved temporary request-limit slice](r7-guardian-request-limits-flow.md)
+adds a separate explicitly installed durable request-restriction owner and proxy
+enforcement. Its approval, expiry and recovery evidence belongs to that flow;
+the observation-only verification above does not establish those effects.

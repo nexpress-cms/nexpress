@@ -39,6 +39,9 @@ vi.mock("./agent-incident-evidence.js", () => ({
 vi.mock("./agent-incident-response.js", () => ({
   IncidentResponse: () => <button>Quarantine or restore content</button>,
 }));
+vi.mock("./agent-incident-guardian-response.js", () => ({
+  IncidentGuardianResponse: () => <p>Guardian request response</p>,
+}));
 vi.mock("./agent-incident-member-response.js", () => ({
   IncidentMemberResponse: () => <button>Restrict member</button>,
 }));

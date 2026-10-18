@@ -1,5 +1,9 @@
-import { createHash, createHmac } from "node:crypto";
-import { isIP } from "node:net";
+import {
+  createAgentGuardianActorProjectionV1,
+  NP_AGENT_GUARDIAN_ACTOR_PROJECTION_FINGERPRINT_V1,
+  npNormalizeAgentGuardianNetworkAddressV1,
+} from "./guardian-actor-projection.js";
+import { createHash } from "node:crypto";
 import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npAgentEvents, npAgentSignals } from "../db/schema/agent.js";
@@ -46,13 +50,7 @@ type EventRow = typeof npAgentEvents.$inferSelect;
 const components = ["auth.guardian", "api.guardian"];
 const hash = (value: unknown) =>
   createHash("sha256").update(serializeAgentCanonicalJson(value)).digest("base64url");
-const projection = {
-  schemaVersion: "np.agent-guardian-actor-projection.v1",
-  algorithm: "hmac-sha256",
-  normalization: "canonical-ip-or-trimmed-lowercase-login",
-  version: 1,
-};
-const projectionFingerprint = `cj1:sha256:${hash(projection)}`;
+const projectionFingerprint = NP_AGENT_GUARDIAN_ACTOR_PROJECTION_FINGERPRINT_V1;
 function unavailable(): never {
   throw new NpAgentGatewayError(
     "GUARDIAN_OBSERVATION_UNAVAILABLE",
@@ -63,10 +61,12 @@ function unavailable(): never {
 const same = (a: unknown, b: unknown) =>
   serializeAgentCanonicalJson(a) === serializeAgentCanonicalJson(b);
 
-/** Canonical IP text prevents IPv6 spelling variants from creating different buckets. */
 function network(value: unknown): string {
-  if (typeof value !== "string" || value.length > 64 || !isIP(value)) return unavailable();
-  return isIP(value) === 6 ? new URL(`http://[${value}]/`).hostname.slice(1, -1) : value;
+  try {
+    return npNormalizeAgentGuardianNetworkAddressV1(value);
+  } catch {
+    return unavailable();
+  }
 }
 
 /** Trusted source input only. Raw values live only until the HMAC projection;
@@ -226,33 +226,10 @@ export function createAgentGuardianObservationServiceV1(
     typeof options.events?.record !== "function"
   )
     unavailable();
-  const key = new Uint8Array(options.actorKey.bytes),
-    keyId = options.actorKey.id;
+  const projection = createAgentGuardianActorProjectionV1(options.actorKey);
   const now = options.now ?? (() => new Date());
-  function bucket(
-    siteId: string,
-    purpose: NpAgentActorBucketRefV1["purpose"],
-    value: string,
-  ): NpAgentActorBucketRefV1 {
-    return {
-      purpose,
-      projectionVersion: 1,
-      projectionFingerprint,
-      keyId,
-      bucket: createHmac("sha256", key)
-        .update(
-          serializeAgentCanonicalJson({
-            domain: "np.agent-guardian-actor.v1",
-            siteId,
-            purpose,
-            projectionFingerprint,
-            keyId,
-            value,
-          }),
-        )
-        .digest("base64url"),
-    };
-  }
+  const bucket = (siteId: string, purpose: NpAgentActorBucketRefV1["purpose"], value: string) =>
+    projection.project({ siteId, purpose, value });
   let inFlight = 0;
   return {
     async observe(input) {

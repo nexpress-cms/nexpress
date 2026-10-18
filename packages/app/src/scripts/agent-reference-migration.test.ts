@@ -23,6 +23,8 @@ import {
   npEnsureAgentReferenceMigrationV9,
   npAgentReferenceMigrationSqlV10,
   npEnsureAgentReferenceMigrationV10,
+  npAgentReferenceMigrationSqlV11,
+  npEnsureAgentReferenceMigrationV11,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -375,4 +377,45 @@ it("appends evaluation history guards without changing the historical V1 invento
   await expect(
     npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration }),
   ).rejects.toThrow("differs");
+});
+
+it("appends Guardian workflow/effect fences after both tables while preserving shipped migration generations", async () => {
+  const migrationsFolder = await folder();
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0003.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV11(options);
+  expect(createCustomMigration).not.toHaveBeenCalled();
+  await writeFile(
+    join(migrationsFolder, "0002.sql"),
+    'CREATE TABLE "np_agent_actor_restrictions" ();',
+  );
+  await expect(npEnsureAgentReferenceMigrationV11(options)).rejects.toThrow("incomplete");
+  await writeFile(
+    join(migrationsFolder, "0002.sql"),
+    'CREATE TABLE "np_agent_actor_restrictions" ();\nCREATE TABLE "np_agent_restriction_enforcements" ();',
+  );
+  await expect(npEnsureAgentReferenceMigrationV11(options)).rejects.toThrow("incomplete");
+  const baseline = npAgentReferenceMigrationSqlV1(),
+    evaluation = npAgentReferenceMigrationSqlV10();
+  await writeFile(join(migrationsFolder, "0000.sql"), baseline);
+  await writeFile(join(migrationsFolder, "0001.sql"), evaluation);
+  await npEnsureAgentReferenceMigrationV11(options);
+  const generated = await readFile(join(migrationsFolder, "0003.sql"), "utf8");
+  expect(generated).toBe(npAgentReferenceMigrationSqlV11());
+  for (const table of ["np_agent_actor_restrictions", "np_agent_restriction_enforcements"]) {
+    expect(baseline).not.toContain(`ON public."${table}"`);
+    expect(generated).toContain(`BEFORE INSERT OR UPDATE OR DELETE ON public."${table}"`);
+    expect(generated).toContain(
+      "FOR EACH STATEMENT EXECUTE FUNCTION public.np_agent_reference_statement_v1()",
+    );
+    expect(generated).toContain("FOR EACH ROW EXECUTE FUNCTION public.np_agent_reference_row_v1()");
+  }
+  expect(await readFile(join(migrationsFolder, "0000.sql"), "utf8")).toBe(baseline);
+  expect(await readFile(join(migrationsFolder, "0001.sql"), "utf8")).toBe(evaluation);
+  await npEnsureAgentReferenceMigrationV11(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(join(migrationsFolder, "0003.sql"), generated + "-- tampered");
+  await expect(npEnsureAgentReferenceMigrationV11(options)).rejects.toThrow("differs");
 });

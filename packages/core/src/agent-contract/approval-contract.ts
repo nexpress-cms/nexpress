@@ -1,4 +1,9 @@
 import {
+  npRequireAgentApprovalGuardianResponseActionReviewV1,
+  npAgentGuardianResponseOperationSchemaV1,
+  type NpAgentApprovalGuardianResponseActionReviewV1,
+} from "./guardian-response-contract.js";
+import {
   npRequireAgentOpsPlanInputV1,
   npAgentOpsPlanInputSchemaV1,
   type NpAgentExecutableOpsPlanInputV1,
@@ -147,9 +152,18 @@ export interface NpAgentApprovalOpsActionReviewV1 {
 export type NpAgentApprovalActionReviewV1 =
   | NpAgentApprovalModerationActionReviewV1
   | NpAgentApprovalOpsActionReviewV1
-  | NpAgentApprovalMemberResponseActionReviewV1;
+  | NpAgentApprovalMemberResponseActionReviewV1
+  | NpAgentApprovalGuardianResponseActionReviewV1;
 function actionReview(value: unknown): NpAgentApprovalActionReviewV1 {
   const p = "agent.approval.actionReview";
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    (value.capabilityId === "security.limitActor" ||
+      value.capabilityId === "security.removeActorLimit")
+  )
+    return npRequireAgentApprovalGuardianResponseActionReviewV1(value);
   if (
     value &&
     typeof value === "object" &&
@@ -910,6 +924,15 @@ const approvalDetailSchemaSource = JSON.parse(
           schema({
             actionId: approvalUuidSchema,
             proposalHash: digest,
+            capabilityId: { enum: ["security.limitActor", "security.removeActorLimit"] },
+            incidentId: approvalUuidSchema,
+            expectedTargetVersionDigest: digest,
+            operation: npAgentGuardianResponseOperationSchemaV1(),
+            policyDigest: digest,
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
             capabilityId: { enum: ["moderation.member.restrict", "moderation.member.revoke"] },
             incidentId: approvalUuidSchema,
             memberId: approvalUuidSchema,
@@ -980,6 +1003,7 @@ export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(
   approvalDetailSchemaSource,
   {
     factorShortConstraints: true,
+    simplifyStringEnums: true,
     inlineSingleUseDefinitions: true,
   },
 );
