@@ -49,6 +49,16 @@ import {
   type NpAgentTokenHashKeyring,
 } from "./opaque-verifier.js";
 
+import {
+  npGetGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveActorV1,
+} from "./guardian-sensitive-observer.js";
+import {
+  npRequireAgentSecurityCredentialTransitionV1,
+  type NpAgentSecurityGatewayPrincipalTransitionV1,
+} from "../agent-contract/guardian-credential-contract.js";
+
 type NpAgentDb = ReturnType<typeof getDb>;
 type PrincipalRow = typeof npAgentPrincipals.$inferSelect;
 type ServiceTokenRow = typeof npAgentServiceTokens.$inferSelect;
@@ -299,6 +309,71 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     }
   }
 
+  async function observePrincipal(
+    observer: NpGuardianSensitiveObserverV1 | null,
+    db: NpAgentDb,
+    previous: PrincipalRow,
+    current: PrincipalRow,
+    reason: NpAgentSecurityGatewayPrincipalTransitionV1["reason"],
+    actor: NpGuardianSensitiveActorV1,
+    occurredAt: Date,
+    invocationId?: string,
+  ): Promise<void> {
+    if (
+      !observer ||
+      (previous.status === current.status &&
+        previous.authorityUserId === current.authorityUserId &&
+        JSON.stringify(previous.scopes) === JSON.stringify(current.scopes))
+    )
+      return;
+    const scope = { kind: "site" as const, siteId: current.siteId };
+    const state = async (row: PrincipalRow) => ({
+      rowVersion: row.rowVersion,
+      tokenVersion: row.tokenVersion,
+      status: row.status,
+      authorityPresent:
+        row.authorityKind === "user"
+          ? row.authorityUserId !== null
+          : row.authorityPolicyId !== null,
+      scopeCommitment: await observer.projectState({
+        db,
+        scope,
+        kind: "gateway-principal",
+        targetId: row.id,
+        readState: () => Promise.resolve(row.scopes),
+      }),
+    });
+    // Preserve the exact source-owned commitment objects; the source rejects
+    // cloned or forged commitments even when their wire shape is valid.
+    const transition: NpAgentSecurityGatewayPrincipalTransitionV1 = {
+      kind: "gateway-principal",
+      principalId: current.id,
+      reason,
+      previous: {
+        ...(await state(previous)),
+        status: npProjectAgentPrincipalStatus(previous.status),
+      },
+      current: { ...(await state(current)), status: npProjectAgentPrincipalStatus(current.status) },
+    };
+    await observer.recordCredential({
+      db,
+      scope,
+      actor,
+      occurredAt,
+      invocationId,
+      transitionId: randomUUID(),
+      transition,
+    });
+  }
+  function npProjectAgentPrincipalStatus(value: string): "active" | "suspended" | "revoked" {
+    if (value === "active" || value === "suspended" || value === "revoked") return value;
+    throw new NpAgentGatewayError(
+      "PRINCIPAL_STATE_INVALID",
+      409,
+      "Principal state is unavailable.",
+    );
+  }
+
   async function executeAdmin<I extends NpAgentServiceGatewayAdminOperationIdV1>(input: {
     siteId: string;
     actor: NpAgentAdminActorV1;
@@ -324,472 +399,598 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
         "Site and target identifiers must match the selected operation.",
       );
     }
-    return admit({
-      ...input,
-      mutate: async ({ db, now, command }) => {
-        switch (input.operationId) {
-          case "agents.gateway.principals.create": {
-            const value = command as {
-              name: string;
-              description: string | null;
-              scopes: NpAgentScope[];
-            };
-            const id = randomUUID();
-            const authorityFingerprint = sha256Canonical("np.agent-principal-authority.v1", {
-              siteId: input.siteId,
-              userId: input.actor.user.id,
-            });
-            const [row] = await db
-              .insert(npAgentPrincipals)
-              .values({
-                id,
+    const observer = npGetGuardianSensitiveObserverV1();
+    const execute = (transaction?: NpAgentDb) =>
+      admit({
+        ...input,
+        ...(transaction ? { db: transaction } : {}),
+        mutate: async ({ db, now, command, invocationId }) => {
+          switch (input.operationId) {
+            case "agents.gateway.principals.create": {
+              const value = command as {
+                name: string;
+                description: string | null;
+                scopes: NpAgentScope[];
+              };
+              const id = randomUUID();
+              const authorityFingerprint = sha256Canonical("np.agent-principal-authority.v1", {
                 siteId: input.siteId,
-                kind: "external",
-                name: value.name,
-                description: value.description,
-                status: "active",
-                scopes: value.scopes,
-                authorityKind: "user",
-                authorityUserId: input.actor.user.id,
-                authorityFingerprint,
-                ownerUserId: input.actor.user.id,
-                createdAt: now,
-                updatedAt: now,
-              })
-              .returning();
-            if (!row) throw new Error("Failed to create Agent principal.");
-            return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
-          }
-          case "agents.gateway.principals.update": {
-            const value = command as {
-              expectedVersion: number;
-              name: string;
-              description: string | null;
-              scopes: NpAgentScope[];
-            };
-            const [current] = await db
-              .select()
-              .from(npAgentPrincipals)
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, input.siteId),
-                  eq(npAgentPrincipals.id, input.targetId ?? ""),
-                  eq(npAgentPrincipals.kind, "external"),
-                ),
-              )
-              .for("update")
-              .limit(1);
-            if (!current || current.status === "revoked") {
-              throw new NpAgentGatewayError(
-                "PRINCIPAL_NOT_FOUND",
-                404,
-                "Principal is unavailable.",
+                userId: input.actor.user.id,
+              });
+              const [row] = await db
+                .insert(npAgentPrincipals)
+                .values({
+                  id,
+                  siteId: input.siteId,
+                  kind: "external",
+                  name: value.name,
+                  description: value.description,
+                  status: "active",
+                  scopes: value.scopes,
+                  authorityKind: "user",
+                  authorityUserId: input.actor.user.id,
+                  authorityFingerprint,
+                  ownerUserId: input.actor.user.id,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                .returning();
+              if (!row) throw new Error("Failed to create Agent principal.");
+              return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
+            }
+            case "agents.gateway.principals.update": {
+              const value = command as {
+                expectedVersion: number;
+                name: string;
+                description: string | null;
+                scopes: NpAgentScope[];
+              };
+              const [current] = await db
+                .select()
+                .from(npAgentPrincipals)
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, input.siteId),
+                    eq(npAgentPrincipals.id, input.targetId ?? ""),
+                    eq(npAgentPrincipals.kind, "external"),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              if (!current || current.status === "revoked") {
+                throw new NpAgentGatewayError(
+                  "PRINCIPAL_NOT_FOUND",
+                  404,
+                  "Principal is unavailable.",
+                );
+              }
+              if (current.rowVersion !== value.expectedVersion) {
+                throw new NpAgentGatewayError(
+                  "VERSION_CONFLICT",
+                  409,
+                  "Principal version changed.",
+                );
+              }
+              const scopesChanged = JSON.stringify(current.scopes) !== JSON.stringify(value.scopes);
+              const status = value.scopes.includes("site:read") ? current.status : "suspended";
+              const [row] = await db
+                .update(npAgentPrincipals)
+                .set({
+                  name: value.name,
+                  description: value.description,
+                  scopes: value.scopes,
+                  status,
+                  rowVersion: current.rowVersion + 1,
+                  tokenVersion: current.tokenVersion + (scopesChanged ? 1 : 0),
+                  updatedAt: now,
+                })
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, current.siteId),
+                    eq(npAgentPrincipals.id, current.id),
+                    eq(npAgentPrincipals.rowVersion, current.rowVersion),
+                  ),
+                )
+                .returning();
+              if (!row)
+                throw new NpAgentGatewayError(
+                  "VERSION_CONFLICT",
+                  409,
+                  "Principal version changed.",
+                );
+              await observePrincipal(
+                observer,
+                db,
+                current,
+                row,
+                "updated",
+                { kind: "staff", userId: input.actor.user.id },
+                now,
+                invocationId,
               );
+              return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
             }
-            if (current.rowVersion !== value.expectedVersion) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
-            }
-            const scopesChanged = JSON.stringify(current.scopes) !== JSON.stringify(value.scopes);
-            const status = value.scopes.includes("site:read") ? current.status : "suspended";
-            const [row] = await db
-              .update(npAgentPrincipals)
-              .set({
-                name: value.name,
-                description: value.description,
-                scopes: value.scopes,
-                status,
-                rowVersion: current.rowVersion + 1,
-                tokenVersion: current.tokenVersion + (scopesChanged ? 1 : 0),
-                updatedAt: now,
-              })
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, current.siteId),
-                  eq(npAgentPrincipals.id, current.id),
-                  eq(npAgentPrincipals.rowVersion, current.rowVersion),
-                ),
-              )
-              .returning();
-            if (!row)
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
-            return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
-          }
-          case "agents.gateway.principal_tokens.create": {
-            const value = command as {
-              expectedVersion: number;
-              name: string;
-              scopes: NpAgentScope[];
-              transport: NpAgentServiceTokenTransportV1;
-              exposure: NpAgentEnabledGatewayExposureMode;
-              expiresAt: string;
-            };
-            const [principal] = await db
-              .select()
-              .from(npAgentPrincipals)
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, input.siteId),
-                  eq(npAgentPrincipals.id, input.targetId ?? ""),
-                  eq(npAgentPrincipals.kind, "external"),
-                ),
-              )
-              .for("update")
-              .limit(1);
-            if (!principal || principal.status !== "active" || principal.authorityUserId === null) {
-              throw new NpAgentGatewayError(
-                "PRINCIPAL_NOT_ACTIVE",
-                409,
-                "Principal is not active.",
-              );
-            }
-            if (principal.rowVersion !== value.expectedVersion) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
-            }
-            requireSubset(value.scopes, principal.scopes);
-            await requireExposure(input.siteId, value.transport, value.exposure);
-            const expiresAt = new Date(value.expiresAt);
-            const maximumSeconds =
-              environment === "development"
-                ? npAgentServiceTokenLimits.developmentMaxLifetimeSeconds
-                : npAgentServiceTokenLimits.productionMaxLifetimeSeconds;
-            if (expiresAt <= now || expiresAt.getTime() > now.getTime() + maximumSeconds * 1_000) {
-              throw new NpAgentGatewayError(
-                "TOKEN_LIFETIME_INVALID",
-                400,
-                "Service-token lifetime exceeds the deployment bound.",
-              );
-            }
-            const audience = await audienceFor(input.siteId, value.transport);
-            const tokenId = randomUUID();
-            const minted = npMintAgentOpaqueVerifierV1({
-              purpose: "service-token",
-              siteId: input.siteId,
-              publicId: tokenId,
-              keyring: tokenHashKeyring,
-            });
-            const [row] = await db
-              .insert(npAgentServiceTokens)
-              .values({
-                id: tokenId,
+            case "agents.gateway.principal_tokens.create": {
+              const value = command as {
+                expectedVersion: number;
+                name: string;
+                scopes: NpAgentScope[];
+                transport: NpAgentServiceTokenTransportV1;
+                exposure: NpAgentEnabledGatewayExposureMode;
+                expiresAt: string;
+              };
+              const [principal] = await db
+                .select()
+                .from(npAgentPrincipals)
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, input.siteId),
+                    eq(npAgentPrincipals.id, input.targetId ?? ""),
+                    eq(npAgentPrincipals.kind, "external"),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              if (
+                !principal ||
+                principal.status !== "active" ||
+                principal.authorityUserId === null
+              ) {
+                throw new NpAgentGatewayError(
+                  "PRINCIPAL_NOT_ACTIVE",
+                  409,
+                  "Principal is not active.",
+                );
+              }
+              if (principal.rowVersion !== value.expectedVersion) {
+                throw new NpAgentGatewayError(
+                  "VERSION_CONFLICT",
+                  409,
+                  "Principal version changed.",
+                );
+              }
+              requireSubset(value.scopes, principal.scopes);
+              await requireExposure(input.siteId, value.transport, value.exposure);
+              const expiresAt = new Date(value.expiresAt);
+              const maximumSeconds =
+                environment === "development"
+                  ? npAgentServiceTokenLimits.developmentMaxLifetimeSeconds
+                  : npAgentServiceTokenLimits.productionMaxLifetimeSeconds;
+              if (
+                expiresAt <= now ||
+                expiresAt.getTime() > now.getTime() + maximumSeconds * 1_000
+              ) {
+                throw new NpAgentGatewayError(
+                  "TOKEN_LIFETIME_INVALID",
+                  400,
+                  "Service-token lifetime exceeds the deployment bound.",
+                );
+              }
+              const audience = await audienceFor(input.siteId, value.transport);
+              const tokenId = randomUUID();
+              const minted = npMintAgentOpaqueVerifierV1({
+                purpose: "service-token",
                 siteId: input.siteId,
-                principalId: principal.id,
-                name: value.name,
-                prefix: minted.prefix,
-                tokenHash: minted.verifier,
-                hashKeyId: minted.hashKeyId,
-                rotationFamilyId: randomUUID(),
-                familyAuthorityVersion: 1,
-                familyGeneration: 1,
-                principalTokenVersion: principal.tokenVersion,
-                status: "active_head",
-                scopes: value.scopes,
-                transport: value.transport,
-                exposureMode: value.exposure,
-                audience,
-                expiresAt,
-                createdBy: input.actor.user.id,
-                createdAt: now,
-              })
-              .returning();
-            if (!row) throw new Error("Failed to create Agent service token.");
-            const updated = await db
-              .update(npAgentPrincipals)
-              .set({ rowVersion: principal.rowVersion + 1, updatedAt: now })
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, principal.siteId),
-                  eq(npAgentPrincipals.id, principal.id),
-                  eq(npAgentPrincipals.rowVersion, principal.rowVersion),
-                ),
-              )
-              .returning({ id: npAgentPrincipals.id });
-            if (updated.length !== 1) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
+                publicId: tokenId,
+                keyring: tokenHashKeyring,
+              });
+              const [row] = await db
+                .insert(npAgentServiceTokens)
+                .values({
+                  id: tokenId,
+                  siteId: input.siteId,
+                  principalId: principal.id,
+                  name: value.name,
+                  prefix: minted.prefix,
+                  tokenHash: minted.verifier,
+                  hashKeyId: minted.hashKeyId,
+                  rotationFamilyId: randomUUID(),
+                  familyAuthorityVersion: 1,
+                  familyGeneration: 1,
+                  principalTokenVersion: principal.tokenVersion,
+                  status: "active_head",
+                  scopes: value.scopes,
+                  transport: value.transport,
+                  exposureMode: value.exposure,
+                  audience,
+                  expiresAt,
+                  createdBy: input.actor.user.id,
+                  createdAt: now,
+                })
+                .returning();
+              if (!row) throw new Error("Failed to create Agent service token.");
+              const updated = await db
+                .update(npAgentPrincipals)
+                .set({ rowVersion: principal.rowVersion + 1, updatedAt: now })
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, principal.siteId),
+                    eq(npAgentPrincipals.id, principal.id),
+                    eq(npAgentPrincipals.rowVersion, principal.rowVersion),
+                  ),
+                )
+                .returning({ id: npAgentPrincipals.id });
+              if (updated.length !== 1) {
+                throw new NpAgentGatewayError(
+                  "VERSION_CONFLICT",
+                  409,
+                  "Principal version changed.",
+                );
+              }
+              if (observer)
+                await observer.recordCredential({
+                  db,
+                  scope: { kind: "site", siteId: input.siteId },
+                  actor: { kind: "staff", userId: input.actor.user.id },
+                  occurredAt: now,
+                  invocationId,
+                  transitionId: randomUUID(),
+                  transition: npRequireAgentSecurityCredentialTransitionV1({
+                    kind: "gateway-token",
+                    principalId: row.principalId,
+                    tokenId: row.id,
+                    reason: "issued",
+                    previous: null,
+                    current: { rowVersion: row.rowVersion, status: row.status },
+                  }),
+                });
+              return {
+                resourceId: row.id,
+                output: toJsonObject(npProjectAgentServiceTokenV1(row)),
+                oneTimeValue: minted.value,
+              };
             }
-            return {
-              resourceId: row.id,
-              output: toJsonObject(npProjectAgentServiceTokenV1(row)),
-              oneTimeValue: minted.value,
-            };
-          }
-          case "agents.gateway.principal_tokens.rotate": {
-            const value = command as { expectedVersion: number; overlapSeconds: number };
-            // Match capability admission and principal lifecycle operations:
-            // always lock the principal before any of its service tokens.
-            const [principal] = await db
-              .select()
-              .from(npAgentPrincipals)
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, input.siteId),
-                  eq(npAgentPrincipals.id, input.parentTargetId ?? ""),
-                ),
-              )
-              .for("update")
-              .limit(1);
-            const [current] = await db
-              .select()
-              .from(npAgentServiceTokens)
-              .where(
-                and(
-                  eq(npAgentServiceTokens.siteId, input.siteId),
-                  eq(npAgentServiceTokens.id, input.targetId ?? ""),
-                  eq(npAgentServiceTokens.principalId, input.parentTargetId ?? ""),
-                ),
-              )
-              .for("update")
-              .limit(1);
-            if (!current || current.status !== "active_head" || current.expiresAt <= now) {
-              throw new NpAgentGatewayError(
-                "TOKEN_NOT_ACTIVE",
-                409,
-                "Token is not an active family head.",
-              );
-            }
-            if (current.rowVersion !== value.expectedVersion) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
-            }
-            if (
-              !principal ||
-              principal.status !== "active" ||
-              principal.authorityUserId === null ||
-              current.principalTokenVersion !== principal.tokenVersion
-            ) {
-              throw new NpAgentGatewayError(
-                "TOKEN_AUTHORITY_LOST",
-                409,
-                "Token authority is no longer current.",
-              );
-            }
-            requireSubset(current.scopes as NpAgentScope[], principal.scopes);
-            await requireExposure(
-              input.siteId,
-              current.transport as NpAgentServiceTokenTransportV1,
-              current.exposureMode as NpAgentEnabledGatewayExposureMode,
-            );
-            const tokenId = randomUUID();
-            const minted = npMintAgentOpaqueVerifierV1({
-              purpose: "service-token",
-              siteId: input.siteId,
-              publicId: tokenId,
-              keyring: tokenHashKeyring,
-            });
-            const overlapExpiresAt = new Date(
-              Math.min(current.expiresAt.getTime(), now.getTime() + value.overlapSeconds * 1_000),
-            );
-            const oldStatus = value.overlapSeconds === 0 ? "revoked" : "overlap";
-            const updated = await db
-              .update(npAgentServiceTokens)
-              .set({
-                status: oldStatus,
-                overlapExpiresAt: oldStatus === "overlap" ? overlapExpiresAt : null,
-                revokedAt: oldStatus === "revoked" ? now : null,
-                rowVersion: current.rowVersion + 1,
-              })
-              .where(
-                and(
-                  eq(npAgentServiceTokens.siteId, current.siteId),
-                  eq(npAgentServiceTokens.id, current.id),
-                  eq(npAgentServiceTokens.rowVersion, current.rowVersion),
-                  eq(npAgentServiceTokens.status, "active_head"),
-                ),
-              )
-              .returning({ id: npAgentServiceTokens.id });
-            if (updated.length !== 1) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
-            }
-            const [replacement] = await db
-              .insert(npAgentServiceTokens)
-              .values({
-                id: tokenId,
-                siteId: current.siteId,
-                principalId: current.principalId,
-                name: current.name,
-                prefix: minted.prefix,
-                tokenHash: minted.verifier,
-                hashKeyId: minted.hashKeyId,
-                rotationFamilyId: current.rotationFamilyId,
-                familyAuthorityVersion: current.familyAuthorityVersion,
-                familyGeneration: current.familyGeneration + 1,
-                principalTokenVersion: current.principalTokenVersion,
-                replacesTokenId: current.id,
-                status: "active_head",
-                scopes: current.scopes,
-                transport: current.transport,
-                exposureMode: current.exposureMode,
-                audience: current.audience,
-                expiresAt: current.expiresAt,
-                createdBy: input.actor.user.id,
-                createdAt: now,
-              })
-              .returning();
-            if (!replacement) throw new Error("Failed to rotate Agent service token.");
-            return {
-              resourceId: replacement.id,
-              output: toJsonObject(npProjectAgentServiceTokenV1(replacement)),
-              oneTimeValue: minted.value,
-            };
-          }
-          case "agents.gateway.principal_tokens.revoke": {
-            const value = command as { expectedVersion: number };
-            const [current] = await db
-              .select()
-              .from(npAgentServiceTokens)
-              .where(
-                and(
-                  eq(npAgentServiceTokens.siteId, input.siteId),
-                  eq(npAgentServiceTokens.id, input.targetId ?? ""),
-                  eq(npAgentServiceTokens.principalId, input.parentTargetId ?? ""),
-                ),
-              )
-              .for("update")
-              .limit(1);
-            if (!current || !["active_head", "overlap"].includes(current.status)) {
-              throw new NpAgentGatewayError("TOKEN_NOT_ACTIVE", 409, "Token is not active.");
-            }
-            if (current.rowVersion !== value.expectedVersion) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
-            }
-            const [row] = await db
-              .update(npAgentServiceTokens)
-              .set({
-                status: "revoked",
-                overlapExpiresAt: null,
-                revokedAt: now,
-                rowVersion: current.rowVersion + 1,
-              })
-              .where(
-                and(
-                  eq(npAgentServiceTokens.siteId, current.siteId),
-                  eq(npAgentServiceTokens.id, current.id),
-                  eq(npAgentServiceTokens.rowVersion, current.rowVersion),
-                ),
-              )
-              .returning();
-            if (!row)
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
-            return { resourceId: row.id, output: toJsonObject(npProjectAgentServiceTokenV1(row)) };
-          }
-          case "agents.gateway.principals.suspend":
-          case "agents.gateway.principals.resume":
-          case "agents.gateway.principals.revoke": {
-            const value = command as { expectedVersion: number };
-            const [current] = await db
-              .select()
-              .from(npAgentPrincipals)
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, input.siteId),
-                  eq(npAgentPrincipals.id, input.targetId ?? ""),
-                  eq(npAgentPrincipals.kind, "external"),
-                ),
-              )
-              .for("update")
-              .limit(1);
-            if (!current || current.status === "revoked") {
-              throw new NpAgentGatewayError(
-                "PRINCIPAL_NOT_FOUND",
-                404,
-                "Principal is unavailable.",
-              );
-            }
-            if (current.rowVersion !== value.expectedVersion) {
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
-            }
-            const nextStatus = input.operationId.endsWith(".suspend")
-              ? "suspended"
-              : input.operationId.endsWith(".resume")
-                ? "active"
-                : "revoked";
-            let hasLiveCredential = true;
-            if (nextStatus === "active") {
-              const candidates = await db
+            case "agents.gateway.principal_tokens.rotate": {
+              const value = command as { expectedVersion: number; overlapSeconds: number };
+              // Match capability admission and principal lifecycle operations:
+              // always lock the principal before any of its service tokens.
+              const [principal] = await db
+                .select()
+                .from(npAgentPrincipals)
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, input.siteId),
+                    eq(npAgentPrincipals.id, input.parentTargetId ?? ""),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              const [current] = await db
                 .select()
                 .from(npAgentServiceTokens)
                 .where(
                   and(
-                    eq(npAgentServiceTokens.siteId, current.siteId),
-                    eq(npAgentServiceTokens.principalId, current.id),
-                    eq(npAgentServiceTokens.principalTokenVersion, current.tokenVersion),
-                    inArray(npAgentServiceTokens.status, ["active_head", "overlap"]),
-                    gt(npAgentServiceTokens.expiresAt, now),
+                    eq(npAgentServiceTokens.siteId, input.siteId),
+                    eq(npAgentServiceTokens.id, input.targetId ?? ""),
+                    eq(npAgentServiceTokens.principalId, input.parentTargetId ?? ""),
                   ),
                 )
-                .for("update");
-              hasLiveCredential = false;
-              for (const candidate of candidates) {
-                if (!isActiveTokenAt(candidate, now)) continue;
-                if (candidate.scopes.some((scope) => !current.scopes.includes(scope))) continue;
-                try {
-                  const transport = candidate.transport as NpAgentServiceTokenTransportV1;
-                  if (candidate.audience !== (await audienceFor(input.siteId, transport))) continue;
-                  await requireExposure(
-                    input.siteId,
-                    transport,
-                    candidate.exposureMode as NpAgentEnabledGatewayExposureMode,
-                  );
-                  hasLiveCredential = true;
-                  break;
-                } catch {
-                  continue;
-                }
+                .for("update")
+                .limit(1);
+              if (!current || current.status !== "active_head" || current.expiresAt <= now) {
+                throw new NpAgentGatewayError(
+                  "TOKEN_NOT_ACTIVE",
+                  409,
+                  "Token is not an active family head.",
+                );
               }
-            }
-            if (
-              (nextStatus === "suspended" && current.status !== "active") ||
-              (nextStatus === "active" &&
-                (current.status !== "suspended" ||
-                  !current.scopes.includes("site:read") ||
-                  current.authorityUserId === null ||
-                  !hasLiveCredential))
-            ) {
-              throw new NpAgentGatewayError(
-                "INVALID_PRINCIPAL_TRANSITION",
-                409,
-                "Principal transition is invalid.",
+              if (current.rowVersion !== value.expectedVersion) {
+                throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
+              }
+              if (
+                !principal ||
+                principal.status !== "active" ||
+                principal.authorityUserId === null ||
+                current.principalTokenVersion !== principal.tokenVersion
+              ) {
+                throw new NpAgentGatewayError(
+                  "TOKEN_AUTHORITY_LOST",
+                  409,
+                  "Token authority is no longer current.",
+                );
+              }
+              requireSubset(current.scopes as NpAgentScope[], principal.scopes);
+              await requireExposure(
+                input.siteId,
+                current.transport as NpAgentServiceTokenTransportV1,
+                current.exposureMode as NpAgentEnabledGatewayExposureMode,
               );
+              const tokenId = randomUUID();
+              const minted = npMintAgentOpaqueVerifierV1({
+                purpose: "service-token",
+                siteId: input.siteId,
+                publicId: tokenId,
+                keyring: tokenHashKeyring,
+              });
+              const overlapExpiresAt = new Date(
+                Math.min(current.expiresAt.getTime(), now.getTime() + value.overlapSeconds * 1_000),
+              );
+              const oldStatus = value.overlapSeconds === 0 ? "revoked" : "overlap";
+              const updated = await db
+                .update(npAgentServiceTokens)
+                .set({
+                  status: oldStatus,
+                  overlapExpiresAt: oldStatus === "overlap" ? overlapExpiresAt : null,
+                  revokedAt: oldStatus === "revoked" ? now : null,
+                  rowVersion: current.rowVersion + 1,
+                })
+                .where(
+                  and(
+                    eq(npAgentServiceTokens.siteId, current.siteId),
+                    eq(npAgentServiceTokens.id, current.id),
+                    eq(npAgentServiceTokens.rowVersion, current.rowVersion),
+                    eq(npAgentServiceTokens.status, "active_head"),
+                  ),
+                )
+                .returning();
+              if (updated.length !== 1) {
+                throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
+              }
+              const [replacement] = await db
+                .insert(npAgentServiceTokens)
+                .values({
+                  id: tokenId,
+                  siteId: current.siteId,
+                  principalId: current.principalId,
+                  name: current.name,
+                  prefix: minted.prefix,
+                  tokenHash: minted.verifier,
+                  hashKeyId: minted.hashKeyId,
+                  rotationFamilyId: current.rotationFamilyId,
+                  familyAuthorityVersion: current.familyAuthorityVersion,
+                  familyGeneration: current.familyGeneration + 1,
+                  principalTokenVersion: current.principalTokenVersion,
+                  replacesTokenId: current.id,
+                  status: "active_head",
+                  scopes: current.scopes,
+                  transport: current.transport,
+                  exposureMode: current.exposureMode,
+                  audience: current.audience,
+                  expiresAt: current.expiresAt,
+                  createdBy: input.actor.user.id,
+                  createdAt: now,
+                })
+                .returning();
+              if (!replacement) throw new Error("Failed to rotate Agent service token.");
+              if (observer) {
+                for (const change of [
+                  {
+                    row: updated[0],
+                    previous: { rowVersion: current.rowVersion, status: current.status },
+                  },
+                  { row: replacement, previous: null },
+                ])
+                  await observer.recordCredential({
+                    db,
+                    scope: { kind: "site", siteId: input.siteId },
+                    actor: { kind: "staff", userId: input.actor.user.id },
+                    occurredAt: now,
+                    invocationId,
+                    transitionId: randomUUID(),
+                    transition: npRequireAgentSecurityCredentialTransitionV1({
+                      kind: "gateway-token",
+                      principalId: change.row.principalId,
+                      tokenId: change.row.id,
+                      reason: "rotation",
+                      previous: change.previous,
+                      current: { rowVersion: change.row.rowVersion, status: change.row.status },
+                    }),
+                  });
+              }
+              return {
+                resourceId: replacement.id,
+                output: toJsonObject(npProjectAgentServiceTokenV1(replacement)),
+                oneTimeValue: minted.value,
+              };
             }
-            const [row] = await db
-              .update(npAgentPrincipals)
-              .set({
-                status: nextStatus,
-                rowVersion: current.rowVersion + 1,
-                tokenVersion: current.tokenVersion + (nextStatus === "revoked" ? 1 : 0),
-                updatedAt: now,
-                revokedAt: nextStatus === "revoked" ? now : null,
-              })
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, current.siteId),
-                  eq(npAgentPrincipals.id, current.id),
-                  eq(npAgentPrincipals.rowVersion, current.rowVersion),
-                ),
-              )
-              .returning();
-            if (!row)
-              throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
-            if (nextStatus === "revoked") {
-              await db
+            case "agents.gateway.principal_tokens.revoke": {
+              const value = command as { expectedVersion: number };
+              const [current] = await db
+                .select()
+                .from(npAgentServiceTokens)
+                .where(
+                  and(
+                    eq(npAgentServiceTokens.siteId, input.siteId),
+                    eq(npAgentServiceTokens.id, input.targetId ?? ""),
+                    eq(npAgentServiceTokens.principalId, input.parentTargetId ?? ""),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              if (!current || !["active_head", "overlap"].includes(current.status)) {
+                throw new NpAgentGatewayError("TOKEN_NOT_ACTIVE", 409, "Token is not active.");
+              }
+              if (current.rowVersion !== value.expectedVersion) {
+                throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
+              }
+              const [row] = await db
                 .update(npAgentServiceTokens)
                 .set({
                   status: "revoked",
                   overlapExpiresAt: null,
                   revokedAt: now,
-                  rowVersion: sql`${npAgentServiceTokens.rowVersion} + 1`,
+                  rowVersion: current.rowVersion + 1,
                 })
                 .where(
                   and(
-                    eq(npAgentServiceTokens.siteId, row.siteId),
-                    eq(npAgentServiceTokens.principalId, row.id),
-                    inArray(npAgentServiceTokens.status, ["active_head", "overlap"]),
+                    eq(npAgentServiceTokens.siteId, current.siteId),
+                    eq(npAgentServiceTokens.id, current.id),
+                    eq(npAgentServiceTokens.rowVersion, current.rowVersion),
                   ),
-                );
+                )
+                .returning();
+              if (!row)
+                throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
+              if (observer)
+                await observer.recordCredential({
+                  db,
+                  scope: { kind: "site", siteId: input.siteId },
+                  actor: { kind: "staff", userId: input.actor.user.id },
+                  occurredAt: now,
+                  invocationId,
+                  transitionId: randomUUID(),
+                  transition: npRequireAgentSecurityCredentialTransitionV1({
+                    kind: "gateway-token",
+                    principalId: row.principalId,
+                    tokenId: row.id,
+                    reason: "revoked",
+                    previous: { rowVersion: current.rowVersion, status: current.status },
+                    current: { rowVersion: row.rowVersion, status: row.status },
+                  }),
+                });
+              return {
+                resourceId: row.id,
+                output: toJsonObject(npProjectAgentServiceTokenV1(row)),
+              };
             }
-            return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
+            case "agents.gateway.principals.suspend":
+            case "agents.gateway.principals.resume":
+            case "agents.gateway.principals.revoke": {
+              const value = command as { expectedVersion: number };
+              const [current] = await db
+                .select()
+                .from(npAgentPrincipals)
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, input.siteId),
+                    eq(npAgentPrincipals.id, input.targetId ?? ""),
+                    eq(npAgentPrincipals.kind, "external"),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              if (!current || current.status === "revoked") {
+                throw new NpAgentGatewayError(
+                  "PRINCIPAL_NOT_FOUND",
+                  404,
+                  "Principal is unavailable.",
+                );
+              }
+              if (current.rowVersion !== value.expectedVersion) {
+                throw new NpAgentGatewayError(
+                  "VERSION_CONFLICT",
+                  409,
+                  "Principal version changed.",
+                );
+              }
+              const nextStatus = input.operationId.endsWith(".suspend")
+                ? "suspended"
+                : input.operationId.endsWith(".resume")
+                  ? "active"
+                  : "revoked";
+              let hasLiveCredential = true;
+              if (nextStatus === "active") {
+                const candidates = await db
+                  .select()
+                  .from(npAgentServiceTokens)
+                  .where(
+                    and(
+                      eq(npAgentServiceTokens.siteId, current.siteId),
+                      eq(npAgentServiceTokens.principalId, current.id),
+                      eq(npAgentServiceTokens.principalTokenVersion, current.tokenVersion),
+                      inArray(npAgentServiceTokens.status, ["active_head", "overlap"]),
+                      gt(npAgentServiceTokens.expiresAt, now),
+                    ),
+                  )
+                  .for("update");
+                hasLiveCredential = false;
+                for (const candidate of candidates) {
+                  if (!isActiveTokenAt(candidate, now)) continue;
+                  if (candidate.scopes.some((scope) => !current.scopes.includes(scope))) continue;
+                  try {
+                    const transport = candidate.transport as NpAgentServiceTokenTransportV1;
+                    if (candidate.audience !== (await audienceFor(input.siteId, transport)))
+                      continue;
+                    await requireExposure(
+                      input.siteId,
+                      transport,
+                      candidate.exposureMode as NpAgentEnabledGatewayExposureMode,
+                    );
+                    hasLiveCredential = true;
+                    break;
+                  } catch {
+                    continue;
+                  }
+                }
+              }
+              if (
+                (nextStatus === "suspended" && current.status !== "active") ||
+                (nextStatus === "active" &&
+                  (current.status !== "suspended" ||
+                    !current.scopes.includes("site:read") ||
+                    current.authorityUserId === null ||
+                    !hasLiveCredential))
+              ) {
+                throw new NpAgentGatewayError(
+                  "INVALID_PRINCIPAL_TRANSITION",
+                  409,
+                  "Principal transition is invalid.",
+                );
+              }
+              const [row] = await db
+                .update(npAgentPrincipals)
+                .set({
+                  status: nextStatus,
+                  rowVersion: current.rowVersion + 1,
+                  tokenVersion: current.tokenVersion + (nextStatus === "revoked" ? 1 : 0),
+                  updatedAt: now,
+                  revokedAt: nextStatus === "revoked" ? now : null,
+                })
+                .where(
+                  and(
+                    eq(npAgentPrincipals.siteId, current.siteId),
+                    eq(npAgentPrincipals.id, current.id),
+                    eq(npAgentPrincipals.rowVersion, current.rowVersion),
+                  ),
+                )
+                .returning();
+              if (!row)
+                throw new NpAgentGatewayError(
+                  "VERSION_CONFLICT",
+                  409,
+                  "Principal version changed.",
+                );
+              if (nextStatus === "revoked") {
+                await db
+                  .update(npAgentServiceTokens)
+                  .set({
+                    status: "revoked",
+                    overlapExpiresAt: null,
+                    revokedAt: now,
+                    rowVersion: sql`${npAgentServiceTokens.rowVersion} + 1`,
+                  })
+                  .where(
+                    and(
+                      eq(npAgentServiceTokens.siteId, row.siteId),
+                      eq(npAgentServiceTokens.principalId, row.id),
+                      inArray(npAgentServiceTokens.status, ["active_head", "overlap"]),
+                    ),
+                  );
+              }
+              await observePrincipal(
+                observer,
+                db,
+                current,
+                row,
+                nextStatus === "active" ? "resumed" : nextStatus,
+                { kind: "staff", userId: input.actor.user.id },
+                now,
+                invocationId,
+              );
+              return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
+            }
           }
-        }
+        },
+      });
+    if (!observer) return execute();
+    return getDb().transaction(
+      async (rawTx) => {
+        const tx = rawTx as NpAgentDb;
+        await observer.prepare({ db: tx, scope: { kind: "site", siteId: input.siteId } });
+        return execute(tx);
       },
-    });
+      { isolationLevel: "serializable" },
+    );
   }
 
   async function listPrincipals(siteId: string, limit = 100): Promise<NpAgentPrincipalV1[]> {
@@ -1072,10 +1273,12 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     if (!isCanonicalUuid(userId)) {
       throw new NpAgentGatewayError("INVALID_USER", 400, "User id is not canonical.");
     }
+    const observer = npGetGuardianSensitiveObserverV1();
     const db = getDb();
     return db.transaction(
       async (rawTx) => {
         const tx = rawTx as NpAgentDb;
+        if (observer) await observer.prepare({ db: tx, scope: { kind: "deployment" } });
         const now = nowFn();
         const principals = await tx
           .select()
@@ -1108,7 +1311,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
                 eq(npAgentPrincipals.authorityUserId, userId),
               ),
             )
-            .returning({ id: npAgentPrincipals.id });
+            .returning();
           if (!contained) {
             throw new NpAgentGatewayError(
               "AUTHORITY_CONTAINMENT_CONFLICT",
@@ -1131,6 +1334,15 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
                 inArray(npAgentServiceTokens.status, ["active_head", "overlap"]),
               ),
             );
+          await observePrincipal(
+            observer,
+            tx,
+            principal,
+            contained,
+            "authority-lost",
+            { kind: "system", component: "agent.gateway-authority-loss" },
+            now,
+          );
           await tx.insert(npAuditEvents).values({
             actorKind: "system",
             action: "agents.gateway.principals.authority_loss",

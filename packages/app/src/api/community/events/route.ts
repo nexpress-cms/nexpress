@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   npListCommunityRealtimeEvents,
   npRequireReadableCommunityDocument,
@@ -74,7 +75,7 @@ function hasQueueCapacity(
  * A short lifetime forces periodic re-authorization and works within bounded
  * serverless request durations; EventSource resumes with Last-Event-ID.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const requested = readSubscription(request);
@@ -223,3 +224,5 @@ export async function GET(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("community-events", npGuardianGET);

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { markAllNotificationsRead, markNotificationsRead } from "@nexpress/core/community";
 import {
   npRequireMarkNotificationsReadRequest,
@@ -18,7 +19,7 @@ import { requireMember } from "../../../lib/member-auth-helpers";
  *    don't belong to the caller silently no-op so a leaked id can't
  *    be acknowledged by another member.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -37,3 +38,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("community", npGuardianPOST);

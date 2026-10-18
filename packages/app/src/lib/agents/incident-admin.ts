@@ -275,8 +275,13 @@ export async function handleAgentIncidentAdminRequest(
     }
     return npSuccessResponse(result, { headers });
   } catch (error) {
-    return agentStudioErrorResponse(error, mutation ? "mutation" : "read", {
-      headers,
-    });
+    return agentStudioErrorResponse(
+      error,
+      mutation ? "mutation" : "read",
+      {
+        headers,
+      },
+      request,
+    );
   }
 }

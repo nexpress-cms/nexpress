@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const { oauth } = requireAgentStudioOauthRuntimeV1();
     return npSuccessResponse(await oauth.listClients(siteId, 100));
   } catch (error) {
-    return agentStudioErrorResponse(error, "read");
+    return agentStudioErrorResponse(error, "read", undefined, request);
   }
 }
 
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     });
     return npSuccessResponse(npRequireAgentOauthClientV1(result.output), { status: 201 });
   } catch (error) {
-    return agentStudioErrorResponse(error, "mutation");
+    return agentStudioErrorResponse(error, "mutation", undefined, request);
   }
 }
 

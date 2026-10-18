@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -6,7 +7,7 @@ import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import { gatherOpsReadiness, resolveOpsReadinessTarget } from "../../../../lib/ops-readiness";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireGlobalAuth(request);
@@ -36,3 +37,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

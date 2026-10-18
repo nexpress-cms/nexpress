@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, getOptionalJobQueue, can } from "@nexpress/core";
 import { npRequireRetryJobWire } from "@nexpress/core/jobs-contract";
 import { readJsonBody } from "@nexpress/next";
@@ -20,7 +21,7 @@ import {
  * because triggering a job has side effects (sending emails,
  * processing media, etc.).
  */
-export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianPOST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -42,3 +43,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("job-retry", npGuardianPOST);

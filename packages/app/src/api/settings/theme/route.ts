@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -12,7 +13,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 
-export async function GET(_request: NextRequest) {
+async function npGuardianGET(_request: NextRequest) {
   try {
     return npSuccessResponse(await getTheme());
   } catch (error) {
@@ -20,7 +21,7 @@ export async function GET(_request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
@@ -45,3 +46,6 @@ export async function PUT(request: NextRequest) {
 }
 
 export { PUT as PATCH };
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("cms", npGuardianPUT);

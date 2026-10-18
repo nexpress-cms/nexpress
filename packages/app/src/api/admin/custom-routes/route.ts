@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import { npCreateCustomRoutesResponse, npGetCustomRoutes } from "@nexpress/core/routes";
 import type { NextRequest } from "next/server";
@@ -15,7 +16,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
  * internal surface (paths the operator may not have publicized) and
  * shouldn't leak to anonymous traffic.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
@@ -30,3 +31,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

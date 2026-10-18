@@ -64,4 +64,30 @@ describe("frozen Guardian actor projection", () => {
       createAgentGuardianActorProjectionV1({ id: "bad key", bytes: new Uint8Array(32) }),
     ).toThrow();
   });
+
+  it("pins the canonical-JSON observation profile with Unicode, delimiters and key-id separation", () => {
+    // Independently computed HMAC-SHA-256 vectors over sorted named JSON fields.
+    const input = {
+      siteId: "default",
+      purpose: "login-identifier" as const,
+      value: "사용자:ONE|TWO@example.test",
+    };
+    const first = createAgentGuardianActorProjectionV1({
+      id: "key-1",
+      bytes: new Uint8Array(32).fill(7),
+    }).project(input);
+    const second = createAgentGuardianActorProjectionV1({
+      id: "key-2",
+      bytes: new Uint8Array(32).fill(7),
+    }).project(input);
+    expect(first.bucket).toBe("uBAGUhbpzhf35Gpbgr0PZQjywE5a5uPh8KkIGBxDvU0");
+    expect(second.bucket).toBe("4xGAS0aoZzzF1k_GBALPq_ZrJaaJ0S9wbav_IkIq0D0");
+    expect(first.bucket).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(first.bucket).not.toBe(second.bucket);
+    const rotated = createAgentGuardianActorProjectionV1({
+      id: "key-1",
+      bytes: new Uint8Array(32).fill(8),
+    }).project(input);
+    expect(first.bucket).not.toBe(rotated.bucket);
+  });
 });

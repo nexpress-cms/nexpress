@@ -28,6 +28,13 @@ export {
   npAssertCollectionReadAccess,
 } from "./pipeline.js";
 export type { NpTransaction } from "./pipeline.js";
+export type {
+  NpCollectionMutationActorV1,
+  NpCollectionRevisionFactV1,
+  NpCollectionMutationFactV1,
+  NpCollectionMutationObservationV1,
+  NpCollectionMutationObserverV1,
+} from "./mutation-observer.js";
 export { withDeferredPostCommit } from "./pipeline.js";
 export { listRevisions, getRevision, restoreRevision } from "./revisions.js";
 export { publishScheduledDocuments } from "./scheduled.js";

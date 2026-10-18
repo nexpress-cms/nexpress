@@ -1,4 +1,8 @@
+import type { NpAgentGuardianHttpObservationServiceV1 } from "./guardian-http-observation.js";
 import type { NpAgentGuardianSessionServiceV1 } from "./guardian-session-service.js";
+import type { NpAgentGuardianExternalObservationServiceV1 } from "./guardian-external-observation.js";
+import type { NpAgentGuardianOperationsServiceV1 } from "./guardian-operations-service.js";
+import type { NpAgentGuardianControlsV1 } from "./guardian-controls.js";
 import type { NpAgentGuardianSessionObservationServiceV1 } from "./guardian-session-observation.js";
 import type { NpAgentGuardianResponseServiceV1 } from "./guardian-response-service.js";
 import type { NpAgentMemberResponseServiceV1 } from "./member-response-service.js";
@@ -31,6 +35,10 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import { NpServiceUnavailableError } from "../errors.js";
 
 export interface NpAgentStudioServerRuntimeV1 {
+  guardianHttp?: Pick<NpAgentGuardianHttpObservationServiceV1, "observe"> | null;
+  guardianControls?: NpAgentGuardianControlsV1 | null;
+  guardianSentry?: Pick<NpAgentGuardianExternalObservationServiceV1, "ingest"> | null;
+  guardianOperations?: NpAgentGuardianOperationsServiceV1 | null;
   guardianSessions?: NpAgentGuardianSessionServiceV1 | null;
   guardianSessionObservations?: NpAgentGuardianSessionObservationServiceV1 | null;
   guardianResponses?: NpAgentGuardianResponseServiceV1 | null;
@@ -58,6 +66,10 @@ export interface NpAgentStudioServerRuntimeV1 {
 }
 
 export interface NpAgentStudioServerRuntimeOptionsV1 {
+  guardianHttp?: Pick<NpAgentGuardianHttpObservationServiceV1, "observe">;
+  guardianControls?: NpAgentGuardianControlsV1;
+  guardianSentry?: Pick<NpAgentGuardianExternalObservationServiceV1, "ingest">;
+  guardianOperations?: NpAgentGuardianOperationsServiceV1;
   guardianSessions?: NpAgentGuardianSessionServiceV1;
   guardianSessionObservations?: NpAgentGuardianSessionObservationServiceV1;
   guardianResponses?: NpAgentGuardianResponseServiceV1;
@@ -123,6 +135,10 @@ export function createAgentStudioServerRuntimeV1(
     throw new Error("Agent preview runtime requires the ChangeSet service.");
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
+    guardianHttp: options.guardianHttp ?? null,
+    guardianControls: options.guardianControls ?? null,
+    guardianSentry: options.guardianSentry ?? null,
+    guardianOperations: options.guardianOperations ?? null,
     guardianSessions: options.guardianSessions ?? null,
     guardianSessionObservations: options.guardianSessionObservations ?? null,
     guardianResponses: options.guardianResponses ?? null,

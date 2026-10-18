@@ -13,9 +13,12 @@ export const npAgentGuardianRouteFamiliesV1 = [
   "mcp",
   "agent-oauth",
   "staff-auth",
+  "member-auth",
   "media-upload",
   "import",
   "collections",
+  "cms",
+  "community",
   "plugin-public",
   "plugins",
   "users",
@@ -29,6 +32,7 @@ export const npAgentGuardianRouteFamiliesV1 = [
   "job-retry",
   "admin",
   "internal",
+  "security-ingress",
 ] as const;
 export type NpAgentGuardianRouteFamilyV1 = (typeof npAgentGuardianRouteFamiliesV1)[number];
 export const NP_AGENT_GUARDIAN_WINDOW_MS_V1 = 600_000;

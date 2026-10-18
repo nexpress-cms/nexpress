@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -475,7 +476,7 @@ async function assertExternalRelationshipTargets(
   }
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) throw new NpForbiddenError("import", "create");
@@ -856,3 +857,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(normalized instanceof Error ? normalized : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("import", npGuardianPOST);

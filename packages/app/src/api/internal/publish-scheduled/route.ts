@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { NpAuthError, NpServiceUnavailableError, publishScheduledDocuments } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -16,7 +17,7 @@ import { revalidatePublishedDocuments } from "../../../lib/scheduled-publish-rev
  * When the env var is unset the endpoint refuses every request so production
  * deploys can't accidentally leave it open.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const expected = process.env.NP_SCHEDULER_TOKEN;
     if (!expected) {
@@ -44,3 +45,5 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("internal", npGuardianPOST);

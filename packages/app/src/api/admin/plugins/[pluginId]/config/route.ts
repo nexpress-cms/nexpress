@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -34,7 +35,7 @@ interface RouteContext {
   params: Promise<{ pluginId: string }>;
 }
 
-export async function GET(request: NextRequest, ctx: RouteContext) {
+async function npGuardianGET(request: NextRequest, ctx: RouteContext) {
   try {
     await ensureFor("plugins");
     const user = await requireAuth(request);
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
   }
 }
 
-export async function PUT(request: NextRequest, ctx: RouteContext) {
+async function npGuardianPUT(request: NextRequest, ctx: RouteContext) {
   try {
     await ensureFor("plugins");
     const user = await requireAuth(request);
@@ -110,3 +111,6 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("admin", npGuardianPUT);

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -8,7 +9,7 @@ import { sweepStaleWordPressImportRuns } from "../../../../../../lib/wp-import-a
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -22,3 +23,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

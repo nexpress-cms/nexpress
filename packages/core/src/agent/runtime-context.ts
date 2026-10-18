@@ -1,3 +1,8 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import {
+  npIsAgentGuardianAssessmentSourceV1,
+  type NpAgentGuardianAssessmentSourceV1,
+} from "./guardian-assessment-source.js";
 import {
   npIsAgentModeratorRecipeSourceV1,
   type NpAgentModeratorRecipeSourceV1,
@@ -125,6 +130,7 @@ export interface NpAgentRuntimeContextOptionsV1 {
   documentEvidence?: NpAgentRuntimeDocumentEvidenceReaderV1;
   moderatorEvidence?: NpAgentModeratorRecipeSourceV1;
   moderatorAssessmentEvidence?: NpAgentModeratorAssessmentSourceV1;
+  guardianAssessmentEvidence?: NpAgentGuardianAssessmentSourceV1;
 }
 
 export interface NpAgentRuntimeContextPrepareInputV1 {
@@ -468,7 +474,9 @@ async function build(
   );
   if (
     !recipe?.instruction ||
-    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe)) ||
+    (recipe.task !== "interactive-capability" &&
+      !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+      !npIsAgentGuardianAssessmentRecipeV1(recipe)) ||
     !connection ||
     !snapshot ||
     !pricing ||
@@ -674,12 +682,39 @@ async function readSources(
   capabilities: NpAgentRuntimeContextCapabilitySourceV1 | undefined,
   moderatorEvidence: NpAgentModeratorRecipeSourceV1 | undefined,
   moderatorAssessmentEvidence: NpAgentModeratorAssessmentSourceV1 | undefined,
+  guardianAssessmentEvidence: NpAgentGuardianAssessmentSourceV1 | undefined,
 ): Promise<{ trusted: Request["trustedContext"]; untrusted: Request["untrustedEvidence"] }> {
   const trusted: Request["trustedContext"] = [];
   const untrusted: Request["untrustedEvidence"] = [];
   const recipe = context.evidence.registry.recipes.find(
     (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
   );
+  if (npIsAgentGuardianAssessmentRecipeV1(recipe)) {
+    if (
+      !guardianAssessmentEvidence ||
+      !npIsAgentGuardianAssessmentSourceV1(guardianAssessmentEvidence)
+    )
+      unavailable();
+    if (requests.length !== 0) unavailable();
+    const selected = await guardianAssessmentEvidence.read(context, capturedAt);
+    const digest = hash("np.agent-runtime-guardian-assessment.v1", selected.metadata);
+    trusted.push({
+      id: "guardian-assessment",
+      kind: "server-fact",
+      digest,
+      classification: classification(digest, "sensitive-approved"),
+      text: serializeAgentCanonicalJson(selected.metadata),
+    });
+    for (const observation of selected.observations)
+      untrusted.push({
+        id: observation.id,
+        kind: "content",
+        digest: observation.digest,
+        observedAt: observation.observedAt,
+        classification: classification(observation.digest, "sensitive-approved"),
+        text: observation.text,
+      });
+  }
   if (npIsAgentModeratorAssessmentProfileV1(recipe)) {
     if (
       !moderatorAssessmentEvidence ||
@@ -968,6 +1003,7 @@ export function createAgentRuntimeContextV1(
               options.capabilities,
               options.moderatorEvidence,
               options.moderatorAssessmentEvidence,
+              options.guardianAssessmentEvidence,
             );
             const request = await build(context, input, options.capabilities, sources);
             const attestation = {
@@ -1010,6 +1046,7 @@ export function createAgentRuntimeContextV1(
               options.capabilities,
               options.moderatorEvidence,
               options.moderatorAssessmentEvidence,
+              options.guardianAssessmentEvidence,
             )
           : { trusted: [], untrusted: [] };
         const expected = await build(

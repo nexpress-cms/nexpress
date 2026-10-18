@@ -9,14 +9,17 @@ import {
   npAgentSignalEvidenceCanonicalIncludedKeysV1,
   npAnalyzeAgentEventCanonical,
   npAnalyzeAgentSignalEvidenceCanonical,
+  npBuildAgentEventCanonicalBytes,
   npDigestAgentEventCanonical,
   npDigestAgentSignalEvidenceCanonical,
+  npRequireAgentEventCanonical,
   type NpAgentContractResult,
   type NpAgentEventCanonicalV1,
   type NpAgentEventKind,
   type NpAgentEventPayload,
   type NpAgentSignalEvidenceCanonicalV1,
 } from "./index.js";
+import { buildAgentCanonicalFoundationBytes } from "./canonical-foundation.js";
 
 const digestA = "cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const uuidA = "018f0f30-cd7b-7cc2-8b16-8c052c259bd1";
@@ -24,7 +27,7 @@ const uuidB = "018f0f30-cd7b-7cc2-8b16-8c052c259bd2";
 const uuidC = "018f0f30-cd7b-7cc2-8b16-8c052c259bd3";
 const actorBucket = {
   purpose: "network-address" as const,
-  projectionVersion: 1,
+  projectionVersion: 1 as const,
   projectionFingerprint: digestA,
   keyId: "actor-key-1",
   bucket: "B".repeat(43),
@@ -50,6 +53,116 @@ it("preserves actual camelCase queue names and rejects shell/whitespace handler 
 
 function payload(kind: NpAgentEventKind): NpAgentEventPayload {
   switch (kind) {
+    case "http.response.observed":
+      return {
+        kind,
+        receiptId: uuidA,
+        activity: {
+          schemaVersion: "np.agent-guardian-http-activity.v1",
+          observationId: uuidA,
+          siteId: "docs-site",
+          occurredAt: "2026-08-26T01:02:03.004Z",
+          status: 404,
+          routeFamily: "collections",
+          networkBucket: {
+            ...actorBucket,
+            projectionFingerprint: "cj1:sha256:Tc2eBqJQ_cAuxaxGRLnoMlroKzxPGqgc5O9cQNcCJjk",
+          },
+        },
+      };
+    case "agent.runtime.activity.observed":
+      return {
+        kind,
+        receiptId: uuidA,
+        activity: {
+          schemaVersion: "np.agent-guardian-runtime-activity.v1",
+          observationId: uuidA,
+          siteId: "docs-site",
+          agentId: uuidB,
+          agentVersionId: uuidC,
+          runId: uuidB,
+          principalId: uuidA,
+          runAdmissionDigest: digestA,
+          occurredAt: "2026-08-26T01:02:03.004Z",
+          fact: {
+            kind: "action-admitted",
+            actionId: uuidC,
+            sequence: 1,
+            actionDigest: digestA,
+            capabilityId: "content.query",
+          },
+        },
+      };
+
+    case "content.activity.observed":
+      return {
+        kind,
+        receiptId: uuidB,
+        activity: {
+          schemaVersion: "np.agent-guardian-content-activity.v1",
+          writeId: uuidB,
+          siteId: "docs-site",
+          collection: "posts",
+          documentId: uuidC,
+          occurredAt: "2026-08-26T01:02:03.004Z",
+          actor: { kind: "staff", userId: uuidA },
+          fact: { kind: "document-save", operation: "update", status: "draft", revision: null },
+        },
+      };
+    case "security.credential.changed":
+      return {
+        kind,
+        transitionId: uuidA,
+        sourceReceiptId: uuidC,
+        impact: { scope: "deployment", affectedSiteCount: 3, siteCatalogDigest: digestA },
+        transition: {
+          kind: "password-replaced",
+          audience: "staff",
+          principalId: uuidA,
+          purpose: "password-change",
+          previous: { tokenVersion: 0 },
+          current: { tokenVersion: 1 },
+          memberResetActivation: null,
+        },
+      };
+    case "security.plugin.changed":
+      return {
+        kind,
+        transitionId: uuidA,
+        sourceReceiptId: uuidC,
+        impact: { scope: "site", affectedSiteCount: 1, siteCatalogDigest: digestA },
+        transition: {
+          kind: "plugin-config",
+          pluginId: "search",
+          previous: null,
+          current: {
+            schemaVersion: 1,
+            commitment: { keyId: "source-key-1", mac: `hmac-sha256:${"A".repeat(43)}` },
+          },
+        },
+      };
+    case "security.authority.changed":
+      return {
+        kind,
+        transitionId: uuidB,
+        sourceReceiptId: uuidC,
+        impact: { scope: "site", affectedSiteCount: 1, siteCatalogDigest: digestA },
+        transition: { kind: "site-role", userId: uuidA, previousRole: null, currentRole: "admin" },
+      };
+    case "agent.policy.changed":
+      return {
+        kind,
+        transitionId: uuidB,
+        sourceReceiptId: uuidC,
+        impact: { scope: "site", affectedSiteCount: 1, siteCatalogDigest: digestA },
+        transition: {
+          kind: "agent-policy",
+          policyId: uuidA,
+          agentId: null,
+          previous: null,
+          current: { version: 1, rowVersion: 1, status: "draft", contentHash: digestA },
+        },
+      };
     case "api.rate-limited":
       return { kind, routeFamily: "staff-auth", ipBucket: actorBucket };
     case "auth.login.failed":
@@ -180,6 +293,42 @@ function event(overrides: Partial<NpAgentEventCanonicalV1> = {}): NpAgentEventCa
   };
 }
 
+function eventForKind(kind: NpAgentEventKind): NpAgentEventCanonicalV1 {
+  return event({
+    kind,
+    payload: payload(kind),
+    ...(kind === "http.response.observed"
+      ? {
+          source: { kind: "api" as const, component: "guardian.http.v1" },
+          subject: {
+            kind: "actor-bucket" as const,
+            ...actorBucket,
+            projectionFingerprint: "cj1:sha256:Tc2eBqJQ_cAuxaxGRLnoMlroKzxPGqgc5O9cQNcCJjk",
+          },
+          actor: {
+            kind: "anonymous" as const,
+            ...actorBucket,
+            projectionFingerprint: "cj1:sha256:Tc2eBqJQ_cAuxaxGRLnoMlroKzxPGqgc5O9cQNcCJjk",
+          },
+          causation: null,
+          correlationId: null,
+          deduplicationKey: `guardian-http:${uuidA}`,
+          privacy: "sensitive" as const,
+        }
+      : {}),
+    ...(kind === "agent.runtime.activity.observed"
+      ? {
+          source: { kind: "agent" as const, component: "guardian.runtime.v1" },
+          subject: { kind: "agent" as const, agentId: uuidB, agentVersionId: uuidC },
+          causation: null,
+          correlationId: null,
+          deduplicationKey: `guardian-runtime:${uuidA}`,
+          privacy: "sensitive" as const,
+        }
+      : {}),
+  });
+}
+
 function signal(
   overrides: Partial<NpAgentSignalEvidenceCanonicalV1> = {},
 ): NpAgentSignalEvidenceCanonicalV1 {
@@ -219,7 +368,7 @@ function expectIssue(result: NpAgentContractResult<unknown>, code: string, path:
 
 describe("Agent event and signal-evidence canonical bodies", () => {
   it("publishes the closed event inventory and exact field fixtures", () => {
-    expect(npAgentEventKinds).toHaveLength(23);
+    expect(npAgentEventKinds).toHaveLength(30);
     expect(new Set(npAgentEventKinds).size).toBe(npAgentEventKinds.length);
     expect(npAgentEventCanonicalIncludedKeysV1).toHaveLength(12);
     expect(npAgentSignalEvidenceCanonicalIncludedKeysV1).toHaveLength(8);
@@ -231,8 +380,25 @@ describe("Agent event and signal-evidence canonical bodies", () => {
 
   it("round-trips every exact event payload branch", () => {
     for (const kind of npAgentEventKinds) {
-      const body = event({ kind, payload: payload(kind) });
+      const body = eventForKind(kind);
       expect(npAnalyzeAgentEventCanonical(body), kind).toEqual({ ok: true, value: body });
+    }
+  });
+
+  it("preserves generic-builder bytes and detached bodies for every exact Event branch", () => {
+    for (const kind of npAgentEventKinds) {
+      const source = eventForKind(kind);
+      const expected = buildAgentCanonicalFoundationBytes(
+        "np.agent-event.v1",
+        npRequireAgentEventCanonical(source),
+      );
+      const actual = npBuildAgentEventCanonicalBytes(source);
+      expect(actual, kind).toEqual(expected);
+      expect(actual.body, kind).not.toBe(source);
+      expect(actual.body.source, kind).not.toBe(source.source);
+      expect(actual.body.payload, kind).not.toBe(source.payload);
+      source.source.component = "mutated-source";
+      expect(actual.body, kind).toEqual(expected.body);
     }
   });
 
@@ -296,4 +462,30 @@ describe("Agent event and signal-evidence canonical bodies", () => {
     expectIssue(npAnalyzeAgentEventCanonical(body), "shape", "agent.canonical.event.eventHash");
     expect(getter).not.toHaveBeenCalled();
   });
+});
+
+it("keeps Runtime observations bound to their owning site, principal, Agent and receipt", () => {
+  const body = event({
+    kind: "agent.runtime.activity.observed",
+    payload: payload("agent.runtime.activity.observed"),
+    source: { kind: "agent", component: "guardian.runtime.v1" },
+    subject: { kind: "agent", agentId: uuidB, agentVersionId: uuidC },
+    causation: null,
+    correlationId: null,
+    deduplicationKey: `guardian-runtime:${uuidA}`,
+    privacy: "sensitive",
+  });
+  expect(npAnalyzeAgentEventCanonical(body).ok).toBe(true);
+  for (const change of [
+    { siteId: "other-site" },
+    { occurredAt: "2026-08-26T01:02:04.004Z" },
+    { source: { kind: "agent", component: "other" } },
+    { actor: { kind: "agent-principal", principalId: uuidB } },
+    { subject: null },
+    { privacy: "public" },
+    { deduplicationKey: "reused" },
+    { correlationId: uuidA },
+    { causation: { rootRunId: uuidB, sourceRunId: uuidB, sourceActionId: uuidC, depth: 1 } },
+  ])
+    expect(npAnalyzeAgentEventCanonical({ ...body, ...change }).ok).toBe(false);
 });

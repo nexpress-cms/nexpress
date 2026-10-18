@@ -1,5 +1,10 @@
 import type { NpAgentOperatorCapabilityFacadeV1 } from "./operator-capability.js";
 import {
+  npMarkAgentRuntimeScopeDeniedV1,
+  npObserveAgentRuntimeActionV1,
+  npIsAgentRuntimeObservationFailureV1,
+} from "./guardian-runtime-observer.js";
+import {
   npIsAgentOperatorCapabilityIdV1,
   npRequireAgentOpsStatusOutputV1,
   type NpAgentOpsStatusOutputV1,
@@ -74,6 +79,7 @@ import {
 import { can } from "../auth/capabilities.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { getDb } from "../db/runtime.js";
+import { npCreateAgentGuardianTransactionScopeV1 } from "./guardian-transaction-scope.js";
 import {
   npAgentActions,
   npAgentInvocations,
@@ -84,7 +90,7 @@ import {
 } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { npSiteMemberships, npUsers } from "../db/schema/system.js";
-import type { NpAgentGatewaySettingsV1 } from "../agent-contract/types.js";
+import type { NpAgentCapabilityId, NpAgentGatewaySettingsV1 } from "../agent-contract/types.js";
 import { NpError } from "../errors.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
@@ -545,6 +551,21 @@ async function assertCurrentAuthentication(
 export function createAgentCapabilityAdmissionServiceV1(
   options: NpAgentCapabilityAdmissionOptionsV1,
 ) {
+  const runtimeScopeDenials = new WeakMap<object, Map<NpAgentCapabilityId, NpAgentScope[]>>();
+  function runtimeUnavailable(
+    context: NpAgentRuntimeRunContextV1,
+    capabilityId: NpAgentCapabilityId,
+  ) {
+    const error = new NpAgentGatewayError(
+      "CAPABILITY_UNAVAILABLE",
+      404,
+      "Capability is unavailable.",
+    );
+    const missingScopes = runtimeScopeDenials.get(context)?.get(capabilityId);
+    return missingScopes?.length
+      ? npMarkAgentRuntimeScopeDeniedV1(error, { capabilityId, missingScopes })
+      : error;
+  }
   const definitionCache = new Map<string, Promise<{ canonical: string; fingerprint: string }>>();
   function expectedDefinition(id: NpAgentChangeSetCapabilityInvocationRequestV1["capabilityId"]) {
     let cached = definitionCache.get(id);
@@ -704,7 +725,16 @@ export function createAgentCapabilityAdmissionServiceV1(
         (scope) => !principal.scopes.includes(scope),
       )
     )
-      throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      throw npMarkAgentRuntimeScopeDeniedV1(
+        new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable."),
+        {
+          capabilityId: entry.definition.descriptor.id,
+          missingScopes: [
+            ...entry.definition.descriptor.requiredScopes,
+            ...requirements.additionalScopes,
+          ].filter((scope) => !principal.scopes.includes(scope)),
+        },
+      );
     const current = await entry.definition.execute(input, {
       siteId: context.siteId,
       principal,
@@ -765,7 +795,7 @@ export function createAgentCapabilityAdmissionServiceV1(
           (item) => item.canonical.descriptor.id === capabilityId,
         )
       )
-        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+        throw runtimeUnavailable(runtime, capabilityId);
     } else {
       const settings = npRequireAgentGatewaySettings(
         await options.resolveGatewaySettings(principal.siteId),
@@ -797,11 +827,17 @@ export function createAgentCapabilityAdmissionServiceV1(
       ]),
     ].sort();
     if (requiredScopes.some((scope) => !authentication.scopes.includes(scope))) {
-      throw new NpAgentGatewayError(
+      const error = new NpAgentGatewayError(
         "INSUFFICIENT_SCOPE",
         403,
         "Required capability scope is absent.",
       );
+      throw runtime
+        ? npMarkAgentRuntimeScopeDeniedV1(error, {
+            capabilityId,
+            missingScopes: requiredScopes.filter((scope) => !authentication.scopes.includes(scope)),
+          })
+        : error;
     }
     const authorizationFingerprint = await npDigestAgentAuthorizationContextCanonical(
       authentication.authorizationContext,
@@ -971,6 +1007,21 @@ export function createAgentCapabilityAdmissionServiceV1(
         startedAt: now,
         createdAt: now,
       });
+      if (runtime)
+        await npObserveAgentRuntimeActionV1({
+          db: tx,
+          run: runtime.run,
+          action: {
+            id: actionId,
+            siteId: principal.siteId,
+            runId: runtime.run.id,
+            runFingerprint: runtime.run.admissionFingerprint,
+            sequence: runtimeSequence,
+            capabilityId,
+            inputHash: actionHash,
+            createdAt: now,
+          },
+        });
     }, "serializable");
     try {
       const execution = await entry.definition.execute(parsedInput, {
@@ -1184,6 +1235,8 @@ export function createAgentCapabilityAdmissionServiceV1(
   }
   const service = {
     async sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
+      const deniedScopes = new Map<NpAgentCapabilityId, NpAgentScope[]>();
+      runtimeScopeDenials.set(context, deniedScopes);
       const recipe = context.evidence.registry.recipes.find(
         (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
       );
@@ -1223,9 +1276,13 @@ export function createAgentCapabilityAdmissionServiceV1(
                           : "propose",
                 ),
             ) &&
-            entry.definition.descriptor.requiredScopes.every((scope) =>
-              context.evidence.definition.scopes.includes(scope),
-            ),
+            (() => {
+              const missing = entry.definition.descriptor.requiredScopes.filter(
+                (scope) => !context.evidence.definition.scopes.includes(scope),
+              );
+              if (missing.length) deniedScopes.set(entry.definition.descriptor.id, missing);
+              return !missing.length;
+            })(),
         )
         .sort((a, b) => a.canonical.descriptor.id.localeCompare(b.canonical.descriptor.id));
     },
@@ -1392,11 +1449,7 @@ export function createAgentCapabilityAdmissionServiceV1(
                 (entry) => entry.canonical.descriptor.id === request.capabilityId,
               )
             )
-              throw new NpAgentGatewayError(
-                "CAPABILITY_UNAVAILABLE",
-                404,
-                "Capability is unavailable.",
-              );
+              throw runtimeUnavailable(context, request.capabilityId);
           },
         );
         return facade.invokeRuntime({
@@ -1424,11 +1477,7 @@ export function createAgentCapabilityAdmissionServiceV1(
                 (entry) => entry.canonical.descriptor.id === request.capabilityId,
               )
             )
-              throw new NpAgentGatewayError(
-                "CAPABILITY_UNAVAILABLE",
-                404,
-                "Capability is unavailable.",
-              );
+              throw runtimeUnavailable(context, request.capabilityId);
           },
         );
         return facade.invokeRuntime({
@@ -1460,11 +1509,7 @@ export function createAgentCapabilityAdmissionServiceV1(
                 (entry) => entry.canonical.descriptor.id === request.capabilityId,
               )
             )
-              throw new NpAgentGatewayError(
-                "CAPABILITY_UNAVAILABLE",
-                404,
-                "Capability is unavailable.",
-              );
+              throw runtimeUnavailable(context, request.capabilityId);
           },
         );
         return facade.invokeRuntime({
@@ -1514,6 +1559,7 @@ export function createAgentCapabilityAdmissionServiceV1(
               }),
             };
           } catch (error) {
+            if (npIsAgentRuntimeObservationFailureV1(error)) throw error;
             return { error };
           }
         },
@@ -1529,6 +1575,8 @@ export function createAgentCapabilityAdmissionServiceV1(
       requiredScopes: readonly NpAgentScope[];
       minimumExposure: "read" | "propose" | "approved-execute";
       prepareTransaction?: (db: Db) => Promise<void>;
+      /** Optional server-owned whole-transaction deadline, including host callbacks. */
+      transactionWorkBudgetMs?: number;
       resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
       mutate: (db: Db, now: Date, authentication: NpAgentCapabilityAuthenticationV1) => Promise<T>;
     }): Promise<T> {
@@ -1623,6 +1671,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       return service.withCurrentAuthority({
         authentication,
         prepareTransaction: input.prepareTransaction,
+        transactionWorkBudgetMs: input.transactionWorkBudgetMs,
         requiredScopes: input.requiredScopes,
         minimumExposure: input.minimumExposure,
         mutate: async (db, time) => {
@@ -1645,6 +1694,8 @@ export function createAgentCapabilityAdmissionServiceV1(
       minimumExposure: "read" | "propose" | "approved-execute";
       /** Server-owned site/quota locks, acquired before principal authority locks. */
       prepareTransaction?: (db: Db) => Promise<void>;
+      /** Optional server-owned whole-transaction deadline, including host callbacks. */
+      transactionWorkBudgetMs?: number;
       mutate: (db: Db, now: Date) => Promise<T>;
     }): Promise<T> {
       const authentication = input.authentication;
@@ -1669,18 +1720,119 @@ export function createAgentCapabilityAdmissionServiceV1(
           );
         }
       };
-      await assertExposure();
-      return getDb().transaction(
-        async (tx) => {
-          await input.prepareTransaction?.(tx);
-          await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
-          const result = await input.mutate(tx, nowFn());
-          await assertExposure();
-          await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
-          return result;
-        },
-        { isolationLevel: "serializable" },
-      );
+      if (input.transactionWorkBudgetMs === undefined) {
+        await assertExposure();
+        return getDb().transaction(
+          async (tx) => {
+            await input.prepareTransaction?.(tx);
+            await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
+            const result = await input.mutate(tx, nowFn());
+            await assertExposure();
+            await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
+            return result;
+          },
+          { isolationLevel: "serializable" },
+        );
+      }
+      const unavailable = (): never => {
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 503, "Capability is unavailable.");
+      };
+      if (
+        !Number.isInteger(input.transactionWorkBudgetMs) ||
+        input.transactionWorkBudgetMs < 1 ||
+        input.transactionWorkBudgetMs > 5_000
+      )
+        unavailable();
+      const deadline = performance.now() + input.transactionWorkBudgetMs;
+      let live = true;
+      let closeScope: (() => void) | undefined;
+      const checkpoint = () => {
+        if (!live || performance.now() >= deadline) {
+          live = false;
+          closeScope?.();
+          unavailable();
+        }
+      };
+      const bounded = async <R>(work: () => Promise<R>): Promise<R> => {
+        checkpoint();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            Promise.resolve().then(() => {
+              checkpoint();
+              return work();
+            }),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => {
+                  live = false;
+                  closeScope?.();
+                  reject(
+                    new NpAgentGatewayError(
+                      "CAPABILITY_UNAVAILABLE",
+                      503,
+                      "Capability is unavailable.",
+                    ),
+                  );
+                },
+                Math.max(0, deadline - performance.now()),
+              );
+            }),
+          ]);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      };
+      try {
+        await bounded(assertExposure);
+        return await bounded(() =>
+          getDb().transaction(
+            async (rawTx) => {
+              checkpoint();
+              const scope = npCreateAgentGuardianTransactionScopeV1(rawTx, {
+                checkpoint,
+                unavailable,
+                closed: unavailable,
+              });
+              closeScope = () => scope.close();
+              try {
+                // Reject the actual owning callback on deadline so rollback and
+                // lock release do not depend on a stalled host promise settling.
+                return await bounded(async () => {
+                  const tx = scope.db;
+                  await input.prepareTransaction?.(tx);
+                  checkpoint();
+                  await assertCurrentAuthentication(
+                    tx,
+                    authentication,
+                    input.requiredScopes,
+                    nowFn,
+                  );
+                  checkpoint();
+                  const result = await input.mutate(tx, nowFn());
+                  checkpoint();
+                  await assertExposure();
+                  checkpoint();
+                  await assertCurrentAuthentication(
+                    tx,
+                    authentication,
+                    input.requiredScopes,
+                    nowFn,
+                  );
+                  checkpoint();
+                  return result;
+                });
+              } finally {
+                scope.close();
+              }
+            },
+            { isolationLevel: "serializable" },
+          ),
+        );
+      } finally {
+        live = false;
+        closeScope?.();
+      }
     },
     async project(input: { authentication: NpAgentCapabilityAuthenticationV1 }) {
       const authentication = input.authentication;

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -17,7 +18,7 @@ const MAX_WXR_FILE_SIZE = 25 * 1024 * 1024;
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
@@ -106,3 +107,5 @@ function parseBoolean(value: FormDataEntryValue | null, fallback: boolean, field
     { field, message: `${field} must be "true" or "false"` },
   ]);
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

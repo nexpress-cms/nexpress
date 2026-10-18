@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NpAuthError,
   NpForbiddenError,
@@ -25,7 +26,7 @@ import { optionalMember } from "../../../../lib/member-auth-helpers";
 import { npCanReadCommunityDocument } from "@nexpress/core/community";
 import { revalidateCollection } from "../../../../lib/revalidate";
 
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -71,7 +72,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function npGuardianPATCH(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -127,7 +128,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -160,3 +161,7 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("collections", npGuardianGET);
+export const PATCH = npWithAgentGuardianHttpResponseV1("collections", npGuardianPATCH);
+export const DELETE = npWithAgentGuardianHttpResponseV1("collections", npGuardianDELETE);

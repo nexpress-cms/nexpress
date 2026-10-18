@@ -23,6 +23,16 @@ import { IncidentNotifications } from "./agent-incident-notifications.js";
 import { IncidentAssignment } from "./agent-incident-assignment.js";
 import { IncidentEvidence } from "./agent-incident-evidence.js";
 import { IncidentGuardianEvidence } from "./agent-incident-guardian-evidence.js";
+import { IncidentGuardianSecurityEvidence } from "./agent-incident-guardian-security-evidence.js";
+import { IncidentGuardianExport } from "./agent-incident-guardian-export.js";
+import {
+  IncidentGuardianContentEvidence,
+  IncidentGuardianRuntimeEvidence,
+  IncidentGuardianHttpEvidence,
+  IncidentGuardianExternalEvidence,
+  IncidentGuardianAssessment,
+  IncidentGuardianSessionEvidence,
+} from "./agent-incident-guardian-observations.js";
 import { IncidentResponse } from "./agent-incident-response.js";
 import { IncidentGuardianResponse } from "./agent-incident-guardian-response.js";
 import { IncidentGuardianSession } from "./agent-incident-guardian-session.js";
@@ -339,6 +349,17 @@ function IncidentDetail({ id }: { id: string }) {
   const path = `${root}/${encodeURIComponent(id)}${params.size ? `?${params}` : ""}`;
   const state = useRuntimeResource(path, npRequireAgentIncidentStudioDetailV1);
   const detail = state.value;
+  const securityEvidence = detail?.guardianSecurityEvidence;
+  const contentEvidence = detail?.guardianContentEvidence;
+  const externalEvidence = detail?.guardianExternalEvidence;
+  const runtimeEvidence = detail?.guardianRuntimeEvidence;
+  const httpEvidence = detail?.guardianHttpEvidence;
+  const isReadOnlyGuardianSource =
+    securityEvidence !== undefined ||
+    contentEvidence !== undefined ||
+    externalEvidence !== undefined ||
+    runtimeEvidence !== undefined ||
+    httpEvidence !== undefined;
   const [responseSelection, setResponseSelection] = React.useState<{
     detail: NpAgentIncidentStudioDetailV1;
     index: string;
@@ -422,7 +443,29 @@ function IncidentDetail({ id }: { id: string }) {
               {detail.incident.lastObservedAt}
             </p>
           </header>
-          {detail.guardianEvidence !== undefined ? (
+          {isReadOnlyGuardianSource ||
+          detail.guardianEvidence !== undefined ||
+          detail.guardianSessionEvidence !== undefined ? (
+            <IncidentGuardianExport
+              key={`guardian-export:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              version={detail.incident.versionNumber}
+              onAccessLost={evidenceAccessLost}
+            />
+          ) : null}
+          {securityEvidence !== undefined ? (
+            <IncidentGuardianSecurityEvidence evidence={securityEvidence} />
+          ) : contentEvidence !== undefined ? (
+            <IncidentGuardianContentEvidence evidence={contentEvidence} />
+          ) : externalEvidence !== undefined ? (
+            <IncidentGuardianExternalEvidence evidence={externalEvidence} />
+          ) : runtimeEvidence !== undefined ? (
+            <IncidentGuardianRuntimeEvidence evidence={runtimeEvidence} />
+          ) : httpEvidence !== undefined ? (
+            <IncidentGuardianHttpEvidence evidence={httpEvidence} />
+          ) : detail.guardianSessionEvidence !== undefined ? (
+            <IncidentGuardianSessionEvidence evidence={detail.guardianSessionEvidence} />
+          ) : detail.guardianEvidence !== undefined ? (
             <IncidentGuardianEvidence evidence={detail.guardianEvidence} />
           ) : (
             <section className="space-y-3" aria-labelledby="incident-signals">
@@ -478,6 +521,7 @@ function IncidentDetail({ id }: { id: string }) {
           />
           {!writing &&
           !state.loading &&
+          !isReadOnlyGuardianSource &&
           detail.guardianEvidence === undefined &&
           detail.incident.primarySubject?.kind !== "session" ? (
             <IncidentEvidence
@@ -504,7 +548,8 @@ function IncidentDetail({ id }: { id: string }) {
               onConflict={assignmentConflict}
             />
           ) : null}
-          {detail.guardianEvidence === undefined &&
+          {!isReadOnlyGuardianSource &&
+          detail.guardianEvidence === undefined &&
           detail.incident.primarySubject?.kind !== "member" &&
           detail.incident.primarySubject?.kind !== "session" ? (
             <IncidentResponse
@@ -542,7 +587,7 @@ function IncidentDetail({ id }: { id: string }) {
               }
             />
           ) : null}
-          {detail.guardianEvidence !== undefined ? (
+          {!isReadOnlyGuardianSource && detail.guardianEvidence !== undefined ? (
             <IncidentGuardianResponse
               key={`guardian-response:${detail.incident.id}:${detail.incident.versionNumber}`}
               incidentId={detail.incident.id}
@@ -559,7 +604,7 @@ function IncidentDetail({ id }: { id: string }) {
               onConflict={evidenceConflict}
             />
           ) : null}
-          {detail.incident.primarySubject?.kind === "session" ? (
+          {!isReadOnlyGuardianSource && detail.incident.primarySubject?.kind === "session" ? (
             <IncidentGuardianSession
               key={`guardian-session:${detail.incident.id}:${detail.incident.versionNumber}`}
               incidentId={detail.incident.id}
@@ -576,7 +621,8 @@ function IncidentDetail({ id }: { id: string }) {
               onConflict={evidenceConflict}
             />
           ) : null}
-          {detail.guardianEvidence === undefined &&
+          {!isReadOnlyGuardianSource &&
+          detail.guardianEvidence === undefined &&
           detail.incident.primarySubject?.kind === "member" ? (
             <IncidentMemberResponse
               key={`member-response:${detail.incident.id}:${detail.incident.versionNumber}`}
@@ -632,24 +678,26 @@ function IncidentDetail({ id }: { id: string }) {
               )
             }
           />
-          <IncidentFeedback
-            disabled={writing || state.loading}
-            detail={detail}
-            onWriting={setWriting}
-            onSuccess={() => {
-              setCursor(null);
-              setResponseCursor(null);
-              state.reload();
-            }}
-            onAccessLost={(error) =>
-              state.clear("This incident is unavailable or you no longer have access.", error)
-            }
-            onConflict={() =>
-              state.clear(
-                "This incident changed. Reload and review the current evidence before submitting feedback.",
-              )
-            }
-          />
+          {!isReadOnlyGuardianSource ? (
+            <IncidentFeedback
+              disabled={writing || state.loading}
+              detail={detail}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={(error) =>
+                state.clear("This incident is unavailable or you no longer have access.", error)
+              }
+              onConflict={() =>
+                state.clear(
+                  "This incident changed. Reload and review the current evidence before submitting feedback.",
+                )
+              }
+            />
+          ) : null}
           <section className="space-y-3" aria-labelledby="incident-timeline">
             <h3 id="incident-timeline" className="font-semibold">
               Timeline
@@ -658,6 +706,12 @@ function IncidentDetail({ id }: { id: string }) {
               Each entry is labeled by its source. An Agent assessment is not an observed fact or an
               authorization.
             </p>
+            {detail.timelinePageComplete === false ? (
+              <p role="status">
+                Some timeline entries could not be verified or viewed. A complete evidence export is
+                unavailable.
+              </p>
+            ) : null}
             {detail.timeline.length === 0 ? (
               <p>No timeline entries on this page.</p>
             ) : (
@@ -686,6 +740,17 @@ function IncidentDetail({ id }: { id: string }) {
                         </p>
                         <p className="whitespace-pre-wrap">{entry.severityChange.note}</p>
                       </div>
+                    ) : null}
+                    {entry.guardianAssessment ? (
+                      <IncidentGuardianAssessment assessment={entry.guardianAssessment} />
+                    ) : null}
+                    {entry.ruleSeverityChange ? (
+                      <p className="break-words">
+                        Deterministic rule severity change: {entry.ruleSeverityChange.fromSeverity}{" "}
+                        → {entry.ruleSeverityChange.toSeverity}. Detector{" "}
+                        {entry.ruleSeverityChange.detectorId} v
+                        {entry.ruleSeverityChange.detectorVersion}.
+                      </p>
                     ) : null}
                     {entry.assessment ? (
                       <div className="space-y-2 break-words">

@@ -4,6 +4,15 @@ import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   npFormatAgentEvaluationReportV1,
+  npFormatAgentGuardianEvaluationArtifactV1,
+  npRequireAgentGuardianEvaluationArtifactV1,
+  npCompareAgentGuardianEvaluationArtifactsV1,
+  npBuildAgentGuardianEvaluationReviewArtifactV1,
+  npRequireAgentGuardianEvaluationReviewArtifactV1,
+  npCompareAgentGuardianEvaluationReviewArtifactsV1,
+  type NpAgentGuardianEvaluationArtifactV1,
+  type NpAgentGuardianEvaluationReviewArtifactV1,
+  type NpAgentGuardianEvaluationReviewComparisonV1,
   type NpAgentEvaluationReportCommandResultV1,
   npFormatAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationCommandResult,
@@ -54,7 +63,21 @@ interface ModeratorProposalReviewResult {
   comparison: NpAgentModeratorProposalEvaluationReviewComparisonV1 | null;
   errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
 }
+type GuardianResult =
+  | {
+      schemaVersion: "np.agent-guardian-eval-command.v1";
+      artifact: NpAgentGuardianEvaluationArtifactV1 | null;
+      comparison: Awaited<ReturnType<typeof npCompareAgentGuardianEvaluationArtifactsV1>> | null;
+      errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
+    }
+  | {
+      schemaVersion: "np.agent-guardian-eval-review-command.v1";
+      artifact: NpAgentGuardianEvaluationReviewArtifactV1 | null;
+      comparison: NpAgentGuardianEvaluationReviewComparisonV1 | null;
+      errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
+    };
 export type EvaluationResult =
+  | GuardianResult
   | NpAgentEvaluationReportCommandResultV1
   | OperatorPlanReviewResult
   | ModeratorProposalReviewResult
@@ -85,6 +108,7 @@ export function evaluationResultFailed(result: EvaluationResult): boolean {
     result.errorCode ||
     !result.artifact ||
     ((result.schemaVersion === "np.agent-eval-command.v1" ||
+      result.schemaVersion === "np.agent-guardian-eval-command.v1" ||
       result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
       result.schemaVersion === "np.agent-moderator-eval-command.v2" ||
       result.schemaVersion === "np.agent-moderator-eval-command.v3") &&
@@ -92,6 +116,18 @@ export function evaluationResultFailed(result: EvaluationResult): boolean {
   );
 }
 export function formatEvaluationResult(result: EvaluationResult): string {
+  if (
+    result.schemaVersion === "np.agent-guardian-eval-command.v1" ||
+    result.schemaVersion === "np.agent-guardian-eval-review-command.v1"
+  ) {
+    if (result.errorCode || !result.artifact)
+      return `Guardian offline evaluation unavailable (${result.errorCode}).`;
+    const text =
+      result.schemaVersion === "np.agent-guardian-eval-review-command.v1"
+        ? `Guardian synthetic prediction review: supported=${result.artifact.summary.supported}; unsupported=${result.artifact.summary.unsupported}; unreviewed=${result.artifact.summary.unreviewed}. Self-reported labels confer no approval authority.`
+        : npFormatAgentGuardianEvaluationArtifactV1(result.artifact);
+    return `${text}${result.comparison ? (result.comparison.comparable ? " Comparison uses the compatible synthetic corpus/profile; no production or model usefulness conclusion." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`;
+  }
   if (result.schemaVersion === "np.agent-eval-report-command.v1")
     return result.artifact
       ? npFormatAgentEvaluationReportV1(result.artifact)
@@ -203,6 +239,13 @@ export async function prepareEvaluationResultVerifier(
       source &&
       typeof source === "object" &&
       "schemaVersion" in source &&
+      source.schemaVersion === "np.agent-guardian-eval.v1"
+    )
+      return prepareGuardianVerifier(input, cwd, source);
+    if (
+      source &&
+      typeof source === "object" &&
+      "schemaVersion" in source &&
       (source.schemaVersion === "np.agent-moderator-eval.v1" ||
         source.schemaVersion === "np.agent-moderator-eval.v2" ||
         source.schemaVersion === "np.agent-moderator-eval.v3")
@@ -250,6 +293,7 @@ export async function prepareEvaluationResultVerifier(
       return Promise.resolve(expected);
     };
   }
+  if (input.dataset === "guardian.v1") return prepareGuardianVerifier(input, cwd);
   if (
     input.dataset === "moderator.v1" ||
     input.dataset === "moderator.v2" ||
@@ -313,6 +357,68 @@ export async function prepareEvaluationResultVerifier(
         throw new Error("Mismatched evaluation comparison");
     }
     return parsed;
+  };
+}
+
+async function prepareGuardianVerifier(
+  input: NpAgentEvaluationCommandArgsV1,
+  cwd: string,
+  reviewSource?: unknown,
+): Promise<(value: unknown) => Promise<EvaluationResult>> {
+  await separateReviewOutput(input, cwd);
+  let expected: GuardianResult;
+  if (input.reviewPath) {
+    const artifact = await npBuildAgentGuardianEvaluationReviewArtifactV1(
+      reviewSource,
+      input.reviewsPath ? await readBoundedJson(input.reviewsPath, cwd) : [],
+    );
+    expected = {
+      schemaVersion: "np.agent-guardian-eval-review-command.v1",
+      artifact,
+      comparison: input.comparePath
+        ? await npCompareAgentGuardianEvaluationReviewArtifactsV1(
+            artifact,
+            await npRequireAgentGuardianEvaluationReviewArtifactV1(
+              await readBoundedJson(input.comparePath, cwd),
+            ),
+          )
+        : null,
+      errorCode: null,
+    };
+  } else {
+    const { runAgentGuardianEvaluationV1 } = await import("@nexpress/core/agents");
+    const artifact = await runAgentGuardianEvaluationV1();
+    expected = {
+      schemaVersion: "np.agent-guardian-eval-command.v1",
+      artifact,
+      comparison: input.comparePath
+        ? await npCompareAgentGuardianEvaluationArtifactsV1(
+            artifact,
+            await npRequireAgentGuardianEvaluationArtifactV1(
+              await readBoundedJson(input.comparePath, cwd),
+            ),
+          )
+        : null,
+      errorCode: null,
+    };
+  }
+  return async (value) => {
+    for (const errorCode of [
+      "ARTIFACT_INVALID",
+      "ARTIFACT_UNAVAILABLE",
+      "EVALUATION_UNAVAILABLE",
+    ] as const) {
+      const failure: GuardianResult = {
+        schemaVersion: expected.schemaVersion,
+        artifact: null,
+        comparison: null,
+        errorCode,
+      };
+      if (isDeepStrictEqual(value, failure)) return Promise.resolve(failure);
+    }
+    // The child cannot choose its corpus, labels, profile, comparison or authority.
+    if (!isDeepStrictEqual(value, expected)) throw new Error("Mismatched Guardian result");
+    return Promise.resolve(expected);
   };
 }
 

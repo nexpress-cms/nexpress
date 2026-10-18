@@ -5,12 +5,14 @@ import { npWorkerHeartbeats } from "../../../packages/core/src/db/schema/system.
 import { NP_WORKER_SUBSCRIPTION_META_KEY } from "../../../packages/core/src/jobs-contract/worker-subscription-contract.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAgentOperatorEventSourceV1 } from "../../../packages/core/src/agent/operator-event-source.js";
+import { createAgentGuardianOperationsServiceV1 } from "../../../packages/core/src/agent/guardian-operations-service.js";
 import { createAgentRuntimeEventServiceV1 } from "../../../packages/core/src/agent/runtime-event-service.js";
 import { npCollectAgentOperatorEventObservationV1 } from "../../../packages/core/src/agent/operator-event-observation.js";
 import type { NpAgentOperatorMonitorSnapshotV1 } from "../../../packages/core/src/agent-contract/operator-monitor-contract.js";
 import { npRequireAgentOpsPlanOutputV1 } from "../../../packages/core/src/agent-contract/operator-capability-contract.js";
 import {
   npAgentEvents,
+  npAgentSignals,
   npAgentProviderCalls,
   npAgentRuns,
   npAgentOperatorExecutions,
@@ -159,6 +161,65 @@ describe.skipIf(skipIfNoTestDb())("Operator canonical source and bounded recover
     f.advance(1);
     await f.source.observe({ siteId });
     expect(await f.db.select().from(npAgentEvents)).toHaveLength(nextWindow.length);
+  });
+  it("composes persisted Operator jobs and health coverage without polling, duplicate Signals or invented missing-worker failures", async () => {
+    const f = await setup();
+    const operations = createAgentGuardianOperationsServiceV1({
+      studio: {
+        get: async () => {
+          throw new Error("Diagnostics must not compose private Incident bodies");
+        },
+      },
+      authorizeDiagnostics: async () => {
+        if (!f.state.allowed) throw new Error("Current staff authority unavailable");
+      },
+      operator: f.source,
+      now: f.options.now,
+    });
+    const input = { siteId, actor: f.actor.actor };
+    expect((await operations.diagnostics(input)).operatorCoverage).toMatchObject({
+      state: "not-observed",
+      jobs: { complete: null, paused: null },
+      events: { sampled: null },
+    });
+    expect(f.state.observations).toBe(0);
+    expect(await f.source.coverage({ db: f.db, siteId: "uninstalled" })).toMatchObject({
+      state: "disabled",
+    });
+    await f.source.observe({ siteId });
+    const before = await f.db.select().from(npAuditEvents);
+    const first = (await operations.diagnostics(input)).operatorCoverage;
+    expect(first).toMatchObject({
+      state: "observed",
+      basis: "operator-recorded-facts",
+      jobs: { complete: true, paused: false, failuresComplete: true },
+      health: { observed: true },
+      events: { sampled: 3, invalid: 0, truncated: false },
+    });
+    expect(JSON.stringify(first)).not.toMatch(
+      /worker:1|agent.runExecute|manifest-1|jobId|payload/u,
+    );
+    expect(f.state.observations).toBe(1);
+    expect(await f.db.select().from(npAuditEvents)).toEqual(before);
+    expect(await f.db.select().from(npAgentEvents)).toHaveLength(3);
+    expect(await f.db.select().from(npAgentSignals)).toHaveLength(0);
+    f.advance(301);
+    expect((await operations.diagnostics(input)).operatorCoverage?.state).toBe("stale");
+    f.changeSnapshot({ complete: false, paused: true, workers: [], queues: [] });
+    await f.source.observe({ siteId });
+    expect((await operations.diagnostics(input)).operatorCoverage).toMatchObject({
+      state: "observed",
+      jobs: { complete: false, paused: true },
+      events: { sampled: 3 },
+    });
+    f.state.allowed = false;
+    expect(await f.source.coverage({ db: f.db, siteId })).toMatchObject({
+      state: "unavailable",
+      events: { sampled: null },
+    });
+    await expect(operations.diagnostics(input)).rejects.toMatchObject({
+      code: "GUARDIAN_DIAGNOSTICS_UNAVAILABLE",
+    });
   });
   it("suppresses stale/backlog signals when paused or incomplete and performs no reads for uninstalled sites", async () => {
     const f = await setup();

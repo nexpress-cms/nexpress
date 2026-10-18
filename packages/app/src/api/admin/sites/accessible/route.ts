@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { getCurrentSiteId, isSuperAdmin, listSites } from "@nexpress/core";
 import { canOnSite } from "@nexpress/core/sites";
 import { NP_DEFAULT_SITE_ID, npSerializeSiteSummary } from "@nexpress/core/settings";
@@ -20,7 +21,7 @@ import { ensureFor } from "../../../../lib/init-core";
  * (id, name, hostname, isDefault) plus an `isCurrent` flag
  * computed from the request's resolved site id.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     // This endpoint is the recovery path when a persisted active-site cookie
@@ -57,3 +58,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

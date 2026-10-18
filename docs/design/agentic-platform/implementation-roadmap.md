@@ -813,18 +813,20 @@ no live approval, provider activation or R6 acceptance is inferred.
 Outcome: application signals are correlated into incidents, with narrowly
 reversible responses.
 
-The first [request-observation slice](r7-guardian-observation-flow.md) connects
-bounded, PII-minimized login failures and existing rate-limit decisions to
-deterministic Incidents and the staff workspace. This is observation only;
-broader collectors and the full R7 gate remain open. The subsequent
-[approved temporary request-limit slice](r7-guardian-request-limits-flow.md) adds
-explicit shared enforcement, distinct-human approval, exact early removal and
-TTL cleanup recovery. Session revocation and unattended responses remain outside
-that slice. The [approved exact-session slice](r7-guardian-session-revocation-flow.md)
-adds trusted login-after-failures evidence, deployment-impact super-admin
-approval, atomic browser-family termination and retained result verification.
-It does not complete the broader collectors, unattended-response policy,
-external integration or full R7 gate.
+The [completion plan](r7-completion-plan.md) records the completed AP-701–708
+implementation and no-cost local acceptance, including the complete repository,
+PostgreSQL, Redis, theme, native-preview, production-browser and packed-scaffold
+gates. Its matrix keeps coverage limits and missing production qualification
+explicit. Independent security approval, real shadow evidence, legitimate-user
+impact and deployment qualification remain outstanding; the full R7 production
+gate is not marked complete and unattended responses remain disabled.
+
+The earlier [request-observation slice](r7-guardian-observation-flow.md),
+[approved temporary request limits](r7-guardian-request-limits-flow.md) and
+[approved exact-session revocation](r7-guardian-session-revocation-flow.md)
+retain their historical implementation boundaries. The current integrated
+collector, advisory, external-source, retention and recovery evidence is in the
+completion plan and [operations flow](r7-guardian-operations-flow.md).
 
 | ID     | Scope                                                                                                                                              |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |

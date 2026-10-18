@@ -20,6 +20,7 @@ import {
 import type { NpAgentRuntimeApprovalInspectionV1 } from "./changeset-service.js";
 import { npFailAgentRuntimeApprovalInTransactionV1 } from "./runtime-execution-store.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
+import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 import {
   npResolveAgentBudgetV1,
   type NpAgentConcreteBudgetV1,
@@ -1025,7 +1026,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         input: json(parsed.proposal),
       });
       const proposalHash = await npDigestAgentActionCanonical(canonical);
-      await db.insert(npAgentActions).values({
+      const actionRow = {
         id: actionId,
         siteId,
         runId,
@@ -1053,7 +1054,9 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         compensatesActionId: target.containment?.sourceActionId ?? null,
         auditEventId: auditId,
         createdAt: time,
-      });
+      } satisfies typeof npAgentActions.$inferInsert;
+      await db.insert(npAgentActions).values(actionRow);
+      if (runtime) await npObserveAgentRuntimeActionV1({ db, run: runtime.run, action: actionRow });
       const statement = npRequireAgentApprovalStatementCanonical({
         version: "np.agent-approval-statement.v1",
         siteId,

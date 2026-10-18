@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import { NpValidationError } from "@nexpress/core";
 import { NP_DEFAULT_SITE_ID, getCurrentSiteId } from "@nexpress/core/sites";
 import {
@@ -22,7 +23,7 @@ function asRequestValidationError(error: NpSearchContractError): NpValidationErr
   );
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   let parsed: NpSearchRequest;
   try {
     parsed = npParseSearchApiQuery(request.nextUrl.searchParams);
@@ -78,3 +79,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("search", npGuardianGET);

@@ -21,6 +21,7 @@ import {
   cloneCanonicalRuntimeInput,
 } from "./canonical-runtime-primitives.js";
 import type { NpAgentContractResult, NpAgentSourceReleaseCanonicalV1 } from "./types.js";
+import { npAgentGuardianSourcePairsV1 } from "./guardian-retention-contract.js";
 
 export type { NpAgentSourceReleaseCanonicalV1, NpAgentSourceReleaseV1 } from "./types.js";
 const PURPOSE = "np.agent-source-release.v1";
@@ -35,6 +36,20 @@ const COMMON = [
   "releasedAt",
 ] as const;
 const VARIANT_KEYS = {
+  "guardian-event": [
+    "family",
+    "eventKind",
+    "sourceComponent",
+    "namespaceDigest",
+    "deliveryKeyDigest",
+    "eventHash",
+    "sourceProofDigest",
+    "closureDigest",
+    "closedBefore",
+    "occurredAt",
+    "recordedAt",
+    "retentionEligibleAt",
+  ],
   "runtime-run": [
     "principalId",
     "agentId",
@@ -150,7 +165,59 @@ function parse(value: unknown): NpAgentSourceReleaseCanonicalV1 {
       failCanonicalBody("invalid-field", PATH, "must not release before terminal evidence time");
   };
   let result: NpAgentSourceReleaseCanonicalV1;
-  if (kind === "runtime-run") {
+  if (kind === "guardian-event") {
+    const family = canonicalBodyEnum<
+      "requests" | "security-transitions" | "content" | "sentry" | "runtime" | "http"
+    >(
+      record.family,
+      PATH,
+      new Set(["requests", "security-transitions", "content", "sentry", "runtime", "http"]),
+    );
+    const eventKind = canonicalBodyEnum<
+      Extract<NpAgentSourceReleaseCanonicalV1, { kind: "guardian-event" }>["eventKind"]
+    >(
+      record.eventKind,
+      PATH,
+      new Set(Object.values(npAgentGuardianSourcePairsV1).flatMap((pairs) => Object.values(pairs))),
+    );
+    const sourceComponent = canonicalBodyAscii(record.sourceComponent, PATH, 128);
+    const occurredAt = utc("occurredAt"),
+      recordedAt = utc("recordedAt"),
+      closedBefore = utc("closedBefore"),
+      retentionEligibleAt = utc("retentionEligibleAt");
+    if (
+      !Object.entries(npAgentGuardianSourcePairsV1[family]).some(
+        ([component, kind]) => component === sourceComponent && kind === eventKind,
+      ) ||
+      occurredAt >= closedBefore ||
+      occurredAt > recordedAt ||
+      recordedAt > retentionEligibleAt ||
+      closedBefore > base.releasedAt ||
+      Date.parse(closedBefore) % 600000 !== 0
+    )
+      failCanonicalBody(
+        "invalid-field",
+        PATH,
+        "Guardian delivery must be closed before releasing exact source history",
+      );
+    beforeRelease(retentionEligibleAt);
+    result = {
+      ...base,
+      kind,
+      family,
+      eventKind,
+      sourceComponent,
+      occurredAt,
+      recordedAt,
+      closedBefore,
+      retentionEligibleAt,
+      namespaceDigest: digest("namespaceDigest"),
+      deliveryKeyDigest: digest("deliveryKeyDigest"),
+      eventHash: digest("eventHash"),
+      sourceProofDigest: digest("sourceProofDigest"),
+      closureDigest: digest("closureDigest"),
+    };
+  } else if (kind === "runtime-run") {
     const finishedAt = utc("finishedAt");
     const retentionEligibleAt = utc("retentionEligibleAt");
     beforeRelease(retentionEligibleAt);

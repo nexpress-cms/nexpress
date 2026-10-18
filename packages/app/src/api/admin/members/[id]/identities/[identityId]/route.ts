@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, revokeMemberIdentity, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -11,7 +12,7 @@ import { ensureFor } from "../../../../../../lib/init-core";
  * destructive action is gated to admin. Re-linking is one OAuth
  * sign-in away; revocation does not invalidate member sessions.
  */
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; identityId: string }> },
 ) {
@@ -28,3 +29,5 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

@@ -67,6 +67,34 @@ const reviewedAt = "2026-10-08T00:00:00.000Z";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("evaluation workbench client transport", () => {
+  it("binds Guardian synthetic support labels without edits or approval outcomes", async () => {
+    const result = fixture();
+    result.recipe = "guardian";
+    result.mode = "deterministic-offline";
+    result.cases[0].allowedOutcomes = ["accept", "reject"];
+    const labels = evaluationWorkbenchLabels(
+      result,
+      result.cases[0],
+      { ...reviewDraft, outcome: "accept" },
+      reviewedAt,
+    );
+    expect(labels).toMatchObject([
+      { outcome: "accept", editedProposal: null, sourceHash: digest, predictionHash: digest },
+    ]);
+    expect(JSON.stringify(labels)).not.toContain("approval");
+    expect(() =>
+      evaluationWorkbenchLabels(
+        result,
+        result.cases[0],
+        { ...reviewDraft, outcome: "edit" },
+        reviewedAt,
+      ),
+    ).toThrow();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(result)));
+    expect((await processAgentEvaluationWorkbench({ ...request, recipe: "guardian" })).recipe).toBe(
+      "guardian",
+    );
+  });
   it("posts exact imported artifacts without credentials or live authority and validates its response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json(fixture()));
     vi.stubGlobal("fetch", fetchMock);

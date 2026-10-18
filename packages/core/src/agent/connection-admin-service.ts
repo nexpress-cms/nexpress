@@ -1,3 +1,5 @@
+import { getDb } from "../db/runtime.js";
+import { npGetGuardianSensitiveObserverV1 } from "./guardian-sensitive-observer.js";
 import {
   npDigestAgentStudioConnectionDefinitionV1,
   npRequireAgentStudioConnectionDefinitionV1,
@@ -145,25 +147,49 @@ export function createAgentConnectionAdminServiceV1(
         "Connection revocation requires one target id.",
       );
     }
-    return admit({
-      ...input,
-      operationId: "agents.connections.revoke",
-      targetId: input.targetId,
-      mutate: async ({ db, now, command }) => {
-        const revoked = await options.connections.admitRevokeConnection({
-          siteId: input.siteId,
-          connectionId: input.targetId!,
-          expectedConfigVersion: command.expectedVersion,
-          db,
-          admittedAt: now,
-        });
-        return {
-          resourceId: revoked.connection.id,
-          output: jsonObject(revoked.connection),
-          afterCommit: revoked.afterCommit,
-        };
+    const observer = npGetGuardianSensitiveObserverV1();
+    let afterCommit: (() => Promise<void>) | undefined;
+    const execute = (transaction?: ReturnType<typeof getDb>) =>
+      admit({
+        ...input,
+        ...(transaction ? { db: transaction } : {}),
+        operationId: "agents.connections.revoke",
+        targetId: input.targetId,
+        mutate: async ({ db, now, command, invocationId }) => {
+          const revoked = await options.connections.admitRevokeConnection({
+            siteId: input.siteId,
+            connectionId: input.targetId!,
+            expectedConfigVersion: command.expectedVersion,
+            db,
+            admittedAt: now,
+            ...(observer
+              ? {
+                  guardianObservation: {
+                    observer,
+                    actor: { kind: "staff" as const, userId: input.actor.user.id },
+                    invocationId,
+                  },
+                }
+              : {}),
+          });
+          if (observer) afterCommit = revoked.afterCommit;
+          return {
+            resourceId: revoked.connection.id,
+            output: jsonObject(revoked.connection),
+            ...(observer ? {} : { afterCommit: revoked.afterCommit }),
+          };
+        },
+      });
+    if (!observer) return execute();
+    const result = await getDb().transaction(
+      async (rawTx) => {
+        await observer.prepare({ db: rawTx, scope: { kind: "site", siteId: input.siteId } });
+        return execute(rawTx);
       },
-    });
+      { isolationLevel: "serializable" },
+    );
+    await afterCommit?.();
+    return result;
   }
 
   return Object.freeze({ executeAdmin });

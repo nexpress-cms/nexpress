@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -36,7 +37,7 @@ function isPattern(value: unknown): value is ServerPattern {
   );
 }
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -79,3 +80,5 @@ export async function DELETE(
 }
 
 export const dynamic = "force-dynamic";
+
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

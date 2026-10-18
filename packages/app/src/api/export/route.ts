@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -74,7 +75,7 @@ function assertRegisteredCollections(
   }
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) throw new NpForbiddenError("export", "read");
@@ -333,3 +334,5 @@ export async function GET(request: NextRequest) {
     return npErrorResponse(normalized instanceof Error ? normalized : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);

@@ -14,6 +14,7 @@ import {
   oauthJson,
 } from "../../../lib/agents/oauth-http";
 import { ensureFor } from "../../../lib/init-core";
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 
 const QUERY_KEYS = [
   "client_id",
@@ -86,7 +87,7 @@ function consentHtml(view: NpAgentOauthConsentViewV1): string {
 <script>(()=>{const challenge=${challenge};const form=document.getElementById("consent");const error=document.getElementById("error");const csrf=()=>document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith("np-csrf="))?.slice(8)||"";async function decide(approve){error.textContent="";const scopes=[...form.querySelectorAll('input[name="scope"]')].filter(v=>v.checked||v.disabled).map(v=>v.value).sort();const gatewayMode=form.querySelector('input[name="mode"]:checked').value;const response=await fetch(location.pathname,{method:"POST",headers:{"content-type":"application/json","x-csrf-token":decodeURIComponent(csrf())},body:JSON.stringify({consentChallenge:challenge,approve,scopes,gatewayMode})});const body=await response.json().catch(()=>({}));if(!response.ok||typeof body.redirectUri!=="string")throw new Error("Authorization could not be completed.");location.assign(body.redirectUri)}form.addEventListener("submit",event=>{event.preventDefault();decide(true).catch(caught=>error.textContent=caught.message)});document.getElementById("deny").addEventListener("click",()=>decide(false).catch(caught=>error.textContent=caught.message));})();</script></body></html>`;
 }
 
-export async function GET(request: NextRequest) {
+async function get(request: NextRequest) {
   await ensureFor("read");
   let staff;
   try {
@@ -153,7 +154,7 @@ function exactDecision(value: unknown): {
   };
 }
 
-export async function POST(request: NextRequest) {
+async function post(request: NextRequest) {
   await ensureFor("write");
   let staff;
   try {
@@ -177,5 +178,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export const GET = npWithAgentGuardianHttpResponseV1("agent-oauth", get);
+export const POST = npWithAgentGuardianHttpResponseV1("agent-oauth", post);
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

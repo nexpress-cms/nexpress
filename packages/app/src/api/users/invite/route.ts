@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { randomBytes } from "node:crypto";
 
 import {
@@ -56,7 +57,7 @@ function buildResetUrl(siteUrl: URL, token: string): string {
   return url.toString();
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -169,3 +170,5 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("users", npGuardianPOST);

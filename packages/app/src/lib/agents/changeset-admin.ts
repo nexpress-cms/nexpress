@@ -18,6 +18,7 @@ import type { NextRequest } from "next/server";
 import { npSuccessResponse } from "../api-response";
 import { ensureFor } from "../init-core";
 import { agentStudioErrorResponse } from "./studio-error-response";
+import { npWithAgentGuardianHttpResponseV1 } from "./guardian-http-observer";
 import { requireAgentOauthStaff } from "./studio-admin";
 
 export function readChangeSetQuery(request: NextRequest) {
@@ -101,7 +102,7 @@ export async function readAgentAdminJsonBody(
     ]);
   }
 }
-export async function handleAgentChangeSetAdminRequest(
+async function handleRequest(
   request: NextRequest,
   operation:
     | "list"
@@ -232,6 +233,12 @@ export async function handleAgentChangeSetAdminRequest(
       error,
       operation === "list" || operation === "get" ? "read" : "mutation",
       { headers },
+      request,
     );
   }
 }
+
+export const handleAgentChangeSetAdminRequest = npWithAgentGuardianHttpResponseV1(
+  "admin",
+  handleRequest,
+);

@@ -2,10 +2,18 @@ import { canonicalBodyUuid } from "../agent-contract/canonical-body-validation.j
 import { npAuditEvents } from "../db/schema/community.js";
 import { and, eq } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
-import { npAgentInvocations } from "../db/schema/agent.js";
+import {
+  npAgentInvocations,
+  npAgentIncidents,
+  npAgentIncidentSignals,
+  npAgentSignals,
+} from "../db/schema/agent.js";
 import type { npAgentIncidentTimeline } from "../db/schema/agent.js";
 import { npRequireAgentIncidentSeverityChangeV1 } from "../agent-contract/incident-severity-contract.js";
+import { npRequireAgentIncidentRuleSeverityChangeV1 } from "../agent-contract/incident-rule-severity-contract.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
+import { npReadAgentIncidentSignalEvidenceV1 } from "./incident-service.js";
+import { npReadAgentEventRowEvidenceV1, npReadAgentEventRowsV1 } from "./event-evidence.js";
 /** Bind an immutable staff judgment to its admitted command and audit owner. */
 export async function npRequireIncidentSeverityEvidence(
   db: ReturnType<typeof getDb>,
@@ -82,5 +90,133 @@ export async function npRequireIncidentSeverityEvidence(
     audit.payload?.idempotencyFingerprint !== invocation.requestHash
   )
     fail();
+  return change;
+}
+
+/** Bind a system priority increase to its actual attached deterministic Signal and source bytes. */
+export async function npRequireIncidentRuleSeverityEvidence(
+  db: ReturnType<typeof getDb>,
+  entry: typeof npAgentIncidentTimeline.$inferSelect,
+) {
+  const fail = (): never => {
+    throw new NpAgentGatewayError(
+      "INCIDENT_EVIDENCE_INVALID",
+      409,
+      "Incident severity evidence is unavailable.",
+    );
+  };
+  const keys = new Set([
+    "schemaVersion",
+    "transitionVersion",
+    "status",
+    "severity",
+    "detectorId",
+    "detectorVersion",
+    "evidenceDigest",
+    "disposition",
+    "fromSeverity",
+    "toSeverity",
+    "signalId",
+  ]);
+  if (
+    entry.kind !== "correlated" ||
+    entry.sourceKind !== "system" ||
+    entry.sourceId !== null ||
+    entry.eventId !== null ||
+    entry.runId !== null ||
+    entry.actionId !== null ||
+    entry.approvalId !== null ||
+    entry.providerCallId !== null ||
+    entry.auditEventId !== null ||
+    !entry.signalId ||
+    entry.details.schemaVersion !== "np.agent-incident-rule-severity-entry.v1" ||
+    Object.keys(entry.details).length !== keys.size ||
+    Object.keys(entry.details).some((key) => !keys.has(key)) ||
+    typeof entry.details.transitionVersion !== "number" ||
+    !Number.isSafeInteger(entry.details.transitionVersion) ||
+    entry.details.transitionVersion < 2 ||
+    entry.details.transitionVersion > 2147483647 ||
+    typeof entry.details.status !== "string" ||
+    !["open", "investigating", "contained", "monitoring"].includes(entry.details.status) ||
+    entry.details.disposition !== "correlated"
+  )
+    fail();
+  const change = npRequireAgentIncidentRuleSeverityChangeV1({
+    fromSeverity: entry.details.fromSeverity,
+    toSeverity: entry.details.toSeverity,
+    detectorId: entry.details.detectorId,
+    detectorVersion: entry.details.detectorVersion,
+    signalId: entry.details.signalId,
+    evidenceDigest: entry.details.evidenceDigest,
+  });
+  if (
+    entry.signalId !== change.signalId ||
+    entry.details.severity !== change.toSeverity ||
+    entry.sourceFingerprint !== change.evidenceDigest
+  )
+    fail();
+  const [source] = await db
+    .select({ signal: npAgentSignals, incident: npAgentIncidents })
+    .from(npAgentIncidentSignals)
+    .innerJoin(
+      npAgentSignals,
+      and(
+        eq(npAgentSignals.siteId, npAgentIncidentSignals.siteId),
+        eq(npAgentSignals.id, npAgentIncidentSignals.signalId),
+      ),
+    )
+    .innerJoin(
+      npAgentIncidents,
+      and(
+        eq(npAgentIncidents.siteId, npAgentIncidentSignals.siteId),
+        eq(npAgentIncidents.id, npAgentIncidentSignals.incidentId),
+      ),
+    )
+    .where(
+      and(
+        eq(npAgentIncidentSignals.siteId, entry.siteId),
+        eq(npAgentIncidentSignals.incidentId, entry.incidentId),
+        eq(npAgentIncidentSignals.signalId, change.signalId),
+      ),
+    )
+    .limit(1);
+  if (
+    !source ||
+    source.signal.incidentId !== entry.incidentId ||
+    !["attached", "resolved"].includes(source.signal.status) ||
+    source.signal.confidenceBasis !== "exact-rule" ||
+    source.signal.scoreBasisPoints !== null ||
+    source.signal.severity !== change.toSeverity ||
+    source.signal.detectorId !== change.detectorId ||
+    source.signal.detectorVersion !== change.detectorVersion ||
+    source.signal.evidenceDigest !== change.evidenceDigest ||
+    source.signal.category !== source.incident.category ||
+    source.signal.fingerprint !== source.incident.fingerprint ||
+    source.signal.createdAt.toISOString() !== entry.createdAt.toISOString() ||
+    source.incident.versionNumber < Number(entry.details.transitionVersion)
+  )
+    fail();
+  if (!source) return fail();
+  const canonical = await npReadAgentIncidentSignalEvidenceV1(source.signal);
+  const refs = canonical.evidence.filter((ref) => ref.kind === "event");
+  const ids = [...new Set(refs.map((ref) => ref.eventId))].sort();
+  const rows = await npReadAgentEventRowsV1(db, entry.siteId, ids);
+  if (rows.length !== ids.length) fail();
+  for (const row of rows) {
+    const event = await npReadAgentEventRowEvidenceV1(row);
+    const digest = Buffer.from(row.eventHash.slice("cj1:sha256:".length), "base64url").toString(
+      "hex",
+    );
+    if (
+      refs.some(
+        (ref) =>
+          ref.eventId === row.id &&
+          (ref.digest !== digest ||
+            ref.eventKind !== event.kind ||
+            ref.observedAt !== event.occurredAt),
+      )
+    )
+      fail();
+  }
   return change;
 }

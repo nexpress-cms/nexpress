@@ -1,5 +1,22 @@
+import {
+  npIsAgentAutomaticGuardianLimitAuthorityV1,
+  npIsAgentAutomaticGuardianLimitAuthorizationV1,
+  type NpAgentAutomaticGuardianLimitAuthorityV1,
+} from "./automatic-guardian-limit-service.js";
+import type { NpAgentAutomaticGuardianLimitAuthorizationV1 } from "../agent-contract/automatic-guardian-limit-contract.js";
+import type {
+  NpAgentCapabilityAuthenticationV1,
+  NpAgentCapabilityAdmissionServiceV1,
+} from "./capability-admission.js";
+import type { NpAgentGatewayServiceV1 } from "./gateway-service.js";
+import type { NpAgentResolvedGatewayPrincipalV1 } from "./capability-registry.js";
+import {
+  npReadAgentGuardianCaptureAdmissionV1,
+  npRequireAgentGuardianNewResponseV1,
+  npAgentGuardianResponsePolicyDigestV1,
+} from "./guardian-capture-admission.js";
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { getDb as GetDb } from "../db/runtime.js";
 import { getDb } from "../db/runtime.js";
 import {
@@ -37,6 +54,10 @@ import {
 } from "../agent-contract/canonical-body-validation.js";
 import {
   npRequireAgentGuardianResponsePlanInputV1,
+  npRequireAgentGuardianAutomaticResponseInputV1,
+  npRequireAgentGuardianAutomaticResponseActionV1,
+  type NpAgentGuardianAutomaticResponseInputV1,
+  type NpAgentGuardianAutomaticResponseActionV1,
   npRequireAgentGuardianResponseExecuteInputV1,
   npRequireAgentGuardianResponseV1,
   npRequireAgentApprovalGuardianResponseActionReviewV1,
@@ -55,6 +76,7 @@ import type {
   NpAgentStaffSiteAuthorizationCanonicalV1,
   NpAgentRestrictionOpaqueActorBucketSubjectV1,
   NpAgentActorRestrictionScope,
+  NpAgentRestrictionCanonicalV1,
 } from "../agent-contract/types.js";
 import type { NpAgentIncidentV1 } from "../agent-contract/incident-contract.js";
 import {
@@ -68,6 +90,7 @@ import {
 import {
   npReadAgentIncidentSignalEvidenceV1,
   type NpAgentIncidentStaffReadServiceV1,
+  type NpAgentIncidentServiceV1,
 } from "./incident-service.js";
 import type {
   NpAgentApprovalServiceV1,
@@ -88,6 +111,8 @@ import {
 } from "../agent-contract/restriction-adapter-contract.js";
 import {
   npGuardianResponseCapabilityDefinitionV1,
+  npGuardianAutomaticResponseCapabilityDefinitionV1,
+  NP_AGENT_GUARDIAN_AUTOMATIC_RESPONSE_PROFILE_V1,
   type NpGuardianResponseCapabilityDefinitionV1,
 } from "./guardian-response-capability.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
@@ -112,11 +137,20 @@ interface Facts {
   allowedScopes: NpAgentActorRestrictionScope[];
   policy: NpAgentGuardianResponsePolicyV1;
 }
-interface LoadedAction {
-  row: Action;
-  command: NpAgentGuardianResponsePlanInputV1;
-  definition: NpGuardianResponseCapabilityDefinitionV1;
-}
+type LoadedAction =
+  | {
+      authorityKind: "human";
+      row: Action;
+      command: NpAgentGuardianResponsePlanInputV1;
+      definition: NpGuardianResponseCapabilityDefinitionV1;
+    }
+  | {
+      authorityKind: "deployment";
+      row: Action;
+      command: NpAgentGuardianResponsePlanInputV1;
+      definition: NpGuardianResponseCapabilityDefinitionV1;
+      automatic: NpAgentGuardianAutomaticResponseActionV1;
+    };
 interface CheckedApproval {
   entry: Approval;
   statement: NpAgentApprovalStatementCanonicalV1;
@@ -156,10 +190,29 @@ export interface NpAgentGuardianResponseServiceOptionsV1 {
     incident: NpAgentIncidentV1;
     signals: readonly NpAgentSignalEvidenceCanonicalV1[];
   }): boolean | Promise<boolean>;
+  /** Explicit private policy path. Absence preserves the human-only workflow. */
+  automatic?: {
+    authority: NpAgentAutomaticGuardianLimitAuthorityV1;
+    admission: Pick<
+      NpAgentCapabilityAdmissionServiceV1,
+      "withCurrentAuthority" | "withStoredAuthority"
+    >;
+    incidents: Pick<NpAgentIncidentServiceV1, "get">;
+    resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
+  };
   admission?: NpAgentAdminAdmissionOptionsV1;
   now?: () => Date;
 }
 export interface NpAgentGuardianResponseServiceV1 {
+  automatic: {
+    /** Installed host path only; current qualification is checked for every new effect. */
+    readonly installed: boolean;
+    limit(
+      input: NpAgentGuardianAutomaticResponseInputV1 & {
+        authentication: NpAgentCapabilityAuthenticationV1;
+      },
+    ): Promise<{ resourceId: string; replayed: boolean }>;
+  };
   get(input: Input): Promise<NpAgentGuardianResponseV1>;
   plan(
     input: Input & { command: NpAgentGuardianResponsePlanInputV1 },
@@ -297,7 +350,13 @@ export function createAgentGuardianResponseServiceV1(
         .orderBy(asc(npSessions.id))
         .for("share");
   }
-  async function authorize(db: Db, input: Input, lock = false): Promise<Facts> {
+  async function authorize(
+    db: Db,
+    input: Input,
+    lock = false,
+    checkpoint?: () => void,
+  ): Promise<Facts> {
+    checkpoint?.();
     if (
       typeof options.canReviewIncidentAsStaffUser !== "function" ||
       typeof options.canEnforceSubject !== "function"
@@ -307,6 +366,7 @@ export function createAgentGuardianResponseServiceV1(
     const incident = (
       await options.reads.get({ incidentId: input.incidentId }, { ...input, transaction: db })
     ).incident;
+    checkpoint?.();
     if (
       incident.siteId !== input.siteId ||
       !["authentication", "traffic"].includes(incident.category) ||
@@ -334,6 +394,7 @@ export function createAgentGuardianResponseServiceV1(
       ...bucket,
     };
     const currentPolicy = await policy(db, input, subject);
+    checkpoint?.();
     const sourceScopes = new Set<NpAgentActorRestrictionScope>();
     for (const item of evidence) {
       if (item.detectorId === "guardian.login-failures")
@@ -432,6 +493,202 @@ export function createAgentGuardianResponseServiceV1(
     if (targets.length !== 1 || targets[0].kind !== "incident") fail();
     return targets[0].incidentId;
   }
+  function automaticSummary(envelope: NpAgentGuardianAutomaticResponseActionV1): NpAgentJsonObject {
+    return {
+      schemaVersion: "np.agent-guardian-automatic-response-summary.v1",
+      incidentId: envelope.request.incidentId,
+      ruleKind: envelope.authorization.ruleKind,
+      sourceBaselineSeverity: "medium",
+      staffEscalated: true,
+      durationSeconds:
+        envelope.command.operation.kind === "limit"
+          ? envelope.command.operation.durationSeconds
+          : 0,
+      actionScopes: [...envelope.authorization.actionScopes],
+    };
+  }
+  function automaticTargetDigest(
+    authorization: NpAgentAutomaticGuardianLimitAuthorizationV1,
+    controlPolicyDigest: string,
+    adapter: { id: string; contractVersion: number; fingerprint: string },
+  ): string {
+    return digest("np.agent-guardian-automatic-response-target.v1", {
+      authorization,
+      controlPolicyDigest,
+      adapter: {
+        id: adapter.id,
+        contractVersion: adapter.contractVersion,
+        fingerprint: adapter.fingerprint,
+      },
+    });
+  }
+  async function automaticInvocation(
+    db: Db,
+    row: Action,
+  ): Promise<{ original: Invocation; envelope: NpAgentGuardianAutomaticResponseActionV1 }> {
+    if (!row.invocationId) fail();
+    const [original] = await db
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(eq(npAgentInvocations.siteId, row.siteId), eq(npAgentInvocations.id, row.invocationId)),
+      )
+      .limit(1);
+    if (
+      !original ||
+      original.actorKind !== "principal" ||
+      original.operationKind !== "capability" ||
+      original.operationId !== "security.limitActor" ||
+      original.requestHash !== row.invocationFingerprint ||
+      original.state !== "completed" ||
+      original.resultKind !== "action" ||
+      original.resultId !== row.id ||
+      !original.outputRedacted ||
+      !original.auditEventId
+    )
+      fail();
+    const body = npRequireAgentInvocationRequestCanonical(original.requestBody),
+      auth = npRequireAgentAuthorizationContextCanonical(original.authorizationContextBody);
+    const envelope = npRequireAgentGuardianAutomaticResponseActionV1(body.input),
+      request = npRequireAgentGuardianAutomaticResponseInputV1(row.inputCanonical);
+    const definition = await npGuardianAutomaticResponseCapabilityDefinitionV1();
+    if (
+      (await npDigestAgentInvocationRequestCanonical(body)) !== original.requestHash ||
+      (await npDigestAgentAuthorizationContextCanonical(auth)) !==
+        original.authorizationContextFingerprint ||
+      auth.siteId !== row.siteId ||
+      auth.actor.kind !== "principal" ||
+      auth.actor.principalId !== original.principalId ||
+      auth.actor.principalId !== envelope.authorization.principalId ||
+      auth.actor.actorFingerprint !== original.actorFingerprint ||
+      !["service-family", "oauth-grant"].includes(auth.authorityRef.kind) ||
+      !same(auth.authorityRef, original.authorityRef) ||
+      auth.transport !== original.transport ||
+      body.actorKind !== "principal" ||
+      body.actorFingerprint !== original.actorFingerprint ||
+      body.authorizationContextFingerprint !== original.authorizationContextFingerprint ||
+      body.operationKind !== "capability" ||
+      body.operationId !== "security.limitActor" ||
+      body.contractVersion !== 1 ||
+      body.contractFingerprint !== definition.fingerprint ||
+      !same(body.effectProfile, { id: definition.profile, contractVersion: 1 }) ||
+      original.contractVersion !== 1 ||
+      original.effectContractVersion !== 1 ||
+      original.contractFingerprint !== definition.fingerprint ||
+      original.effectProfileId !== definition.profile ||
+      !same(original.capabilityDefinitionBody, definition.canonical) ||
+      !same(request, envelope.request) ||
+      envelope.authorization.siteId !== row.siteId ||
+      request.incidentId !== incidentIdOf(row) ||
+      row.startedAt?.toISOString() !== envelope.authorization.authorizedAt ||
+      original.requestedAt.toISOString() !== envelope.authorization.authorizedAt ||
+      original.completedAt?.toISOString() !== envelope.authorization.authorizedAt ||
+      original.idempotencyKey !== `guardian-auto:${request.idempotencyKey}` ||
+      original.outputRedacted.actionId !== row.id ||
+      original.outputRedacted.state !== "executing" ||
+      original.outputHash !==
+        digest("np.agent-guardian-automatic-stage.v1", original.outputRedacted) ||
+      row.executionInvocationId !== original.id ||
+      row.executionInvocationFingerprint !== original.requestHash ||
+      !same(row.inputRedacted, automaticSummary(envelope))
+    )
+      fail();
+    const [audit] = await db
+      .select()
+      .from(npAuditEvents)
+      .where(and(eq(npAuditEvents.siteId, row.siteId), eq(npAuditEvents.id, original.auditEventId)))
+      .limit(1);
+    if (
+      !audit ||
+      audit.actorKind !== "agent-principal" ||
+      audit.action !== "agents.guardian_response.automatic_limit" ||
+      audit.targetType !== "agent-incident" ||
+      audit.targetId !== request.incidentId ||
+      audit.createdAt.getTime() !== original.requestedAt.getTime() ||
+      !same(audit.payload, {
+        schemaVersion: "np.agent-guardian-automatic-response-audit.v1",
+        invocationId: original.id,
+        actionId: row.id,
+        requestHash: original.requestHash,
+        authorizationDigest: digest(
+          "np.agent-guardian-automatic-authorization.v1",
+          envelope.authorization,
+        ),
+        controlPolicyDigest: envelope.controlPolicyDigest,
+      })
+    )
+      fail();
+    return { original, envelope };
+  }
+  async function loadAutomaticAction(db: Db, row: Action): Promise<LoadedAction> {
+    if (
+      row.capabilityId !== "security.limitActor" ||
+      row.approvalId !== null ||
+      row.runId !== null ||
+      row.runFingerprint !== null ||
+      row.containmentId !== null ||
+      !row.enforcementAdapterId ||
+      !row.enforcementAdapterContractVersion ||
+      !row.enforcementAdapterFingerprint ||
+      !["executing", "succeeded", "failed", "compensated"].includes(row.state)
+    )
+      fail();
+    const { original, envelope } = await automaticInvocation(db, row),
+      definition = await npGuardianAutomaticResponseCapabilityDefinitionV1();
+    const adapter = {
+      id: row.enforcementAdapterId,
+      contractVersion: row.enforcementAdapterContractVersion,
+      fingerprint: row.enforcementAdapterFingerprint,
+    };
+    if (
+      envelope.command.expectedTargetVersionDigest !==
+      automaticTargetDigest(envelope.authorization, envelope.controlPolicyDigest, adapter)
+    )
+      fail();
+    const targetRefs = targets(envelope.request.incidentId);
+    const body = npRequireAgentActionCanonical({
+      schemaVersion: "np.agent-action.v1",
+      siteId: row.siteId,
+      actionId: row.id,
+      invocationFingerprint: original.requestHash,
+      runFingerprint: null,
+      sequence: 1,
+      capabilityId: "security.limitActor",
+      capabilityContractVersion: 1,
+      capabilityFingerprint: definition.fingerprint,
+      effectProfile: { id: definition.profile, contractVersion: 1 },
+      risk: "reversible",
+      requiredScopes: ["security:execute"],
+      targetRefs,
+      targetVersionFacts: targetRefs.map((targetRef) => ({
+        targetRef: structuredClone(targetRef),
+        versionDigest: envelope.command.expectedTargetVersionDigest,
+      })),
+      input: json(envelope.request),
+    });
+    if (
+      row.capabilityContractVersion !== 1 ||
+      row.capabilityFingerprint !== definition.fingerprint ||
+      !same(row.capabilityDefinitionBody, definition.canonical) ||
+      row.effectProfileId !== definition.profile ||
+      row.effectContractVersion !== 1 ||
+      row.risk !== "reversible" ||
+      row.sequence !== 1 ||
+      !same(row.requiredScopes, body.requiredScopes) ||
+      !same(row.targetRefs, body.targetRefs) ||
+      !same(row.targetVersionFacts, body.targetVersionFacts) ||
+      row.auditEventId !== original.auditEventId ||
+      (await npDigestAgentActionCanonical(body)) !== row.inputHash
+    )
+      fail();
+    return {
+      authorityKind: "deployment",
+      row,
+      command: envelope.command,
+      definition,
+      automatic: envelope,
+    };
+  }
   async function loadAction(
     db: Db,
     siteId: string,
@@ -444,6 +701,8 @@ export function createAgentGuardianResponseServiceV1(
       .where(and(eq(npAgentActions.siteId, siteId), eq(npAgentActions.id, id)))
       .limit(1);
     const [row] = lock ? await query.for("update") : await query;
+    if (row?.effectProfileId === NP_AGENT_GUARDIAN_AUTOMATIC_RESPONSE_PROFILE_V1)
+      return loadAutomaticAction(db, row);
     if (
       !row ||
       !["security.limitActor", "security.removeActorLimit"].includes(row.capabilityId) ||
@@ -493,7 +752,7 @@ export function createAgentGuardianResponseServiceV1(
     )
       fail();
     await invocation(db, row);
-    return { row, command, definition };
+    return { authorityKind: "human", row, command, definition };
   }
   async function requester(db: Db, row: Action): Promise<NpAgentAdminActorV1> {
     const original = await invocation(db, row);
@@ -578,7 +837,11 @@ export function createAgentGuardianResponseServiceV1(
       if (
         facts.incident.versionNumber !== command.expectedVersion ||
         facts.targetVersionDigest !== command.expectedTargetVersionDigest ||
-        !same(statement.policyHashes, [facts.policy.policyDigest]) ||
+        !same(statement.policyHashes, [
+          command.operation.kind === "limit"
+            ? await npAgentGuardianResponsePolicyDigestV1(db, row.siteId, facts.policy.policyDigest)
+            : facts.policy.policyDigest,
+        ]) ||
         new Date(statement.expiresAt).getTime() >
           new Date(statement.createdAt).getTime() + facts.policy.approvalLifetimeSeconds * 1000
       )
@@ -710,6 +973,25 @@ export function createAgentGuardianResponseServiceV1(
   }
   async function stagedExecution(db: Db, action: LoadedAction, row: Restriction): Promise<void> {
     if (!action.row.executionInvocationId) fail();
+    if (action.authorityKind === "deployment") {
+      const { original } = await automaticInvocation(db, action.row);
+      if (
+        action.row.executionInvocationId !== original.id ||
+        action.row.executionInvocationFingerprint !== original.requestHash ||
+        original.outputRedacted?.restrictionId !== row.id ||
+        original.outputRedacted.restrictionHash !== row.restrictionHash ||
+        original.outputRedacted.adapterId !== row.adapterId ||
+        original.outputRedacted.adapterContractVersion !== row.adapterContractVersion ||
+        original.outputRedacted.adapterFingerprint !== row.adapterFingerprint ||
+        row.descriptor.reasonCode !== "GUARDIAN_POLICY_AUTH_LIMIT" ||
+        action.automatic.authorization.subject.kind !== "opaque_actor_bucket" ||
+        !same(action.automatic.authorization.subject, row.descriptor.subject) ||
+        action.automatic.authorization.authorizedAt !== row.descriptor.startsAt ||
+        action.automatic.authorization.expiresAt !== row.descriptor.expiresAt
+      )
+        fail();
+      return;
+    }
     if (
       action.command.operation.kind === "remove" &&
       (action.row.capabilityId !== "security.removeActorLimit" ||
@@ -824,65 +1106,100 @@ export function createAgentGuardianResponseServiceV1(
     )
       fail();
   }
+  async function stageLimitRestriction(
+    db: Db,
+    siteId: string,
+    incidentId: string,
+    sourceActionId: string,
+    descriptor: NpAgentRestrictionCanonicalV1,
+  ): Promise<{ id: string; hash: string }> {
+    const hash = await npDigestAgentRestrictionCanonical(descriptor),
+      time = new Date(descriptor.startsAt);
+    await db.insert(npAgentActorRestrictions).values({
+      id: descriptor.restrictionId,
+      siteId,
+      incidentId,
+      sourceActionId,
+      descriptor,
+      restrictionHash: hash,
+      subjectKey: npAgentRestrictionSubjectKeyV1(descriptor.subject),
+      scopeDigest: digest("np.agent-guardian-scope.v1", descriptor.actionScopes),
+      adapterId: options.adapter.id,
+      adapterContractVersion: options.adapter.contractVersion,
+      adapterFingerprint: options.adapter.fingerprint,
+      state: "pending",
+      expiresAt: new Date(descriptor.expiresAt),
+      createdAt: time,
+      updatedAt: time,
+    });
+    return { id: descriptor.restrictionId, hash };
+  }
+  async function validLimitOperation(
+    db: Db,
+    siteId: string,
+    operation: Extract<NpAgentGuardianResponsePlanInputV1["operation"], { kind: "limit" }>,
+    facts: Pick<Facts, "incident" | "subject" | "allowedScopes"> & {
+      policy: Pick<NpAgentGuardianResponsePolicyV1, "maximumDurationSeconds">;
+    },
+  ): Promise<void> {
+    if (
+      ["resolved", "dismissed"].includes(facts.incident.status) ||
+      operation.durationSeconds > facts.policy.maximumDurationSeconds ||
+      operation.actionScopes.some((scope) => !facts.allowedScopes.includes(scope)) ||
+      !(await options.canEnforceSubject({
+        db,
+        siteId: siteId,
+        subject: facts.subject,
+        actionScopes: operation.actionScopes,
+      }))
+    )
+      fail();
+    const health = npRequireAgentRestrictionHealthV1(await options.adapter.healthCheck());
+    if (
+      health.schemaVersion !== "np.agent-restriction-health.v1" ||
+      health.status !== "ready" ||
+      !health.sharedAcrossReplicas ||
+      !options.adapter.sharedAcrossReplicas
+    )
+      unavailable();
+    const refs = await npReadAgentActiveRestrictionProjectionRefsV1({
+      db,
+      siteId: siteId,
+      now: now(),
+    });
+    const projectionKey = (ref: {
+      purpose: string;
+      projectionVersion: number;
+      projectionFingerprint: string;
+      keyId: string;
+    }) =>
+      serializeAgentCanonicalJson({
+        purpose: ref.purpose,
+        projectionVersion: ref.projectionVersion,
+        projectionFingerprint: ref.projectionFingerprint,
+        keyId: ref.keyId,
+      });
+    if (new Set([...refs.map(projectionKey), projectionKey(facts.subject)]).size > 8) unavailable();
+    const active = await db
+      .select({ id: npAgentActorRestrictions.id })
+      .from(npAgentActorRestrictions)
+      .where(
+        and(
+          eq(npAgentActorRestrictions.siteId, siteId),
+          eq(npAgentActorRestrictions.subjectKey, npAgentRestrictionSubjectKeyV1(facts.subject)),
+          inArray(npAgentActorRestrictions.state, ["pending", "active", "removing"]),
+        ),
+      )
+      .limit(1);
+    if (active.length) fail();
+  }
   async function validOperation(
     db: Db,
     action: Pick<LoadedAction, "row" | "command">,
     facts: Facts,
   ): Promise<Restriction | null> {
     if (action.command.operation.kind === "limit") {
-      if (
-        ["resolved", "dismissed"].includes(facts.incident.status) ||
-        action.command.operation.durationSeconds > facts.policy.maximumDurationSeconds ||
-        action.command.operation.actionScopes.some(
-          (scope) => !facts.allowedScopes.includes(scope),
-        ) ||
-        !(await options.canEnforceSubject({
-          db,
-          siteId: action.row.siteId,
-          subject: facts.subject,
-          actionScopes: action.command.operation.actionScopes,
-        }))
-      )
-        fail();
-      const health = npRequireAgentRestrictionHealthV1(await options.adapter.healthCheck());
-      if (
-        health.schemaVersion !== "np.agent-restriction-health.v1" ||
-        health.status !== "ready" ||
-        !health.sharedAcrossReplicas ||
-        !options.adapter.sharedAcrossReplicas
-      )
-        unavailable();
-      const refs = await npReadAgentActiveRestrictionProjectionRefsV1({
-        db,
-        siteId: action.row.siteId,
-        now: now(),
-      });
-      const projectionKey = (ref: {
-        purpose: string;
-        projectionVersion: number;
-        projectionFingerprint: string;
-        keyId: string;
-      }) =>
-        serializeAgentCanonicalJson({
-          purpose: ref.purpose,
-          projectionVersion: ref.projectionVersion,
-          projectionFingerprint: ref.projectionFingerprint,
-          keyId: ref.keyId,
-        });
-      if (new Set([...refs.map(projectionKey), projectionKey(facts.subject)]).size > 8)
-        unavailable();
-      const active = await db
-        .select({ id: npAgentActorRestrictions.id })
-        .from(npAgentActorRestrictions)
-        .where(
-          and(
-            eq(npAgentActorRestrictions.siteId, action.row.siteId),
-            eq(npAgentActorRestrictions.subjectKey, npAgentRestrictionSubjectKeyV1(facts.subject)),
-            inArray(npAgentActorRestrictions.state, ["pending", "active", "removing"]),
-          ),
-        )
-        .limit(1);
-      if (active.length) fail();
+      await validLimitOperation(db, action.row.siteId, action.command.operation, facts);
       return null;
     }
     const row = await ownRestriction(
@@ -942,6 +1259,7 @@ export function createAgentGuardianResponseServiceV1(
   ): Promise<T> {
     if (target.kind !== "action") fail();
     const seed = await loadAction(getDb(), siteId, target.actionId);
+    if (seed.authorityKind !== "human") fail();
     const original = await invocation(getDb(), seed.row);
     if (original.authorityRef.kind !== "staff-session") fail();
     const initialApproval = await approval(getDb(), seed.row);
@@ -981,12 +1299,9 @@ export function createAgentGuardianResponseServiceV1(
     visible: ({ siteId, target, actor: viewer }) =>
       withTarget(siteId, target, viewer, async (db, action) => {
         const checked = await approval(db, action.row);
-        await statementMatches(
-          db,
-          action,
-          checked.statement,
-          ["approval_pending", "approved"].includes(action.row.state),
-        );
+        // Current viewer/source checks remain in withTarget. Reading the signed
+        // historical plan must not require new-effect authority to still exist.
+        await statementMatches(db, action, checked.statement, false);
         return {
           operationCount: 1,
           targetCount: 1,
@@ -998,12 +1313,7 @@ export function createAgentGuardianResponseServiceV1(
     actionReview: ({ siteId, target, actor: viewer }) =>
       withTarget(siteId, target, viewer, async (db, action) => {
         const checked = await approval(db, action.row);
-        await statementMatches(
-          db,
-          action,
-          checked.statement,
-          ["approval_pending", "approved"].includes(action.row.state),
-        );
+        await statementMatches(db, action, checked.statement, false);
         return npRequireAgentApprovalGuardianResponseActionReviewV1({
           actionId: action.row.id,
           proposalHash: action.row.inputHash,
@@ -1033,7 +1343,7 @@ export function createAgentGuardianResponseServiceV1(
             )
               fail();
             if (!["approval_pending", "approved"].includes(action.row.state)) fail();
-            await statementMatches(db, action, statement, true);
+            await statementMatches(db, action, statement, decision === "approve");
           },
           transition: async (state) => {
             const failed = state !== "approved";
@@ -1128,6 +1438,20 @@ export function createAgentGuardianResponseServiceV1(
           invocationId,
           now: time,
         }): Promise<{ resourceId: string; output: NpAgentJsonObject }> => {
+          // Exact completed invocation replay stays available while disabled.
+          // This callback executes only for a new admitted command.
+          if (mode === "plan") {
+            if (npRequireAgentGuardianResponsePlanInputV1(admitted).operation.kind === "limit")
+              await npRequireAgentGuardianNewResponseV1(db, input.siteId);
+          } else {
+            const action = await loadAction(
+              db,
+              input.siteId,
+              npRequireAgentGuardianResponseExecuteInputV1(admitted).actionId,
+            );
+            if (action.command.operation.kind === "limit")
+              await npRequireAgentGuardianNewResponseV1(db, input.siteId);
+          }
           if (admitted.expectedVersion !== facts.incident.versionNumber) fail();
           const [invoked] = await db
             .select()
@@ -1234,7 +1558,15 @@ export function createAgentGuardianResponseServiceV1(
                 requiredScopes: ["security:execute"],
                 requiredHumanCapabilities: ["admin.manage"],
                 requiredHumanPredicates: [],
-                policyHashes: [facts.policy.policyDigest],
+                policyHashes: [
+                  command.operation.kind === "limit"
+                    ? await npAgentGuardianResponsePolicyDigestV1(
+                        db,
+                        input.siteId,
+                        facts.policy.policyDigest,
+                      )
+                    : facts.policy.policyDigest,
+                ],
                 requiresLivePreview: false,
                 previewId: null,
                 previewDigest: null,
@@ -1297,25 +1629,15 @@ export function createAgentGuardianResponseServiceV1(
               reasonCode: "GUARDIAN_REVIEWED_REQUEST_LIMIT",
               targetVersionDigest: facts.targetVersionDigest,
             });
-            stagedRestrictionId = descriptor.restrictionId;
-            stagedRestrictionHash = await npDigestAgentRestrictionCanonical(descriptor);
-            await db.insert(npAgentActorRestrictions).values({
-              id: descriptor.restrictionId,
-              siteId: input.siteId,
-              incidentId: input.incidentId,
-              sourceActionId: action.row.id,
+            const staged = await stageLimitRestriction(
+              db,
+              input.siteId,
+              input.incidentId,
+              action.row.id,
               descriptor,
-              restrictionHash: await npDigestAgentRestrictionCanonical(descriptor),
-              subjectKey: npAgentRestrictionSubjectKeyV1(descriptor.subject),
-              scopeDigest: digest("np.agent-guardian-scope.v1", descriptor.actionScopes),
-              adapterId: options.adapter.id,
-              adapterContractVersion: options.adapter.contractVersion,
-              adapterFingerprint: options.adapter.fingerprint,
-              state: "pending",
-              expiresAt: new Date(descriptor.expiresAt),
-              createdAt: time,
-              updatedAt: time,
-            });
+            );
+            stagedRestrictionId = staged.id;
+            stagedRestrictionHash = staged.hash;
           } else {
             if (!existing) fail();
             stagedRestrictionId = existing.id;
@@ -1377,6 +1699,394 @@ export function createAgentGuardianResponseServiceV1(
       return { resourceId: result.resourceId, replayed: result.replayed };
     });
   }
+  function automaticOptions() {
+    const automatic = options.automatic;
+    if (
+      !automatic ||
+      !npIsAgentAutomaticGuardianLimitAuthorityV1(automatic.authority) ||
+      typeof automatic.admission.withCurrentAuthority !== "function" ||
+      typeof automatic.admission.withStoredAuthority !== "function" ||
+      typeof automatic.incidents.get !== "function" ||
+      typeof automatic.resolveTransportAudience !== "function"
+    )
+      unavailable();
+    return automatic;
+  }
+  function automaticPrincipal(
+    authentication: NpAgentCapabilityAuthenticationV1,
+  ): NpAgentResolvedGatewayPrincipalV1 {
+    const authority = authentication.principal.authority,
+      exposure = authentication.authorizationContext.gatewayExposure;
+    if (authority.kind !== "user" || !authority.userId || exposure === null) unavailable();
+    const oauth = !("serviceToken" in authentication);
+    return {
+      kind: oauth ? "oauth-user" : "service",
+      principalId: authentication.principal.id,
+      siteId: authentication.principal.siteId,
+      authority: { kind: "user", userId: authority.userId },
+      credentialId:
+        "serviceToken" in authentication ? authentication.serviceToken.id : authentication.grantId,
+      gatewayExposureCeiling: exposure,
+      scopes: authentication.scopes,
+    };
+  }
+  async function automaticRead(
+    db: Db,
+    authentication: NpAgentCapabilityAuthenticationV1,
+    incidentId: string,
+    time: Date,
+    signal = AbortSignal.timeout(1000),
+  ) {
+    const principal = automaticPrincipal(authentication);
+    return (
+      await automaticOptions().incidents.get(
+        { incidentId },
+        {
+          siteId: principal.siteId,
+          principal,
+          requestedAt: time.toISOString(),
+          transaction: db,
+          abortSignal: signal,
+        },
+      )
+    ).incident;
+  }
+  async function prepareAutomaticTransaction(db: Db, siteId: string): Promise<void> {
+    const settings = await db.execute(
+      sql`select extract(epoch from current_setting('statement_timeout')::interval)*1000 as statement_ms,extract(epoch from current_setting('lock_timeout')::interval)*1000 as lock_ms`,
+    );
+    const statement = Number(settings.rows[0]?.statement_ms),
+      lock = Number(settings.rows[0]?.lock_ms);
+    if (!Number.isFinite(statement) || statement < 0 || !Number.isFinite(lock) || lock < 0) fail();
+    await db.execute(
+      sql`select set_config('statement_timeout',${`${Math.min(statement || 500, 500)}ms`},true),set_config('lock_timeout',${`${Math.min(lock || 100, 100)}ms`},true)`,
+    );
+    await npWithAgentRuntimeControlTransactionV1(siteId, () => Promise.resolve(undefined), db);
+  }
+  async function automaticLimit(
+    input: NpAgentGuardianAutomaticResponseInputV1 & {
+      authentication: NpAgentCapabilityAuthenticationV1;
+    },
+  ): Promise<{ resourceId: string; replayed: boolean }> {
+    npAssertAgentPreviewEffectsAllowed();
+    const automatic = automaticOptions(),
+      { authentication, ...raw } = input;
+    const request = npRequireAgentGuardianAutomaticResponseInputV1(raw),
+      principal = automaticPrincipal(authentication),
+      siteId = principal.siteId;
+    const definition = await npGuardianAutomaticResponseCapabilityDefinitionV1();
+    const result = await withCurrentSite(siteId, () =>
+      withDeferredPostCommit(() =>
+        automatic.admission.withCurrentAuthority({
+          authentication,
+          transactionWorkBudgetMs: 1000,
+          requiredScopes: ["incident:read", "security:execute"],
+          minimumExposure: "approved-execute",
+          prepareTransaction: (db) => prepareAutomaticTransaction(db, siteId),
+          mutate: async (db, time) => {
+            // Serializes quota decisions across principals and reviewed deployment rotations.
+            await db.execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-guardian-automatic-limit:${siteId}`},0))`,
+            );
+            const incident = await automaticRead(db, authentication, request.incidentId, time);
+            const [prior] = await db
+              .select()
+              .from(npAgentInvocations)
+              .where(
+                and(
+                  eq(npAgentInvocations.siteId, siteId),
+                  eq(npAgentInvocations.actorKind, "principal"),
+                  eq(
+                    npAgentInvocations.actorFingerprint,
+                    authentication.authorizationContext.actor.actorFingerprint,
+                  ),
+                  eq(
+                    npAgentInvocations.authorizationContextFingerprint,
+                    authentication.authorizationContextFingerprint,
+                  ),
+                  eq(npAgentInvocations.operationKind, "capability"),
+                  eq(npAgentInvocations.operationId, "security.limitActor"),
+                  eq(npAgentInvocations.idempotencyKey, `guardian-auto:${request.idempotencyKey}`),
+                ),
+              )
+              .limit(1);
+            if (prior) {
+              if (!prior.resultId) fail();
+              const action = await loadAction(db, siteId, prior.resultId);
+              if (
+                action.authorityKind !== "deployment" ||
+                !same(action.automatic.request, request) ||
+                action.row.invocationId !== prior.id
+              )
+                fail();
+              // Exact completed replay is historical; it never re-dispatches or extends expiry.
+              return { resourceId: action.row.id, replayed: true };
+            }
+            await npRequireAgentGuardianNewResponseV1(db, siteId);
+            if (incident.versionNumber !== request.expectedVersion) fail();
+            const authorization = await automatic.authority.authorize({
+              db,
+              siteId,
+              principalId: principal.principalId,
+              incident,
+              signalId: request.signalId,
+              now: time,
+            });
+            if (
+              !npIsAgentAutomaticGuardianLimitAuthorizationV1(authorization) ||
+              authorization.deploymentDigest !== automatic.authority.deploymentDigest
+            )
+              fail();
+            const controlPolicyDigest = await npAgentGuardianResponsePolicyDigestV1(
+              db,
+              siteId,
+              authorization.policyDigest,
+            );
+            const operation = {
+              kind: "limit" as const,
+              durationSeconds:
+                (Date.parse(authorization.expiresAt) - Date.parse(authorization.authorizedAt)) /
+                1000,
+              actionScopes: [...authorization.actionScopes],
+            };
+            const command = npRequireAgentGuardianResponsePlanInputV1({
+              schemaVersion: "np.agent-guardian-response-plan-input.v1",
+              expectedVersion: request.expectedVersion,
+              expectedTargetVersionDigest: automaticTargetDigest(
+                authorization,
+                controlPolicyDigest,
+                options.adapter,
+              ),
+              operation,
+              idempotencyKey: request.idempotencyKey,
+            });
+            if (command.operation.kind !== "limit") fail();
+            await validLimitOperation(db, siteId, command.operation, {
+              incident,
+              subject: authorization.subject,
+              allowedScopes: [...authorization.actionScopes],
+              policy: {
+                maximumDurationSeconds: automatic.authority.deployment.limits.restrictionSeconds,
+              },
+            });
+            const [active] = await db
+              .select({ total: sql<number>`count(*)::int` })
+              .from(npAgentActorRestrictions)
+              .where(
+                and(
+                  eq(npAgentActorRestrictions.siteId, siteId),
+                  inArray(npAgentActorRestrictions.state, ["pending", "active", "removing"]),
+                ),
+              );
+            const [hour] = await db
+              .select({ total: sql<number>`count(*)::int` })
+              .from(npAgentActions)
+              .where(
+                and(
+                  eq(npAgentActions.siteId, siteId),
+                  eq(
+                    npAgentActions.effectProfileId,
+                    NP_AGENT_GUARDIAN_AUTOMATIC_RESPONSE_PROFILE_V1,
+                  ),
+                  sql`${npAgentActions.createdAt} >= ${new Date(time.getTime() - 3600000)}`,
+                ),
+              );
+            if (
+              Number(active?.total ?? 0) >=
+                automatic.authority.deployment.limits.activeRestrictions ||
+              Number(hour?.total ?? 0) >= automatic.authority.deployment.limits.actionsPerHour
+            )
+              unavailable();
+            const envelope = npRequireAgentGuardianAutomaticResponseActionV1({
+              schemaVersion: "np.agent-guardian-automatic-response-action.v1",
+              request,
+              command,
+              authorization,
+              controlPolicyDigest,
+            });
+            const body = npRequireAgentInvocationRequestCanonical({
+              schemaVersion: "np.agent-idempotency-request.v1",
+              siteId,
+              actorKind: "principal",
+              actorFingerprint: authentication.authorizationContext.actor.actorFingerprint,
+              authorizationContextFingerprint: authentication.authorizationContextFingerprint,
+              operationKind: "capability",
+              operationId: "security.limitActor",
+              contractVersion: 1,
+              contractFingerprint: definition.fingerprint,
+              effectProfile: { id: definition.profile, contractVersion: 1 },
+              input: json(envelope),
+            });
+            const requestHash = await npDigestAgentInvocationRequestCanonical(body),
+              invocationId = randomUUID(),
+              actionId = randomUUID(),
+              auditId = randomUUID();
+            await db.insert(npAuditEvents).values({
+              id: auditId,
+              siteId,
+              actorKind: "agent-principal",
+              action: "agents.guardian_response.automatic_limit",
+              targetType: "agent-incident",
+              targetId: incident.id,
+              payload: {
+                schemaVersion: "np.agent-guardian-automatic-response-audit.v1",
+                invocationId,
+                actionId,
+                requestHash,
+                authorizationDigest: digest(
+                  "np.agent-guardian-automatic-authorization.v1",
+                  authorization,
+                ),
+                controlPolicyDigest,
+              },
+              createdAt: time,
+            });
+            await db.insert(npAgentInvocations).values({
+              id: invocationId,
+              siteId,
+              actorKind: "principal",
+              principalId: principal.principalId,
+              actorFingerprint: body.actorFingerprint,
+              authorizationContextBody: authentication.authorizationContext,
+              authorizationContextFingerprint: authentication.authorizationContextFingerprint,
+              authorityRef: authentication.authorizationContext.authorityRef,
+              operationKind: "capability",
+              operationId: "security.limitActor",
+              contractVersion: 1,
+              contractFingerprint: definition.fingerprint,
+              capabilityDefinitionBody: definition.canonical,
+              effectProfileId: definition.profile,
+              effectContractVersion: 1,
+              transport: authentication.authorizationContext.transport,
+              mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
+                authentication.authorizationContext.transport,
+              )
+                ? "normal"
+                : null,
+              idempotencyKey: `guardian-auto:${request.idempotencyKey}`,
+              requestBody: body,
+              requestHash,
+              state: "started",
+              auditEventId: auditId,
+              requestedAt: time,
+              expiresAt: new Date(time.getTime() + 86400000),
+            });
+            const targetRefs = targets(incident.id);
+            const canonical = npRequireAgentActionCanonical({
+              schemaVersion: "np.agent-action.v1",
+              siteId,
+              actionId,
+              invocationFingerprint: requestHash,
+              runFingerprint: null,
+              sequence: 1,
+              capabilityId: "security.limitActor",
+              capabilityContractVersion: 1,
+              capabilityFingerprint: definition.fingerprint,
+              effectProfile: { id: definition.profile, contractVersion: 1 },
+              risk: "reversible",
+              requiredScopes: ["security:execute"],
+              targetRefs,
+              targetVersionFacts: targetRefs.map((targetRef) => ({
+                targetRef: structuredClone(targetRef),
+                versionDigest: command.expectedTargetVersionDigest,
+              })),
+              input: json(request),
+            });
+            await db.insert(npAgentActions).values({
+              id: actionId,
+              siteId,
+              invocationId,
+              invocationFingerprint: requestHash,
+              executionInvocationId: invocationId,
+              executionInvocationFingerprint: requestHash,
+              sequence: 1,
+              capabilityId: "security.limitActor",
+              capabilityContractVersion: 1,
+              capabilityFingerprint: definition.fingerprint,
+              capabilityDefinitionBody: definition.canonical,
+              effectProfileId: definition.profile,
+              effectContractVersion: 1,
+              risk: "reversible",
+              state: "executing",
+              enforcementAdapterId: options.adapter.id,
+              enforcementAdapterContractVersion: options.adapter.contractVersion,
+              enforcementAdapterFingerprint: options.adapter.fingerprint,
+              idempotencyKey: request.idempotencyKey,
+              inputRedacted: automaticSummary(envelope),
+              inputCanonical: json(request),
+              requiredScopes: canonical.requiredScopes,
+              targetRefs: canonical.targetRefs,
+              targetVersionFacts: canonical.targetVersionFacts,
+              inputHash: await npDigestAgentActionCanonical(canonical),
+              approvalId: null,
+              auditEventId: auditId,
+              verificationState: "unknown",
+              startedAt: time,
+              createdAt: time,
+            });
+            const descriptor = npRequireAgentRestrictionCanonical({
+              schemaVersion: "np.agent-restriction.v1",
+              restrictionId: randomUUID(),
+              siteId,
+              subject: authorization.subject,
+              actionScopes: authorization.actionScopes,
+              startsAt: authorization.authorizedAt,
+              expiresAt: authorization.expiresAt,
+              reasonCode: "GUARDIAN_POLICY_AUTH_LIMIT",
+              targetVersionDigest: command.expectedTargetVersionDigest,
+            });
+            const staged = await stageLimitRestriction(
+              db,
+              siteId,
+              incident.id,
+              actionId,
+              descriptor,
+            );
+            const output = {
+              actionId,
+              state: "executing",
+              restrictionId: staged.id,
+              restrictionHash: staged.hash,
+              adapterId: options.adapter.id,
+              adapterContractVersion: options.adapter.contractVersion,
+              adapterFingerprint: options.adapter.fingerprint,
+            };
+            await db
+              .update(npAgentInvocations)
+              .set({
+                state: "completed",
+                resultKind: "action",
+                resultId: actionId,
+                outputRedacted: output,
+                outputHash: digest("np.agent-guardian-automatic-stage.v1", output),
+                completedAt: time,
+              })
+              .where(eq(npAgentInvocations.id, invocationId));
+            const currentIncident = await automaticRead(db, authentication, incident.id, time);
+            const fresh = await automatic.authority.authorize({
+              db,
+              siteId,
+              principalId: principal.principalId,
+              incident: currentIncident,
+              signalId: request.signalId,
+              now: time,
+            });
+            if (
+              !npIsAgentAutomaticGuardianLimitAuthorizationV1(fresh) ||
+              !same(fresh, authorization) ||
+              controlPolicyDigest !==
+                (await npAgentGuardianResponsePolicyDigestV1(db, siteId, fresh.policyDigest))
+            )
+              fail();
+            await npRequireAgentGuardianNewResponseV1(db, siteId);
+            return { resourceId: actionId, replayed: false };
+          },
+        }),
+      ),
+    );
+    await reconcileAction(siteId, result.resourceId, !result.replayed);
+    return result;
+  }
   function retainedAdapter(row: Restriction): NpAgentRestrictionAdapter {
     const identity = {
       id: row.adapterId,
@@ -1398,6 +2108,241 @@ export function createAgentGuardianResponseServiceV1(
     )
       unavailable();
     return adapter;
+  }
+  async function admitAutomaticInstall(
+    siteId: string,
+    row: Restriction,
+    signal: AbortSignal,
+    bounded: <T>(work: Promise<T>) => Promise<T>,
+    checkpoint: () => void,
+  ): Promise<void> {
+    const deadline = performance.now() + 1000;
+    const before = () => {
+      checkpoint();
+      if (performance.now() >= deadline) unavailable();
+    };
+    const automatic = automaticOptions(),
+      seed = await bounded(loadAction(getDb(), siteId, row.sourceActionId));
+    if (seed.authorityKind !== "deployment") fail();
+    const { original } = await bounded(automaticInvocation(getDb(), seed.row));
+    const retained = retainedAdapter(row),
+      health = npRequireAgentRestrictionHealthV1(await bounded(retained.healthCheck()));
+    if (!retained.sharedAcrossReplicas || !health.sharedAcrossReplicas || health.status !== "ready")
+      unavailable();
+    // The admission owner bounds/closes its entire transaction. Racing that raw
+    // owner here could return before its guarded callback had rolled back.
+    before();
+    await automatic.admission.withStoredAuthority({
+      transactionWorkBudgetMs: Math.max(1, Math.floor(deadline - performance.now())),
+      authorizationContext: original.authorizationContextBody,
+      authorizationContextFingerprint: original.authorizationContextFingerprint,
+      requiredScopes: ["incident:read", "security:execute"],
+      minimumExposure: "approved-execute",
+      resolveTransportAudience: async (...args) => {
+        before();
+        const value = await bounded(automatic.resolveTransportAudience(...args));
+        before();
+        return value;
+      },
+      prepareTransaction: async (db) => {
+        before();
+        await prepareAutomaticTransaction(db, siteId);
+        before();
+      },
+      mutate: async (db, time, authentication) => {
+        checkpoint();
+        await bounded(npRequireAgentGuardianNewResponseV1(db, siteId));
+        const action = await bounded(loadAction(db, siteId, row.sourceActionId));
+        if (
+          action.authorityKind !== "deployment" ||
+          action.row.state !== "executing" ||
+          !same(action.automatic, seed.automatic)
+        )
+          fail();
+        const current = await bounded(
+          ownRestriction(db, siteId, row.incidentId, row.sourceActionId, row.id),
+        );
+        if (
+          current.state !== "pending" ||
+          current.rowVersion !== row.rowVersion ||
+          current.removalActionId !== null ||
+          !same(current.descriptor, row.descriptor) ||
+          current.expiresAt <= time
+        )
+          fail();
+        const incident = await bounded(
+          automaticRead(db, authentication, row.incidentId, time, signal),
+        );
+        const fresh = await bounded(
+          automatic.authority.authorize({
+            db,
+            siteId,
+            principalId: authentication.principal.id,
+            incident,
+            signalId: action.automatic.request.signalId,
+            now: time,
+          }),
+        );
+        const {
+          authorizedAt: _originalAt,
+          expiresAt: _originalExpiry,
+          ...originalBasis
+        } = action.automatic.authorization;
+        const { authorizedAt: _freshAt, expiresAt: _freshExpiry, ...freshBasis } = fresh;
+        const controlPolicyDigest = await bounded(
+          npAgentGuardianResponsePolicyDigestV1(db, siteId, fresh.policyDigest),
+        );
+        if (
+          !npIsAgentAutomaticGuardianLimitAuthorizationV1(fresh) ||
+          fresh.deploymentDigest !== automatic.authority.deploymentDigest ||
+          !same(originalBasis, freshBasis) ||
+          Date.parse(fresh.expiresAt) < row.expiresAt.getTime() ||
+          controlPolicyDigest !== action.automatic.controlPolicyDigest
+        )
+          fail();
+        // The original descriptor remains frozen. Fresh permission never extends its timer.
+        checkpoint();
+      },
+    });
+    checkpoint();
+  }
+  async function admitInstall(
+    siteId: string,
+    row: Restriction,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const checkpoint = () => {
+      if (signal.aborted) fail();
+    };
+    const bounded = async <T>(work: Promise<T>): Promise<T> => {
+      checkpoint();
+      let abort: (() => void) | undefined;
+      try {
+        const result = await Promise.race([
+          work,
+          new Promise<never>((_resolve, reject) => {
+            abort = () =>
+              reject(
+                new NpAgentGatewayError(
+                  "GUARDIAN_RESPONSE_UNAVAILABLE",
+                  503,
+                  "Guardian response dispatch admission is unavailable.",
+                ),
+              );
+            signal.addEventListener("abort", abort, { once: true });
+            if (signal.aborted) abort();
+          }),
+        ]);
+        checkpoint();
+        return result;
+      } finally {
+        if (abort) signal.removeEventListener("abort", abort);
+      }
+    };
+    const descriptor = npRequireAgentRestrictionCanonical(row.descriptor);
+    if (descriptor.subject.kind !== "opaque_actor_bucket") fail();
+    // The host's potentially slow enforceability probe holds no site/control lock.
+    if (
+      !(await bounded(
+        options.canEnforceSubject({
+          db: getDb(),
+          siteId,
+          subject: descriptor.subject,
+          actionScopes: descriptor.actionScopes,
+        }),
+      ))
+    )
+      fail();
+    if (descriptor.reasonCode === "GUARDIAN_POLICY_AUTH_LIMIT") {
+      await admitAutomaticInstall(siteId, row, signal, bounded, checkpoint);
+      return;
+    }
+    await bounded(
+      withCurrentSite(siteId, () =>
+        getDb().transaction(
+          async (transaction) => {
+            checkpoint();
+            const db = transaction as Db;
+            const settings = await db.execute(
+              sql`select extract(epoch from current_setting('statement_timeout')::interval)*1000 as statement_ms,extract(epoch from current_setting('lock_timeout')::interval)*1000 as lock_ms`,
+            );
+            checkpoint();
+            const statement = Number(settings.rows[0]?.statement_ms),
+              lock = Number(settings.rows[0]?.lock_ms);
+            if (!Number.isFinite(statement) || statement < 0 || !Number.isFinite(lock) || lock < 0)
+              fail();
+            await db.execute(
+              sql`select set_config('statement_timeout',${`${Math.min(statement || 500, 500)}ms`},true),set_config('lock_timeout',${`${Math.min(lock || 100, 100)}ms`},true)`,
+            );
+            return npWithAgentRuntimeControlTransactionV1(
+              siteId,
+              async ({ db }) => {
+                checkpoint();
+                await bounded(npRequireAgentGuardianNewResponseV1(db, siteId));
+                const action = await bounded(loadAction(db, siteId, row.sourceActionId));
+                const signed = await bounded(approval(db, action.row));
+                const original = await bounded(invocation(db, action.row));
+                await bounded(
+                  lockPeople(db, siteId, [
+                    { userId: original.requesterId, sessionId: original.authorityRef.sessionId },
+                    ...(signed.entry.decidedByUserId
+                      ? [{ userId: signed.entry.decidedByUserId }]
+                      : []),
+                  ]),
+                );
+                const current = await bounded(
+                  ownRestriction(db, siteId, row.incidentId, row.sourceActionId, row.id),
+                );
+                if (
+                  current.state !== "pending" ||
+                  current.rowVersion !== row.rowVersion ||
+                  current.removalActionId !== null ||
+                  !same(current.descriptor, row.descriptor) ||
+                  current.expiresAt <= now() ||
+                  action.row.state !== "executing"
+                )
+                  fail();
+                const originalActor = await bounded(requester(db, action.row));
+                const facts = await bounded(
+                  authorize(
+                    db,
+                    { siteId, actor: originalActor, incidentId: row.incidentId },
+                    true,
+                    checkpoint,
+                  ),
+                );
+                await bounded(statementMatches(db, action, signed.statement, false));
+                await bounded(liveApprover(db, action.row, signed.entry));
+                const policyDigest = await bounded(
+                  npAgentGuardianResponsePolicyDigestV1(db, siteId, facts.policy.policyDigest),
+                );
+                if (
+                  signed.entry.state !== "consumed" ||
+                  signed.entry.expiresAt <= now() ||
+                  !same(signed.statement.policyHashes, [policyDigest]) ||
+                  facts.incident.versionNumber !== action.command.expectedVersion ||
+                  facts.targetVersionDigest !== action.command.expectedTargetVersionDigest ||
+                  !same(facts.subject, descriptor.subject) ||
+                  descriptor.actionScopes.some((scope) => !facts.allowedScopes.includes(scope))
+                )
+                  fail();
+                checkpoint();
+              },
+              db,
+            );
+          },
+          // Obtain a fresh control snapshot after the quota lock is acquired;
+          // a waiting lock statement must not pin an older control generation.
+          { isolationLevel: "read committed" },
+        ),
+      ),
+    );
+    checkpoint();
+    // Successful current-generation admission serializes with disable/enable.
+    // Existing executing/pending staging already records a possible effect. It is
+    // not a per-attempt receipt; the adapter still owns idempotent install semantics.
+    // An operation admitted here may complete after a later disable. A timeout
+    // cannot assert that already-admitted external I/O was cancelled.
   }
   async function reconcileAction(
     siteId: string,
@@ -1453,31 +2398,13 @@ export function createAgentGuardianResponseServiceV1(
           mutation.effectiveExpiresAt !== null
         )
           fail();
-      } else if (dispatch && row.state === "pending") {
-        const originalActor = await requester(db, action.row);
-        const current = await authorize(db, {
-          siteId,
-          actor: originalActor,
-          incidentId: row.incidentId,
-        });
-        const signed = await approval(db, action.row);
-        await statementMatches(db, action, signed.statement, false);
-        await liveApprover(db, action.row, signed.entry);
-        if (
-          signed.entry.state !== "consumed" ||
-          signed.entry.expiresAt <= now() ||
-          current.incident.versionNumber !== action.command.expectedVersion ||
-          current.targetVersionDigest !== action.command.expectedTargetVersionDigest ||
-          !same(current.subject, descriptor.subject) ||
-          descriptor.actionScopes.some((scope) => !current.allowedScopes.includes(scope)) ||
-          !(await options.canEnforceSubject({
-            db,
-            siteId,
-            subject: current.subject,
-            actionScopes: descriptor.actionScopes,
-          }))
-        )
-          fail();
+      } else if (
+        dispatch &&
+        row.state === "pending" &&
+        (await npReadAgentGuardianCaptureAdmissionV1(db, siteId)).state !== "disabled"
+      ) {
+        await admitInstall(siteId, row, signal);
+        if (signal.aborted) fail();
         mutation = npRequireAgentRestrictionMutationResultV1(
           await adapter.install(descriptor, {
             idempotencyKey: `install:${row.id}:1`,
@@ -1549,7 +2476,10 @@ export function createAgentGuardianResponseServiceV1(
           executedAt: time.toISOString(),
         };
         const effectDigest = digest("np.agent-guardian-response-effect.v1", evidence);
-        const original = await invocation(tx, selected.row);
+        const original =
+          selected.authorityKind === "human"
+            ? await invocation(tx, selected.row)
+            : (await automaticInvocation(tx, selected.row)).original;
         await tx.insert(npAuditEvents).values({
           id: auditId,
           siteId,
@@ -1732,6 +2662,10 @@ export function createAgentGuardianResponseServiceV1(
   }
 
   return {
+    automatic: {
+      installed: npIsAgentAutomaticGuardianLimitAuthorityV1(options.automatic?.authority),
+      limit: automaticLimit,
+    },
     approvalTargets,
     plan: (input) =>
       mutate(
@@ -1809,6 +2743,7 @@ export function createAgentGuardianResponseServiceV1(
                 "security.limitActor",
                 "security.removeActorLimit",
               ]),
+              isNotNull(npAgentActions.approvalId),
               sql`${npAgentActions.targetRefs} @> ${JSON.stringify([{ kind: "incident", incidentId: input.incidentId }])}::jsonb`,
             ),
           )
@@ -1892,6 +2827,7 @@ export function createAgentGuardianResponseServiceV1(
         try {
           const health = npRequireAgentRestrictionHealthV1(await options.adapter.healthCheck());
           enforceable =
+            (await npReadAgentGuardianCaptureAdmissionV1(db, input.siteId)).state !== "disabled" &&
             health.status === "ready" &&
             health.sharedAcrossReplicas &&
             options.adapter.sharedAcrossReplicas &&

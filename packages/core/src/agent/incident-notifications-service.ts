@@ -3,10 +3,13 @@ import {
   npRequireIncidentNotificationRecoverySource,
 } from "./incident-notification-recovery.js";
 import type { NpAgentIncidentNotificationRecoveryV1 } from "../agent-contract/incident-notification-recovery-contract.js";
-import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
+import {
+  npRequireIncidentSeverityEvidence,
+  npRequireIncidentRuleSeverityEvidence,
+} from "./incident-severity-evidence.js";
 import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentIncidents,
@@ -178,7 +181,10 @@ export function createAgentIncidentNotificationsServiceV1(
     )
       fail();
     if (input.transition === "escalated") {
-      const change = await npRequireIncidentSeverityEvidence(input.db, entry);
+      const change =
+        entry.details.schemaVersion === "np.agent-incident-rule-severity-entry.v1"
+          ? await npRequireIncidentRuleSeverityEvidence(input.db, entry)
+          : await npRequireIncidentSeverityEvidence(input.db, entry);
       if (change.toSeverity !== incident.severity || entry.details.status !== incident.status)
         fail();
     } else if (input.transition === "containment_failed") {
@@ -498,15 +504,26 @@ export function createAgentIncidentNotificationsServiceV1(
                 and(
                   eq(npAgentIncidentTimeline.siteId, input.siteId),
                   eq(npAgentIncidentTimeline.incidentId, item.incidentId),
-                  eq(npAgentIncidentTimeline.kind, "human_note"),
                   sql`${npAgentIncidentTimeline.details}->>'transitionVersion' = ${String(item.incidentVersion)}`,
-                  sql`${npAgentIncidentTimeline.details}->>'schemaVersion' = 'np.agent-incident-severity-entry.v1'`,
+                  or(
+                    and(
+                      eq(npAgentIncidentTimeline.kind, "human_note"),
+                      sql`${npAgentIncidentTimeline.details}->>'schemaVersion' = 'np.agent-incident-severity-entry.v1'`,
+                    ),
+                    and(
+                      eq(npAgentIncidentTimeline.kind, "correlated"),
+                      sql`${npAgentIncidentTimeline.details}->>'schemaVersion' = 'np.agent-incident-rule-severity-entry.v1'`,
+                    ),
+                  ),
                 ),
               )
               .limit(2);
             const source = entries[0];
             if (entries.length !== 1 || !source) continue;
-            const change = await npRequireIncidentSeverityEvidence(db, source);
+            const change =
+              source.details.schemaVersion === "np.agent-incident-rule-severity-entry.v1"
+                ? await npRequireIncidentRuleSeverityEvidence(db, source)
+                : await npRequireIncidentSeverityEvidence(db, source);
             if (
               change.toSeverity !== item.severity ||
               source.details.status !== item.status ||

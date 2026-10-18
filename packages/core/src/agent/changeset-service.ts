@@ -3,6 +3,7 @@ import {
   npAssertPublisherChangeSetRequestV1,
 } from "./publisher-changeset.js";
 import type { NpAgentRuntimeDocumentEvidenceReaderV1 } from "./read-capability-executors.js";
+import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 import { npVerifyAgentChangeSetPlanEvidenceV1 } from "./changeset-plan-evidence.js";
 import { npReadCancelledChangeSetReleaseV1 } from "./cancelled-changeset-history.js";
 import {
@@ -4665,7 +4666,7 @@ export function createAgentChangeSetServiceV1(
         targetVersionFacts: [],
         input: request.arguments.input,
       });
-      await context.db.insert(npAgentActions).values({
+      const actionRow = {
         id,
         siteId: input.siteId,
         runId: input.runId,
@@ -4694,7 +4695,9 @@ export function createAgentChangeSetServiceV1(
         createdAt: context.now,
         startedAt: context.now,
         finishedAt: context.now,
-      } satisfies typeof npAgentActions.$inferInsert);
+      } satisfies typeof npAgentActions.$inferInsert;
+      await context.db.insert(npAgentActions).values(actionRow);
+      await npObserveAgentRuntimeActionV1({ db: context.db, run: context.run, action: actionRow });
       await context.db
         .update(npAgentInvocations)
         .set({ runId: input.runId })

@@ -33,9 +33,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    return agentStudioErrorResponse(error, "mutation", {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return agentStudioErrorResponse(
+      error,
+      "mutation",
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+      request,
+    );
   }
 }
 

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, countJobLogs, listJobLogs, can } from "@nexpress/core";
 import { npRequireJobLogsWire, npSerializeJobLogEntry } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
@@ -24,7 +25,7 @@ import {
  * they shouldn't leak to editors. No CSRF gate because GET
  * is read-only.
  */
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianGET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("read");
     const user = await requireGlobalAuth(request);
@@ -52,3 +53,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

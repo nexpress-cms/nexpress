@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { unmuteMember } from "@nexpress/core/community";
 import { npRequireRemovedWire } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
@@ -12,7 +13,7 @@ import { ensureFor } from "../../../../../lib/init-core";
  * `{ ok: true, removed: false }` rather than 404 so the
  * client doesn't have to refetch the list before deleting.
  */
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   context: { params: Promise<{ targetId: string }> },
 ) {
@@ -28,3 +29,5 @@ export async function DELETE(
 }
 
 export const dynamic = "force-dynamic";
+
+export const DELETE = npWithAgentGuardianHttpResponseV1("community", npGuardianDELETE);

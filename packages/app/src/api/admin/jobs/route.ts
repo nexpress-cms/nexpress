@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, getOptionalJobQueue, can } from "@nexpress/core";
 import { npRequireJobListWire } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
@@ -22,7 +23,7 @@ import { npParseJobListQuery, npRequireJobApiResponse } from "../../../lib/job-a
  * pg-boss; the framework supports this via NP_ENABLE_JOBS=0)
  * or when the queue's adapter doesn't implement listJobs.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -46,3 +47,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

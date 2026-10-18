@@ -69,6 +69,12 @@ import {
 import { getCollectionZodSchema } from "./validation.js";
 import { getCollectionConfig, getCollectionTable, getCollectionRegistration } from "./registry.js";
 import { npRecordCollectionRuntimeDiagnostic } from "./diagnostics.js";
+import {
+  npGetCollectionMutationObserverV1,
+  type NpCollectionMutationActorV1,
+  type NpCollectionMutationObserverV1,
+  type NpCollectionRevisionFactV1,
+} from "./mutation-observer.js";
 import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
@@ -882,6 +888,10 @@ interface SaveContext {
   docId: string | null;
   validatedData: Record<string, unknown>;
   actor: SaveActor;
+  mutationObservation: {
+    observer: NpCollectionMutationObserverV1;
+    actor: NpCollectionMutationActorV1;
+  } | null;
   options: NpSaveOptions | undefined;
   bypassStaffAccess: boolean;
   bypassMemberAccess: boolean;
@@ -929,6 +939,16 @@ async function initSaveContext(
     "hookData" | "prepared" | "searchVector" | "publishTransition" | "unpublishTransition" | "now"
   >
 > {
+  const mutationObserver = npGetCollectionMutationObserverV1();
+  const mutationObservation = mutationObserver
+    ? {
+        observer: mutationObserver,
+        actor:
+          actor.kind === "staff"
+            ? { kind: "staff" as const, userId: actor.user.id }
+            : { kind: "member" as const, memberId: actor.memberId },
+      }
+    : null;
   if (options?.createId !== undefined) {
     if (docId !== null) {
       throw new NpValidationError("Invalid save options", [
@@ -980,6 +1000,7 @@ async function initSaveContext(
     docId,
     validatedData,
     actor,
+    mutationObservation,
     options,
     bypassStaffAccess: controls.bypassStaffAccess === true,
     bypassMemberAccess: controls.bypassMemberAccess === true,
@@ -1400,6 +1421,7 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       });
     }
 
+    let revision: NpCollectionRevisionFactV1 | null = null;
     if (ctx.config.versions) {
       const docStatus = persistedDoc.status as string | undefined;
       // "scheduled" documents haven't actually gone live yet — treat their
@@ -1411,7 +1433,7 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
           : typeof ctx.config.versions === "object" && ctx.config.versions.max !== undefined
             ? ctx.config.versions.max
             : undefined;
-      await insertRevision(
+      revision = await insertRevision(
         tx,
         ctx.collection,
         persistedDocId,
@@ -1421,6 +1443,7 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
         ctx.userForHooks,
         revisionStatus,
         maxRevisions,
+        ctx.mutationObservation !== null,
       );
     }
 
@@ -1433,6 +1456,22 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
     if (!hydrated) {
       throw new Error(`Saved ${ctx.collection} document could not be hydrated.`);
     }
+    if (ctx.mutationObservation)
+      await ctx.mutationObservation.observer.record({
+        db: tx,
+        siteId: persistedSiteId,
+        collection: ctx.collection,
+        documentId: persistedDocId,
+        writeId: randomUUID(),
+        occurredAt: new Date(),
+        actor: ctx.mutationObservation.actor,
+        fact: {
+          kind: "document-save",
+          operation: ctx.operation,
+          status: collectionMutationStatus(persistedDoc.status),
+          revision,
+        },
+      });
     return hydrated;
   };
 
@@ -1606,6 +1645,8 @@ export async function autosaveRevision(
   reused: boolean;
 }> {
   npAssertAgentPreviewEffectsAllowed();
+  const mutationObserver = npGetCollectionMutationObserverV1();
+  const mutationActor: NpCollectionMutationActorV1 = { kind: "staff", userId: user.id };
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -1658,12 +1699,18 @@ export async function autosaveRevision(
   const inserted = await db.transaction(async (tx) => {
     // Serialize all revision writers for this document. Without the row
     // lock two concurrent autosaves can allocate the same next version.
-    await tx
-      .select({ id: getTableColumn(table, "id") })
+    const [locked] = await tx
+      .select({
+        id: getTableColumn(table, "id"),
+        ...(mutationObserver ? { siteId: getTableColumn(table, "siteId") } : {}),
+      })
       .from(table)
       .where(eq(getTableColumn(table, "id"), documentId))
       .limit(1)
       .for("update");
+    const mutationSiteId = mutationObserver
+      ? requireDocumentSiteId(toRecord(locked), `Autosaved ${collection} document`)
+      : null;
 
     const [latestAutosave] = (await tx
       .select({
@@ -1719,7 +1766,7 @@ export async function autosaveRevision(
         authorId: user.id,
         createdAt,
       })
-      .returning()) as Array<{ id: string }>;
+      .returning()) as Array<Record<string, unknown> & { id: string }>;
     if (!row?.id) throw new Error("Revision insert did not return an id");
 
     if (maxRevisions !== undefined && maxRevisions > 0) {
@@ -1740,6 +1787,20 @@ export async function autosaveRevision(
       }
     }
 
+    if (mutationObserver && mutationSiteId) {
+      const revision = collectionMutationRevision(row);
+      if (revision.status !== "autosave") throw new Error("Invalid autosave revision result");
+      await mutationObserver.record({
+        db: tx,
+        siteId: mutationSiteId,
+        collection,
+        documentId,
+        writeId: randomUUID(),
+        occurredAt: new Date(),
+        actor: mutationActor,
+        fact: { kind: "revision-autosave", revision: { ...revision, status: "autosave" } },
+      });
+    }
     return { id: row.id, version: nextVersion, createdAt, reused: false };
   });
   // `registration` reference silences the unused-binding lint; we keep
@@ -3156,7 +3217,8 @@ async function insertRevision(
   user: NpAuthUser | null,
   status: string,
   maxRevisions?: number,
-): Promise<void> {
+  observe = false,
+): Promise<NpCollectionRevisionFactV1 | null> {
   const revisionConditions = sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`;
   const snapshotResult = npAnalyzeRevisionSnapshot(data, getCollectionConfig(collection));
   if (!snapshotResult.ok) {
@@ -3174,7 +3236,7 @@ async function insertRevision(
     maxVersion: number | string | null;
   }>;
 
-  await tx.insert(npRevisions).values({
+  const insertion = tx.insert(npRevisions).values({
     collection,
     documentId,
     version: Number(revisionStats?.maxVersion ?? 0) + 1,
@@ -3186,6 +3248,11 @@ async function insertRevision(
     authorId: user?.id ?? null,
     createdAt: new Date(),
   });
+  let revision: NpCollectionRevisionFactV1 | null = null;
+  if (observe) {
+    const [inserted] = await insertion.returning();
+    revision = collectionMutationRevision(toRecord(inserted));
+  } else await insertion;
 
   // Enforce versions.max: drop the oldest revisions so this doc never
   // accumulates more than `maxRevisions` rows. Runs in the same tx as the
@@ -3210,6 +3277,39 @@ async function insertRevision(
       }
     }
   }
+  return revision;
+}
+
+function collectionMutationStatus(value: unknown): NpDocumentStatus {
+  if (
+    value === "draft" ||
+    value === "scheduled" ||
+    value === "published" ||
+    value === "archived" ||
+    value === "pending"
+  )
+    return value;
+  throw new Error("Invalid observed collection document status");
+}
+
+function collectionMutationRevision(value: Record<string, unknown>): NpCollectionRevisionFactV1 {
+  if (
+    typeof value.id !== "string" ||
+    !isCanonicalCreateId(value.id) ||
+    typeof value.version !== "number" ||
+    !Number.isSafeInteger(value.version) ||
+    value.version < 1 ||
+    (value.status !== "draft" && value.status !== "published" && value.status !== "autosave") ||
+    !(value.createdAt instanceof Date) ||
+    !Number.isFinite(value.createdAt.getTime())
+  )
+    throw new Error("Invalid observed collection revision");
+  return {
+    id: value.id,
+    version: value.version,
+    status: value.status,
+    createdAt: new Date(value.createdAt.getTime()),
+  };
 }
 
 function collectTopLevelHasManyFields(fields: readonly NpFieldConfig[]): string[] {

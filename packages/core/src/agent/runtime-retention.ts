@@ -21,6 +21,7 @@ import {
   npRequireAgentIncidentRetentionPolicyV1,
   type NpAgentIncidentRetentionPolicyV1,
 } from "../agent-contract/incident-retention-contract.js";
+import { npAgentGuardianSourcePairsV1 } from "../agent-contract/guardian-retention-contract.js";
 
 type Db = ReturnType<typeof getDb>;
 type Category =
@@ -35,22 +36,20 @@ interface CandidateSource {
 function unreferenced(table: string, hasJobs: boolean): SQL {
   const checks = npAgentSiteOwnedTableNamesV1.map(
     (name) => sql`not exists (select 1 from ${sql.identifier(name)} dependency
-      where dependency.site_id=t.site_id
+      where true
       ${name === table ? sql`and dependency.id<>t.id` : sql``}
       and position(t.id::text in to_jsonb(dependency)::text)>0)`,
   );
   // Normal audit is immutable. Only its owning verified-reference lifecycle
   // can release a source; nominal history age is not such a release.
   checks.push(sql`not exists (select 1 from np_audit_events dependency
-    where (dependency.site_id=t.site_id or dependency.site_id is null)
-    and position(t.id::text in to_jsonb(dependency)::text)>0)`);
+    where position(t.id::text in to_jsonb(dependency)::text)>0)`);
   // Durable collection/monitor checkpoints are source references too.
   checks.push(sql`not exists (select 1 from np_settings dependency
-    where dependency.site_id=t.site_id and position(t.id::text in to_jsonb(dependency)::text)>0)`);
+    where position(t.id::text in to_jsonb(dependency)::text)>0)`);
   if (hasJobs)
     checks.push(sql`not exists (select 1 from pgboss.job dependency
     where dependency.state::text in ('created','retry','active')
-    and (dependency.data->>'siteId'=t.site_id or dependency.data->>'siteId' is null)
     and position(t.id::text in dependency.data::text)>0)`);
   return sql.join(checks, sql` and `);
 }
@@ -80,16 +79,27 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
   // V2 diagnostics contain only bounded immutable source metadata, never excerpts.
   // They are the retained proof for every segment in an aggregate and for active
   // continuation. Their owning call/Run reference lifecycle releases them together.
-  const retainedSegmentProof = sql`(t.instruction_template_id='moderator.semantic-assessment'
+  const retainedSegmentProof = sql`((t.instruction_template_id='moderator.semantic-assessment'
     and t.instruction_template_version=2
-    and t.request_redacted->>'schemaVersion'='np.agent-moderator-assessment-diagnostic.v2')`;
+    and t.request_redacted->>'schemaVersion'='np.agent-moderator-assessment-diagnostic.v2')
+    or (t.instruction_template_id='guardian.incident-assessment'
+      and t.instruction_template_version=1
+      and t.request_redacted->>'schemaVersion'='np.agent-guardian-assessment-diagnostic.v1'))`;
   const expiringDiagnostic = sql`(t.response_redacted is not null
     or (t.request_redacted is not null and not coalesce(${retainedSegmentProof},false)))`;
   const sources: CandidateSource[] = [
     {
       category: "events",
       table: "np_agent_events",
-      eligible: sql`t.dispatched_at is not null and t.expires_at<=${now}`,
+      // Guardian's explicit source owner must close delivery and retain consumed
+      // keys before detail deletion. Generic expiry cannot bypass that lifecycle.
+      eligible: sql`t.dispatched_at is not null and t.expires_at<=${now}
+        and not (${sql.join(
+          Object.values(npAgentGuardianSourcePairsV1)
+            .flatMap((pairs) => Object.entries(pairs))
+            .map(([component, kind]) => sql`(t.source_component=${component} and t.kind=${kind})`),
+          sql` or `,
+        )})`,
     },
     {
       category: "diagnostics",

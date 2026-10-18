@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { resolveReport } from "@nexpress/core/community";
 import {
   npRequireCommunityId,
@@ -13,7 +14,10 @@ import { ensureFor } from "../../../../lib/init-core";
 import { requireMember } from "../../../../lib/member-auth-helpers";
 import { revalidateCollection } from "../../../../lib/revalidate";
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function npGuardianPOST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -42,3 +46,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("reports", npGuardianPOST);

@@ -1,4 +1,5 @@
 import { npCreateAgentPublisherSelectionEvaluationSuiteV1 } from "./publisher-selection-evaluation-fixtures.js";
+import { runAgentGuardianEvaluationV1 } from "./guardian-evaluation.js";
 import { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { npBuildAgentEvaluationWorkbenchV1 } from "./evaluation-workbench.js";
@@ -107,6 +108,7 @@ beforeAll(async () => {
   ]);
   const selectionSuite = await npCreateAgentPublisherSelectionEvaluationSuiteV1();
   sources = {
+    guardian: await runAgentGuardianEvaluationV1(),
     "publisher-selection": await evaluate(
       selectionSuite,
       selectionSuite.cases.slice(0, 2).map((c) => c.id),

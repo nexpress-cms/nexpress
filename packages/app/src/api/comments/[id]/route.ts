@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { deleteComment, updateComment } from "@nexpress/core/community";
 import {
   npRequireCommentUpdateRequest,
@@ -12,7 +13,10 @@ import { ensureFor } from "../../../lib/init-core";
 import { npRequireCommunityRequest } from "../../../lib/community-contract";
 import { requireMember } from "../../../lib/member-auth-helpers";
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function npGuardianPATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -29,7 +33,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -43,3 +47,6 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const PATCH = npWithAgentGuardianHttpResponseV1("community", npGuardianPATCH);
+export const DELETE = npWithAgentGuardianHttpResponseV1("community", npGuardianDELETE);

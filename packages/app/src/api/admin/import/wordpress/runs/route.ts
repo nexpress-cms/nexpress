@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -8,7 +9,7 @@ import { listWordPressImportRuns } from "../../../../../lib/wp-import-admin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
@@ -30,3 +31,5 @@ function parseLimit(value: string | null): number {
   if (!Number.isFinite(parsed) || parsed < 1) return 25;
   return Math.min(parsed, 100);
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

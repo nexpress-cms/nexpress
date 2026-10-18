@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     return npSuccessResponse(npRequireAgentConnectionV1(result.output));
   } catch (error) {
-    return agentStudioErrorResponse(error, "mutation");
+    return agentStudioErrorResponse(error, "mutation", undefined, request);
   }
 }
 

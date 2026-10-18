@@ -519,6 +519,48 @@
       "when": 1792294468179,
       "tag": "0073_agent-guardian-restriction-reference-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792308637969,
+      "tag": "0074_guardian-security-transitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792310725458,
+      "tag": "0075_guardian-content-receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1792313575556,
+      "tag": "0076_guardian-retention-control-evaluation",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1792313685545,
+      "tag": "0077_agent-guardian-source-reference-lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792317497519,
+      "tag": "0078_guardian-runtime-security-http",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1792317553689,
+      "tag": "0079_agent-guardian-runtime-receipt-reference-lifecycle",
+      "breakpoints": true
     }
   ]
 }

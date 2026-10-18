@@ -51,7 +51,18 @@ export * from "./changeset-capability.js";
 export * from "./approval-service.js";
 export * from "./approval-action-targets.js";
 
-export * from "./runtime-controls.js";
+export {
+  NpAgentRuntimeControlError,
+  npValidateAgentRuntimeControlStateV1,
+  npWithAgentRuntimeControlTransactionV1,
+  createAgentRuntimeControlsV1,
+} from "./runtime-controls.js";
+export type {
+  NpAgentRuntimeControlContextV1,
+  NpAgentRuntimeReadinessEvidenceV1,
+  NpAgentRuntimeControlsOptionsV1,
+  NpAgentRuntimeControlsV1,
+} from "./runtime-controls.js";
 export * from "./runtime-service.js";
 export * from "./runtime-admission.js";
 
@@ -66,11 +77,16 @@ export * from "./runtime-execution-store.js";
 export * from "./runtime-breakers.js";
 export * from "./runtime-executor.js";
 
-export * from "./runtime-event-service.js";
+export { createAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
+export type {
+  NpAgentRuntimeEventServiceOptionsV1,
+  NpAgentRuntimeEventServiceV1,
+} from "./runtime-event-service.js";
 export * from "./runtime-jobs.js";
 export * from "./operator-event-source.js";
 export * from "./operator-event-observation.js";
 export * from "./guardian-observation-service.js";
+export * from "./automatic-guardian-limit-service.js";
 export * from "./runtime-maintenance.js";
 export * from "./incident-retention.js";
 export * from "./moderator-assessment-source.js";
@@ -194,3 +210,37 @@ export * from "./guardian-actor-projection.js";
 
 export * from "./guardian-session-service.js";
 export * from "./guardian-session-observation.js";
+export * from "./guardian-security-observation.js";
+export * from "./guardian-content-observation.js";
+export * from "./guardian-external-observation.js";
+export * from "./guardian-operations-service.js";
+export * from "./guardian-session-evidence.js";
+export * from "./guardian-sentry-adapter.js";
+export * from "./guardian-assessment-source.js";
+export * from "./guardian-incident-assessment-service.js";
+export { createAgentGuardianControlsV1, NpAgentGuardianControlError } from "./guardian-controls.js";
+export type {
+  NpAgentGuardianControlsV1,
+  NpAgentGuardianControlsOptionsV1,
+  NpAgentGuardianControlRegistrationV1,
+} from "./guardian-controls.js";
+export { npCollectAgentGuardianHealthV1 } from "./guardian-health.js";
+export type {
+  NpAgentGuardianHealthOptionsV1,
+  NpAgentGuardianHealthProofOwnerV1,
+} from "./guardian-health.js";
+export { runAgentGuardianEvaluationV1 } from "./guardian-evaluation.js";
+
+export { createAgentGuardianRetentionServiceV1 } from "./guardian-retention-service.js";
+export type {
+  NpAgentGuardianRetentionServiceV1,
+  NpAgentGuardianRetentionOptionsV1,
+  NpAgentGuardianRetentionPolicyV1,
+  NpAgentGuardianRetentionProofOwnerV1,
+  NpAgentGuardianRetentionResultV1,
+} from "./guardian-retention-service.js";
+export { npVerifyAgentGuardianRequestSignalV1 } from "./guardian-observation-service.js";
+export { npVerifyAgentGuardianSessionSignalV1 } from "./guardian-session-observation.js";
+
+export * from "./guardian-runtime-observation.js";
+export * from "./guardian-http-observation.js";

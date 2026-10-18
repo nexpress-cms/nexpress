@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpValidationError } from "@nexpress/core";
 import { moderateMemberThread } from "@nexpress/core/community";
 import {
@@ -14,7 +15,7 @@ import { ensureFor } from "../../../../../lib/init-core";
 import { requireMember } from "../../../../../lib/member-auth-helpers";
 import { revalidateCollection } from "../../../../../lib/revalidate";
 
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -48,3 +49,5 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("collections", npGuardianPOST);

@@ -1,5 +1,13 @@
 /** `@nexpress/core/agent-contract` — exact, client-safe Agent Platform contracts. */
 export * from "./types.js";
+export * from "./guardian-security-contract.js";
+export * from "./guardian-content-contract.js";
+export * from "./guardian-external-contract.js";
+export * from "./guardian-operations-contract.js";
+export * from "./guardian-operator-coverage-contract.js";
+export * from "./automatic-guardian-limit-contract.js";
+export * from "./guardian-assessment-contract.js";
+export * from "./guardian-assessment-recipe-contract.js";
 export * from "./contract.js";
 export * from "./canonical-bodies.js";
 export * from "./canonical-authorization-context.js";
@@ -140,3 +148,16 @@ export * from "./guardian-response-contract.js";
 export * from "./restriction-adapter-contract.js";
 
 export * from "./guardian-session-contract.js";
+export * from "./incident-rule-severity-contract.js";
+export * from "./guardian-controls-contract.js";
+export * from "./guardian-health-contract.js";
+export * from "./guardian-evaluation-contract.js";
+export * from "./guardian-evaluation-review-contract.js";
+export * from "./guardian-retention-contract.js";
+
+export * from "./guardian-runtime-contract.js";
+
+export * from "./guardian-http-contract.js";
+export * from "./guardian-credential-contract.js";
+export * from "./guardian-plugin-contract.js";
+export * from "./guardian-delivery-contract.js";

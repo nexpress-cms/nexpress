@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import { NpNotFoundError, NpValidationError, getCollectionConfig } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -7,7 +8,7 @@ import { getCollectionDocument } from "../../../../../../lib/collection-helpers"
 import { resolveCollectionPreviewPath } from "../../../../../../lib/collection-preview";
 import { ensureFor } from "../../../../../../lib/init-core";
 
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   context: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -42,3 +43,5 @@ export async function GET(
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

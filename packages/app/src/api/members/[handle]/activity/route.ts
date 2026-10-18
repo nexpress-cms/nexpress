@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpNotFoundError, NpValidationError } from "@nexpress/core";
 import { getMemberProfile, listMemberProfileActivity } from "@nexpress/core/community";
 import {
@@ -46,7 +47,7 @@ function positiveQueryInteger(value: string | null, fallback: number, field: str
   return parsed;
 }
 
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   { params }: { params: Promise<{ handle: string }> },
 ) {
@@ -78,3 +79,5 @@ export async function GET(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);

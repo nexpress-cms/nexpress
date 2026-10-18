@@ -165,6 +165,7 @@ import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { registerJobHandler } from "../jobs/handlers.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npReadAgentOperatorReviewV1 } from "./operator-review.js";
+import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 
 type Db = ReturnType<typeof database>;
 type Invocation = typeof npAgentInvocations.$inferSelect;
@@ -1634,7 +1635,7 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
         })
         .returning();
       if (!row) throw conflict();
-      await actor.db.insert(npAgentActions).values({
+      const actionRow = {
         id: actionId,
         siteId: row.siteId,
         runId: row.runId,
@@ -1660,7 +1661,14 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
         auditEventId: auditId,
         startedAt: actor.time,
         createdAt: actor.time,
-      });
+      } satisfies typeof npAgentActions.$inferInsert;
+      await actor.db.insert(npAgentActions).values(actionRow);
+      if (actor.runtime)
+        await npObserveAgentRuntimeActionV1({
+          db: actor.db,
+          run: actor.runtime.run,
+          action: actionRow,
+        });
       if (id === "ops.execute")
         return reserveExecution(actor, row, parsed as NpAgentOpsExecuteInputV1);
       let output: NpAgentAuditRunOutputV1 | NpAgentOpsPlanOutputV1;

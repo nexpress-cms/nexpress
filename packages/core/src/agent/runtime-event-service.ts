@@ -1,4 +1,6 @@
-import { npAgentEventRowEnvelopeV1 as envelope } from "./event-evidence.js";
+import { digestAgentCanonicalSha256 } from "../agent-contract/canonical-digest.js";
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import { npAgentEventRowEnvelopeV1 as envelope, npAgentEventRowBodyV1 } from "./event-evidence.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import {
@@ -7,7 +9,8 @@ import {
   canonicalBodyUuid,
 } from "../agent-contract/canonical-body-validation.js";
 import { createHash } from "node:crypto";
-import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, DrizzleQueryError, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import pg from "pg";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgentEvents,
@@ -17,7 +20,7 @@ import {
   npAgents,
 } from "../db/schema/agent.js";
 import {
-  npRequireAgentEventCanonical,
+  npBuildAgentEventCanonicalBytes,
   npDigestAgentEventCanonical,
 } from "../agent-contract/canonical-events.js";
 import {
@@ -26,10 +29,17 @@ import {
   npNextAgentTriggerScheduleV1,
   type NpAgentTrigger,
 } from "../agent-contract/runtime-trigger-contract.js";
-import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  buildAgentCanonicalFoundationBytes,
+  serializeAgentCanonicalJson,
+} from "../agent-contract/canonical-foundation.js";
 import type { NpAgentEventCanonicalV1 } from "../agent-contract/types.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
-import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
+import {
+  npWithAgentRuntimeControlTransactionV1,
+  npIsLiveAgentRuntimeControlContextV1,
+  type NpAgentRuntimeControlContextV1,
+} from "./runtime-controls.js";
 import {
   npRequireAgentRuntimeVersionV1,
   npResolveAgentRuntimeAuthorityV1,
@@ -41,6 +51,112 @@ import { npRequireAgentModeratorSettingsV1 } from "../agent-contract/moderator-c
 import { npAgentModeratorWindowStartedAtV1 } from "./moderator-detector.js";
 
 type Db = ReturnType<typeof getDb>;
+interface EventRecordInput {
+  siteId: string;
+  event: NpAgentEventCanonicalV1;
+  expiresAt?: Date;
+  db?: Db;
+}
+interface EventRecordResult {
+  eventId: string;
+  replayed: boolean;
+}
+interface ConsumedEventRecordResult extends EventRecordResult {
+  consumedRow?: typeof npAgentEvents.$inferSelect;
+}
+// Parsing/hash reuse only. The detached, recursively frozen body is the key;
+// neither a copied body nor a caller-provided hash can carry this provenance.
+const preparedEventHashes = new WeakMap<object, string>();
+function freezeParsedEvent(value: unknown): void {
+  if (typeof value !== "object" || value === null) return;
+  for (const child of Object.values(value)) freezeParsedEvent(child);
+  Object.freeze(value);
+}
+/** Internal pure preparation. This creates no admission or source authority. */
+export async function npPrepareAgentRuntimeEventV1(
+  value: unknown,
+): Promise<{ event: NpAgentEventCanonicalV1; eventHash: string }> {
+  const bytes = npBuildAgentEventCanonicalBytes(value);
+  const event = bytes.body;
+  freezeParsedEvent(event);
+  const eventHash = await digestAgentCanonicalSha256(bytes.domainSeparatedUtf8);
+  preparedEventHashes.set(event, eventHash);
+  return Object.freeze({ event, eventHash });
+}
+/** Private fresh-row assertion. A genuine immutable prepared body supplies the
+ * expected closed-contract hash. Hash every actual returned body field through
+ * the unchanged foundation/domain; a stored hash column alone is never proof.
+ * Historical reads still use their complete Event parser. */
+export async function npAssertPreparedAgentRuntimeEventRowV1(
+  event: NpAgentEventCanonicalV1,
+  row: typeof npAgentEvents.$inferSelect,
+): Promise<void> {
+  const expected = preparedEventHashes.get(event);
+  if (expected === undefined) fail();
+  const bytes = buildAgentCanonicalFoundationBytes("np.agent-event.v1", npAgentEventRowBodyV1(row));
+  if (
+    row.eventHash !== expected ||
+    (await digestAgentCanonicalSha256(bytes.domainSeparatedUtf8)) !== expected
+  )
+    throw new NpAgentGatewayError(
+      "INCIDENT_EVIDENCE_UNAVAILABLE",
+      409,
+      "Incident evidence is unavailable.",
+    );
+}
+
+const retainedControlRecorders = new WeakMap<
+  object,
+  {
+    record: (input: EventRecordInput) => Promise<EventRecordResult>;
+    guarded: (
+      input: EventRecordInput,
+      context: NpAgentRuntimeControlContextV1,
+      consumeInserted?: boolean,
+      freshInserted?: boolean,
+    ) => Promise<ConsumedEventRecordResult>;
+  }
+>();
+/** Internal source seam. Only the actual recorder and live same-TX admission can
+ * avoid duplicate control reads; custom or replaced recorders retain their path. */
+export async function npRecordAgentRuntimeEventWithControlContextV1(
+  events: Pick<NpAgentRuntimeEventServiceV1, "record">,
+  context: NpAgentRuntimeControlContextV1,
+  input: EventRecordInput,
+): Promise<EventRecordResult> {
+  if (!input.db || !npIsLiveAgentRuntimeControlContextV1(context, input.db, input.siteId)) fail();
+  const owner = retainedControlRecorders.get(events);
+  if (owner && events.record === owner.record) return owner.guarded(input, context);
+  return events.record(input);
+}
+/** Internal deterministic-source seam. Only this factory's new insertion may
+ * return a consumed row; replayed/custom recorders require the caller's readback. */
+export async function npRecordConsumedAgentRuntimeEventWithControlContextV1(
+  events: Pick<NpAgentRuntimeEventServiceV1, "record">,
+  context: NpAgentRuntimeControlContextV1,
+  input: EventRecordInput,
+): Promise<ConsumedEventRecordResult> {
+  if (!input.db || !npIsLiveAgentRuntimeControlContextV1(context, input.db, input.siteId)) fail();
+  const owner = retainedControlRecorders.get(events);
+  if (owner && events.record === owner.record) return owner.guarded(input, context, true);
+  const result = await events.record(input);
+  // A custom recorder cannot supply a row as proof of this factory's insertion.
+  return { eventId: result.eventId, replayed: result.replayed };
+}
+/** Internal source precondition: its actual identity/window lookup under the
+ * held quota lock found no prior Event. A conflict fails; it never becomes replay. */
+export async function npRecordFreshConsumedAgentRuntimeEventWithControlContextV1(
+  events: Pick<NpAgentRuntimeEventServiceV1, "record">,
+  context: NpAgentRuntimeControlContextV1,
+  input: EventRecordInput,
+): Promise<ConsumedEventRecordResult> {
+  if (!input.db || !npIsLiveAgentRuntimeControlContextV1(context, input.db, input.siteId)) fail();
+  const owner = retainedControlRecorders.get(events);
+  if (owner && events.record === owner.record) return owner.guarded(input, context, true, true);
+  const result = await events.record(input);
+  return { eventId: result.eventId, replayed: result.replayed };
+}
+
 type Trigger = typeof npAgentTriggers.$inferSelect;
 function fail(code = "RUNTIME_EVENT_INVALID"): never {
   throw new NpAgentGatewayError(code, 409, "Agent event operation is unavailable.");
@@ -118,7 +234,8 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
     return evidence.registry.recipes.filter(
       (recipe) =>
         (recipe.task === "interactive-capability" ||
-          npIsAgentModeratorAssessmentProfileV1(recipe)) &&
+          npIsAgentModeratorAssessmentProfileV1(recipe) ||
+          npIsAgentGuardianAssessmentRecipeV1(recipe)) &&
         recipe.triggerKinds.includes(trigger.kind as "manual" | "event" | "schedule") &&
         evidence.definition.settings.some((branch) => branch.recipeId === recipe.id),
     );
@@ -260,119 +377,163 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
       input.db,
     );
   }
-  return {
-    registerTrigger,
-    registerTriggerInTransaction: registerTrigger,
-    async record(input: {
-      siteId: string;
-      event: NpAgentEventCanonicalV1;
-      expiresAt?: Date;
-      db?: Db;
-    }) {
-      npAssertAgentPreviewEffectsAllowed();
-      canonicalBodyRecord(
-        input,
-        "agent.runtime.event.record",
-        ["siteId", "event", "expiresAt", "db"],
-        ["siteId", "event"],
-        { seen: new WeakSet<object>() },
-      );
-      canonicalBodySiteId(input.siteId, "agent.runtime.siteId");
+  async function record(
+    input: EventRecordInput,
+    retainedContext?: NpAgentRuntimeControlContextV1,
+    consumeInserted = false,
+    freshInserted = false,
+  ): Promise<ConsumedEventRecordResult> {
+    npAssertAgentPreviewEffectsAllowed();
+    canonicalBodyRecord(
+      input,
+      "agent.runtime.event.record",
+      ["siteId", "event", "expiresAt", "db"],
+      ["siteId", "event"],
+      { seen: new WeakSet<object>() },
+    );
+    canonicalBodySiteId(input.siteId, "agent.runtime.siteId");
+    if (
+      input.expiresAt !== undefined &&
+      (!(input.expiresAt instanceof Date) || !Number.isFinite(input.expiresAt.getTime()))
+    )
+      fail();
+    let event = input.event;
+    const preparedHash = retainedContext ? preparedEventHashes.get(event) : undefined;
+    let eventHash: string;
+    if (preparedHash === undefined) {
+      const bytes = npBuildAgentEventCanonicalBytes(event);
+      event = bytes.body;
+      if (event.siteId !== input.siteId) fail();
+      eventHash = await digestAgentCanonicalSha256(bytes.domainSeparatedUtf8);
+    } else {
+      if (event.siteId !== input.siteId) fail();
+      eventHash = preparedHash;
+    }
+    if (freshInserted && (!retainedContext || !consumeInserted || event.deduplicationKey === null))
+      fail();
+    const assertLive = () => {
       if (
-        input.expiresAt !== undefined &&
-        (!(input.expiresAt instanceof Date) || !Number.isFinite(input.expiresAt.getTime()))
+        retainedContext &&
+        (!input.db ||
+          !npIsLiveAgentRuntimeControlContextV1(retainedContext, input.db, input.siteId))
       )
         fail();
-      const event = npRequireAgentEventCanonical(input.event);
-      if (event.siteId !== input.siteId) fail();
-      const eventHash = await npDigestAgentEventCanonical(event);
-      return npWithAgentRuntimeControlTransactionV1(
-        input.siteId,
-        async ({ db }) => {
-          const time = now(),
-            expiresAt = input.expiresAt ?? new Date(time.getTime() + 14 * 86400_000);
-          if (
-            !Number.isFinite(expiresAt.getTime()) ||
-            expiresAt <= time ||
-            expiresAt.getTime() > time.getTime() + 14 * 86400_000
+    };
+    const write = async ({ db }: { db: Db }): Promise<ConsumedEventRecordResult> => {
+      const time = now(),
+        expiresAt = input.expiresAt ?? new Date(time.getTime() + 14 * 86400_000);
+      if (
+        !Number.isFinite(expiresAt.getTime()) ||
+        expiresAt <= time ||
+        expiresAt.getTime() > time.getTime() + 14 * 86400_000
+      )
+        fail();
+      if (event.deduplicationKey && !freshInserted) {
+        const [previous] = await db
+          .select({ id: npAgentEvents.id, eventHash: npAgentEvents.eventHash })
+          .from(npAgentEvents)
+          .where(
+            and(
+              eq(npAgentEvents.siteId, input.siteId),
+              eq(npAgentEvents.kind, event.kind),
+              eq(npAgentEvents.sourceKind, event.source.kind),
+              eq(npAgentEvents.sourceComponent, event.source.component),
+              eq(npAgentEvents.deduplicationKey, event.deduplicationKey),
+            ),
           )
-            fail();
-          if (event.deduplicationKey) {
-            const [previous] = await db
-              .select()
-              .from(npAgentEvents)
-              .where(
-                and(
-                  eq(npAgentEvents.siteId, input.siteId),
-                  eq(npAgentEvents.kind, event.kind),
-                  eq(npAgentEvents.sourceKind, event.source.kind),
-                  eq(npAgentEvents.sourceComponent, event.source.component),
-                  eq(npAgentEvents.deduplicationKey, event.deduplicationKey),
-                ),
-              )
-              .limit(1);
-            if (previous) {
-              if (previous.eventHash !== eventHash) fail("IDEMPOTENCY_KEY_REUSED");
-              return { eventId: previous.id, replayed: true };
-            }
-          }
-          const cause = event.causation;
-          if (cause) {
-            const [parent] = await db
-              .select()
-              .from(npAgentRuns)
-              .where(
-                and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, cause.sourceRunId)),
-              )
-              .limit(1);
-            const [action] = await db
-              .select()
-              .from(npAgentActions)
-              .where(
-                and(
-                  eq(npAgentActions.siteId, input.siteId),
-                  eq(npAgentActions.id, cause.sourceActionId),
-                  eq(npAgentActions.runId, cause.sourceRunId),
-                ),
-              )
-              .limit(1);
-            if (
-              !parent ||
-              !action ||
-              parent.rootRunId !== cause.rootRunId ||
-              parent.causalDepth !== cause.depth
-            )
-              fail("RUNTIME_EVENT_LINEAGE_INVALID");
-          }
-          const [inserted] = await db
-            .insert(npAgentEvents)
-            .values({
-              siteId: input.siteId,
-              kind: event.kind,
-              sourceKind: event.source.kind,
-              sourceComponent: event.source.component,
-              subject: event.subject,
-              actor: event.actor,
-              causation: cause,
-              causalRootRunId: cause?.rootRunId,
-              causalRunId: cause?.sourceRunId,
-              causalActionId: cause?.sourceActionId,
-              causalDepth: cause?.depth,
-              correlationId: event.correlationId,
-              deduplicationKey: event.deduplicationKey,
-              eventHash,
-              privacy: event.privacy,
-              payload: event.payload,
-              occurredAt: new Date(event.occurredAt),
-              recordedAt: time,
-              expiresAt,
-            })
-            .returning({ id: npAgentEvents.id });
-          return { eventId: inserted.id, replayed: false };
-        },
-        input.db,
-      );
-    },
+          .limit(1);
+        assertLive();
+        if (previous) {
+          if (previous.eventHash !== eventHash) fail("IDEMPOTENCY_KEY_REUSED");
+          return { eventId: previous.id, replayed: true };
+        }
+      }
+      const cause = event.causation;
+      if (cause) {
+        const [parent] = await db
+          .select()
+          .from(npAgentRuns)
+          .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, cause.sourceRunId)))
+          .limit(1);
+        assertLive();
+        const [action] = await db
+          .select()
+          .from(npAgentActions)
+          .where(
+            and(
+              eq(npAgentActions.siteId, input.siteId),
+              eq(npAgentActions.id, cause.sourceActionId),
+              eq(npAgentActions.runId, cause.sourceRunId),
+            ),
+          )
+          .limit(1);
+        assertLive();
+        if (
+          !parent ||
+          !action ||
+          parent.rootRunId !== cause.rootRunId ||
+          parent.causalDepth !== cause.depth
+        )
+          fail("RUNTIME_EVENT_LINEAGE_INVALID");
+      }
+      assertLive();
+      const insertion = db.insert(npAgentEvents).values({
+        siteId: input.siteId,
+        kind: event.kind,
+        sourceKind: event.source.kind,
+        sourceComponent: event.source.component,
+        subject: event.subject,
+        actor: event.actor,
+        causation: cause,
+        causalRootRunId: cause?.rootRunId,
+        causalRunId: cause?.sourceRunId,
+        causalActionId: cause?.sourceActionId,
+        causalDepth: cause?.depth,
+        correlationId: event.correlationId,
+        deduplicationKey: event.deduplicationKey,
+        eventHash,
+        privacy: event.privacy,
+        payload: event.payload,
+        occurredAt: new Date(event.occurredAt),
+        recordedAt: time,
+        ...(consumeInserted ? { dispatchedAt: time } : {}),
+        expiresAt,
+      });
+      if (consumeInserted) {
+        try {
+          const [inserted] = await insertion.returning();
+          return { eventId: inserted.id, replayed: false, consumedRow: inserted };
+        } catch (error) {
+          const cause = error instanceof DrizzleQueryError ? error.cause : error;
+          if (
+            freshInserted &&
+            cause instanceof pg.DatabaseError &&
+            cause.code === "23505" &&
+            cause.constraint === "np_agent_events_deduplication_uidx"
+          )
+            fail("IDEMPOTENCY_KEY_REUSED");
+          throw error;
+        }
+      }
+      const [inserted] = await insertion.returning({ id: npAgentEvents.id });
+      return { eventId: inserted.id, replayed: false };
+    };
+    if (retainedContext) {
+      // An ordinary canonical digest yields. Recheck even when this invocation
+      // reused a prepared body; preparation never carries transaction authority.
+      if (
+        !input.db ||
+        !npIsLiveAgentRuntimeControlContextV1(retainedContext, input.db, input.siteId)
+      )
+        fail();
+      return write({ db: input.db });
+    }
+    return npWithAgentRuntimeControlTransactionV1(input.siteId, write, input.db);
+  }
+  const service = {
+    registerTrigger,
+    registerTriggerInTransaction: registerTrigger,
+    record: (input: EventRecordInput): Promise<EventRecordResult> => record(input),
     async dispatch(input: { siteId: string; eventId: string }) {
       npAssertAgentPreviewEffectsAllowed();
       canonicalBodyRecord(
@@ -740,5 +901,11 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
       };
     },
   };
+  retainedControlRecorders.set(service, {
+    record: service.record,
+    guarded: (input, context, consumeInserted, freshInserted) =>
+      record(input, context, consumeInserted, freshInserted),
+  });
+  return service;
 }
 export type NpAgentRuntimeEventServiceV1 = ReturnType<typeof createAgentRuntimeEventServiceV1>;

@@ -72,6 +72,8 @@ export async function npPruneAgentIncidentRetentionV1(options: {
   /** Already selected roots from the maintenance owner's unified UUID cursor. */
   rootIds?: readonly string[];
   maximumRows?: number;
+  /** Explicit trusted Guardian source owner. Age/canonical hashes alone do not release source MAC evidence. */
+  verifyGuardianSignal?(input: { db: Db; siteId: string; signalId: string }): Promise<boolean>;
 }): Promise<{ examined: number; pruned: number; nextCursor: string | null }> {
   npAssertAgentPreviewEffectsAllowed();
   const { db, beforeStatement, siteId, now } = options;
@@ -179,19 +181,17 @@ export async function npPruneAgentIncidentRetentionV1(options: {
     );
     const checks = referenceTables.map(
       (table) => sql`not exists (
-      select 1 from ${sql.identifier(table)} dependency where dependency.site_id=${siteId}
-      and not exists (select 1 from cohort own where own.table_name=${table} and own.id::text=dependency.id::text)
+      select 1 from ${sql.identifier(table)} dependency where
+      not exists (select 1 from cohort own where own.table_name=${table} and own.id::text=dependency.id::text)
       and exists (select 1 from cohort target where position(target.id::text in to_jsonb(dependency)::text)>0))`,
     );
-    checks.push(sql`not exists (select 1 from np_settings dependency where dependency.site_id=${siteId}
-      and exists (select 1 from cohort target where position(target.id::text in to_jsonb(dependency)::text)>0))`);
+    checks.push(sql`not exists (select 1 from np_settings dependency where
+      exists (select 1 from cohort target where position(target.id::text in to_jsonb(dependency)::text)>0))`);
     checks.push(sql`not exists (select 1 from np_audit_events dependency
-      where (dependency.site_id=${siteId} or dependency.site_id is null)
-      and exists (select 1 from cohort target where position(target.id::text in to_jsonb(dependency)::text)>0))`);
+      where exists (select 1 from cohort target where position(target.id::text in to_jsonb(dependency)::text)>0))`);
     if (hasJobs)
       checks.push(sql`not exists (select 1 from pgboss.job dependency
       where dependency.state::text in ('created','retry','active')
-      and (dependency.data->>'siteId'=${siteId} or dependency.data->>'siteId' is null)
       and exists (select 1 from cohort target where position(target.id::text in dependency.data::text)>0))`);
     await beforeStatement();
     const result = await db.execute(
@@ -211,6 +211,12 @@ export async function npPruneAgentIncidentRetentionV1(options: {
         .where(and(eq(npAgentSignals.siteId, siteId), inArray(npAgentSignals.id, signals)));
       if (rows.length !== signals.length) return false;
       for (const row of rows) {
+        if (
+          row.detectorId.startsWith("guardian.") &&
+          (!options.verifyGuardianSignal ||
+            (await options.verifyGuardianSignal({ db, siteId, signalId: row.id })) !== true)
+        )
+          return false;
         try {
           const body = npRequireAgentSignalEvidenceCanonical({
             schemaVersion: "np.agent-signal-evidence.v1",

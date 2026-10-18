@@ -88,6 +88,11 @@ export async function handleAgentGuardianSessionAdminRequest(
       throw new Error("Guardian session revocation acknowledgement is unbound.");
     return npSuccessResponse(acknowledgement, { headers });
   } catch (error) {
-    return agentStudioErrorResponse(error, operation === "get" ? "read" : "mutation", { headers });
+    return agentStudioErrorResponse(
+      error,
+      operation === "get" ? "read" : "mutation",
+      { headers },
+      request,
+    );
   }
 }

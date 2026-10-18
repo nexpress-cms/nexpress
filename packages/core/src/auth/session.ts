@@ -13,6 +13,12 @@ import {
 } from "../auth-contract/index.js";
 import { npSessions, npUsers } from "../db/schema/system.js";
 import { signToken, verifyToken, type NpTokenUse } from "./token.js";
+import type { getDb } from "../db/runtime.js";
+import {
+  npGetGuardianSensitiveObserverV1,
+  npGuardianSensitiveMutationActorV1,
+  type NpGuardianSensitiveObservationContextV1,
+} from "../agent/guardian-sensitive-observer.js";
 
 type SessionDb = NodePgDatabase<Record<string, unknown>>;
 
@@ -246,11 +252,29 @@ export async function replaceStaffPasswordAndInvalidateSessions(
   expectedPasswordHash: string,
   passwordHash: string,
   db: SessionDb,
+  observation?: NpGuardianSensitiveObservationContextV1,
 ): Promise<boolean> {
   if (expectedPasswordHash.length === 0 || passwordHash.length === 0) {
     throw new Error("Password hashes must not be empty.");
   }
+  const observer = npGetGuardianSensitiveObserverV1(),
+    scope = { kind: "deployment" } as const,
+    actor = observer
+      ? npGuardianSensitiveMutationActorV1(observation, "auth.password-change")
+      : null;
   return db.transaction(async (tx) => {
+    const sourceDb = tx as unknown as ReturnType<typeof getDb>;
+    let previous: { tokenVersion: number } | undefined;
+    if (observer) {
+      await observer.prepare({ db: sourceDb, scope });
+      [previous] = await tx
+        .select({ tokenVersion: npUsers.tokenVersion })
+        .from(npUsers)
+        .where(and(eq(npUsers.id, userId), eq(npUsers.password, expectedPasswordHash)))
+        .for("update")
+        .limit(1);
+      if (!previous) return false;
+    }
     const [updated] = await tx
       .update(npUsers)
       .set({
@@ -259,9 +283,26 @@ export async function replaceStaffPasswordAndInvalidateSessions(
         updatedAt: new Date(),
       })
       .where(and(eq(npUsers.id, userId), eq(npUsers.password, expectedPasswordHash)))
-      .returning({ id: npUsers.id });
+      .returning({ id: npUsers.id, tokenVersion: npUsers.tokenVersion });
     if (!updated) return false;
     await tx.delete(npSessions).where(eq(npSessions.userId, userId));
+    if (observer && previous && actor)
+      await observer.recordCredential({
+        db: sourceDb,
+        scope,
+        actor,
+        transitionId: randomUUID(),
+        occurredAt: new Date(),
+        transition: {
+          kind: "password-replaced",
+          audience: "staff",
+          principalId: userId,
+          purpose: "password-change",
+          previous: { tokenVersion: previous.tokenVersion },
+          current: { tokenVersion: updated.tokenVersion },
+          memberResetActivation: null,
+        },
+      });
     return true;
   });
 }

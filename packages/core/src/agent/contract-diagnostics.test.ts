@@ -35,6 +35,7 @@ function queryClient(
     lifecycleEdges?: Record<string, unknown>[];
     missingReferenceGuards?: number;
     missingAdmissionKeyIndex?: number;
+    missingGuardianKeyIndex?: number;
     invalidEvaluationHistory?: number;
   } = {},
 ): NpAgentDiagnosticsQueryClientV1 {
@@ -48,6 +49,8 @@ function queryClient(
         return result<T>([{ count: String(options.invalidEvaluationHistory ?? 0) }]);
       if (text.includes("reference_fence_coverage"))
         return result<T>([{ missing_count: String(options.missingReferenceGuards ?? 0) }]);
+      if (text.includes("guardian_source_release_key_index"))
+        return result<T>([{ missing_count: String(options.missingGuardianKeyIndex ?? 0) }]);
       if (text.includes("source_release_key_index"))
         return result<T>([{ missing_count: String(options.missingAdmissionKeyIndex ?? 0) }]);
       if (text.includes("to_regclass")) {
@@ -384,12 +387,16 @@ describe("Agent contract diagnostics", () => {
   });
   it("fails readiness on missing ingress guards and consumed-key uniqueness", async () => {
     const result = await npCollectAgentHealthSummaryV1({
-      client: queryClient({ missingReferenceGuards: 2, missingAdmissionKeyIndex: 1 }),
+      client: queryClient({
+        missingReferenceGuards: 2,
+        missingAdmissionKeyIndex: 1,
+        missingGuardianKeyIndex: 1,
+      }),
     });
     expect(result.state).toBe("error");
     expect(result.issues).toContainEqual({
       code: "AGENT_SCHEMA_CONSTRAINT_MISSING",
-      count: 3,
+      count: 4,
       oldestAgeSeconds: null,
     });
   });
@@ -628,8 +635,8 @@ describe("Agent contract diagnostics", () => {
     expect(JSON.stringify(result)).not.toContain("private-event");
   });
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
-    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(56);
-    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(397);
+    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(58);
+    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(411);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );

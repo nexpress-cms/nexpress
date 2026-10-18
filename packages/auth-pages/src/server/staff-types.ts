@@ -6,6 +6,7 @@ import type {
   GetDbFn,
   NpLoginFailureObserver,
   NpLoginSuccessObserver,
+  NpAuthResponseObserver,
 } from "./types.js";
 
 /**
@@ -40,6 +41,7 @@ export interface StaffAuthRoutesConfig {
   onLoginFailure?: NpLoginFailureObserver;
   /** Optional trusted session observation; failures never change authentication. */
   onLoginSuccess?: NpLoginSuccessObserver;
+  onResponse?: NpAuthResponseObserver;
   /**
    * Site name and URL for emailed links. Staff reset emails build
    * a link to `/admin/set-password?token=…` against this base.

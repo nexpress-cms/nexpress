@@ -16,6 +16,33 @@ async function loadModules() {
 }
 
 describe("shared application proxy rate limiting", () => {
+  it("observes only its own final CSRF 403 without changing that response or claiming downstream status", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const onResponse = vi.fn().mockRejectedValue(new Error("Synthetic observation failure"));
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: {
+        kind: "redis",
+        check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+      },
+      onResponse,
+    });
+    const denied = new NextRequest("http://localhost/api/admin/private", { method: "POST" });
+    const response = await handler(denied);
+    expect(response.status).toBe(403);
+    expect(onResponse).toHaveBeenCalledExactlyOnceWith({
+      request: denied,
+      status: 403,
+      routeFamily: "admin",
+    });
+    expect((await response.json()).error.code).toBe("CSRF_INVALID");
+    expect((await handler(request("/api/admin/private"))).status).toBe(200);
+    expect(
+      (await handler(new NextRequest("http://localhost/api/unclassified", { method: "POST" })))
+        .status,
+    ).toBe(403);
+    expect(onResponse).toHaveBeenCalledTimes(1);
+  });
   afterEach(async () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
@@ -333,6 +360,8 @@ describe("shared application proxy rate limiting", () => {
     });
     for (const [path, status] of [
       ["/api/agent/v1/invocations", 200],
+      ["/api/agents/security/sentry", 200],
+      ["/api/agents/security/sentry/extra", 403],
       ["/api/agent/v1/invocations/extra", 403],
       ["/api/agent/v1/capabilities", 403],
       ["/api/admin/agents/gateway/principals", 403],

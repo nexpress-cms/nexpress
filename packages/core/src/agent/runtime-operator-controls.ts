@@ -13,6 +13,7 @@ import type {
   NpAgentOperatorPlanArtifactV1,
 } from "./operator-service.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
+import { npRequireAgentGuardianAssessmentRetryV1 } from "./guardian-assessment-context.js";
 
 const contractId = "runtime.operator-controls.v1";
 function unavailable(): never {
@@ -40,9 +41,11 @@ export function npCreateAgentRuntimeOperatorControlsV1(options: {
         runId: input.target.runId,
         allowTerminal: input.action === "agent.run.retry",
       },
-      async ({ db, run }) => {
+      async (context) => {
+        const { db, run } = context;
         if (input.action === "agent.run.retry") {
           if (run.state !== "failed" || !run.finishedAt) unavailable();
+          await npRequireAgentGuardianAssessmentRetryV1(context);
         } else {
           await npRequireAgentRuntimePreCommitV1({
             db,

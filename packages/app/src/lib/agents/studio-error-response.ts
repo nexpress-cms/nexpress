@@ -7,6 +7,7 @@ import {
 import { getLogger } from "@nexpress/core/observability";
 import { npErrorResponse } from "../api-response";
 import { normalizeAgentStudioError } from "./studio-admin";
+import { npFinalizeAgentGuardianHttpResponseV1 } from "./guardian-http-observer";
 
 function recovery(
   status: number,
@@ -29,7 +30,7 @@ function recovery(
  * The reference correlates a safe logger event submission. The fail-safe logger
  * offers no acknowledgement that an adapter persisted or delivered that event.
  */
-export async function agentStudioErrorResponse(
+async function createAgentStudioErrorResponse(
   error: unknown,
   operation: "read" | "mutation",
   init?: Parameters<typeof npErrorResponse>[1],
@@ -65,4 +66,14 @@ export async function agentStudioErrorResponse(
   });
   response.headers.set(npApiErrorDiagnosticsHeader, JSON.stringify(diagnostics));
   return response;
+}
+
+export async function agentStudioErrorResponse(
+  error: unknown,
+  operation: "read" | "mutation",
+  init?: Parameters<typeof npErrorResponse>[1],
+  request?: Request,
+): Promise<Response> {
+  const response = await createAgentStudioErrorResponse(error, operation, init);
+  return request ? npFinalizeAgentGuardianHttpResponseV1(request, "admin", response) : response;
 }

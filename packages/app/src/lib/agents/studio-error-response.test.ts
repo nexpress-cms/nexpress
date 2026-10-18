@@ -8,7 +8,10 @@ import {
 } from "@nexpress/core/api-contract";
 import { NextResponse } from "next/server";
 import type * as ApiResponse from "../api-response";
-const mocks = vi.hoisted(() => ({ warn: vi.fn() }));
+const mocks = vi.hoisted(() => ({ warn: vi.fn(), finalize: vi.fn() }));
+vi.mock("./guardian-http-observer", () => ({
+  npFinalizeAgentGuardianHttpResponseV1: mocks.finalize,
+}));
 vi.mock("../auth-helpers", () => ({ getAuthRuntimeConfig: vi.fn(), requireAuth: vi.fn() }));
 vi.mock("@nexpress/core/observability", () => ({ getLogger: () => ({ warn: mocks.warn }) }));
 vi.mock("../api-response", async (original) => {
@@ -18,7 +21,12 @@ vi.mock("../api-response", async (original) => {
 import { npErrorResponse } from "../api-response";
 import { agentStudioErrorResponse } from "./studio-error-response";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.finalize.mockImplementation((_request: Request, _family: string, response: Response) =>
+    Promise.resolve(response),
+  );
+});
 async function diagnostics(response: Response) {
   const body: unknown = await response.clone().json();
   if (!npIsApiError(body)) throw new Error("Expected exact safe error envelope");
@@ -29,6 +37,13 @@ async function diagnostics(response: Response) {
 }
 
 describe("Agent Studio diagnostic response", () => {
+  it("threads the actual final response and request to the optional status observer", async () => {
+    const request = new Request("https://example.test/api/admin/agents/overview");
+    const response = await agentStudioErrorResponse(new NpAuthError(), "read", undefined, request);
+    expect(mocks.finalize).toHaveBeenCalledExactlyOnceWith(request, "admin", response);
+    expect(response.status).toBe(401);
+    expect((await diagnostics(response))?.recovery).toBe("reauthenticate");
+  });
   it("correlates fresh references to bounded safe events without changing the error body", async () => {
     const error = new NpServiceUnavailableError("Management is unavailable.");
     const first = await agentStudioErrorResponse(error, "read", {
