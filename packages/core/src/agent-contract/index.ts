@@ -134,3 +134,7 @@ export * from "./incident-notification-deliveries-contract.js";
 export * from "./evaluation-history-contract.js";
 
 export * from "./member-response-contract.js";
+
+export * from "./guardian-response-contract.js";
+
+export * from "./restriction-adapter-contract.js";

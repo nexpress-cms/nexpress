@@ -112,6 +112,7 @@ export async function npPruneAgentIncidentRetentionV1(options: {
       and parent.created_at<=${historyBefore} and parent.updated_at<=${historyBefore}
       and parent.last_observed_at<=${historyBefore}
       and (parent.contained_at is null or parent.contained_at<=${historyBefore}))
+    and not exists (select 1 from np_agent_actor_restrictions restriction where restriction.site_id=t.site_id and restriction.incident_id=t.id)
     and not exists (select 1 from np_agent_containments containment where containment.site_id=t.site_id
       and containment.incident_id=t.incident_id and containment.state<>'restored')`;
   let ids: string[];

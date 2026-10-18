@@ -1,3 +1,4 @@
+import type { NpAgentGuardianResponseServiceV1 } from "./guardian-response-service.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
 import { and, asc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
@@ -37,6 +38,8 @@ export interface NpAgentRuntimeJobsOptionsV1 {
   incidentNotifications?: Pick<NpAgentIncidentNotificationsServiceV1, "recover">;
   /** Explicit outbox installation; omission never registers a sender or scans delivery rows. */
   notificationDelivery?: Pick<NpAgentNotificationDeliveryServiceV1, "process" | "reconcile">;
+  /** Explicit Guardian owner; verifies pending effects and reconciles TTL cleanup without provider calls. */
+  guardianRestrictions?: Pick<NpAgentGuardianResponseServiceV1, "reconcile">;
   /** Explicit source/monitor owner; absence never polls operational sources. */
   operator?: {
     observe(input: { siteId: string }): Promise<unknown>;
@@ -185,6 +188,13 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
         }
         try {
           await options.operator.sampleDueMonitors({ siteId });
+        } catch {
+          sourceFailed = true;
+        }
+      }
+      if (options.guardianRestrictions) {
+        try {
+          await options.guardianRestrictions.reconcile({ siteId, limit: 25 });
         } catch {
           sourceFailed = true;
         }

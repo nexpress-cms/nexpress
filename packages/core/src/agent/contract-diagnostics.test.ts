@@ -628,8 +628,8 @@ describe("Agent contract diagnostics", () => {
     expect(JSON.stringify(result)).not.toContain("private-event");
   });
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
-    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(54);
-    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(380);
+    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(56);
+    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(397);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );

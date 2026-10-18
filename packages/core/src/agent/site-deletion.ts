@@ -1,3 +1,17 @@
+import {
+  npDigestAgentRestrictionCanonical,
+  npRequireAgentRestrictionCanonical,
+} from "../agent-contract/canonical-restriction.js";
+import {
+  npRequireAgentRestrictionMutationResultV1,
+  npRequireAgentRestrictionVerifyResultV1,
+} from "../agent-contract/restriction-adapter-contract.js";
+import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  canonicalBodyUtc,
+  canonicalBodyUuid,
+} from "../agent-contract/canonical-body-validation.js";
+import { npAuditEvents } from "../db/schema/community.js";
 import { npRequireNotificationDeliveryAttemptHistoryV1 } from "./notification-delivery-evidence.js";
 import { createHash } from "node:crypto";
 
@@ -27,6 +41,8 @@ import {
   npAgentSignals,
   npAgentIncidents,
   npAgentContainments,
+  npAgentActorRestrictions,
+  npAgentRestrictionEnforcements,
   npAgentOperatorPlans,
   npAgentOperatorExecutions,
   npAgentConnectionAuthRequests,
@@ -78,6 +94,8 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_actor_restrictions",
+  "np_agent_restriction_enforcements",
   "np_agent_evaluation_reviews",
   "np_agent_evaluation_sources",
   "np_agent_operator_executions",
@@ -138,6 +156,16 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_actor_restrictions: {
+    table: npAgentActorRestrictions,
+    id: npAgentActorRestrictions.id,
+    siteId: npAgentActorRestrictions.siteId,
+  },
+  np_agent_restriction_enforcements: {
+    table: npAgentRestrictionEnforcements,
+    id: npAgentRestrictionEnforcements.id,
+    siteId: npAgentRestrictionEnforcements.siteId,
+  },
   np_agent_evaluation_reviews: {
     table: npAgentEvaluationReviews,
     id: npAgentEvaluationReviews.id,
@@ -522,6 +550,90 @@ export async function npCountAgentSiteRows(db: NpAgentDb, siteId: string): Promi
 
 export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    // TTL restores access independently; deletion still waits for confirmed cleanup.
+    const unsafeRestriction = await tx.execute(sql`
+      select 1 from public.np_agent_actor_restrictions where site_id=${siteId} and state not in ('removed','expired')
+      union all select 1 from public.np_agent_restriction_enforcements where site_id=${siteId} and state<>'removed' limit 1
+    `);
+    if (unsafeRestriction.rows.length)
+      throw new Error("Agent site deletion requires confirmed actor restriction cleanup.");
+    let afterRestriction: string | undefined;
+    for (;;) {
+      const rows = await tx
+        .select()
+        .from(npAgentActorRestrictions)
+        .where(
+          and(
+            eq(npAgentActorRestrictions.siteId, siteId),
+            afterRestriction ? gt(npAgentActorRestrictions.id, afterRestriction) : undefined,
+          ),
+        )
+        .orderBy(asc(npAgentActorRestrictions.id))
+        .limit(100);
+      for (const row of rows) {
+        try {
+          const descriptor = npRequireAgentRestrictionCanonical(row.descriptor),
+            evidence = row.removalReceipt;
+          if (
+            descriptor.restrictionId !== row.id ||
+            descriptor.siteId !== siteId ||
+            descriptor.expiresAt !== row.expiresAt.toISOString() ||
+            (await npDigestAgentRestrictionCanonical(descriptor)) !== row.restrictionHash ||
+            !row.removedAt ||
+            !evidence ||
+            evidence.schemaVersion !== "np.agent-guardian-response-effect.v1" ||
+            evidence.restrictionId !== row.id ||
+            evidence.restrictionHash !== row.restrictionHash ||
+            evidence.sourceActionId !== row.sourceActionId ||
+            evidence.actionId !== (row.removalActionId ?? row.sourceActionId) ||
+            evidence.incidentId !== row.incidentId ||
+            evidence.operation !== (row.state === "expired" ? "expire" : "remove") ||
+            typeof evidence.priorActivationEstablished !== "boolean" ||
+            canonicalBodyUtc(evidence.executedAt, "restrictionCleanup.executedAt") !==
+              row.removedAt.toISOString()
+          )
+            throw new Error("Invalid restriction cleanup receipt");
+          const receipt = npRequireAgentRestrictionMutationResultV1(evidence.receipt),
+            verification = npRequireAgentRestrictionVerifyResultV1(evidence.verification);
+          if (
+            receipt.restrictionId !== row.id ||
+            !["removed", "already_absent"].includes(receipt.status) ||
+            receipt.effectiveExpiresAt !== null ||
+            verification.restrictionId !== row.id ||
+            verification.state !== "absent" ||
+            verification.effectiveExpiresAt !== null
+          )
+            throw new Error("Unconfirmed restriction cleanup");
+          const [audit] = await tx
+            .select()
+            .from(npAuditEvents)
+            .where(
+              and(
+                eq(npAuditEvents.siteId, siteId),
+                eq(
+                  npAuditEvents.id,
+                  canonicalBodyUuid(evidence.auditEventId, "restrictionCleanup.auditEventId"),
+                ),
+              ),
+            )
+            .limit(1);
+          if (
+            !audit ||
+            audit.actorKind !== "system" ||
+            audit.action !== "agent.guardian_response.effect" ||
+            audit.targetType !== "incident" ||
+            audit.targetId !== row.incidentId ||
+            audit.createdAt.toISOString() !== evidence.executedAt ||
+            serializeAgentCanonicalJson(audit.payload) !== serializeAgentCanonicalJson(evidence)
+          )
+            throw new Error("Missing restriction cleanup audit");
+        } catch {
+          throw new Error("Agent site deletion requires confirmed actor restriction cleanup.");
+        }
+      }
+      if (rows.length < 100) break;
+      afterRestriction = rows.at(-1)!.id;
+    }
     const [workingTask] = await tx
       .select({ id: npAgentMcpTasks.id })
       .from(npAgentMcpTasks)

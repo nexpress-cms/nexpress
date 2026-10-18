@@ -9,6 +9,7 @@ import {
 
 const expectedTables = [
   "np_agent_actions",
+  "np_agent_actor_restrictions",
   "np_agent_approvals",
   "np_agent_changeset_executions",
   "np_agent_changeset_operations",
@@ -48,6 +49,7 @@ const expectedTables = [
   "np_agent_preview_viewer_launches",
   "np_agent_principals",
   "np_agent_provider_calls",
+  "np_agent_restriction_enforcements",
   "np_agent_runs",
   "np_agent_service_tokens",
   "np_agent_signals",
@@ -75,6 +77,8 @@ describe("Agent site deletion foundation", () => {
   it("deletes release edges before Actions and receipts before principals", () => {
     const position = (name: (typeof npAgentSiteDeletionOrderV1)[number]) =>
       npAgentSiteDeletionOrderV1.indexOf(name);
+    expect(position("np_agent_actor_restrictions")).toBeLessThan(position("np_agent_incidents"));
+    expect(position("np_agent_actor_restrictions")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_containments")).toBeLessThan(position("np_agent_incidents"));
     expect(position("np_agent_containments")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_source_release_edges")).toBeLessThan(position("np_agent_actions"));

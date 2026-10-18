@@ -1,4 +1,8 @@
 import {
+  npAgentGuardianResponsePlanInputSchemaV1,
+  npAgentGuardianResponseExecuteInputSchemaV1,
+} from "./guardian-response-contract.js";
+import {
   npAgentMemberResponsePlanInputSchemaV1,
   npAgentMemberResponseExecuteInputSchemaV1,
 } from "./member-response-contract.js";
@@ -643,6 +647,27 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     ...SENSITIVE,
   }),
   operation(
+    "agents.incidents.guardian_response_plan",
+    "POST",
+    "/api/admin/agents/incidents/{id}/guardian-response/plan",
+    {
+      preconditions: ROW,
+      inputKind: "reason",
+      outputKind: "accepted",
+    },
+  ),
+  operation(
+    "agents.incidents.guardian_response_execute",
+    "POST",
+    "/api/admin/agents/incidents/{id}/guardian-response/execute",
+    {
+      preconditions: ROW_PLAN,
+      inputKind: "approval-request",
+      outputKind: "accepted",
+      ...SENSITIVE,
+    },
+  ),
+  operation(
     "agents.incidents.member_response_plan",
     "POST",
     "/api/admin/agents/incidents/{id}/member-response/plan",
@@ -942,7 +967,8 @@ function preconditionField(
   if (
     (id === "agents.incidents.response_execute" ||
       id === "agents.incidents.restore" ||
-      id === "agents.incidents.member_response_execute") &&
+      id === "agents.incidents.member_response_execute" ||
+      id === "agents.incidents.guardian_response_execute") &&
     kind === "plan-hash"
   )
     return "proposalHash";
@@ -950,6 +976,10 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.incidents.guardian_response_plan")
+    return requireSchema(npAgentGuardianResponsePlanInputSchemaV1());
+  if (seed.id === "agents.incidents.guardian_response_execute")
+    return requireSchema(npAgentGuardianResponseExecuteInputSchemaV1());
   if (seed.id === "agents.incidents.member_response_plan")
     return requireSchema(npAgentMemberResponsePlanInputSchemaV1());
   if (seed.id === "agents.incidents.member_response_execute")

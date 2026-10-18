@@ -595,6 +595,7 @@ export function npCompactAgentWireSchemaV1(
   source: NpAgentJsonSchema,
   options: {
     factorShortConstraints?: boolean;
+    simplifyStringEnums?: boolean;
     inlineSingleUseDefinitions?: boolean;
   } = {},
 ): NpAgentJsonSchema {
@@ -635,6 +636,27 @@ export function npCompactAgentWireSchemaV1(
   function normalizeDialect(node: Node, inherited: unknown, root = false): Node {
     const dialect = node.$schema ?? inherited;
     const out = children(node, (child) => normalizeDialect(child, dialect));
+    // A closed string enum already enforces its type and any satisfied length bounds.
+    // Removing only proven redundant constraints preserves accepted wire values.
+    if (
+      options.simplifyStringEnums &&
+      Array.isArray(out.enum) &&
+      out.enum.length > 0 &&
+      out.enum.every((item) => typeof item === "string")
+    ) {
+      const values = out.enum;
+      if (out.type === "string") delete out.type;
+      if (
+        typeof out.maxLength === "number" &&
+        values.every((value) => Array.from(value).length <= Number(out.maxLength))
+      )
+        delete out.maxLength;
+      if (
+        typeof out.minLength === "number" &&
+        values.every((value) => Array.from(value).length >= Number(out.minLength))
+      )
+        delete out.minLength;
+    }
     if (!root && out.$schema === inherited) delete out.$schema;
     return out;
   }

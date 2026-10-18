@@ -76,6 +76,8 @@ const expectedOperationIds = [
   "agents.incidents.response_plan",
   "agents.incidents.response_execute",
   "agents.incidents.restore",
+  "agents.incidents.guardian_response_plan",
+  "agents.incidents.guardian_response_execute",
   "agents.incidents.member_response_plan",
   "agents.incidents.member_response_execute",
   "agents.budgets.update",
@@ -104,11 +106,11 @@ function adminInvocation(operationId: string) {
 }
 
 describe("Agent Admin operation registry v1", () => {
-  it("locks all 62 Agent Studio mutation rows in product order", () => {
+  it("locks all 64 Agent Studio mutation rows in product order", () => {
     expect(npAgentAdminOperationIdsV1).toEqual(expectedOperationIds);
-    expect(npAgentAdminOperationRegistryV1).toHaveLength(62);
+    expect(npAgentAdminOperationRegistryV1).toHaveLength(64);
     expect(Object.keys(npAgentAdminOperationsV1)).toEqual(expectedOperationIds);
-    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(62);
+    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(64);
     expect(Object.isFrozen(npAgentAdminOperationIdsV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1[0])).toBe(true);
@@ -116,7 +118,7 @@ describe("Agent Admin operation registry v1", () => {
     const routeKeys = npAgentAdminOperationRegistryV1.map(
       ({ method, pathTemplate }) => `${method} ${pathTemplate}`,
     );
-    expect(new Set(routeKeys).size).toBe(62);
+    expect(new Set(routeKeys).size).toBe(64);
     expect(routeKeys.every((route) => route.includes(" /api/admin/agents/"))).toBe(true);
   });
 
@@ -257,8 +259,8 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      // Only configuration activation's trigger-kind enum adds api.rate-limited.
-      "cj1:sha256:3jCE1w_IapgXDIfGOhCuu04ZEplbf5f4UyPzsG3Hv48",
+      // Guardian adds two explicit staff-only plan/execute operations.
+      "cj1:sha256:WdsDNvbFbkg33cQ3koTs6M80gEtNsiwdfzR0CsEJ84Q",
     );
 
     await expect(

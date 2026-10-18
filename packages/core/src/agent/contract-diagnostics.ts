@@ -42,6 +42,7 @@ import { npAgentReferenceFenceCoverageSqlV1 } from "./reference-fence-sql.js";
 
 const AGENT_TABLES = [
   "np_agent_actions",
+  "np_agent_actor_restrictions",
   "np_agent_approvals",
   "np_agent_changeset_executions",
   "np_agent_changeset_operations",
@@ -82,6 +83,7 @@ const AGENT_TABLES = [
   "np_agent_principals",
   "np_agent_provider_calls",
   "np_agent_reference_fence",
+  "np_agent_restriction_enforcements",
   "np_agent_runs",
   "np_agent_service_tokens",
   "np_agent_signals",
@@ -99,6 +101,24 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_actor_restrictions_site_id_id_unique",
+  "np_agent_actor_restrictions_site_id_np_sites_id_fk",
+  "np_agent_actor_restrictions_source_action_unique",
+  "np_agent_actor_restrictions_removal_action_unique",
+  "np_agent_actor_restrictions_incident_fk",
+  "np_agent_actor_restrictions_source_action_fk",
+  "np_agent_actor_restrictions_removal_action_fk",
+  "np_agent_actor_restrictions_descriptor_check",
+  "np_agent_actor_restrictions_bounds_check",
+  "np_agent_actor_restrictions_state_check",
+  "np_agent_actor_restrictions_time_check",
+  "np_agent_restriction_enforcements_site_id_id_unique",
+  "np_agent_restriction_enforcements_site_id_np_sites_id_fk",
+  "np_agent_restriction_enforcements_descriptor_check",
+  "np_agent_restriction_enforcements_bounds_check",
+  "np_agent_restriction_enforcements_state_check",
+  "np_agent_restriction_enforcements_time_check",
+
   "np_agent_evaluation_reviews_site_id_id_unique",
   "np_agent_evaluation_reviews_source_id_id_unique",
   "np_agent_evaluation_reviews_version_unique",
