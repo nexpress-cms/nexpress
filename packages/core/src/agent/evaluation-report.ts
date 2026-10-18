@@ -3,6 +3,15 @@ import {
   npRequireAgentProfileEvaluationReviewArtifactV1,
   npCompareAgentProfileEvaluationReviewArtifactsV1,
 } from "../agent-contract/profile-evaluation-review-contract.js";
+import {
+  npRequireAgentGuardianEvaluationArtifactV1,
+  npCompareAgentGuardianEvaluationArtifactsV1,
+} from "../agent-contract/guardian-evaluation-contract.js";
+import {
+  npBuildAgentGuardianEvaluationReviewArtifactV1,
+  npRequireAgentGuardianEvaluationReviewArtifactV1,
+  npCompareAgentGuardianEvaluationReviewArtifactsV1,
+} from "../agent-contract/guardian-evaluation-review-contract.js";
 import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation.js";
 import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -65,9 +74,11 @@ async function evidence(
 ): Promise<NpAgentEvaluationReportEvidenceV1> {
   const r = record(value, ["evaluation", "review"]);
   const evaluation =
-    recipe === "moderator"
-      ? await npRequireAgentModeratorEvaluationArtifact(r.evaluation)
-      : await npRequireAgentEvaluationArtifactV1(r.evaluation);
+    recipe === "guardian"
+      ? await npRequireAgentGuardianEvaluationArtifactV1(r.evaluation)
+      : recipe === "moderator"
+        ? await npRequireAgentModeratorEvaluationArtifact(r.evaluation)
+        : await npRequireAgentEvaluationArtifactV1(r.evaluation);
   if (
     evaluation.schemaVersion === "np.agent-eval.v1" &&
     evaluation.suite.cases.some(
@@ -88,15 +99,17 @@ async function evidence(
   const review =
     r.review === null
       ? null
-      : recipe === "moderator"
-        ? await npRequireAgentModeratorEvaluationReviewArtifact(r.review)
-        : recipe === "moderator-assessment" || recipe === "publisher-selection"
-          ? await npRequireAgentProfileEvaluationReviewArtifactV1(r.review)
-          : recipe === "moderator-proposal"
-            ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(r.review)
-            : recipe === "operator"
-              ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(r.review)
-              : await npRequireAgentEvaluationReviewArtifactV1(r.review);
+      : recipe === "guardian"
+        ? await npRequireAgentGuardianEvaluationReviewArtifactV1(r.review)
+        : recipe === "moderator"
+          ? await npRequireAgentModeratorEvaluationReviewArtifact(r.review)
+          : recipe === "moderator-assessment" || recipe === "publisher-selection"
+            ? await npRequireAgentProfileEvaluationReviewArtifactV1(r.review)
+            : recipe === "moderator-proposal"
+              ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(r.review)
+              : recipe === "operator"
+                ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(r.review)
+                : await npRequireAgentEvaluationReviewArtifactV1(r.review);
   if (review && !equal(review.source, evaluation)) fail();
   return { evaluation, review };
 }
@@ -156,12 +169,17 @@ async function row(
     ? {
         status: "compared",
         result:
-          recipe === "moderator"
-            ? await npCompareAgentModeratorEvaluationArtifacts(
+          recipe === "guardian"
+            ? await npCompareAgentGuardianEvaluationArtifactsV1(
                 current.evaluation,
                 baseline.evaluation,
               )
-            : await npCompareAgentEvaluationArtifactsV1(current.evaluation, baseline.evaluation),
+            : recipe === "moderator"
+              ? await npCompareAgentModeratorEvaluationArtifacts(
+                  current.evaluation,
+                  baseline.evaluation,
+                )
+              : await npCompareAgentEvaluationArtifactsV1(current.evaluation, baseline.evaluation),
       }
     : { status: "missing-baseline", result: null };
   const reviewComparison: NpAgentEvaluationReportRowV1["reviewComparison"] = !baseline
@@ -173,42 +191,49 @@ async function row(
         : {
             status: "compared",
             result:
-              recipe === "moderator"
-                ? await npCompareAgentModeratorEvaluationReviewArtifacts(
+              recipe === "guardian"
+                ? await npCompareAgentGuardianEvaluationReviewArtifactsV1(
                     current.review,
                     baseline.review,
                   )
-                : recipe === "moderator-assessment" || recipe === "publisher-selection"
-                  ? await npCompareAgentProfileEvaluationReviewArtifactsV1(
+                : recipe === "moderator"
+                  ? await npCompareAgentModeratorEvaluationReviewArtifacts(
                       current.review,
                       baseline.review,
                     )
-                  : recipe === "moderator-proposal"
-                    ? await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
+                  : recipe === "moderator-assessment" || recipe === "publisher-selection"
+                    ? await npCompareAgentProfileEvaluationReviewArtifactsV1(
                         current.review,
                         baseline.review,
                       )
-                    : recipe === "operator"
-                      ? await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+                    : recipe === "moderator-proposal"
+                      ? await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
                           current.review,
                           baseline.review,
                         )
-                      : await npCompareAgentEvaluationReviewArtifactsV1(
-                          current.review,
-                          baseline.review,
-                        ),
+                      : recipe === "operator"
+                        ? await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+                            current.review,
+                            baseline.review,
+                          )
+                        : await npCompareAgentEvaluationReviewArtifactsV1(
+                            current.review,
+                            baseline.review,
+                          ),
           };
   const coverage =
     current.review ??
-    (recipe === "moderator"
-      ? await npBuildAgentModeratorEvaluationReviewArtifact(current.evaluation)
-      : recipe === "moderator-assessment" || recipe === "publisher-selection"
-        ? await npBuildAgentProfileEvaluationReviewArtifactV1(current.evaluation)
-        : recipe === "moderator-proposal"
-          ? await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(current.evaluation)
-          : recipe === "operator"
-            ? await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(current.evaluation)
-            : await npBuildAgentEvaluationReviewArtifactV1(current.evaluation));
+    (recipe === "guardian"
+      ? await npBuildAgentGuardianEvaluationReviewArtifactV1(current.evaluation)
+      : recipe === "moderator"
+        ? await npBuildAgentModeratorEvaluationReviewArtifact(current.evaluation)
+        : recipe === "moderator-assessment" || recipe === "publisher-selection"
+          ? await npBuildAgentProfileEvaluationReviewArtifactV1(current.evaluation)
+          : recipe === "moderator-proposal"
+            ? await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(current.evaluation)
+            : recipe === "operator"
+              ? await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(current.evaluation)
+              : await npBuildAgentEvaluationReviewArtifactV1(current.evaluation));
   return {
     recipe,
     status: "present",
@@ -236,7 +261,7 @@ export async function npBuildAgentEvaluationReportV1(
   const rows: NpAgentEvaluationReportRowV1[] = [];
   for (const recipe of npAgentEvaluationReportRecipesV1.filter(
     (recipe) =>
-      !["moderator-assessment", "publisher-selection"].includes(recipe) ||
+      !["moderator-assessment", "publisher-selection", "guardian"].includes(recipe) ||
       source.entries.some((entry) => entry.recipe === recipe),
   ))
     rows.push(
@@ -259,6 +284,11 @@ export async function npBuildAgentEvaluationReportV1(
       "Recipe metrics are not pooled. Review deltas use only the owner's matched reviewed cohort.",
       "Production shadow, operational acceptance, and the full R6 acceptance gate remain separate.",
       moderatorLimitation,
+      ...(source.entries.some((entry) => entry.recipe === "guardian")
+        ? [
+            "Guardian is a versioned synthetic reference baseline, not production rule replay. Its synthetic intent controls do not establish production attack precision, model usefulness, current authority, approval binding, throughput or enablement. Required live checks remain not run. Full R6 retains its existing scope; Guardian acceptance is separate.",
+          ]
+        : []),
     ],
   };
   const artifact = { ...body, artifactHash: await npDigestAgentEvaluationValueV1(body) };
@@ -284,7 +314,9 @@ export async function npRequireAgentEvaluationReportV1(
   // Recompute all evidence and the legacy hash rather than trusting old derived fields.
   if (
     actual.input.entries.some((entry) =>
-      ["moderator-proposal", "moderator-assessment", "publisher-selection"].includes(entry.recipe),
+      ["moderator-proposal", "moderator-assessment", "publisher-selection", "guardian"].includes(
+        entry.recipe,
+      ),
     )
   )
     fail();

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -80,7 +81,7 @@ function requireString(value: unknown, field: string): string {
   throw new NpValidationError("Invalid input", [{ field, message: "Required" }]);
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -197,3 +198,5 @@ function readCacheTarget(value: unknown): OpsCacheCore.OpsCacheRevalidateTarget 
     { field: "target", message: "Unsupported cache revalidate target" },
   ]);
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

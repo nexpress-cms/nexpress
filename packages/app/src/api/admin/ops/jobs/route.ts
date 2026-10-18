@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -6,7 +7,7 @@ import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import type * as OpsJobsCore from "../../../../scripts/ops-jobs-core";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireGlobalAuth(request);
@@ -26,3 +27,5 @@ export const dynamic = "force-dynamic";
 async function loadJobsCore(): Promise<typeof OpsJobsCore> {
   return (await import("@nexpress/app/scripts/ops-jobs-core")) as unknown as typeof OpsJobsCore;
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

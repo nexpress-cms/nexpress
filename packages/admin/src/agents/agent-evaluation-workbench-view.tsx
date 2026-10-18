@@ -49,6 +49,7 @@ const recipeLabels: Record<NpAgentEvaluationReportRecipeV1, string> = {
   publisher: "Publisher",
   "moderator-assessment": "Moderator semantic assessment",
   "publisher-selection": "Publisher selection profile V3",
+  guardian: "Guardian synthetic reference",
 };
 const caseKey = (entry: NpAgentEvaluationWorkbenchCaseV1) => `${entry.caseId}@${entry.caseVersion}`;
 const emptyDraft = (): EvaluationReviewDraft => ({
@@ -294,6 +295,9 @@ export function AgentEvaluationWorkbenchView({
             <p className="text-xs text-neutral-500">
               Operator plan requires operator-plan.v1. Detector replay and Moderator proposals are
               separate datasets.
+              {recipe === "guardian"
+                ? " Guardian requires guardian.v1. This synthetic reference does not establish production rule replay, production precision, model usefulness, live approval or enablement. Review support concerns only the synthetic prediction."
+                : ""}
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2" key={fileKey}>
@@ -495,7 +499,11 @@ export function AgentEvaluationWorkbenchView({
                             <option value="">Choose outcome</option>
                             {entry.allowedOutcomes.map((value) => (
                               <option key={value} value={value}>
-                                {value}
+                                {recipe === "guardian"
+                                  ? value === "accept"
+                                    ? "Supported synthetic prediction"
+                                    : "Unsupported synthetic prediction"
+                                  : value}
                               </option>
                             ))}
                           </select>

@@ -89,13 +89,13 @@ export async function npObserveInstalledAgentGuardianLoginFailureV1(
   }).onLoginFailure(input);
 }
 
-async function resolveAuthRequestContext(
-  request: NextRequest,
+export async function resolveAuthRequestContext(
+  request: Request,
 ): Promise<{ siteId: string; networkAddress: string } | null> {
   // Same metadata as auth; forwarding headers require an explicitly trusted host proxy.
   const networkAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   if (!networkAddress || isIP(networkAddress) === 0) return null;
-  const site = await resolveSiteForHostname(request.nextUrl.hostname);
+  const site = await resolveSiteForHostname(new URL(request.url).hostname);
   return site ? { siteId: site.id, networkAddress } : null;
 }
 

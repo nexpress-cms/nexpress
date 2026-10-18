@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { can, NpForbiddenError } from "@nexpress/core";
 import { revokeBan } from "@nexpress/core/community";
 import { npRequireOkWire } from "@nexpress/core/community-contract";
@@ -7,7 +8,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-respo
 import { requireAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -25,3 +26,5 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

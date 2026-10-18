@@ -36,6 +36,7 @@ import {
 } from "../agent-contract/installed-capability-contract.js";
 import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
 import type { NpAgentCapabilityAuthenticationV1 } from "./capability-admission.js";
+import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 
 type Db = ReturnType<typeof getDb>;
 function object(value: object): NpAgentJsonObject {
@@ -162,6 +163,7 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
   const runId = input.runtime?.runId ?? randomUUID(),
     actionId = randomUUID();
   let admissionFingerprint: string;
+  let runtimeRun: typeof npAgentRuns.$inferSelect | null = null;
   if (input.runtime) {
     const [run] = await db
       .select()
@@ -177,6 +179,7 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
     )
       return invalid();
     admissionFingerprint = run.admissionFingerprint;
+    runtimeRun = run;
   } else {
     // No provider is installed for this one-capability Gateway projection. The
     // canonical legacy provider-call ceiling is positive; zero token/cost limits
@@ -380,6 +383,7 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
     createdAt: now,
   } satisfies typeof npAgentActions.$inferInsert;
   await db.insert(npAgentActions).values(actionRow);
+  if (runtimeRun) await npObserveAgentRuntimeActionV1({ db, run: runtimeRun, action: actionRow });
   await db
     .update(npAgentInvocations)
     .set({ runId })

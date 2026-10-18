@@ -34,6 +34,11 @@ import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation
 import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
+import {
+  npObserveAgentRuntimeFactV1,
+  npReadAgentRuntimeTerminalObservationV1,
+  type NpAgentGuardianRuntimeTerminalObservationV1,
+} from "./guardian-runtime-observer.js";
 
 type Db = ReturnType<typeof getDb>;
 type Run = typeof npAgentRuns.$inferSelect;
@@ -248,6 +253,7 @@ export interface NpAgentRuntimeExecutionStoreV1 {
         | "budget_blocked";
       errorCode?: string;
     },
+    observation?: NpAgentGuardianRuntimeTerminalObservationV1,
   ): Promise<{ state: string }>;
   waitRetry(input: Claimed & { retryAt: string }): Promise<{ state: string }>;
   cancel(input: Identity): Promise<{ state: string }>;
@@ -437,7 +443,7 @@ export function createAgentRuntimeExecutionStoreV1(options: {
       npAssertAgentPreviewEffectsAllowed();
       return options.admission.withCurrentRun(input, operation);
     },
-    transition: (input) => {
+    transition: (input, observation) => {
       npAssertAgentPreviewEffectsAllowed();
       input = closed(input, ["claim", "state", "errorCode"]);
       const change = async (db: Db, run: Run, at: Date, context?: NpAgentRuntimeRunContextV1) => {
@@ -487,8 +493,33 @@ export function createAgentRuntimeExecutionStoreV1(options: {
         }
         if (input.state === "succeeded" && (await unresolved(db, run, context)))
           fail("RUNTIME_EXECUTION_UNRESOLVED");
-        if (terminal.includes(input.state))
-          return finish(db, run, at, input.state, input.errorCode ?? null);
+        if (terminal.includes(input.state)) {
+          const result = await finish(db, run, at, input.state, input.errorCode ?? null);
+          if (observation) {
+            const fact = npReadAgentRuntimeTerminalObservationV1(observation);
+            if (
+              fact.kind === "proposal-repeated" &&
+              input.errorCode !== "RUNTIME_REPEATED_PROPOSAL"
+            )
+              fail("GUARDIAN_RUNTIME_SOURCE_INVALID");
+            await npObserveAgentRuntimeFactV1({
+              db,
+              run: {
+                ...run,
+                state: input.state,
+                finishedAt: at,
+                leaseUntil: null,
+                runtimeRetryAt: null,
+                errorCode: input.errorCode ?? null,
+                errorMessage: input.errorCode ? "Agent runtime execution stopped." : null,
+              },
+              occurredAt: at,
+              fact,
+            });
+          }
+          return result;
+        }
+        if (observation) fail("GUARDIAN_RUNTIME_SOURCE_INVALID");
         await update(db, run, at, {
           state: input.state,
           leaseUntil: input.state === "waiting_approval" ? null : run.leaseUntil,

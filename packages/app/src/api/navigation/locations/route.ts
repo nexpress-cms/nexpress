@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -75,7 +76,7 @@ function countNavItems(items: NpNavItem[] | null | undefined): number {
   return total;
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     // Admin-only — this endpoint reveals every nav location slug,
     // including custom ones the operator may not want crawled. The
@@ -156,3 +157,5 @@ export async function GET(request: NextRequest) {
 function titleCase(value: string): string {
   return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);

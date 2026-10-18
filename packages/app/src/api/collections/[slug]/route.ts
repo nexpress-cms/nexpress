@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NpAuthError,
   NpForbiddenError,
@@ -23,7 +24,10 @@ import { optionalMember } from "../../../lib/member-auth-helpers";
 import { npPublicCommunityAudienceWhere } from "@nexpress/core/community";
 import { revalidateCollection } from "../../../lib/revalidate";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+async function npGuardianGET(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
   try {
     const { slug } = await params;
     const user = await optionalAuth(request);
@@ -64,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -113,3 +117,6 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("collections", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("collections", npGuardianPOST);

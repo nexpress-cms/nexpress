@@ -10,11 +10,13 @@ import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
 import {
   npCollectAgentHealthSummaryV1,
+  npCollectAgentGuardianHealthV1,
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
   npCollectAgentWorkerHealthV2,
   npCollectAgentRuntimeOutcomeV1,
 } from "@nexpress/core/agents";
+import { checkGuardianSignals } from "../lib/guardian-health-check.js";
 import {
   npAnalyzeCustomRouteDefinitions,
   npGetCustomRouteKind,
@@ -212,7 +214,7 @@ export async function collectDoctorChecks(
   checks.push(await checkCollectionContracts(env));
   checks.push(await checkCommunityContracts(env));
   checks.push(await checkCommunityRealtimeRetention(env));
-  checks.push(await checkAgentContracts(env));
+  checks.push(...(await checkAgentContracts(env)));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
@@ -235,7 +237,18 @@ export async function collectDoctorChecks(
   return checks;
 }
 
-async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
+async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult[]> {
+  let guardian = checkGuardianSignals();
+  const contracts = await checkAgentPersistence(env, (check) => {
+    guardian = check;
+  });
+  return [contracts, guardian];
+}
+
+async function checkAgentPersistence(
+  env: DoctorEnv,
+  guardian: (check: ReturnType<typeof checkGuardianSignals>) => void,
+): Promise<CheckResult> {
   const url = env.DATABASE_URL;
   if (!url) {
     return {
@@ -283,6 +296,11 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     // loadPg constructed this actual Client; keep its query-config, row-mode and
     // transaction behavior intact instead of wrapping its narrow interface.
     const db = drizzle<Record<string, unknown>, Client>(client as unknown as Client);
+    try {
+      guardian(checkGuardianSignals(await npCollectAgentGuardianHealthV1({ db })));
+    } catch {
+      guardian(checkGuardianSignals());
+    }
     let budgetDetail =
       "Agent budget measurement evidence: unavailable. This does not change persistence contract severity.";
     try {

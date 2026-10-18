@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 
 import { can, type NpCapability } from "../auth/capabilities.js";
@@ -17,6 +18,11 @@ import type { NpSiteMembershipRecord } from "../settings/types.js";
 
 import { getCurrentSiteId } from "./context.js";
 import { NP_DEFAULT_SITE_ID } from "./id-contract.js";
+import {
+  npGetSiteAuthorityObserverV1,
+  type NpSiteAuthorityMutationActorV1,
+  type NpSiteAuthorityMutationScopeV1,
+} from "./authority-observer.js";
 
 function invalid(field: string, message: string): NpValidationError {
   return new NpValidationError("Invalid input", [{ field, message }]);
@@ -38,6 +44,22 @@ function assertRole(role: unknown): asserts role is NpUserRole {
   if (!npIsUserRole(role)) {
     throw invalid("role", "role must be a registered NexPress user role");
   }
+}
+
+function mutationActor(
+  context: { actor: NpSiteAuthorityMutationActorV1 } | undefined,
+): NpSiteAuthorityMutationActorV1 {
+  const actor = context?.actor;
+  if (actor === undefined) return { kind: "system", component: "sites.memberships" };
+  if (actor?.kind === "staff" && npIsCanonicalUserId(actor.userId))
+    return { kind: "staff", userId: actor.userId };
+  if (
+    actor?.kind === "system" &&
+    typeof actor.component === "string" &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(actor.component)
+  )
+    return { kind: "system", component: actor.component };
+  throw invalid("actor", "actor must identify a staff user or system component");
 }
 
 function rowToMembership(row: typeof npSiteMemberships.$inferSelect): NpSiteMembershipRecord {
@@ -141,13 +163,18 @@ export async function grantSiteMembership(
   siteId: string,
   userId: string,
   role: NpUserRole,
+  context?: { actor: NpSiteAuthorityMutationActorV1 },
 ): Promise<NpSiteMembershipRecord> {
   assertSiteId(siteId);
   assertUserId(userId);
   assertRole(role);
+  const observer = npGetSiteAuthorityObserverV1();
+  const actor = observer ? mutationActor(context) : null;
+  const scope: NpSiteAuthorityMutationScopeV1 = { kind: "site", siteId };
   const db = getDb();
   return db.transaction(async (transaction) => {
     const tx = transaction as ReturnType<typeof getDb>;
+    if (observer) await observer.prepare({ db: tx, scope });
     const principals = await lockRuntimeDelegations(tx, userId, siteId);
     const [site] = await tx
       .select({ id: npSites.id })
@@ -180,16 +207,38 @@ export async function grantSiteMembership(
       })
       .returning();
     if (!row) throw new Error("Failed to grant site membership");
+    if (observer && actor)
+      await observer.record({
+        db: tx,
+        scope,
+        actor,
+        transitionId: randomUUID(),
+        occurredAt: now,
+        transition: {
+          kind: "site-role",
+          userId,
+          previousRole: previous?.role ?? null,
+          currentRole: row.role,
+        },
+      });
     return rowToMembership(row);
   });
 }
 
-export async function revokeSiteMembership(siteId: string, userId: string): Promise<void> {
+export async function revokeSiteMembership(
+  siteId: string,
+  userId: string,
+  context?: { actor: NpSiteAuthorityMutationActorV1 },
+): Promise<void> {
   assertSiteId(siteId);
   assertUserId(userId);
+  const observer = npGetSiteAuthorityObserverV1();
+  const actor = observer ? mutationActor(context) : null;
+  const scope: NpSiteAuthorityMutationScopeV1 = { kind: "site", siteId };
   const db = getDb();
   await db.transaction(async (transaction) => {
     const tx = transaction as MembershipDb;
+    if (observer) await observer.prepare({ db: tx, scope });
     const principals = await lockRuntimeDelegations(tx, userId, siteId);
     await tx.select({ id: npUsers.id }).from(npUsers).where(eq(npUsers.id, userId)).for("update");
     const [previous] = await tx
@@ -199,21 +248,47 @@ export async function revokeSiteMembership(siteId: string, userId: string): Prom
       .for("update")
       .limit(1);
     if (!previous) return;
-    await invalidateRuntimeDelegations(tx, principals, "membership_removed", new Date());
-    await tx
+    const now = new Date();
+    await invalidateRuntimeDelegations(tx, principals, "membership_removed", now);
+    const deletion = tx
       .delete(npSiteMemberships)
       .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)));
+    if (observer && actor) {
+      const [deleted] = await deletion.returning({ role: npSiteMemberships.role });
+      if (!deleted) throw new Error("Failed to revoke site membership");
+      await observer.record({
+        db: tx,
+        scope,
+        actor,
+        transitionId: randomUUID(),
+        occurredAt: now,
+        transition: {
+          kind: "site-role",
+          userId,
+          previousRole: deleted.role,
+          currentRole: null,
+        },
+      });
+    } else await deletion;
   });
 }
 
-export async function setSuperAdmin(userId: string, isSuperAdmin: boolean): Promise<void> {
+export async function setSuperAdmin(
+  userId: string,
+  isSuperAdmin: boolean,
+  context?: { actor: NpSiteAuthorityMutationActorV1 },
+): Promise<void> {
   assertUserId(userId);
   if (typeof isSuperAdmin !== "boolean") {
     throw invalid("isSuperAdmin", "isSuperAdmin must be boolean");
   }
+  const observer = npGetSiteAuthorityObserverV1();
+  const actor = observer ? mutationActor(context) : null;
+  const scope: NpSiteAuthorityMutationScopeV1 = { kind: "deployment" };
   const db = getDb();
   await db.transaction(async (transaction) => {
     const tx = transaction as MembershipDb;
+    if (observer) await observer.prepare({ db: tx, scope });
     const principals = await lockRuntimeDelegations(tx, userId);
     const [user] = await tx
       .select()
@@ -225,7 +300,27 @@ export async function setSuperAdmin(userId: string, isSuperAdmin: boolean): Prom
     if (user.isSuperAdmin === isSuperAdmin) return;
     const now = new Date();
     await invalidateRuntimeDelegations(tx, principals, "super_admin_changed", now);
-    await tx.update(npUsers).set({ isSuperAdmin, updatedAt: now }).where(eq(npUsers.id, userId));
+    const update = tx
+      .update(npUsers)
+      .set({ isSuperAdmin, updatedAt: now })
+      .where(eq(npUsers.id, userId));
+    if (observer && actor) {
+      const [updated] = await update.returning({ isSuperAdmin: npUsers.isSuperAdmin });
+      if (!updated) throw new Error("Failed to set super administrator");
+      await observer.record({
+        db: tx,
+        scope,
+        actor,
+        transitionId: randomUUID(),
+        occurredAt: now,
+        transition: {
+          kind: "super-admin",
+          userId,
+          previous: user.isSuperAdmin,
+          current: updated.isSuperAdmin,
+        },
+      });
+    } else await update;
   });
 }
 

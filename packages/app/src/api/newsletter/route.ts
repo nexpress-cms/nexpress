@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import { NpValidationError } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -63,7 +64,7 @@ function validateBody(raw: unknown): SubscribeBody {
   return { email };
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const { email } = validateBody(await readJsonBody(request));
     if (process.env.NODE_ENV !== "production") {
@@ -78,3 +79,5 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("newsletter", npGuardianPOST);

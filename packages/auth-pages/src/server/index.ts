@@ -10,6 +10,8 @@ export type {
   NpLoginFailureObserver,
   NpLoginSuccessObservation,
   NpLoginSuccessObserver,
+  NpAuthResponseObservation,
+  NpAuthResponseObserver,
   NpAuthErrorCode,
   NpAuthMember,
   NpMemberSessionUser,

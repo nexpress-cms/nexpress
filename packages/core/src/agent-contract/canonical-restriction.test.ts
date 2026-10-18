@@ -81,7 +81,11 @@ function expectIssue(result: NpAgentContractResult<unknown>, code: string, path:
 
 describe("Agent restriction canonical body", () => {
   it("publishes the closed inventories, bounds, and exact field fixtures", () => {
-    expect(npAgentActorBucketPurposesV1).toEqual(["login-identifier", "network-address"]);
+    expect(npAgentActorBucketPurposesV1).toEqual([
+      "login-identifier",
+      "network-address",
+      "staff-principal",
+    ]);
     expect(npAgentActorRestrictionScopes).toEqual([
       "auth.staff",
       "auth.member",
@@ -209,6 +213,12 @@ describe("Agent restriction canonical body", () => {
 
   it("enforces canonical identities, bucket evidence, reason, and target digest", () => {
     const opaque = opaqueRestriction();
+    expect(
+      npAnalyzeAgentRestrictionCanonical({
+        ...opaque,
+        subject: { ...opaque.subject, purpose: "staff-principal" },
+      }).ok,
+    ).toBe(false);
     const invalid = [
       authenticatedRestriction({ restrictionId: "not-a-uuid" }),
       authenticatedRestriction({ siteId: "Docs Site" }),

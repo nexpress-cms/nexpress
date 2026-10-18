@@ -34,29 +34,37 @@ import {
   npRequireAgentModeratorEvaluationReviewArtifact,
 } from "./moderator-evaluation.js";
 import { npBuildAgentEvaluationReportV1 } from "./evaluation-report.js";
+import {
+  npBuildAgentGuardianEvaluationReviewArtifactV1,
+  npRequireAgentGuardianEvaluationReviewArtifactV1,
+} from "../agent-contract/guardian-evaluation-review-contract.js";
 
 const json = (value: unknown) => JSON.stringify(value);
 const buildReview = (recipe: NpAgentEvaluationReportRecipeV1, source: unknown, labels: unknown) =>
-  recipe === "moderator-assessment" || recipe === "publisher-selection"
-    ? npBuildAgentProfileEvaluationReviewArtifactV1(source, labels)
-    : recipe === "moderator"
-      ? npBuildAgentModeratorEvaluationReviewArtifact(source, labels)
-      : recipe === "moderator-proposal"
-        ? npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source, labels)
-        : recipe === "operator"
-          ? npBuildAgentOperatorPlanEvaluationReviewArtifactV1(source, labels)
-          : npBuildAgentEvaluationReviewArtifactV1(source, labels);
+  recipe === "guardian"
+    ? npBuildAgentGuardianEvaluationReviewArtifactV1(source, labels)
+    : recipe === "moderator-assessment" || recipe === "publisher-selection"
+      ? npBuildAgentProfileEvaluationReviewArtifactV1(source, labels)
+      : recipe === "moderator"
+        ? npBuildAgentModeratorEvaluationReviewArtifact(source, labels)
+        : recipe === "moderator-proposal"
+          ? npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source, labels)
+          : recipe === "operator"
+            ? npBuildAgentOperatorPlanEvaluationReviewArtifactV1(source, labels)
+            : npBuildAgentEvaluationReviewArtifactV1(source, labels);
 
 const requireReview = (recipe: NpAgentEvaluationReportRecipeV1, value: unknown) =>
-  recipe === "moderator-assessment" || recipe === "publisher-selection"
-    ? npRequireAgentProfileEvaluationReviewArtifactV1(value)
-    : recipe === "moderator"
-      ? npRequireAgentModeratorEvaluationReviewArtifact(value)
-      : recipe === "moderator-proposal"
-        ? npRequireAgentModeratorProposalEvaluationReviewArtifactV1(value)
-        : recipe === "operator"
-          ? npRequireAgentOperatorPlanEvaluationReviewArtifactV1(value)
-          : npRequireAgentEvaluationReviewArtifactV1(value);
+  recipe === "guardian"
+    ? npRequireAgentGuardianEvaluationReviewArtifactV1(value)
+    : recipe === "moderator-assessment" || recipe === "publisher-selection"
+      ? npRequireAgentProfileEvaluationReviewArtifactV1(value)
+      : recipe === "moderator"
+        ? npRequireAgentModeratorEvaluationReviewArtifact(value)
+        : recipe === "moderator-proposal"
+          ? npRequireAgentModeratorProposalEvaluationReviewArtifactV1(value)
+          : recipe === "operator"
+            ? npRequireAgentOperatorPlanEvaluationReviewArtifactV1(value)
+            : npRequireAgentEvaluationReviewArtifactV1(value);
 
 async function caseScore(source: NpAgentEvaluationArtifactV1, index: number) {
   const { mode, provider, model, startedAt, finishedAt, budget } = source;
@@ -124,7 +132,28 @@ export async function npBuildAgentEvaluationWorkbenchV1(
       eligible: entry.eligible,
       labelJson: entry.review === null ? null : json(entry.review),
     };
-    if (
+    if (source.schemaVersion === "np.agent-guardian-eval.v1") {
+      const result = source.caseResults[index];
+      cases.push({
+        ...base,
+        allowedOutcomes: entry.eligible
+          ? result.violations.length
+            ? ["reject"]
+            : ["accept", "reject"]
+          : [],
+        evidenceJson: json(source.corpus.cases[index]),
+        predictionJson: json(result.prediction),
+        scoreJson: json({
+          violations: result.violations,
+          checks: result.checks,
+          predictionBasis: source.predictionBasis,
+          productionRuleReplay: source.productionRuleReplay,
+          productionPrecision: source.productionPrecision,
+          modelUsefulness: source.modelUsefulness,
+          enablement: source.enablement,
+        }),
+      });
+    } else if (
       source.schemaVersion === "np.agent-moderator-eval.v1" ||
       source.schemaVersion === "np.agent-moderator-eval.v2" ||
       source.schemaVersion === "np.agent-moderator-eval.v3"

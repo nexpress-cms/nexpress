@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpValidationError, assertNotBanned, getMediaUrl, uploadMedia } from "@nexpress/core";
 import { runHook } from "@nexpress/core/bootstrap";
 import type { NextRequest } from "next/server";
@@ -88,7 +89,7 @@ function sniffImageMime(buffer: Buffer): AllowedMimeType | null {
   return null;
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -198,3 +199,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("media-upload", npGuardianPOST);

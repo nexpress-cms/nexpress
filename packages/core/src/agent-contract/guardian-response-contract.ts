@@ -1,4 +1,8 @@
 import {
+  npRequireAgentAutomaticGuardianLimitAuthorizationV1,
+  type NpAgentAutomaticGuardianLimitAuthorizationV1,
+} from "./automatic-guardian-limit-contract.js";
+import {
   canonicalBodyAscii,
   canonicalBodyEnum,
   canonicalBodyInteger,
@@ -9,6 +13,7 @@ import {
   failCanonicalBody,
 } from "./canonical-body-validation.js";
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
+import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
 import {
   npAgentActorRestrictionScopes,
   type NpAgentActorRestrictionScope,
@@ -472,5 +477,105 @@ export function npAgentGuardianResponseExecuteInputSchemaV1(): NpAgentJsonSchema
       "proposalHash",
       "idempotencyKey",
     ],
+  };
+}
+
+/** Server-only automatic request. No target, scope, duration or approval can be supplied. */
+export interface NpAgentGuardianAutomaticResponseInputV1 {
+  schemaVersion: "np.agent-guardian-automatic-response-input.v1";
+  incidentId: string;
+  signalId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+}
+/** Private admitted invocation envelope; parsing is never a live grant. */
+export interface NpAgentGuardianAutomaticResponseActionV1 {
+  schemaVersion: "np.agent-guardian-automatic-response-action.v1";
+  request: NpAgentGuardianAutomaticResponseInputV1;
+  command: NpAgentGuardianResponsePlanInputV1;
+  authorization: NpAgentAutomaticGuardianLimitAuthorizationV1;
+  controlPolicyDigest: string;
+}
+export function npRequireAgentGuardianAutomaticResponseInputV1(
+  value: unknown,
+): NpAgentGuardianAutomaticResponseInputV1 {
+  const row = record(cloneCanonicalRuntimeInput(value, "guardianResponse.automatic", 4096), [
+    "schemaVersion",
+    "incidentId",
+    "signalId",
+    "expectedVersion",
+    "idempotencyKey",
+  ]);
+  return {
+    schemaVersion: canonicalBodyEnum(
+      row.schemaVersion,
+      "guardianResponse.automatic.schemaVersion",
+      new Set(["np.agent-guardian-automatic-response-input.v1"] as const),
+    ),
+    incidentId: canonicalBodyUuid(row.incidentId, "guardianResponse.incidentId"),
+    signalId: canonicalBodyUuid(row.signalId, "guardianResponse.signalId"),
+    expectedVersion: positive(row.expectedVersion),
+    idempotencyKey: key(row.idempotencyKey),
+  };
+}
+export function npRequireAgentGuardianAutomaticResponseActionV1(
+  value: unknown,
+): NpAgentGuardianAutomaticResponseActionV1 {
+  const row = record(
+    cloneCanonicalRuntimeInput(value, "guardianResponse.automatic.action", 32768),
+    ["schemaVersion", "request", "command", "authorization", "controlPolicyDigest"],
+  );
+  const request = npRequireAgentGuardianAutomaticResponseInputV1(row.request),
+    command = npRequireAgentGuardianResponsePlanInputV1(row.command),
+    authorization = npRequireAgentAutomaticGuardianLimitAuthorizationV1(row.authorization);
+  if (
+    command.operation.kind !== "limit" ||
+    request.incidentId !== authorization.incidentId ||
+    request.signalId !== authorization.signalId ||
+    request.expectedVersion !== authorization.incidentVersion ||
+    command.expectedVersion !== request.expectedVersion ||
+    command.idempotencyKey !== request.idempotencyKey ||
+    serializeAgentCanonicalJson(command.operation.actionScopes) !==
+      serializeAgentCanonicalJson(authorization.actionScopes) ||
+    command.operation.durationSeconds * 1000 !==
+      Date.parse(authorization.expiresAt) - Date.parse(authorization.authorizedAt)
+  )
+    failCanonicalBody(
+      "invalid-field",
+      "guardianResponse.automatic.action",
+      "Automatic action must bind exact issued evidence",
+    );
+  return {
+    schemaVersion: canonicalBodyEnum(
+      row.schemaVersion,
+      "guardianResponse.automatic.action.schemaVersion",
+      new Set(["np.agent-guardian-automatic-response-action.v1"] as const),
+    ),
+    request,
+    command,
+    authorization,
+    controlPolicyDigest: canonicalBodySha256Digest(
+      row.controlPolicyDigest,
+      "guardianResponse.automatic.controlPolicyDigest",
+    ),
+  };
+}
+export function npAgentGuardianAutomaticResponseInputSchemaV1(): NpAgentJsonSchema {
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      schemaVersion: { const: "np.agent-guardian-automatic-response-input.v1" },
+      incidentId: { type: "string", format: "uuid", maxLength: 36 },
+      signalId: { type: "string", format: "uuid", maxLength: 36 },
+      expectedVersion: { type: "integer", minimum: 1, maximum: 2147483647 },
+      idempotencyKey: {
+        type: "string",
+        maxLength: 128,
+        pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      },
+    },
+    required: ["schemaVersion", "incidentId", "signalId", "expectedVersion", "idempotencyKey"],
   };
 }

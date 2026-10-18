@@ -261,8 +261,9 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      // Guardian adds two explicit staff-only plan/execute operations.
-      "cj1:sha256:ldPOUOgNtCC9yweEUCjyWEOWYXp-JSyaR9PY2ko-pkw",
+      // R7 expands activation Event kinds and adds the Guardian evaluation-review profile.
+      // A baseline registry comparison confirmed these are the only contract deltas.
+      "cj1:sha256:5Ts4bKsHrASLrQevcELGkj5-WZwVP2zdzI4061K1nnQ",
     );
 
     await expect(

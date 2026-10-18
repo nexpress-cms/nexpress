@@ -1,4 +1,8 @@
 import type { NpAgentGuardianResponseServiceV1 } from "./guardian-response-service.js";
+import type { NpAgentGuardianRuntimeObservationServiceV1 } from "./guardian-runtime-observation.js";
+import type { NpAgentGuardianContentObservationServiceV1 } from "./guardian-content-observation.js";
+import type { NpAgentGuardianRetentionServiceV1 } from "./guardian-retention-service.js";
+import { npPruneAgentGuardianJobV1 } from "./guardian-retention-job.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
 import { and, asc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
@@ -40,6 +44,11 @@ export interface NpAgentRuntimeJobsOptionsV1 {
   notificationDelivery?: Pick<NpAgentNotificationDeliveryServiceV1, "process" | "reconcile">;
   /** Explicit Guardian owner; verifies pending effects and reconciles TTL cleanup without provider calls. */
   guardianRestrictions?: Pick<NpAgentGuardianResponseServiceV1, "reconcile">;
+  /** Explicit source-only content outbox; omission adds no receipt scan or installation. */
+  guardianContent?: Pick<NpAgentGuardianContentObservationServiceV1, "collect">;
+  guardianRuntime?: Pick<NpAgentGuardianRuntimeObservationServiceV1, "collect">;
+  /** Explicit historical proof/retention owner; omission adds no closure or pruning. */
+  guardianRetention?: Pick<NpAgentGuardianRetentionServiceV1, "prune">;
   /** Explicit source/monitor owner; absence never polls operational sources. */
   operator?: {
     observe(input: { siteId: string }): Promise<unknown>;
@@ -199,6 +208,20 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
           sourceFailed = true;
         }
       }
+      if (options.guardianContent) {
+        try {
+          await options.guardianContent.collect({ siteId, limit: 25 });
+        } catch {
+          sourceFailed = true;
+        }
+      }
+      if (options.guardianRuntime) {
+        try {
+          await options.guardianRuntime.collect({ siteId, limit: 25 });
+        } catch {
+          sourceFailed = true;
+        }
+      }
       const rows = await pending(siteId);
       let failed = sourceFailed;
       if (options.incidentNotifications?.recover) {
@@ -257,6 +280,8 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
   });
   const prune = safe<NpBuiltinJobPayloadMap["agent:retentionPrune"]>(async ({ siteId }) => {
     await npPruneAgentRuntimeJobV1({ siteId, now, incidentRetention });
+    if (options.guardianRetention)
+      await npPruneAgentGuardianJobV1(siteId, options.guardianRetention, now);
   });
   const retention = safe<NpBuiltinJobPayloadMap["agent:retentionTick"]>(async () => {
     await fanout("retentionSites", (siteId) => enqueue("agent:retentionPrune", { siteId }));

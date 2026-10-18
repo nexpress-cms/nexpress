@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NpConflictError,
   NpForbiddenError,
@@ -18,7 +19,10 @@ import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response
 import { getDb } from "../../../../lib/db";
 import { ensureFor } from "../../../../lib/init-core";
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function npGuardianPATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
     const user = await requireAuth(request);
@@ -55,7 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -108,3 +112,6 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const PATCH = npWithAgentGuardianHttpResponseV1("cms", npGuardianPATCH);
+export const DELETE = npWithAgentGuardianHttpResponseV1("cms", npGuardianDELETE);

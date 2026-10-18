@@ -85,6 +85,11 @@ export async function handleAgentMemberResponseAdminRequest(
       throw new Error("Member response acknowledgement is unbound.");
     return npSuccessResponse(acknowledgement, { headers });
   } catch (error) {
-    return agentStudioErrorResponse(error, operation === "get" ? "read" : "mutation", { headers });
+    return agentStudioErrorResponse(
+      error,
+      operation === "get" ? "read" : "mutation",
+      { headers },
+      request,
+    );
   }
 }

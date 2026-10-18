@@ -1186,8 +1186,11 @@ trusted instructions, approval UI, capability metadata, or executor authority.
 - the same UUID under `staff`, `member`, and `agent-gateway` produces three
   distinct principal subject keys; `network-address` and `login-identifier`
   cannot collide or substitute;
-- actor-bucket golden vectors bind domain/u32 framing, site, purpose,
-  projection version/fingerprint, key id, and normalized bytes and require
+- actor-bucket golden vectors bind the exact registered encoding: the shipped
+  Guardian observation-v1 canonical-JSON named fields and domain are preserved;
+  any future u32-framed profile requires a distinct version/fingerprint and
+  its own vectors. Include Unicode/delimiter inputs, site, purpose, projection
+  version/fingerprint, key id and normalized bytes, and require
   exactly 43 unpadded base64url characters; wrong length, alphabet, padding,
   purpose, key, site, or projection fails;
 - proxy restart reconstructs the current plus every active historical

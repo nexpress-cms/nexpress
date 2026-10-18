@@ -41,6 +41,6 @@ export async function handleAgentEvaluationWorkbenchRequest(
     return npSuccessResponse(result, { headers });
   } catch (error) {
     // This POST only recomputes evidence; no persisted mutation outcome needs reconciliation.
-    return agentStudioErrorResponse(error, "read", { headers });
+    return agentStudioErrorResponse(error, "read", { headers }, request);
   }
 }

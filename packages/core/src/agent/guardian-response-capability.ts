@@ -3,6 +3,7 @@ import { npRequireAgentCapabilityRegistryCanonical } from "../agent-contract/can
 import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
 import {
   npAgentGuardianResponsePlanInputSchemaV1,
+  npAgentGuardianAutomaticResponseInputSchemaV1,
   type NpAgentGuardianResponseCapabilityIdV1,
 } from "../agent-contract/guardian-response-contract.js";
 import type {
@@ -22,23 +23,40 @@ export interface NpGuardianResponseCapabilityDefinitionV1 {
 export async function npGuardianResponseCapabilityDefinitionV1(
   id: NpAgentGuardianResponseCapabilityIdV1,
 ): Promise<NpGuardianResponseCapabilityDefinitionV1> {
-  const profile = id === "security.limitActor" ? "guardian.limit" : "guardian.remove";
+  return definition(id, false);
+}
+export const NP_AGENT_GUARDIAN_AUTOMATIC_RESPONSE_PROFILE_V1 = "guardian.limit.automatic.v1";
+/** Internal policy-owned definition; never advertised as a model or Gateway tool. */
+export function npGuardianAutomaticResponseCapabilityDefinitionV1(): Promise<NpGuardianResponseCapabilityDefinitionV1> {
+  return definition("security.limitActor", true);
+}
+async function definition(
+  id: NpAgentGuardianResponseCapabilityIdV1,
+  automatic: boolean,
+): Promise<NpGuardianResponseCapabilityDefinitionV1> {
+  const profile = automatic
+    ? NP_AGENT_GUARDIAN_AUTOMATIC_RESPONSE_PROFILE_V1
+    : id === "security.limitActor"
+      ? "guardian.limit"
+      : "guardian.remove";
   const verifierId = `${profile}.verify`;
   const descriptor = npRequireAgentCapabilityDescriptor({
     schemaVersion: "np.agent-capability.v1",
     id,
     contractVersion: 1,
     source: "core",
-    title:
-      id === "security.limitActor"
+    title: automatic
+      ? "Apply a qualified staff-reviewed temporary authentication limit"
+      : id === "security.limitActor"
         ? "Temporarily limit requests from the observed network"
         : "Remove this workflow's temporary request limit",
-    description:
-      "Explicit staff-only execution after a distinct human approves the exact current Incident, network projection, policy and request restriction facts.",
+    description: automatic
+      ? "Private deterministic policy execution from signed request facts and a current verified staff escalation, with exact short expiry and frozen compensation."
+      : "Explicit staff-only execution after a distinct human approves the exact current Incident, network projection, policy and request restriction facts.",
     requiredScopes: ["security:execute"],
     scopeDerivation: "security-target",
-    risk: "sensitive",
-    approval: "human",
+    risk: automatic ? "reversible" : "sensitive",
+    approval: automatic ? "policy" : "human",
     effectProfiles: [
       {
         id: profile,
@@ -53,7 +71,9 @@ export async function npGuardianResponseCapabilityDefinitionV1(
     execution: "inline",
     idempotency: "required",
     gateway: null,
-    inputSchema: npAgentGuardianResponsePlanInputSchemaV1(),
+    inputSchema: automatic
+      ? npAgentGuardianAutomaticResponseInputSchemaV1()
+      : npAgentGuardianResponsePlanInputSchemaV1(),
     outputSchema: {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "object",

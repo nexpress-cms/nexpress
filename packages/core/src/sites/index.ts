@@ -55,3 +55,10 @@ export type {
   NpSiteWireRecord,
   NpUpdateSiteInput,
 } from "../settings/types.js";
+export type {
+  NpSiteAuthorityObserverV1,
+  NpSiteAuthorityObservationV1,
+  NpSiteAuthorityMutationActorV1,
+  NpSiteAuthorityMutationScopeV1,
+  NpSiteAuthorityTransitionV1,
+} from "./authority-observer.js";

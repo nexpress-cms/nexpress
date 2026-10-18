@@ -9,6 +9,7 @@ import {
   getAgentOauthSurface,
 } from "../../lib/agents/oauth-http";
 import { ensureFor } from "../../lib/init-core";
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 
 async function handle(request: NextRequest) {
   await ensureFor("read");
@@ -81,9 +82,10 @@ async function handle(request: NextRequest) {
   });
 }
 
-export const POST = handle;
-export const GET = handle;
-export const DELETE = handle;
-export const OPTIONS = handle;
+const observed = npWithAgentGuardianHttpResponseV1("mcp", handle);
+export const POST = observed;
+export const GET = observed;
+export const DELETE = observed;
+export const OPTIONS = observed;
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { can, NpForbiddenError } from "@nexpress/core";
 import { listCommunityRoles } from "@nexpress/core/community";
 import { npRequireRoleCatalogWire } from "@nexpress/core/community-contract";
@@ -15,7 +16,7 @@ import { ensureFor } from "../../../../lib/init-core";
  * authentication signal consistent across the page's network
  * calls.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -30,3 +31,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

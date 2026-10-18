@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,79 +22,105 @@ const fast = process.env.NP_DEV_FAST === "1";
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(resolve(here, "package.json"), "utf-8")) as { version: string };
 
+const entries = {
+  index: "src/index.ts",
+  "db-schema": "src/db/schema/index.ts",
+  // Phase 22.6 — domain subpath entries. These are the canonical
+  // import paths going forward; the root `index.ts` keeps re-
+  // exporting everything for back-compat. New consumer code
+  // should reach in through these.
+  auth: "src/auth/index.ts",
+  // Server-only Agent principal, credential, Admin admission, and deletion services.
+  agents: "src/agent/index.ts",
+  // Pure, client-safe Agent scopes, capabilities, Gateway exposure, and descriptor contracts.
+  "agent-contract": "src/agent-contract/index.ts",
+  // Pure, client-safe REST error envelope, code/status, and detail contract.
+  "api-contract": "src/api-contract/index.ts",
+  // Pure, client-safe users, members, JWT claims, sessions, and API wire contracts.
+  "auth-contract": "src/auth-contract/index.ts",
+  community: "src/community/index.ts",
+  // Pure, client-safe community rows, API wires, settings, registries, and adapter contracts.
+  "community-contract": "src/community-contract/index.ts",
+  // Exact, bounded site content/settings transfer envelope and remapping helpers.
+  "content-transfer": "src/content-transfer-contract/index.ts",
+  // Exact, bounded public block, collection, and plugin discovery wire contracts.
+  discovery: "src/discovery-contract/index.ts",
+  // Pure, client-safe dynamic collection row, relation, and API wire contract.
+  "collection-contract": "src/collection-contract/index.ts",
+  // Server-side collection registry, persistence pipeline, revisions, and search bridge.
+  collections: "src/collections/index.ts",
+  // Framework-host singleton wiring. Application code should use
+  // @nexpress/next createBootstrap rather than importing this directly.
+  bootstrap: "src/bootstrap/index.ts",
+  // Server-side cache invalidation requests, adapters, results, and diagnostics.
+  cache: "src/cache/index.ts",
+  db: "src/db/index.ts",
+  // Server-side email message, template, adapter, and SMTP runtime contract.
+  email: "src/email/index.ts",
+  // Client-safe pure helpers (admin.condition evaluator, hidden-
+  // field walker, zod schema builder). Used by `@nexpress/admin`
+  // from "use client" components — importing them from the root
+  // dragged argon2/pg into the browser bundle (#774 audit gap).
+  fields: "src/fields/index.ts",
+  // Pure, client-safe locale, translation catalog, override, and Admin wire contract.
+  "i18n-contract": "src/i18n-contract/index.ts",
+  i18n: "src/i18n/index.ts",
+  jobs: "src/jobs/index.ts",
+  // Pure, client-safe job payload, persisted row, and Admin wire contract.
+  "jobs-contract": "src/jobs-contract/index.ts",
+  media: "src/media/index.ts",
+  // Pure, client-safe persisted media metadata and API wire contract.
+  "media-contract": "src/media-contract/index.ts",
+  // Client-safe persisted navigation tree/location contract.
+  navigation: "src/navigation/index.ts",
+  observability: "src/observability/index.ts",
+  "rate-limit": "src/rate-limit/index.ts",
+  // Pure, client-safe revision snapshot and API wire contract.
+  revisions: "src/revisions/index.ts",
+  // Client-safe code-owned route definition, registry, and Admin wire contract.
+  routes: "src/routes/index.ts",
+  // Server-side search request/result contracts, adapter runtime, and DB dispatch.
+  search: "src/search/index.ts",
+  seo: "src/seo/index.ts",
+  // Server-side site registry, execution context, memberships, and authorization.
+  sites: "src/sites/index.ts",
+  // Server-side storage config, adapter, object I/O, registry, and lifecycle contract.
+  storage: "src/storage/public.ts",
+  // Pure, client-safe site identity and framework settings contracts.
+  settings: "src/settings/index.ts",
+  // Pure, client-safe theme token inventory and validation contract.
+  // Admin imports this subpath without pulling server-only core deps.
+  theme: "src/theme/index.ts",
+};
+
 export default defineConfig({
-  entry: {
-    index: "src/index.ts",
-    "db-schema": "src/db/schema/index.ts",
-    // Phase 22.6 — domain subpath entries. These are the canonical
-    // import paths going forward; the root `index.ts` keeps re-
-    // exporting everything for back-compat. New consumer code
-    // should reach in through these.
-    auth: "src/auth/index.ts",
-    // Server-only Agent principal, credential, Admin admission, and deletion services.
-    agents: "src/agent/index.ts",
-    // Pure, client-safe Agent scopes, capabilities, Gateway exposure, and descriptor contracts.
-    "agent-contract": "src/agent-contract/index.ts",
-    // Pure, client-safe REST error envelope, code/status, and detail contract.
-    "api-contract": "src/api-contract/index.ts",
-    // Pure, client-safe users, members, JWT claims, sessions, and API wire contracts.
-    "auth-contract": "src/auth-contract/index.ts",
-    community: "src/community/index.ts",
-    // Pure, client-safe community rows, API wires, settings, registries, and adapter contracts.
-    "community-contract": "src/community-contract/index.ts",
-    // Exact, bounded site content/settings transfer envelope and remapping helpers.
-    "content-transfer": "src/content-transfer-contract/index.ts",
-    // Exact, bounded public block, collection, and plugin discovery wire contracts.
-    discovery: "src/discovery-contract/index.ts",
-    // Pure, client-safe dynamic collection row, relation, and API wire contract.
-    "collection-contract": "src/collection-contract/index.ts",
-    // Server-side collection registry, persistence pipeline, revisions, and search bridge.
-    collections: "src/collections/index.ts",
-    // Framework-host singleton wiring. Application code should use
-    // @nexpress/next createBootstrap rather than importing this directly.
-    bootstrap: "src/bootstrap/index.ts",
-    // Server-side cache invalidation requests, adapters, results, and diagnostics.
-    cache: "src/cache/index.ts",
-    db: "src/db/index.ts",
-    // Server-side email message, template, adapter, and SMTP runtime contract.
-    email: "src/email/index.ts",
-    // Client-safe pure helpers (admin.condition evaluator, hidden-
-    // field walker, zod schema builder). Used by `@nexpress/admin`
-    // from "use client" components — importing them from the root
-    // dragged argon2/pg into the browser bundle (#774 audit gap).
-    fields: "src/fields/index.ts",
-    // Pure, client-safe locale, translation catalog, override, and Admin wire contract.
-    "i18n-contract": "src/i18n-contract/index.ts",
-    i18n: "src/i18n/index.ts",
-    jobs: "src/jobs/index.ts",
-    // Pure, client-safe job payload, persisted row, and Admin wire contract.
-    "jobs-contract": "src/jobs-contract/index.ts",
-    media: "src/media/index.ts",
-    // Pure, client-safe persisted media metadata and API wire contract.
-    "media-contract": "src/media-contract/index.ts",
-    // Client-safe persisted navigation tree/location contract.
-    navigation: "src/navigation/index.ts",
-    observability: "src/observability/index.ts",
-    "rate-limit": "src/rate-limit/index.ts",
-    // Pure, client-safe revision snapshot and API wire contract.
-    revisions: "src/revisions/index.ts",
-    // Client-safe code-owned route definition, registry, and Admin wire contract.
-    routes: "src/routes/index.ts",
-    // Server-side search request/result contracts, adapter runtime, and DB dispatch.
-    search: "src/search/index.ts",
-    seo: "src/seo/index.ts",
-    // Server-side site registry, execution context, memberships, and authorization.
-    sites: "src/sites/index.ts",
-    // Server-side storage config, adapter, object I/O, registry, and lifecycle contract.
-    storage: "src/storage/public.ts",
-    // Pure, client-safe site identity and framework settings contracts.
-    settings: "src/settings/index.ts",
-    // Pure, client-safe theme token inventory and validation contract.
-    // Admin imports this subpath without pulling server-only core deps.
-    theme: "src/theme/index.ts",
-  },
+  // Declaration generation follows production modules. The ordinary tsc gate
+  // still checks unit tests through tsconfig.json.
+  tsconfig: "tsconfig.build.json",
+
   format: ["esm"],
-  dts: !fast,
+  entry: entries,
+  // Emit the production declaration graph once, without Rollup duplicating its
+  // inferred DB/service types across every public entry. The awaited callback
+  // also preserves full declarations for non-fast watch builds.
+  dts: false,
+  onSuccess: fast
+    ? undefined
+    : async () => {
+        await new Promise<void>((complete, fail) => {
+          const child = spawn(
+            process.execPath,
+            [resolve(here, "scripts/build-declarations.mjs"), "--entries", JSON.stringify(entries)],
+            { cwd: here, stdio: "inherit" },
+          );
+          child.once("error", fail);
+          child.once("exit", (code, signal) =>
+            code === 0
+              ? complete()
+              : fail(new Error(`Core declaration build failed (${signal ?? code}).`)),
+          );
+        });
+      },
   clean: true,
   sourcemap: !fast,
   define: {

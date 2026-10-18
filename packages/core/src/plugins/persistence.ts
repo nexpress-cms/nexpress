@@ -5,6 +5,13 @@ import { npPlugins, npSites, npSitePlugins } from "../db/schema/system.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { invalidatePluginEnabled } from "./enabled-gate.js";
+import { randomUUID } from "node:crypto";
+import type { getDb } from "../db/runtime.js";
+import {
+  npGetGuardianSensitiveObserverV1,
+  npGuardianSensitiveMutationActorV1,
+  type NpGuardianSensitiveObservationContextV1,
+} from "../agent/guardian-sensitive-observer.js";
 
 /**
  * `np_plugins` is the process-global installation inventory while
@@ -176,8 +183,80 @@ export async function updatePluginState(
   id: string,
   patch: NpPluginStateUpdate,
   siteId?: string,
+  observation?: NpGuardianSensitiveObservationContextV1,
 ): Promise<NpPluginState | null> {
+  const observer = npGetGuardianSensitiveObserverV1(),
+    actor = observer
+      ? npGuardianSensitiveMutationActorV1(observation, "plugins.persistence")
+      : null;
   const resolvedSiteId = await resolveSiteId(siteId);
+  if (observer && actor && patch.enabled !== undefined) {
+    const enabled = patch.enabled,
+      scope = { kind: "site", siteId: resolvedSiteId } as const;
+    const result = await db.transaction(async (tx) => {
+      const sourceDb = tx as unknown as ReturnType<typeof getDb>;
+      await observer.prepare({ db: sourceDb, scope });
+      const [installed] = await tx
+        .select({ id: npPlugins.id })
+        .from(npPlugins)
+        .where(eq(npPlugins.id, id))
+        .for("update")
+        .limit(1);
+      if (!installed) return null;
+      const before = await getPluginState(sourceDb, id, resolvedSiteId);
+      if (!before) return null;
+      const previous =
+        before.enabled !== enabled
+          ? {
+              enabled: before.enabled,
+              commitment: await observer.projectState({
+                db: sourceDb,
+                scope,
+                kind: "plugin-activation",
+                targetId: id,
+                readState: () => Promise.resolve({ enabled: before.enabled }),
+              }),
+            }
+          : null;
+      const occurredAt = new Date();
+      await tx
+        .insert(npSitePlugins)
+        .values({ siteId: resolvedSiteId, pluginId: id, enabled, updatedAt: occurredAt })
+        .onConflictDoUpdate({
+          target: [npSitePlugins.siteId, npSitePlugins.pluginId],
+          set: { enabled, updatedAt: occurredAt },
+        });
+      const after = await getPluginState(sourceDb, id, resolvedSiteId);
+      if (!after || after.enabled !== enabled)
+        throw new Error("Plugin activation transition is unavailable");
+      if (previous)
+        await observer.recordPlugin({
+          db: sourceDb,
+          scope,
+          actor,
+          transitionId: randomUUID(),
+          occurredAt,
+          transition: {
+            kind: "plugin-activation",
+            pluginId: id,
+            previous,
+            current: {
+              enabled: after.enabled,
+              commitment: await observer.projectState({
+                db: sourceDb,
+                scope,
+                kind: "plugin-activation",
+                targetId: id,
+                readState: () => Promise.resolve({ enabled: after.enabled }),
+              }),
+            },
+          },
+        });
+      return after;
+    });
+    if (result) invalidatePluginEnabled(id, resolvedSiteId);
+    return result;
+  }
   const installation = await getPluginState(db, id, resolvedSiteId);
   if (!installation) return null;
 

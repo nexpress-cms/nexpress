@@ -30,6 +30,8 @@ export interface NpProxyOptions {
   readonly onRateLimited?: NpProxyRateLimitObserver;
   /** Explicit request enforcement in this proxy's runtime. Absence performs no Guardian work. */
   readonly onGuardianRequest?: NpProxyGuardianRequestGuard;
+  /** Optional observation of this proxy's own final CSRF response; never downstream responses. */
+  readonly onResponse?: NpProxyHttpResponseObserver;
 }
 
 export interface NpProxyGuardianRequestDenialV1 {
@@ -43,6 +45,11 @@ export type NpProxyGuardianRequestGuard = (
 
 export type NpProxyRateLimitObserver = (input: {
   request: NextRequest;
+  routeFamily: NpAgentGuardianRouteFamilyV1;
+}) => void | Promise<void>;
+export type NpProxyHttpResponseObserver = (input: {
+  request: NextRequest;
+  status: 403;
   routeFamily: NpAgentGuardianRouteFamilyV1;
 }) => void | Promise<void>;
 
@@ -173,6 +180,8 @@ const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/views$/,
   /^\/api\/mcp$/,
   /^\/api\/agent\/v1\/invocations$/,
+  // Fixed Sentry callback verifies an HMAC over bounded original bytes; browser cookies are rejected.
+  /^\/api\/agents\/security\/sentry$/,
   /^\/api\/agent-oauth\/(token|revoke)$/,
   /^\/api\/internal\//,
   // plugins/<id>/<segment>/... where <segment> != "actions" — the
@@ -191,6 +200,12 @@ const RATE_LIMITS: Array<{
   windowMs: number;
   family: NpAgentGuardianRouteFamilyV1;
 }> = [
+  {
+    pattern: /^\/api\/agents\/security\/sentry$/,
+    limit: 30,
+    windowMs: 60_000,
+    family: "security-ingress",
+  },
   { pattern: /^\/api\/mcp$/, limit: 120, windowMs: 60_000, family: "mcp" },
   {
     pattern: /^\/api\/agent-oauth\/(authorize|token|revoke)$/,
@@ -325,6 +340,7 @@ async function runProxy(
   rateLimiter?: NpRateLimiterAdapter,
   onRateLimited?: NpProxyRateLimitObserver,
   onGuardianRequest?: NpProxyGuardianRequestGuard,
+  onResponse?: NpProxyHttpResponseObserver,
 ) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
@@ -409,10 +425,32 @@ async function runProxy(
               (memberCookie && memberCookie === headerToken)),
           );
       if (!ok) {
-        return NextResponse.json(npCreateApiError("CSRF_INVALID", "Invalid CSRF token", 403), {
-          status: 403,
-          headers: securityHeaders,
-        });
+        const response = NextResponse.json(
+          npCreateApiError("CSRF_INVALID", "Invalid CSRF token", 403),
+          {
+            status: 403,
+            headers: securityHeaders,
+          },
+        );
+        const routeFamily =
+          RATE_LIMITS.find((rule) => rule.pattern.test(pathname))?.family ??
+          (/^\/api\/members(?:\/|$)/u.test(pathname) ? "member-auth" : null);
+        if (onResponse && routeFamily) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              Promise.resolve(onResponse({ request, status: 403, routeFamily })),
+              new Promise<void>((resolve) => {
+                timer = setTimeout(resolve, 750);
+              }),
+            ]);
+          } catch {
+            // Observation cannot change or retry the completed CSRF decision.
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+        }
+        return response;
       }
     }
   }
@@ -526,23 +564,29 @@ export function npCreateProxy(options: NpProxyOptions): NpProxyHandler {
     (prototype !== Object.prototype && prototype !== null) ||
     !keys.includes("rateLimiter") ||
     keys.some(
-      (key) => key !== "rateLimiter" && key !== "onRateLimited" && key !== "onGuardianRequest",
+      (key) =>
+        key !== "rateLimiter" &&
+        key !== "onRateLimited" &&
+        key !== "onGuardianRequest" &&
+        key !== "onResponse",
     ) ||
     (keys.includes("onRateLimited") && typeof options.onRateLimited !== "function") ||
-    (keys.includes("onGuardianRequest") && typeof options.onGuardianRequest !== "function")
+    (keys.includes("onGuardianRequest") && typeof options.onGuardianRequest !== "function") ||
+    (keys.includes("onResponse") && typeof options.onResponse !== "function")
   ) {
     rateLimitConfigurationError(
       "proxy.options",
-      "must be an exact { rateLimiter } object with optional onRateLimited and onGuardianRequest functions.",
+      "must be an exact { rateLimiter } object with optional onRateLimited, onGuardianRequest and onResponse functions.",
     );
   }
   const rateLimiter = npRequireRateLimiterAdapter(options.rateLimiter);
   const onRateLimited = options.onRateLimited;
+  const onResponse = options.onResponse;
   const onGuardianRequest = options.onGuardianRequest
     ? boundedGuardianGuard(options.onGuardianRequest)
     : undefined;
   resolveProxyRateLimiter(rateLimiter);
-  return (request) => runProxy(request, rateLimiter, onRateLimited, onGuardianRequest);
+  return (request) => runProxy(request, rateLimiter, onRateLimited, onGuardianRequest, onResponse);
 }
 
 export default proxy;

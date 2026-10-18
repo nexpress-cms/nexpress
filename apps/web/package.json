@@ -10,6 +10,7 @@
     "start": "next start",
     "agent:mcp": "tsx scripts/agent-mcp-stdio.ts",
     "agent:runtime": "tsx scripts/agent-runtime.ts",
+    "agent:guardian": "tsx scripts/agent-guardian.ts",
     "agent:evaluate": "tsx scripts/agent-evaluate.ts",
     "typecheck": "tsc --noEmit",
     "lint": "NODE_OPTIONS='--max-old-space-size=6144' eslint . --cache --cache-location node_modules/.cache/eslint --cache-strategy content && pnpm run lint:scripts",

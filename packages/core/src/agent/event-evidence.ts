@@ -1,15 +1,15 @@
+import { digestAgentCanonicalSha256 } from "../agent-contract/canonical-digest.js";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import { npAgentEvents } from "../db/schema/agent.js";
 import {
   npRequireAgentEventCanonical,
-  npDigestAgentEventCanonical,
+  npBuildAgentEventCanonicalBytes,
 } from "../agent-contract/canonical-events.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
 type Event = typeof npAgentEvents.$inferSelect;
-/** One retained Event envelope; no dispatch, source ACL or current-content assertion. */
-export function npAgentEventRowEnvelopeV1(row: Event) {
-  return npRequireAgentEventCanonical({
+export function npAgentEventRowBodyV1(row: Event) {
+  return {
     version: "np.agent-event.v1",
     siteId: row.siteId,
     kind: row.kind,
@@ -22,11 +22,16 @@ export function npAgentEventRowEnvelopeV1(row: Event) {
     deduplicationKey: row.deduplicationKey,
     privacy: row.privacy,
     payload: row.payload,
-  });
+  };
+}
+/** One retained Event envelope; no dispatch, source ACL or current-content assertion. */
+export function npAgentEventRowEnvelopeV1(row: Event) {
+  return npRequireAgentEventCanonical(npAgentEventRowBodyV1(row));
 }
 export async function npReadAgentEventRowEvidenceV1(row: Event) {
-  const event = npAgentEventRowEnvelopeV1(row);
-  if ((await npDigestAgentEventCanonical(event)) !== row.eventHash)
+  const bytes = npBuildAgentEventCanonicalBytes(npAgentEventRowBodyV1(row));
+  const event = bytes.body;
+  if ((await digestAgentCanonicalSha256(bytes.domainSeparatedUtf8)) !== row.eventHash)
     throw new NpAgentGatewayError(
       "INCIDENT_EVIDENCE_UNAVAILABLE",
       409,

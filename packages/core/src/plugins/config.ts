@@ -13,6 +13,15 @@ import { getPluginRegistration } from "./host.js";
 import { introspectThemeSettingsSchema } from "../themes/settings-schema.js";
 import { npAssertSettingValue } from "../settings/contract.js";
 import { settingsDefaultsFromFields } from "../settings/defaults.js";
+import { randomUUID } from "node:crypto";
+import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  npGetGuardianSensitiveObserverV1,
+  npGuardianSensitiveMutationActorV1,
+  type NpGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveActorV1,
+  type NpGuardianSensitiveObservationContextV1,
+} from "../agent/guardian-sensitive-observer.js";
 
 const DEFAULT_SITE = "default";
 const CONFIG_KEY_PREFIX = "plugin.config:";
@@ -197,8 +206,16 @@ export async function setPluginConfig(
   pluginId: string,
   value: unknown,
   updatedBy: string | null = null,
+  observation?: NpGuardianSensitiveObservationContextV1,
 ): Promise<unknown> {
   npAssertAgentPreviewEffectsAllowed();
+  const observer = npGetGuardianSensitiveObserverV1(),
+    actor = observer
+      ? npGuardianSensitiveMutationActorV1(
+          observation ?? (updatedBy ? { actor: { kind: "staff", userId: updatedBy } } : undefined),
+          "plugins.config",
+        )
+      : null;
   const registration = getPluginRegistration(pluginId);
   if (!registration) {
     throw new NpValidationError("Invalid input", [
@@ -218,7 +235,7 @@ export async function setPluginConfig(
         },
       ]);
     }
-    return persistPluginConfigEnvelope(pluginId, value, 1, updatedBy);
+    return persistPluginConfigEnvelope(pluginId, value, 1, updatedBy, observer, actor);
   }
 
   const parsed = schema.safeParse(value);
@@ -234,7 +251,14 @@ export async function setPluginConfig(
 
   const config = requirePluginConfigObject(parsed.data, "value");
 
-  return persistPluginConfigEnvelope(pluginId, config, registration.configVersion ?? 1, updatedBy);
+  return persistPluginConfigEnvelope(
+    pluginId,
+    config,
+    registration.configVersion ?? 1,
+    updatedBy,
+    observer,
+    actor,
+  );
 }
 
 async function persistPluginConfigEnvelope(
@@ -242,6 +266,8 @@ async function persistPluginConfigEnvelope(
   value: unknown,
   version: number,
   updatedBy: string | null,
+  observer: NpGuardianSensitiveObserverV1 | null,
+  actor: NpGuardianSensitiveActorV1 | null,
 ): Promise<unknown> {
   const wrapped: NpVersionedPluginConfig = {
     __npVersion: version,
@@ -251,6 +277,78 @@ async function persistPluginConfigEnvelope(
   const db = getDb();
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
+  if (observer && actor) {
+    const scope = { kind: "site", siteId } as const;
+    await db.transaction(async (tx) => {
+      const sourceDb = tx as unknown as ReturnType<typeof getDb>;
+      await observer.prepare({ db: sourceDb, scope });
+      const [before] = await tx
+        .select({ value: npSettings.value })
+        .from(npSettings)
+        .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, configKey(pluginId))))
+        .for("update")
+        .limit(1);
+      if (before) npAssertSettingValue(configKey(pluginId), before.value);
+      const changed =
+        !before ||
+        serializeAgentCanonicalJson(before.value) !== serializeAgentCanonicalJson(wrapped);
+      const previous =
+        changed && before
+          ? {
+              schemaVersion: (before.value as NpVersionedPluginConfig).__npVersion,
+              commitment: await observer.projectState({
+                db: sourceDb,
+                scope,
+                kind: "plugin-config",
+                targetId: pluginId,
+                readState: () => Promise.resolve(before.value),
+              }),
+            }
+          : null;
+      await tx
+        .insert(npSettings)
+        .values({ siteId, key: configKey(pluginId), value: wrapped, updatedAt: now, updatedBy })
+        .onConflictDoUpdate({
+          target: [npSettings.siteId, npSettings.key],
+          set: { value: wrapped, updatedAt: now, updatedBy },
+        });
+      if (changed) {
+        const [after] = await tx
+          .select({ value: npSettings.value })
+          .from(npSettings)
+          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, configKey(pluginId))))
+          .limit(1);
+        if (
+          !after ||
+          serializeAgentCanonicalJson(after.value) !== serializeAgentCanonicalJson(wrapped)
+        )
+          throw new Error("Plugin configuration transition is unavailable");
+        await observer.recordPlugin({
+          db: sourceDb,
+          scope,
+          actor,
+          transitionId: randomUUID(),
+          occurredAt: now,
+          transition: {
+            kind: "plugin-config",
+            pluginId,
+            previous,
+            current: {
+              schemaVersion: version,
+              commitment: await observer.projectState({
+                db: sourceDb,
+                scope,
+                kind: "plugin-config",
+                targetId: pluginId,
+                readState: () => Promise.resolve(after.value),
+              }),
+            },
+          },
+        });
+      }
+    });
+    return value;
+  }
   await db
     .insert(npSettings)
     .values({

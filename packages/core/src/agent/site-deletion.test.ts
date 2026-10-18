@@ -25,6 +25,7 @@ const expectedTables = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_containments",
+  "np_agent_content_receipts",
   "np_agent_evaluation_reviews",
   "np_agent_evaluation_sources",
   "np_agent_events",
@@ -51,6 +52,7 @@ const expectedTables = [
   "np_agent_provider_calls",
   "np_agent_restriction_enforcements",
   "np_agent_runs",
+  "np_agent_runtime_receipts",
   "np_agent_service_tokens",
   "np_agent_signals",
   "np_agent_source_release_edges",
@@ -81,6 +83,9 @@ describe("Agent site deletion foundation", () => {
     expect(position("np_agent_actor_restrictions")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_containments")).toBeLessThan(position("np_agent_incidents"));
     expect(position("np_agent_containments")).toBeLessThan(position("np_agent_actions"));
+    expect(position("np_agent_runtime_receipts")).toBeLessThan(position("np_agent_runs"));
+    expect(position("np_agent_runtime_receipts")).toBeLessThan(position("np_agent_events"));
+    expect(position("np_agent_content_receipts")).toBeLessThan(position("np_agent_events"));
     expect(position("np_agent_source_release_edges")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_actions")).toBeLessThan(position("np_agent_source_releases"));
     expect(position("np_agent_source_releases")).toBeLessThan(position("np_agent_principals"));

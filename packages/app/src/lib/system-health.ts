@@ -28,6 +28,7 @@ import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
 import {
   npCollectAgentHealthSummaryV1,
+  npCollectAgentGuardianHealthV1,
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
   npCollectAgentWorkerHealthV2,
@@ -40,7 +41,9 @@ import type {
   NpAgentWorkerHealthV1,
   NpAgentWorkerHealthV2,
   NpAgentRuntimeOutcomeV1,
+  NpAgentGuardianHealthV1,
 } from "@nexpress/core/agent-contract";
+import { checkGuardianSignals } from "./guardian-health-check";
 import {
   getCommunityRuntimeDiagnostics,
   npGetCommunityRealtimeOutboxStats,
@@ -77,6 +80,7 @@ export interface HealthSummary {
   agentWorkers: NpAgentWorkerHealthV1 | NpAgentWorkerHealthV2;
   agentQueueBacklog?: NpAgentQueueBacklogV1;
   agentRuntimeOutcomes?: NpAgentRuntimeOutcomeV1;
+  guardian?: NpAgentGuardianHealthV1;
 }
 
 const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
@@ -558,6 +562,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     agentWorkers,
     agentQueueBacklog,
     agentRuntimeOutcomes,
+    guardian,
   ] = await Promise.all([
     npCollectAgentHealthSummaryV1(),
     npCollectAgentMaintenanceHealthV1(),
@@ -565,6 +570,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     npCollectAgentWorkerHealthV2(),
     npCollectAgentQueueBacklogV1(),
     npCollectAgentRuntimeOutcomeV1(),
+    npCollectAgentGuardianHealthV1(),
   ]);
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());
@@ -582,6 +588,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkCommunityRuntime());
   checks.push(checkCollectionRuntime());
   checks.push(checkAgentContract(agents));
+  checks.push(checkGuardianSignals(guardian));
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),
@@ -594,6 +601,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     agentWorkers,
     agentQueueBacklog,
     agentRuntimeOutcomes,
+    guardian,
   };
 }
 

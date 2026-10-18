@@ -6,5 +6,6 @@ export const npAgentEvaluationReportRecipesV1 = [
   "publisher",
   "moderator-assessment",
   "publisher-selection",
+  "guardian",
 ] as const;
 export type NpAgentEvaluationReportRecipeV1 = (typeof npAgentEvaluationReportRecipesV1)[number];

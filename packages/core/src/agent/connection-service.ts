@@ -58,6 +58,12 @@ import {
 } from "./vault-contract.js";
 import type { NpAgentVaultOperationProjectionV1, NpAgentVaultServiceV1 } from "./vault-service.js";
 
+import {
+  npGetGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveActorV1,
+} from "./guardian-sensitive-observer.js";
+
 type NpAgentDb = ReturnType<typeof getDb>;
 type ConnectionRow = typeof npAgentConnections.$inferSelect;
 type ConfigRow = typeof npAgentConnectionConfigVersions.$inferSelect;
@@ -193,6 +199,12 @@ export interface NpAgentConnectionRevokeAdmissionInputV1 {
   expectedConfigVersion: number;
   db: NpAgentDb;
   admittedAt: Date;
+  /** Trusted outer-admission capture, never accepted from a wire command. */
+  guardianObservation?: {
+    observer: NpGuardianSensitiveObserverV1;
+    actor: NpGuardianSensitiveActorV1;
+    invocationId?: string;
+  };
 }
 
 export interface NpAgentConnectionRevokeAdmissionV1 {
@@ -903,6 +915,8 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     probe: Extract<NpAgentProviderProbeResultV1, { status: "ready" }>;
     expectedAccountSubjectDigest?: string | null;
   }): Promise<NpAgentConnectionOperationProjectionV1> {
+    const observer = npGetGuardianSensitiveObserverV1();
+    const scope = { kind: "site" as const, siteId: input.operation.siteId };
     const account = npProjectAgentAccountSubjectV1(
       {
         siteId: input.connection.siteId,
@@ -955,6 +969,7 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     const db = resolveDb();
     const updated = await db.transaction(async (rawTx) => {
       const tx = rawTx as NpAgentDb;
+      if (observer) await observer.prepare({ db: tx, scope });
       const [current] = await tx
         .select()
         .from(npAgentConnections)
@@ -1053,7 +1068,7 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
               : eq(npAgentConnections.status, current.status),
           ),
         )
-        .returning({ id: npAgentConnections.id });
+        .returning();
       if (connections.length !== 1)
         fail("CONNECTION_OPERATION_STALE", "The connection activation CAS was lost.");
       const [operation] = await tx
@@ -1080,6 +1095,42 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
         .returning();
       if (!operation)
         fail("CONNECTION_OPERATION_STALE", "The connection operation completion CAS was lost.");
+      if (observer) {
+        const activatedConnection = connections[0];
+        const project = (row: ConnectionRow) =>
+          observer.projectState({
+            db: tx,
+            scope,
+            kind: "connection-credential",
+            targetId: row.id,
+            readState: () =>
+              Promise.resolve({
+                activeSecretVersionId: row.activeSecretVersionId,
+                credentialVersion: row.credentialVersion,
+              }),
+          });
+        await observer.recordCredential({
+          db: tx,
+          scope,
+          actor: { kind: "system", component: "agent.connection-activation" },
+          occurredAt: finishedAt,
+          invocationId: operation.invocationId,
+          transitionId: randomUuid(),
+          transition: {
+            kind: "connection-credential",
+            connectionId: current.id,
+            operation: "activated",
+            previous: {
+              credentialVersion: current.credentialVersion,
+              commitment: await project(current),
+            },
+            current: {
+              credentialVersion: activatedConnection.credentialVersion,
+              commitment: await project(activatedConnection),
+            },
+          },
+        });
+      }
       return { operation, priorSecretId: current.activeSecretVersionId };
     });
     if (updated.priorSecretId) {
@@ -2625,6 +2676,24 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     if (!(input.admittedAt instanceof Date) || !Number.isFinite(input.admittedAt.getTime())) {
       fail("CONNECTION_TIME_INVALID", "The connection admission timestamp is invalid.");
     }
+    const observer = input.guardianObservation?.observer ?? npGetGuardianSensitiveObserverV1();
+    const scope = { kind: "site" as const, siteId: input.siteId };
+    if (observer) {
+      await observer.prepare({ db: input.db, scope });
+      // Capture the actual selected credential under the same row lock used by
+      // activation. Admission callers prepare before their own authority locks.
+      await input.db
+        .select({ id: npAgentConnections.id })
+        .from(npAgentConnections)
+        .where(
+          and(
+            eq(npAgentConnections.siteId, input.siteId),
+            eq(npAgentConnections.id, input.connectionId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+    }
     const { connection, config } = await loadConnectionConfig(
       input.db,
       input.siteId,
@@ -2683,6 +2752,44 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
       .returning();
     if (!updated) {
       fail("CONNECTION_VERSION_CONFLICT", "The connection changed before revoke.");
+    }
+    if (observer && connection.credentialVersion !== null) {
+      const project = (row: ConnectionRow) =>
+        observer.projectState({
+          db: input.db,
+          scope,
+          kind: "connection-credential",
+          targetId: row.id,
+          readState: () =>
+            Promise.resolve({
+              activeSecretVersionId: row.activeSecretVersionId,
+              credentialVersion: row.credentialVersion,
+            }),
+        });
+      await observer.recordCredential({
+        db: input.db,
+        scope,
+        actor: input.guardianObservation?.actor ?? {
+          kind: "system",
+          component: "agent.connection-revoke",
+        },
+        invocationId: input.guardianObservation?.invocationId,
+        occurredAt: input.admittedAt,
+        transitionId: randomUuid(),
+        transition: {
+          kind: "connection-credential",
+          connectionId: connection.id,
+          operation: "revoked",
+          previous: {
+            credentialVersion: connection.credentialVersion,
+            commitment: await project(connection),
+          },
+          current: {
+            credentialVersion: updated.credentialVersion,
+            commitment: await project(updated),
+          },
+        },
+      });
     }
     let dispatched = false;
     return {

@@ -1,3 +1,4 @@
+import { npAgentRuntimeReceipts } from "../db/schema/guardian-runtime.js";
 import {
   npDigestAgentRestrictionCanonical,
   npRequireAgentRestrictionCanonical,
@@ -12,6 +13,7 @@ import {
   canonicalBodyUuid,
 } from "../agent-contract/canonical-body-validation.js";
 import { npAuditEvents } from "../db/schema/community.js";
+import { npAgentContentReceipts } from "../db/schema/guardian.js";
 import { npRequireNotificationDeliveryAttemptHistoryV1 } from "./notification-delivery-evidence.js";
 import { createHash } from "node:crypto";
 
@@ -94,6 +96,8 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_runtime_receipts",
+  "np_agent_content_receipts",
   "np_agent_actor_restrictions",
   "np_agent_restriction_enforcements",
   "np_agent_evaluation_reviews",
@@ -156,6 +160,16 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_runtime_receipts: {
+    table: npAgentRuntimeReceipts,
+    id: npAgentRuntimeReceipts.id,
+    siteId: npAgentRuntimeReceipts.siteId,
+  },
+  np_agent_content_receipts: {
+    table: npAgentContentReceipts,
+    id: npAgentContentReceipts.id,
+    siteId: npAgentContentReceipts.siteId,
+  },
   np_agent_actor_restrictions: {
     table: npAgentActorRestrictions,
     id: npAgentActorRestrictions.id,

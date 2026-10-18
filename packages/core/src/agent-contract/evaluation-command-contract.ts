@@ -15,7 +15,8 @@ export interface NpAgentEvaluationCommandArgsV1 {
     | "operator-plan.v1"
     | "moderator-proposal.v1"
     | "moderator-proposal.v2"
-    | "moderator-proposal.v3";
+    | "moderator-proposal.v3"
+    | "guardian.v1";
   reviewPath?: string;
   reportPath?: string;
   reviewsPath?: string | null;
@@ -104,7 +105,8 @@ export function npParseAgentEvaluationCommandArgsV1(
     dataset !== "operator-plan.v1" &&
     dataset !== "moderator-proposal.v1" &&
     dataset !== "moderator-proposal.v2" &&
-    dataset !== "moderator-proposal.v3"
+    dataset !== "moderator-proposal.v3" &&
+    dataset !== "guardian.v1"
   )
     invalid();
   const budgetFlags = [
@@ -114,7 +116,10 @@ export function npParseAgentEvaluationCommandArgsV1(
     "--max-cost-micros",
   ];
   if (
-    (dataset === "moderator.v1" || dataset === "moderator.v2" || dataset === "moderator.v3") &&
+    (dataset === "moderator.v1" ||
+      dataset === "moderator.v2" ||
+      dataset === "moderator.v3" ||
+      dataset === "guardian.v1") &&
     (network ||
       fields.has("--model") ||
       fields.has("--confirm-network") ||
@@ -161,7 +166,8 @@ export function npParseAgentEvaluationCommandArgsV1(
       | "operator-plan.v1"
       | "moderator-proposal.v1"
       | "moderator-proposal.v2"
-      | "moderator-proposal.v3",
+      | "moderator-proposal.v3"
+      | "guardian.v1",
     ...(reviewPath ? { reviewPath, reviewsPath: text("--reviews") } : {}),
     ...(reportPath ? { reportPath } : {}),
     maxCalls: budget.maxCalls,

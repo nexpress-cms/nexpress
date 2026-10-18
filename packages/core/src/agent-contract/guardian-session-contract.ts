@@ -11,6 +11,78 @@ import {
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import type { NpAgentJsonObject, NpAgentJsonSchema } from "./types.js";
 
+/** Safe historical observation. Exact principal/session targets remain private. */
+export interface NpAgentGuardianSessionEvidenceV1 {
+  schemaVersion: "np.agent-guardian-session-evidence.v1";
+  signalId: string;
+  detectorId: "guardian.login-after-failures";
+  detectorVersion: 1;
+  audience: "staff" | "member";
+  window: { startedAt: string; endedAt: string };
+  successfulLoginAt: string;
+  precedingFailureCount: 5;
+  countBasis: "at-least";
+  sourceDigest: string;
+}
+export function npRequireAgentGuardianSessionEvidenceV1(
+  value: unknown,
+): NpAgentGuardianSessionEvidenceV1 {
+  const path = "guardian.session.evidence";
+  const keys = [
+    "schemaVersion",
+    "signalId",
+    "detectorId",
+    "detectorVersion",
+    "audience",
+    "window",
+    "successfulLoginAt",
+    "precedingFailureCount",
+    "countBasis",
+    "sourceDigest",
+  ];
+  const state = { seen: new WeakSet<object>() };
+  const row = canonicalBodyRecord(
+    cloneCanonicalRuntimeInput(value, path, 4096),
+    path,
+    keys,
+    keys,
+    state,
+  );
+  const window = canonicalBodyRecord(
+    row.window,
+    path,
+    ["startedAt", "endedAt"],
+    ["startedAt", "endedAt"],
+    state,
+  );
+  const startedAt = canonicalBodyUtc(window.startedAt, path);
+  const endedAt = canonicalBodyUtc(window.endedAt, path);
+  const successfulLoginAt = canonicalBodyUtc(row.successfulLoginAt, path);
+  if (
+    startedAt > endedAt ||
+    successfulLoginAt < startedAt ||
+    successfulLoginAt > endedAt ||
+    Date.parse(endedAt) - Date.parse(startedAt) >= 600_000
+  )
+    failCanonicalBody("invalid-field", path, "invalid login observation window");
+  return {
+    schemaVersion: canonicalBodyEnum(
+      row.schemaVersion,
+      path,
+      new Set(["np.agent-guardian-session-evidence.v1"]),
+    ),
+    signalId: canonicalBodyUuid(row.signalId, path),
+    detectorId: canonicalBodyEnum(row.detectorId, path, new Set(["guardian.login-after-failures"])),
+    detectorVersion: canonicalBodyInteger(row.detectorVersion, path, 1, 1) as 1,
+    audience: canonicalBodyEnum(row.audience, path, new Set(["staff", "member"])),
+    window: { startedAt, endedAt },
+    successfulLoginAt,
+    precedingFailureCount: canonicalBodyInteger(row.precedingFailureCount, path, 5, 5) as 5,
+    countBasis: canonicalBodyEnum(row.countBasis, path, new Set(["at-least"])),
+    sourceDigest: canonicalBodySha256Digest(row.sourceDigest, path),
+  };
+}
+
 export interface NpAgentGuardianSessionPlanInputV1 {
   schemaVersion: "np.agent-guardian-session-plan-input.v1";
   expectedVersion: number;

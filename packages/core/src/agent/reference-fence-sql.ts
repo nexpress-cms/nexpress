@@ -502,6 +502,14 @@ END
 $np$;
 `;
 
+/** Add Guardian's exact source-audit owner without changing any historical migration bytes. */
+export const NP_AGENT_REFERENCE_FENCE_SQL_V6 = NP_AGENT_REFERENCE_FENCE_SQL_V5.replace(
+  "ARRAY['runtime-audit','studio-audit','changeset-audit']",
+  "ARRAY['runtime-audit','studio-audit','changeset-audit','guardian-audit','guardian-closure-audit']",
+);
+if (NP_AGENT_REFERENCE_FENCE_SQL_V6 === NP_AGENT_REFERENCE_FENCE_SQL_V5)
+  throw new Error("Guardian reference owner extension is missing.");
+
 function identifier(value: string): string {
   if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("Invalid reference guard table.");
   return `"${value}"`;
@@ -514,7 +522,7 @@ function literal(value: string): string {
 /** Compare persisted bodies as well as names: CREATE OR REPLACE keeps the OID. */
 function expectedFunctionRows(): string {
   const definitions = [
-    ...NP_AGENT_REFERENCE_FENCE_SQL_V5.matchAll(
+    ...NP_AGENT_REFERENCE_FENCE_SQL_V6.matchAll(
       /CREATE OR REPLACE FUNCTION public\.([a-z0-9_]+)\(\)\nRETURNS (void|trigger)[^$]+\$np\$([\s\S]*?)\$np\$;/gu,
     ),
   ];

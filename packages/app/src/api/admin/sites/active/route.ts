@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, getSiteById } from "@nexpress/core";
 import { canOnSite } from "@nexpress/core/sites";
 import { readJsonBody } from "@nexpress/next";
@@ -26,7 +27,7 @@ import { ensureFor } from "../../../../lib/init-core";
  * doesn't need it; the resolver reads it server-side via the
  * request headers.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     // Site selection must remain available when the current cookie names a
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE clears the cookie (returns to host-based routing).
  */
-export async function DELETE(request: NextRequest) {
+async function npGuardianDELETE(request: NextRequest) {
   try {
     await ensureFor("write");
     await requireGlobalAuth(request);
@@ -101,3 +102,6 @@ export async function DELETE(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

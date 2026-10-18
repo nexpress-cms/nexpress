@@ -1,7 +1,12 @@
+import { npPluginIdPattern } from "../plugins/id-contract.js";
 import {
   NP_AGENT_MAINTENANCE_RECEIPT_KEY,
   npRequireAgentMaintenanceReceiptV1,
 } from "../agent-contract/maintenance-evidence-contract.js";
+import {
+  NP_AGENT_GUARDIAN_CONTROL_SETTING_KEY_V1,
+  npRequireAgentGuardianControlV1,
+} from "../agent-contract/guardian-controls-contract.js";
 import type {
   NpAdminSettingsSnapshot,
   NpCreateSiteInput,
@@ -62,8 +67,7 @@ export const npSettingsContractLimits = {
 } as const;
 
 export const npDynamicSettingOwnerPattern = "^[a-z][a-z0-9-]{0,62}$";
-export const npPluginIdPattern = "^(?:@[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+$";
-export const npPluginIdMaxLength = 128;
+export { npPluginIdPattern, npPluginIdMaxLength } from "../plugins/id-contract.js";
 /** Alias naming the plugin-id rule in its dynamic setting-owner role. */
 export const npPluginSettingOwnerPattern = npPluginIdPattern;
 
@@ -1055,6 +1059,7 @@ export function npAssertSiteQuotaSnapshot(value: unknown): asserts value is NpSi
 }
 
 export function npClassifySettingKey(key: unknown): NpSettingContractKind | null {
+  if (key === NP_AGENT_GUARDIAN_CONTROL_SETTING_KEY_V1) return "guardian-control";
   if (key === NP_AGENT_MAINTENANCE_RECEIPT_KEY) return "agents-maintenance";
   if (key === NP_AGENT_GATEWAY_SETTING_KEY) return "agents-gateway";
   if (key === NP_AGENT_RUNTIME_SETTING_KEY) return "agents-runtime";
@@ -1284,6 +1289,16 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
       : [validation.issue];
   }
   switch (kind) {
+    case "guardian-control": {
+      try {
+        npRequireAgentGuardianControlV1(value);
+        return [];
+      } catch {
+        return [
+          issue("invalid-field", "settings.guardian.control", "invalid Guardian control contract"),
+        ];
+      }
+    }
     case "agents-maintenance": {
       try {
         npRequireAgentMaintenanceReceiptV1(value);

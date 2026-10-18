@@ -61,6 +61,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/_load-env.ts": utf8(appScriptTemplate("_load-env")),
     "scripts/agent-mcp-stdio.ts": utf8(agentMcpStdioScriptTemplate()),
     "scripts/agent-runtime.ts": utf8(agentRuntimeScriptTemplate()),
+    "scripts/agent-guardian.ts": utf8(agentGuardianScriptTemplate()),
     "scripts/agent-evaluate.ts": utf8(agentEvaluateScriptTemplate()),
     "scripts/build.ts": utf8(appScriptTemplate("build")),
     "scripts/deploy-plan.ts": utf8(appScriptTemplate("deploy-plan")),
@@ -156,6 +157,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       scripts: {
         "agent:mcp": "tsx scripts/agent-mcp-stdio.ts",
         "agent:runtime": "tsx scripts/agent-runtime.ts",
+        "agent:guardian": "tsx scripts/agent-guardian.ts",
         "agent:evaluate": "tsx scripts/agent-evaluate.ts",
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
@@ -524,6 +526,15 @@ function agentRuntimeScriptTemplate(): string {
     `import { runAgentRuntimeProcessV1 } from "@nexpress/app/scripts/agent-runtime";\n` +
     `import { ensureFor, shutdownBootstrap } from "../src/lib/bootstrap.js";\n\n` +
     `process.exitCode = await runAgentRuntimeProcessV1({ ensureFor, shutdown: shutdownBootstrap });\n`
+  );
+}
+
+function agentGuardianScriptTemplate(): string {
+  return (
+    `import "./_load-env.js";\n` +
+    `import { runAgentGuardianProcessV1 } from "@nexpress/app/scripts/agent-guardian";\n` +
+    `import { ensureFor, shutdownBootstrap } from "../src/lib/bootstrap.js";\n\n` +
+    `process.exitCode = await runAgentGuardianProcessV1({ ensureFor, shutdown: shutdownBootstrap });\n`
   );
 }
 

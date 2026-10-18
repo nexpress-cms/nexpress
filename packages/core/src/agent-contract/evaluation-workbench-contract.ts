@@ -180,7 +180,9 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
         : allowedOutcomes.length > 0) ||
       (selectedRecipe === "moderator"
         ? allowedOutcomes.some((v) => v !== "confirmed-spam" && v !== "false-positive")
-        : allowedOutcomes.some((v) => v === "confirmed-spam" || v === "false-positive"))
+        : allowedOutcomes.some((v) => v === "confirmed-spam" || v === "false-positive")) ||
+      (selectedRecipe === "guardian" &&
+        allowedOutcomes.some((v) => v !== "accept" && v !== "reject"))
     )
       fail();
     const labelJson = c.labelJson === null ? null : json(c.labelJson);
@@ -211,6 +213,7 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
       )
         fail();
       if (!text(l.reviewer, 128, 1).trim()) fail();
+      if (selectedRecipe === "guardian" && l.editedProposal !== null) fail();
       text(l.notes, 2000);
       canonicalBodyUtc(l.reviewedAt, path);
     }
@@ -252,6 +255,7 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
       publisher: ["np.agent-eval-review.v1"],
       "moderator-assessment": ["np.agent-profile-eval-review.v1"],
       "publisher-selection": ["np.agent-profile-eval-review.v1"],
+      guardian: ["np.agent-guardian-eval-review.v1"],
     };
     if (
       typeof artifact !== "object" ||

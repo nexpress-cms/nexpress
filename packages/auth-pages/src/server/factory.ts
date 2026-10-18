@@ -43,6 +43,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import type { MemberAuthRoutes, MemberAuthRoutesConfig, MemberAuthRoutesOptions } from "./types.js";
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
+import { npWithAuthResponseObserver } from "./response-observer.js";
 
 /**
  * Drizzle-shaped database surface this factory calls. The real
@@ -768,18 +769,18 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   };
 
   return {
-    login,
-    register,
-    logout,
-    refresh,
-    verifyEmail,
-    forgotPassword,
-    resetPassword,
-    oauthStart,
-    oauthCallback,
-    meGet,
-    mePatch,
-    meDelete,
+    login: npWithAuthResponseObserver(login, "member", config.onResponse),
+    register: npWithAuthResponseObserver(register, "member", config.onResponse),
+    logout: npWithAuthResponseObserver(logout, "member", config.onResponse),
+    refresh: npWithAuthResponseObserver(refresh, "member", config.onResponse),
+    verifyEmail: npWithAuthResponseObserver(verifyEmail, "member", config.onResponse),
+    forgotPassword: npWithAuthResponseObserver(forgotPassword, "member", config.onResponse),
+    resetPassword: npWithAuthResponseObserver(resetPassword, "member", config.onResponse),
+    oauthStart: npWithAuthResponseObserver(oauthStart, "member", config.onResponse),
+    oauthCallback: npWithAuthResponseObserver(oauthCallback, "member", config.onResponse),
+    meGet: npWithAuthResponseObserver(meGet, "member", config.onResponse),
+    mePatch: npWithAuthResponseObserver(mePatch, "member", config.onResponse),
+    meDelete: npWithAuthResponseObserver(meDelete, "member", config.onResponse),
   };
 }
 

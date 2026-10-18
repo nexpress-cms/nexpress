@@ -1,3 +1,5 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import type { NpAgentGuardianIncidentAssessmentServiceV1 } from "./guardian-incident-assessment-service.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import {
   canonicalBodyRecord,
@@ -35,6 +37,11 @@ import {
   npRequireAgentRuntimeProviderDecisionV1,
   npRequireAgentRuntimeProviderFailureV1,
 } from "./runtime-provider-evidence.js";
+import {
+  npCreateAgentRuntimeTerminalObservationV1,
+  npReadAgentRuntimeScopeDeniedV1,
+  type NpAgentGuardianRuntimeTerminalObservationV1,
+} from "./guardian-runtime-observer.js";
 
 type Identity = { siteId: string; runId: string };
 type Call = typeof npAgentProviderCalls.$inferSelect;
@@ -48,6 +55,7 @@ export interface NpAgentRuntimeExecutorOptionsV1 {
   capabilities: NpAgentCapabilityAdmissionServiceV1;
   breakers: NpAgentRuntimeBreakersV1;
   incidentAssessments?: NpAgentIncidentAssessmentServiceV1;
+  guardianIncidentAssessments?: NpAgentGuardianIncidentAssessmentServiceV1;
   now?: () => Date;
 }
 function fail(code: string): never {
@@ -142,9 +150,12 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
     signal: AbortSignal,
   ) {
     let claim = initialClaim;
+    let observation: NpAgentGuardianRuntimeTerminalObservationV1 | undefined;
+    let proposedCall: Call | undefined;
     // The canonical Run maximum is authoritative; this separate loop bound also contains corrupted journals.
     try {
       for (let step = 0; step < 1000; step++) {
+        proposedCall = undefined;
         if (closed || signal.aborted) return options.store.cancel(identity);
         claim = await options.store.renew({ ...identity, claim });
         const claimed = { ...identity, claim };
@@ -179,6 +190,7 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
             calls,
             limits: context.limits,
             assessment: npIsAgentModeratorAssessmentProfileV1(recipe),
+            guardianAssessment: npIsAgentGuardianAssessmentRecipeV1(recipe),
           };
         });
         // Retained approval requests never authorize another provider turn by themselves.
@@ -218,6 +230,12 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
             output.decision.kind === "classification"
           )
             continue;
+          if (
+            history.guardianAssessment &&
+            output.task === "guardian-assessment" &&
+            output.decision.kind === "assessment"
+          )
+            continue;
           if (output.task !== "interactive-capability")
             fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
           if (output.decision.kind === "request-evidence") {
@@ -241,6 +259,17 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
             );
             if (recorded.complete !== false)
               return options.store.transition({ ...claimed, state: "succeeded" });
+          } else if (
+            history.guardianAssessment &&
+            output.task === "guardian-assessment" &&
+            output.decision.kind === "assessment"
+          ) {
+            const assessments = options.guardianIncidentAssessments;
+            if (!assessments) fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+            await options.store.withClaim(claimed, (context) =>
+              assessments.record(context, { providerCallId: latest.id }),
+            );
+            return options.store.transition({ ...claimed, state: "succeeded" });
           } else {
             if (output.task !== "interactive-capability")
               fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
@@ -248,6 +277,7 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
             if (decision.kind === "complete")
               return options.store.transition({ ...claimed, state: "succeeded" });
             if (decision.kind === "propose-capability") {
+              proposedCall = latest;
               const proposal = serializeAgentCanonicalJson({
                 capabilityId: decision.capabilityId,
                 arguments: decision.arguments,
@@ -262,8 +292,28 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
                     capabilityId: previous.decision.capabilityId,
                     arguments: previous.decision.arguments,
                   }) === proposal
-                )
+                ) {
+                  if (!prior.responseDigest || !latest.responseDigest)
+                    fail("RUNTIME_PROVIDER_EVIDENCE_INVALID");
+                  observation = npCreateAgentRuntimeTerminalObservationV1({
+                    kind: "proposal-repeated",
+                    capabilityId: decision.capabilityId,
+                    proposalDigest: `cj1:sha256:${createHash("sha256").update(proposal).digest("base64url")}`,
+                    responses: [
+                      {
+                        providerCallId: prior.id,
+                        sequence: prior.sequence,
+                        responseDigest: prior.responseDigest,
+                      },
+                      {
+                        providerCallId: latest.id,
+                        sequence: latest.sequence,
+                        responseDigest: latest.responseDigest,
+                      },
+                    ],
+                  });
                   fail("RUNTIME_REPEATED_PROPOSAL");
+                }
               }
               const request = npRequireAgentInstalledCapabilityInvocationRequestV1({
                 schemaVersion: "np.agent-invocation-request.v1",
@@ -380,6 +430,8 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
           );
           if (npIsAgentModeratorAssessmentProfileV1(recipe) && !options.incidentAssessments)
             fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+          if (npIsAgentGuardianAssessmentRecipeV1(recipe) && !options.guardianIncidentAssessments)
+            fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
           return Promise.resolve();
         });
         const sequence = (latest?.sequence ?? 0) + 1;
@@ -454,6 +506,17 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
       }
       fail("RUNTIME_STEP_LIMIT");
     } catch (error) {
+      const denied = npReadAgentRuntimeScopeDeniedV1(error);
+      if (denied && proposedCall?.responseDigest)
+        observation = npCreateAgentRuntimeTerminalObservationV1({
+          kind: "scope-denied",
+          ...denied,
+          response: {
+            providerCallId: proposedCall.id,
+            sequence: proposedCall.sequence,
+            responseDigest: proposedCall.responseDigest,
+          },
+        });
       const code = error instanceof NpAgentGatewayError ? error.code : "RUNTIME_EXECUTION_FAILED";
       const state = /BUDGET|CALL_LIMIT|EVIDENCE_LIMIT/.test(code)
         ? "budget_blocked"
@@ -461,7 +524,10 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
           ? "policy_blocked"
           : "failed";
       try {
-        return await options.store.transition({ ...identity, claim, state, errorCode: code });
+        return await options.store.transition(
+          { ...identity, claim, state, errorCode: code },
+          observation,
+        );
       } catch {
         throw new NpAgentGatewayError(code, 409, "Agent runtime execution is unavailable.");
       }

@@ -87,7 +87,7 @@ describe("explicit Runtime job registration", () => {
       await expect(f.handlers.getJobHandler("agent:notificationSend")!(payload)).rejects.toThrow();
     expect(send).toHaveBeenCalledTimes(1);
   });
-  it("reconciles only an installed Guardian owner for each persisted fanout site while Runtime is disabled", async () => {
+  it("reconciles only installed Guardian owners for each persisted fanout site while Runtime is disabled", async () => {
     vi.resetModules();
     const schema = await import("../db/schema/system.js");
     const { npCreateDisabledAgentRuntimeSettingsV1 } =
@@ -133,11 +133,40 @@ describe("explicit Runtime job registration", () => {
         seen.push(await local.context.getCurrentSiteId());
         return { checked: 0, resolved: 0 };
       });
+      const contentSites: Array<string | null> = [];
+      const collect = vi.fn(async (_input: { siteId: string; limit?: number }) => {
+        contentSites.push(await local.context.getCurrentSiteId());
+        return {
+          state: "collecting" as const,
+          processed: 0,
+          emitted: 0,
+          blocked: 0,
+          sampled: 0,
+          backlog: 0,
+          held: 0,
+        };
+      });
+      const runtimeSites: Array<string | null> = [];
+      const runtimeCollect = vi.fn(async (_input: { siteId: string; limit?: number }) => {
+        runtimeSites.push(await local.context.getCurrentSiteId());
+        return {
+          state: "collecting" as const,
+          processed: 0,
+          emitted: 0,
+          blocked: 0,
+          sampled: 0,
+          held: 0,
+          backlog: 0,
+        };
+      });
       const installed = local.createAgentRuntimeJobsV1({
         ...local.options,
         guardianRestrictions: { reconcile },
+        guardianContent: { collect },
+        guardianRuntime: { collect: runtimeCollect },
       });
       expect(reconcile).not.toHaveBeenCalled();
+      expect(collect).not.toHaveBeenCalled();
       await local.context.withCurrentSite("site-a", async () => {
         await installed.reconcile();
         expect(await local.context.getCurrentSiteId()).toBe("site-a");
@@ -148,8 +177,20 @@ describe("explicit Runtime job registration", () => {
         { siteId: "site-c", limit: 25 },
       ]);
       expect(seen).toEqual(["site-b", "site-c"]);
+      expect(collect.mock.calls.map(([input]) => input)).toEqual([
+        { siteId: "site-b", limit: 25 },
+        { siteId: "site-c", limit: 25 },
+      ]);
+      expect(contentSites).toEqual(["site-b", "site-c"]);
+      expect(runtimeSites).toEqual(["site-b", "site-c"]);
+      expect(runtimeCollect.mock.calls.map(([input]) => input)).toEqual([
+        { siteId: "site-b", limit: 25 },
+        { siteId: "site-c", limit: 25 },
+      ]);
       await local.createAgentRuntimeJobsV1(local.options).reconcile();
       expect(reconcile).toHaveBeenCalledTimes(2);
+      expect(collect).toHaveBeenCalledTimes(2);
+      expect(runtimeCollect).toHaveBeenCalledTimes(2);
       expect(local.dispatch).not.toHaveBeenCalled();
       expect(local.process).not.toHaveBeenCalled();
     } finally {

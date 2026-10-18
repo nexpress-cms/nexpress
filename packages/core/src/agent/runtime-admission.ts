@@ -1,3 +1,5 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import { npRequireAgentGuardianAssessmentRetryV1 } from "./guardian-assessment-context.js";
 import {
   npRequireAgentRuntimeManualInputV1,
   npDigestAgentRuntimeManualInputV1,
@@ -567,7 +569,11 @@ export function createAgentRuntimeAdmissionV1(
       )) !== run.recipeFingerprint
     )
       fail("RUNTIME_ADMISSION_INVALID");
-    if (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe))
+    if (
+      recipe.task !== "interactive-capability" &&
+      !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+      !npIsAgentGuardianAssessmentRecipeV1(recipe)
+    )
       fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
     if (run.manualInput != null) {
       const validated = npRequireAgentRuntimeManualInputV1(recipe, run.manualInput);
@@ -658,9 +664,10 @@ export function createAgentRuntimeAdmissionV1(
       );
       return service.withRunAuthority(
         { siteId: input.siteId, runId: input.failedRunId, db: input.db, allowTerminal: true },
-        async ({ run, db }) => {
+        async ({ run, db, evidence }) => {
           if (run.state !== "failed" || !run.finishedAt || !run.agentId || !run.agentVersionId)
             fail("RUNTIME_RETRY_CONFLICT");
+          await npRequireAgentGuardianAssessmentRetryV1({ db, run, evidence });
           const eventRef = run.eventRef;
           const source = run.triggerId
             ? {
@@ -1127,7 +1134,8 @@ export function createAgentRuntimeAdmissionV1(
           fail("RUNTIME_RECIPE_UNAVAILABLE");
         if (
           recipe.task !== "interactive-capability" &&
-          !npIsAgentModeratorAssessmentProfileV1(recipe)
+          !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+          !npIsAgentGuardianAssessmentRecipeV1(recipe)
         )
           fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
         const provider =

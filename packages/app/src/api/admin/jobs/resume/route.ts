@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { can, NpForbiddenError, getOptionalJobQueue, setJobsPauseState } from "@nexpress/core";
 import { npRequireResumeJobsWire } from "@nexpress/core/jobs-contract";
 import { readJsonBody } from "@nexpress/next";
@@ -19,7 +20,7 @@ import {
  * claiming again. Idempotent — calling resume on a
  * not-paused queue is a no-op.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -54,3 +55,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

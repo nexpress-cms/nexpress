@@ -18,6 +18,7 @@ import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
 import type { NpAgentIncidentObservationResultV1 } from "./incident-write-service.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
+import { npAgentIncidentSeverityOrderV1 } from "../agent-contract/incident-severity-contract.js";
 type Db = ReturnType<typeof getDb>;
 type Signal = typeof npAgentSignals.$inferSelect;
 export interface NpIncidentObservationCandidate {
@@ -154,6 +155,17 @@ export async function npObserveIncidentCandidate(input: {
     }
     if (!incident) fail();
     const suppressed = incident.signalCount >= 100;
+    const currentSeverityRank = npAgentIncidentSeverityOrderV1.findIndex(
+      (value) => value === incident.severity,
+    );
+    if (currentSeverityRank < 0) fail();
+    const escalated =
+      !created &&
+      !suppressed &&
+      candidate.confidenceBasis === "exact-rule" &&
+      candidate.scoreBasisPoints === null &&
+      npAgentIncidentSeverityOrderV1.indexOf(candidate.severity) > currentSeverityRank;
+    const severity = escalated ? candidate.severity : incident.severity;
     const [signal] = await db
       .insert(npAgentSignals)
       .values({
@@ -215,6 +227,7 @@ export async function npObserveIncidentCandidate(input: {
       .set({
         signalCount: incident.signalCount + (suppressed ? 0 : 1),
         eventCount: Math.max(incident.eventCount, eventCount),
+        severity,
         versionNumber,
         firstObservedAt: new Date(
           Math.min(incident.firstObservedAt.getTime(), Date.parse(canonical.window.startedAt)),
@@ -243,28 +256,40 @@ export async function npObserveIncidentCandidate(input: {
         sourceKind: "system",
         sourceFingerprint: candidate.evidenceDigest,
         signalId: signal.id,
-        summary: suppressed
-          ? "Additional matching signal retained beyond the incident detail limit."
-          : candidate.summary,
+        summary: escalated
+          ? "Incident severity increased by a verified deterministic source rule."
+          : suppressed
+            ? "Additional matching signal retained beyond the incident detail limit."
+            : candidate.summary,
         details: {
-          schemaVersion: "np.agent-incident-signal-entry.v1",
+          schemaVersion: escalated
+            ? "np.agent-incident-rule-severity-entry.v1"
+            : "np.agent-incident-signal-entry.v1",
           transitionVersion: versionNumber,
-          severity: incident.severity,
+          severity,
           detectorId: canonical.detectorId,
           detectorVersion: canonical.detectorVersion,
           evidenceDigest: candidate.evidenceDigest,
           disposition: suppressed ? "suppressed" : created ? "created" : "correlated",
+          ...(escalated
+            ? {
+                status: incident.status,
+                fromSeverity: incident.severity,
+                toSeverity: severity,
+                signalId: signal.id,
+              }
+            : {}),
         },
         createdAt: time,
       })
       .returning({ id: npAgentIncidentTimeline.id });
-    if (created && notificationEntry && input.notifications)
+    if ((created || escalated) && notificationEntry && input.notifications)
       await input.notifications.record({
         db,
         siteId: canonical.siteId,
         incidentId: incident.id,
         transitionVersion: versionNumber,
-        transition: "opened",
+        transition: created ? "opened" : "escalated",
         timelineId: notificationEntry.id,
       });
     return {

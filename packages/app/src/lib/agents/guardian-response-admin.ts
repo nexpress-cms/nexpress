@@ -86,6 +86,11 @@ export async function handleAgentGuardianResponseAdminRequest(
       throw new Error("Guardian response acknowledgement is unbound.");
     return npSuccessResponse(acknowledgement, { headers });
   } catch (error) {
-    return agentStudioErrorResponse(error, operation === "get" ? "read" : "mutation", { headers });
+    return agentStudioErrorResponse(
+      error,
+      operation === "get" ? "read" : "mutation",
+      { headers },
+      request,
+    );
   }
 }

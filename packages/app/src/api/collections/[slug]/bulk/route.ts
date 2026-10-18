@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NpValidationError,
   deleteDocument,
@@ -54,7 +55,7 @@ function validateBody(raw: unknown): BulkBody {
   return { action: body.action as BulkAction, ids: body.ids as string[] };
 }
 
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -111,3 +112,5 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("collections", npGuardianPOST);

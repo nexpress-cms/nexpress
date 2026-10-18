@@ -22,6 +22,7 @@ import {
   npObserveInstalledAgentGuardianLoginFailureV1,
   npObserveInstalledAgentGuardianLoginSuccessV1,
 } from "./agents/guardian-request-observer";
+import { npObserveInstalledAgentGuardianHttpResponseV1 } from "./agents/guardian-http-observer";
 
 /**
  * Bootstrapped member-auth route handlers. Each
@@ -39,6 +40,8 @@ export const memberAuthRoutes = createMemberAuthRoutes({
   ensureFor,
   onLoginFailure: npObserveInstalledAgentGuardianLoginFailureV1,
   onLoginSuccess: npObserveInstalledAgentGuardianLoginSuccessV1,
+  onResponse: ({ request, status }) =>
+    npObserveInstalledAgentGuardianHttpResponseV1({ request, status, routeFamily: "member-auth" }),
   authHelpers: {
     setMemberAuthCookies,
     clearMemberAuthCookies,
@@ -68,6 +71,8 @@ export const staffAuthRoutes = createStaffAuthRoutes({
   ensureFor,
   onLoginFailure: npObserveInstalledAgentGuardianLoginFailureV1,
   onLoginSuccess: npObserveInstalledAgentGuardianLoginSuccessV1,
+  onResponse: ({ request, status }) =>
+    npObserveInstalledAgentGuardianHttpResponseV1({ request, status, routeFamily: "staff-auth" }),
   authHelpers: {
     setAuthCookies,
     clearAuthCookies,

@@ -18,9 +18,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
-    return agentStudioErrorResponse(error, "read", {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return agentStudioErrorResponse(
+      error,
+      "read",
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+      request,
+    );
   }
 }
 

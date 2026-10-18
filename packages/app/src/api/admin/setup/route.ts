@@ -1,4 +1,8 @@
 import {
+  npWithAgentGuardianHttpOptionalRequestV1,
+  npWithAgentGuardianHttpResponseV1,
+} from "../../../lib/agents/guardian-http-observer";
+import {
   NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpValidationError,
@@ -137,7 +141,7 @@ async function adminCount(): Promise<number> {
   return rows[0]?.value ?? 0;
 }
 
-export async function GET(): Promise<Response> {
+async function npGuardianGET(): Promise<Response> {
   // Surface the gate to the wizard's server component so it can
   // redirect away when an admin already exists.
   try {
@@ -149,7 +153,7 @@ export async function GET(): Promise<Response> {
   }
 }
 
-export async function POST(request: NextRequest): Promise<Response> {
+async function npGuardianPOST(request: NextRequest): Promise<Response> {
   try {
     await ensureFor("write");
     const body = validateBody(await readJsonBody(request));
@@ -367,3 +371,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpOptionalRequestV1("admin", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpNotFoundError, NpValidationError } from "@nexpress/core";
 import { runHook } from "@nexpress/core/bootstrap";
 import { withMemberWrite } from "@nexpress/core/community";
@@ -16,7 +17,7 @@ import { requireMember } from "../../../../lib/member-auth-helpers";
 
 const maxMultipartRequestBytes = npMediaAttachmentLimits.maxFileSizeBytes + 64 * 1024;
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -132,3 +133,5 @@ async function readExactAttachmentFormData(request: NextRequest): Promise<FormDa
   }
   return formData;
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("community", npGuardianPOST);

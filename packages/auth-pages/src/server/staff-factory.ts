@@ -36,6 +36,7 @@ import type {
   StaffAuthRoutesOptions,
 } from "./staff-types.js";
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
+import { npWithAuthResponseObserver } from "./response-observer.js";
 
 const STATE_COOKIE = "np-oauth-state";
 const DEFAULTS = {
@@ -586,15 +587,15 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   };
 
   return {
-    login,
-    logout,
-    refresh,
-    forgotPassword,
-    resetPassword,
-    changePassword,
-    oauthStart,
-    oauthCallback,
-    meGet,
+    login: npWithAuthResponseObserver(login, "staff", config.onResponse),
+    logout: npWithAuthResponseObserver(logout, "staff", config.onResponse),
+    refresh: npWithAuthResponseObserver(refresh, "staff", config.onResponse),
+    forgotPassword: npWithAuthResponseObserver(forgotPassword, "staff", config.onResponse),
+    resetPassword: npWithAuthResponseObserver(resetPassword, "staff", config.onResponse),
+    changePassword: npWithAuthResponseObserver(changePassword, "staff", config.onResponse),
+    oauthStart: npWithAuthResponseObserver(oauthStart, "staff", config.onResponse),
+    oauthCallback: npWithAuthResponseObserver(oauthCallback, "staff", config.onResponse),
+    meGet: npWithAuthResponseObserver(meGet, "staff", config.onResponse),
   };
 }
 

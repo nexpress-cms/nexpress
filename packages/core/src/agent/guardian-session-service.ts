@@ -1,3 +1,7 @@
+import {
+  npRequireAgentGuardianNewResponseV1,
+  npAgentGuardianResponsePolicyDigestV1,
+} from "./guardian-capture-admission.js";
 import { npReadAgentEventRowsV1, npReadAgentEventRowEvidenceV1 } from "./event-evidence.js";
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -591,7 +595,8 @@ export function createAgentGuardianSessionServiceV1(
       !same(facts.target, input.target) ||
       !same(facts.family, input.family) ||
       facts.sourceDigest !== input.sourceDigest ||
-      facts.policy.policyDigest !== input.policyDigest ||
+      (await npAgentGuardianResponsePolicyDigestV1(db, row.siteId, facts.policy.policyDigest)) !==
+        input.policyDigest ||
       Date.parse(statement.expiresAt) >
         Date.parse(statement.createdAt) + facts.policy.approvalLifetimeSeconds * 1000
     )
@@ -1008,6 +1013,8 @@ export function createAgentGuardianSessionServiceV1(
           invocationId,
           now: time,
         }): Promise<{ resourceId: string; output: NpAgentJsonObject }> => {
+          // Replayed terminal outcomes remain readable; only new effects are gated.
+          await npRequireAgentGuardianNewResponseV1(db, input.siteId);
           if (
             admitted.expectedVersion !== facts.incident.versionNumber ||
             !facts.policy ||
@@ -1032,7 +1039,11 @@ export function createAgentGuardianSessionServiceV1(
               family: facts.family,
               target: facts.target,
               sourceDigest: facts.sourceDigest,
-              policyDigest: facts.policy.policyDigest,
+              policyDigest: await npAgentGuardianResponsePolicyDigestV1(
+                db,
+                input.siteId,
+                facts.policy.policyDigest,
+              ),
             };
             const body = actionBody(
                 { id, siteId: input.siteId, invocationFingerprint: invoked.requestHash },
@@ -1091,7 +1102,7 @@ export function createAgentGuardianSessionServiceV1(
                 requiredScopes: ["security:execute"],
                 requiredHumanCapabilities: ["admin.manage"],
                 requiredHumanPredicates: ["is-super-admin"],
-                policyHashes: [facts.policy.policyDigest],
+                policyHashes: [canonical.policyDigest],
                 requiresLivePreview: false,
                 previewId: null,
                 previewDigest: null,
@@ -1164,6 +1175,7 @@ export function createAgentGuardianSessionServiceV1(
           )
             fail();
           await approverVisible(db, action.row, checked.entry);
+          await npRequireAgentGuardianNewResponseV1(db, input.siteId);
           if (
             !(await npRevokeGuardianSessionFamilyV1(
               db,
@@ -1374,6 +1386,13 @@ export function createAgentGuardianSessionServiceV1(
           facts.live !== current.live
         )
           fail();
+        let captureEnabled = false;
+        try {
+          captureEnabled =
+            (await npRequireAgentGuardianNewResponseV1(db, input.siteId)).state !== "disabled";
+        } catch {
+          /* Missing or disabled new-effect admission preserves historical reads. */
+        }
         return npRequireAgentGuardianSessionV1({
           schemaVersion: "np.agent-guardian-session.v1",
           incidentId: input.incidentId,
@@ -1381,6 +1400,7 @@ export function createAgentGuardianSessionServiceV1(
           targetVersionDigest: facts.targetVersionDigest,
           target: facts.target,
           canPlan:
+            captureEnabled &&
             !!facts.policy &&
             facts.live &&
             !["resolved", "dismissed"].includes(facts.incident.status),

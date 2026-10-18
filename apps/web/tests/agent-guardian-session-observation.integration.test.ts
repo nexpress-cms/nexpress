@@ -15,6 +15,7 @@ import {
   npReadGuardianSessionIncidentEvidenceV1,
 } from "../../../packages/core/src/agent/guardian-session-observation.js";
 import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
+import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
 import { fixture, siteId } from "./agent-changeset-fixture.js";
 import {
   closeTestDb,
@@ -156,6 +157,25 @@ describe.skipIf(skipIfNoTestDb())("Guardian trusted session observation", () => 
         createdAt: f.session.createdAt.toISOString(),
         sourceDigest: expect.stringMatching(/^cj1:sha256:/u),
       });
+      const studio = createAgentIncidentStudioServiceV1({
+        reads: f.reads,
+        cursorHmacKey: new Uint8Array(32).fill(64),
+        now: f.now,
+      });
+      const detail = await studio.get({ siteId, actor: f.actor.actor, incidentId: incident.id });
+      expect(detail.guardianSessionEvidence).toEqual([
+        expect.objectContaining({
+          detectorId: "guardian.login-after-failures",
+          audience,
+          precedingFailureCount: 5,
+          successfulLoginAt: f.session.createdAt.toISOString(),
+          sourceDigest: proof.sourceDigest,
+        }),
+      ]);
+      expect(JSON.stringify(detail.guardianSessionEvidence)).not.toMatch(
+        /principalId|sessionFamilyId|accessToken|refreshToken/u,
+      );
+      expect(JSON.stringify(detail.guardianSessionEvidence)).not.toContain(f.principalId);
       const events = await f.db.select().from(npAgentEvents);
       expect(events).toHaveLength(6);
       expect(JSON.stringify(events)).not.toMatch(

@@ -4,6 +4,18 @@ import {
   npCompareAgentProfileEvaluationReviewArtifactsV1,
   type NpAgentProfileEvaluationReviewArtifactV1,
 } from "@nexpress/core/agent-contract";
+import {
+  npRequireAgentGuardianEvaluationArtifactV1,
+  npCompareAgentGuardianEvaluationArtifactsV1,
+  npFormatAgentGuardianEvaluationArtifactV1,
+  npBuildAgentGuardianEvaluationReviewArtifactV1,
+  npRequireAgentGuardianEvaluationReviewArtifactV1,
+  npCompareAgentGuardianEvaluationReviewArtifactsV1,
+  type NpAgentGuardianEvaluationArtifactV1,
+  type NpAgentGuardianEvaluationReviewArtifactV1,
+  type NpAgentGuardianEvaluationReviewComparisonV1,
+} from "@nexpress/core/agent-contract";
+import { runAgentGuardianEvaluationV1 } from "@nexpress/core/agents";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, rename, unlink, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -73,6 +85,7 @@ export const AGENT_EVALUATE_HELP = `NexPress Agent evaluation
 pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v2 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v3 --out <artifact> --json
+pnpm agent:evaluate --dataset guardian.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v3 --out <artifact> --json
@@ -103,6 +116,9 @@ Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
 No application bootstrap, credentials, workers or tools are loaded by this command.
+guardian.v1 is a local synthetic reference baseline, not production rule replay or model evaluation.
+Its intent controls do not establish production precision, current authority, approval binding, throughput or enablement.
+Guardian reviews record supported/unsupported synthetic predictions only; they cannot edit authority or actions.
 `;
 
 const maximumArtifactBytes = npAgentEvaluationArtifactMaxBytesV1;
@@ -188,6 +204,7 @@ export async function runAgentEvaluateProcessV1(
     }
     if (input.reviewPath) return runReview(input, output);
     if (input.reportPath) return runReport(input, output);
+    if (input.dataset === "guardian.v1") return runGuardian(input, output);
     if (
       input.dataset === "moderator.v1" ||
       input.dataset === "moderator.v2" ||
@@ -321,6 +338,13 @@ async function runReview(
       source &&
       typeof source === "object" &&
       "schemaVersion" in source &&
+      source.schemaVersion === "np.agent-guardian-eval.v1"
+    )
+      return runGuardian(input, output, source);
+    if (
+      source &&
+      typeof source === "object" &&
+      "schemaVersion" in source &&
       (source.schemaVersion === "np.agent-moderator-eval.v1" ||
         source.schemaVersion === "np.agent-moderator-eval.v2" ||
         source.schemaVersion === "np.agent-moderator-eval.v3")
@@ -377,6 +401,76 @@ async function runReview(
     : `Offline Agent evaluation review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort; use --json for rates and unmatched cases." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
   output.write(`${input.json ? JSON.stringify(result) : text}\n`);
   return errorCode ? 1 : 0;
+}
+
+async function runGuardian(
+  input: NpAgentEvaluateCliInputV1,
+  output: Pick<Writable, "write">,
+  reviewSource?: unknown,
+): Promise<number> {
+  let artifact:
+    NpAgentGuardianEvaluationArtifactV1 | NpAgentGuardianEvaluationReviewArtifactV1 | null = null;
+  let comparison:
+    | Awaited<ReturnType<typeof npCompareAgentGuardianEvaluationArtifactsV1>>
+    | NpAgentGuardianEvaluationReviewComparisonV1
+    | null = null;
+  let errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | null = null;
+  try {
+    artifact = input.reviewPath
+      ? await npBuildAgentGuardianEvaluationReviewArtifactV1(
+          reviewSource,
+          input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
+        )
+      : await runAgentGuardianEvaluationV1();
+    if (input.comparePath)
+      comparison = input.reviewPath
+        ? await npCompareAgentGuardianEvaluationReviewArtifactsV1(
+            artifact,
+            await npRequireAgentGuardianEvaluationReviewArtifactV1(
+              await readArtifactJson(input.comparePath),
+            ),
+          )
+        : await npCompareAgentGuardianEvaluationArtifactsV1(
+            artifact,
+            await npRequireAgentGuardianEvaluationArtifactV1(
+              await readArtifactJson(input.comparePath),
+            ),
+          );
+  } catch {
+    errorCode = "ARTIFACT_INVALID";
+  }
+  if (!errorCode && input.outPath)
+    try {
+      await assertReviewOutputIsSeparate(input);
+      await writeArtifactJson(input.outPath, artifact);
+    } catch {
+      errorCode = "ARTIFACT_UNAVAILABLE";
+    }
+  if (errorCode) {
+    artifact = null;
+    comparison = null;
+  }
+  const result = {
+    schemaVersion: input.reviewPath
+      ? "np.agent-guardian-eval-review-command.v1"
+      : "np.agent-guardian-eval-command.v1",
+    artifact,
+    comparison,
+    errorCode,
+  };
+  const text = errorCode
+    ? `Guardian offline evaluation unavailable (${errorCode}).`
+    : artifact?.schemaVersion === "np.agent-guardian-eval-review.v1"
+      ? `Guardian synthetic prediction review: supported=${artifact.summary.supported}; unsupported=${artifact.summary.unsupported}; unreviewed=${artifact.summary.unreviewed}. Self-reported labels confer no approval authority.`
+      : artifact
+        ? npFormatAgentGuardianEvaluationArtifactV1(artifact)
+        : "Guardian offline evaluation unavailable.";
+  output.write(
+    `${input.json ? JSON.stringify(result) : text}${!input.json && comparison ? (comparison.comparable ? " Comparison uses the compatible synthetic corpus/profile; no production or model usefulness conclusion." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}\n`,
+  );
+  return errorCode || (artifact?.schemaVersion === "np.agent-guardian-eval.v1" && !artifact.ok)
+    ? 1
+    : 0;
 }
 
 async function runModerator(

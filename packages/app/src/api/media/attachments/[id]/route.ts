@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpNotFoundError, getDocumentById } from "@nexpress/core";
 import type { NpPrincipal } from "@nexpress/core/auth";
 import { npCanReadCommunityDocument } from "@nexpress/core/community";
@@ -109,16 +110,19 @@ async function handleDownload(
   }
 }
 
-export function GET(
+function npGuardianGET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   return handleDownload(request, context, true);
 }
 
-export function HEAD(
+function npGuardianHEAD(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   return handleDownload(request, context, false);
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);
+export const HEAD = npWithAgentGuardianHttpResponseV1("cms", npGuardianHEAD);

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -45,7 +46,7 @@ function parseUpdate(value: unknown): { key: "site" | "seo"; value: unknown } {
   return { key: body.key, value: body.value };
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
@@ -83,3 +84,6 @@ export async function PUT(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("cms", npGuardianPUT);

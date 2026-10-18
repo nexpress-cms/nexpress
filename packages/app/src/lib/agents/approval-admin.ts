@@ -13,6 +13,7 @@ import type { NextRequest } from "next/server";
 import { npSuccessResponse } from "../api-response";
 import { ensureFor } from "../init-core";
 import { agentStudioErrorResponse } from "./studio-error-response";
+import { npWithAgentGuardianHttpResponseV1 } from "./guardian-http-observer";
 import { requireAgentOauthStaff } from "./studio-admin";
 import { readAgentAdminJsonBody } from "./changeset-admin";
 
@@ -38,7 +39,7 @@ export function readAgentApprovalQuery(request: NextRequest) {
     throw invalid();
   }
 }
-export async function handleAgentApprovalAdminRequest(
+async function handleRequest(
   request: NextRequest,
   operation: "list" | "get" | "challenge" | "approve" | "reject" | "revoke" | "request",
   id?: string,
@@ -114,6 +115,12 @@ export async function handleAgentApprovalAdminRequest(
       error,
       operation === "list" || operation === "get" ? "read" : "mutation",
       { headers },
+      request,
     );
   }
 }
+
+export const handleAgentApprovalAdminRequest = npWithAgentGuardianHttpResponseV1(
+  "admin",
+  handleRequest,
+);

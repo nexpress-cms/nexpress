@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, dispatchPluginAction, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -17,7 +18,7 @@ import { ensureFor } from "../../../../../lib/init-core";
  * into 500s via npErrorResponse — callers can distinguish "action failed
  * cleanly" (`{ ok: false, error }`) from "action crashed" (HTTP 500).
  */
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string; actionId: string }> },
 ) {
@@ -57,3 +58,5 @@ export async function POST(
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("plugins", npGuardianPOST);

@@ -1439,6 +1439,9 @@ export const npAgentSourceReleases = pgTable(
     unique("np_agent_source_releases_site_id_id_unique").on(t.siteId, t.id),
     unique("np_agent_source_releases_source_unique").on(t.siteId, t.sourceKind, t.sourceId),
     index("np_agent_source_releases_source_idx").on(t.sourceId, t.siteId),
+    uniqueIndex("np_agent_source_releases_guardian_key_unique")
+      .on(t.siteId, sql`(${t.evidenceBody}->>'deliveryKeyDigest')`)
+      .where(sql`${t.sourceKind}='guardian-event'`),
     index("np_agent_source_releases_reservation_idx")
       .on(t.siteId, sql`(${t.evidenceBody}->>'reservationId')`)
       .where(sql`${t.sourceKind}='provider-call'`),
@@ -1452,7 +1455,7 @@ export const npAgentSourceReleases = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_releases_kind_check",
-      sql`${t.sourceKind} in ('runtime-run','provider-call','usage-reservation','circuit-breaker')`,
+      sql`${t.sourceKind} in ('runtime-run','provider-call','usage-reservation','circuit-breaker','guardian-event')`,
     ),
     check(
       "np_agent_source_releases_body_check",
@@ -1501,11 +1504,11 @@ export const npAgentSourceReleaseEdges = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_release_edges_owner_check",
-      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit','changeset-validation','changeset-preview','changeset-approval')`,
+      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit','changeset-validation','changeset-preview','changeset-approval','guardian-audit','guardian-closure-audit')`,
     ),
     check(
       "np_agent_source_release_edges_code_check",
-      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset') or (${t.ownerKind}='changeset-validation' and ${t.edgeCode}='validation-authority-run') or (${t.ownerKind}='changeset-preview' and ${t.edgeCode}='preview-authority-run') or (${t.ownerKind}='changeset-approval' and ${t.edgeCode}='approval-history')`,
+      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset') or (${t.ownerKind}='changeset-validation' and ${t.edgeCode}='validation-authority-run') or (${t.ownerKind}='changeset-preview' and ${t.edgeCode}='preview-authority-run') or (${t.ownerKind}='changeset-approval' and ${t.edgeCode}='approval-history') or (${t.ownerKind}='guardian-audit' and ${t.edgeCode}='guardian-event') or (${t.ownerKind}='guardian-closure-audit' and ${t.edgeCode}='guardian-closure')`,
     ),
     check(
       "np_agent_source_release_edges_digest_check",
@@ -4654,7 +4657,7 @@ export const npAgentEvaluationSources = pgTable(
     index("np_agent_evaluation_sources_page_idx").on(t.siteId, t.id),
     check(
       "np_agent_evaluation_sources_bounds_check",
-      sql`(${t.versionNumber} between 0 and 10000 and ${t.caseCount} between 1 and 100 and ${t.recipe} in ('moderator','moderator-proposal','operator','publisher','moderator-assessment','publisher-selection') and ${t.sourceHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.evaluationBody})='object' and octet_length(${t.evaluationBody}::text)<=4194304) is true`,
+      sql`(${t.versionNumber} between 0 and 10000 and ${t.caseCount} between 1 and 100 and ${t.recipe} in ('moderator','moderator-proposal','operator','publisher','moderator-assessment','publisher-selection','guardian') and ${t.sourceHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.evaluationBody})='object' and octet_length(${t.evaluationBody}::text)<=4194304) is true`,
     ),
   ],
 );

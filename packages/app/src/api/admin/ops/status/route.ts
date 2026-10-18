@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -6,7 +7,7 @@ import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import type * as OpsStatusCore from "../../../../scripts/ops-status-core";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireGlobalAuth(request);
@@ -28,3 +29,5 @@ export const dynamic = "force-dynamic";
 async function loadStatusCore(): Promise<typeof OpsStatusCore> {
   return import("@nexpress/app/scripts/ops-status-core");
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

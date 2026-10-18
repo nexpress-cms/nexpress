@@ -1,3 +1,12 @@
+import {
+  npVerifyGuardianSignalRuleV1,
+  type NpGuardianSignalRuleVerificationV1,
+} from "./guardian-signal-rule-verifier.js";
+import { npReadAgentGuardianCaptureAdmissionV1 } from "./guardian-capture-admission.js";
+import {
+  npIsAgentGuardianSourceDeliveryClosedV1,
+  npAssertAgentGuardianDeliveryKeyAvailableV1,
+} from "./guardian-source-closure.js";
 import { createHash } from "node:crypto";
 import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
@@ -73,7 +82,7 @@ export interface NpAgentGuardianSessionObservationV1 {
 }
 export interface NpAgentGuardianSessionObservationServiceV1 {
   observe(input: NpAgentGuardianSessionObservationV1): Promise<{
-    disposition: "recorded" | "replayed" | "capped";
+    disposition: "recorded" | "replayed" | "capped" | "disabled" | "closed";
     eventId: string | null;
     incidentId: string | null;
   }>;
@@ -299,6 +308,10 @@ export function createAgentGuardianSessionObservationServiceV1(
           return npWithAgentRuntimeControlTransactionV1(
             siteId,
             async ({ db }) => {
+              if ((await npReadAgentGuardianCaptureAdmissionV1(db, siteId)).state === "disabled")
+                return { disposition: "disabled" as const, eventId: null, incidentId: null };
+              if (await npIsAgentGuardianSourceDeliveryClosedV1(db, siteId, "requests", observedAt))
+                return { disposition: "closed" as const, eventId: null, incidentId: null };
               await options.authorize({ siteId, db });
               const time = now();
               if (!Number.isFinite(time.getTime()) || Date.parse(observedAt) > time.getTime())
@@ -484,6 +497,7 @@ export function createAgentGuardianSessionObservationServiceV1(
                 return { disposition: "capped", eventId: null, incidentId: null };
               let stored = previous;
               if (!stored) {
+                await npAssertAgentGuardianDeliveryKeyAvailableV1(db, event, "requests");
                 const recorded = await options.events.record({
                   siteId,
                   event,
@@ -584,4 +598,13 @@ export async function npReadGuardianSessionIncidentEvidenceV1(input: {
   const success = sources.events.find((e) => e.kind === "auth.login.succeeded");
   if (!success) unavailable();
   return { ...successIdentity(success), sourceDigest: rebuilt.evidenceDigest };
+}
+
+/** Rebuilds the original deterministic rule; it does not establish source MAC authenticity. */
+export async function npVerifyAgentGuardianSessionSignalV1(
+  input: NpGuardianSignalRuleVerificationV1,
+): Promise<boolean> {
+  return npVerifyGuardianSignalRuleV1(input, async (_row, ids) =>
+    candidate(await npReadAgentEventRowsV1(input.db, input.siteId, ids)),
+  );
 }

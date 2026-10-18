@@ -40,7 +40,7 @@ import { NpAgentContractError } from "../agent-contract/contract.js";
 
 type Db = ReturnType<typeof getDb>;
 type Body = NpAgentSourceReleaseCanonicalV1;
-type Kind = Body["kind"];
+type Kind = Exclude<Body["kind"], "guardian-event">;
 type Reservation = typeof npAgentUsageReservations.$inferSelect;
 type Edge = typeof npAgentSourceReleaseEdges.$inferInsert;
 type Action = typeof npAgentActions.$inferSelect;
@@ -49,7 +49,14 @@ const MAX_REFERENCES = 100;
 // Larger retained evidence remains valid history but is not loaded by cleanup.
 const MAX_REFERENCE_BYTES = 32 * 1024 * 1024;
 const MAX_REFERENCE_BATCH_BYTES = 64 * 1024 * 1024;
-const guards = [...npAgentSiteOwnedTableNamesV1, "np_agent_site_deletion_sagas", "np_audit_events"];
+// Content receipts contain only closed CMS facts. Their sole Agent reference is
+// emitted_event_id, protected by a same-site RESTRICT FK. Pending CMS inserts must
+// not acquire the Agent reference fence after caller-owned document locks.
+const guards = [
+  ...npAgentSiteOwnedTableNamesV1.filter((name) => name !== "np_agent_content_receipts"),
+  "np_agent_site_deletion_sagas",
+  "np_audit_events",
+];
 const tables = {
   "runtime-run": "np_agent_runs",
   "provider-call": "np_agent_provider_calls",
@@ -107,6 +114,20 @@ export async function npLockAgentSourceReleaseFenceV1(
   await beforeStatement();
   const coverage = await db.execute(sql.raw(npAgentReferenceFenceCoverageSqlV1(guards)));
   if (coverage.rows[0]?.missing_count !== "0") invalid();
+  await beforeStatement();
+  const contentReference = await db.execute(sql`select count(*)::text as valid_count
+    from pg_constraint c
+    where c.conname='np_agent_content_receipts_event_fk'
+      and c.conrelid='public.np_agent_content_receipts'::regclass
+      and c.confrelid='public.np_agent_events'::regclass
+      and c.contype='f' and c.convalidated and c.confdeltype='r'
+      and c.conkey=array[
+        (select attnum from pg_attribute where attrelid=c.conrelid and attname='site_id'),
+        (select attnum from pg_attribute where attrelid=c.conrelid and attname='emitted_event_id')]
+      and c.confkey=array[
+        (select attnum from pg_attribute where attrelid=c.confrelid and attname='site_id'),
+        (select attnum from pg_attribute where attrelid=c.confrelid and attname='id')]`);
+  if (contentReference.rows[0]?.valid_count !== "1") invalid();
   await beforeStatement();
   await db.execute(sql`update np_agent_reference_fence set epoch=epoch+1 where id=1`);
 }

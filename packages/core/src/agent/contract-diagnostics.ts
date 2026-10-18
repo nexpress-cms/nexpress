@@ -39,6 +39,11 @@ import {
 import { npReadCancelledChangeSetLifecycleV1 } from "./cancelled-changeset-lifecycle.js";
 import { npVerifyCancelledChangeSetAttributionV1 } from "./cancelled-changeset-source-release.js";
 import { npAgentReferenceFenceCoverageSqlV1 } from "./reference-fence-sql.js";
+import {
+  npRequireAgentGuardianSourceClosureV1,
+  npAgentGuardianSourceNamespaceDigestV1,
+  npDigestAgentGuardianRetentionValueV1,
+} from "../agent-contract/guardian-retention-contract.js";
 
 const AGENT_TABLES = [
   "np_agent_actions",
@@ -58,6 +63,7 @@ const AGENT_TABLES = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_containments",
+  "np_agent_content_receipts",
   "np_agent_evaluation_reviews",
   "np_agent_evaluation_sources",
   "np_agent_events",
@@ -85,6 +91,7 @@ const AGENT_TABLES = [
   "np_agent_reference_fence",
   "np_agent_restriction_enforcements",
   "np_agent_runs",
+  "np_agent_runtime_receipts",
   "np_agent_service_tokens",
   "np_agent_signals",
   "np_agent_site_deletion_sagas",
@@ -101,6 +108,20 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_runtime_receipts_site_id_id_unique",
+  "np_agent_runtime_receipts_site_id_np_sites_id_fk",
+  "np_agent_runtime_receipts_agent_fk",
+  "np_agent_runtime_receipts_run_fk",
+  "np_agent_runtime_receipts_version_fk",
+  "np_agent_runtime_receipts_principal_fk",
+  "np_agent_runtime_receipts_event_fk",
+  "np_agent_runtime_receipts_source_check",
+  "np_agent_runtime_receipts_delivery_check",
+  "np_agent_content_receipts_site_id_id_unique",
+  "np_agent_content_receipts_site_id_np_sites_id_fk",
+  "np_agent_content_receipts_event_fk",
+  "np_agent_content_receipts_source_check",
+  "np_agent_content_receipts_delivery_check",
   "np_agent_actor_restrictions_site_id_id_unique",
   "np_agent_actor_restrictions_site_id_np_sites_id_fk",
   "np_agent_actor_restrictions_source_action_unique",
@@ -917,7 +938,9 @@ const ISSUE_SUMMARY_SQL = `
         union all select e.released_at from public.np_agent_source_release_edges e
           left join public.np_agent_source_releases r on r.id=e.source_release_id and r.site_id=e.site_id
           where r.id is null
-            or (e.owner_kind='runtime-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
+            or (e.owner_kind in ('runtime-audit','guardian-audit','guardian-closure-audit') and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
+            or (e.owner_kind='guardian-audit' and (r.source_kind<>'guardian-event' or e.edge_code<>'guardian-event'))
+            or (e.owner_kind='guardian-closure-audit' and (r.source_kind<>'guardian-event' or e.edge_code<>'guardian-closure'))
             or (e.owner_kind in ('read-action','changeset-action') and not exists (select 1 from public.np_agent_actions a where a.id=e.owner_id and a.site_id=e.site_id and a.run_source_release_id=e.source_release_id))
             or (e.owner_kind in ('read-invocation','changeset-invocation') and not exists (select 1 from public.np_agent_invocations i where i.id=e.owner_id and i.site_id=e.site_id))
             or (e.owner_kind='changeset-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
@@ -925,6 +948,10 @@ const ISSUE_SUMMARY_SQL = `
             or (e.owner_kind='changeset-approval' and (e.edge_code<>'approval-history' or not exists (select 1 from public.np_agent_approvals a where a.id=e.owner_id and a.site_id=e.site_id and a.target_kind='changeset' and a.state in ('rejected','expired'))))
             or (e.owner_kind='changeset-validation' and (e.edge_code<>'validation-authority-run' or not exists (select 1 from public.np_agent_changeset_validation_attempts v where v.id=e.owner_id and v.site_id=e.site_id and v.authority_ref->>'runId'=r.source_id::text and v.authority_ref->>'kind'='runtime-run')))
             or (e.owner_kind='changeset-preview' and (e.edge_code<>'preview-authority-run' or not exists (select 1 from public.np_agent_changeset_previews p where p.id=e.owner_id and p.site_id=e.site_id and p.authority_ref->>'runId'=r.source_id::text and p.authority_ref->>'kind'='runtime-run')))
+        union all select r.released_at from public.np_agent_source_releases r
+          where r.source_kind='guardian-event' and (
+            not exists (select 1 from public.np_agent_source_release_edges e where e.site_id=r.site_id and e.source_release_id=r.id and e.owner_kind='guardian-closure-audit' and e.edge_code='guardian-closure')
+            or (r.evidence_body->>'family' in ('requests','security-transitions','sentry','http') and not exists (select 1 from public.np_agent_source_release_edges e where e.site_id=r.site_id and e.source_release_id=r.id and e.owner_kind='guardian-audit' and e.edge_code='guardian-event')))
         union all select c.created_at from public.np_agent_changesets c
           left join public.np_agent_source_releases r on r.id=c.run_source_release_id and r.site_id=c.site_id
           where c.run_source_release_id is not null and (
@@ -1426,7 +1453,11 @@ async function collectReferenceGuardIssues(
 ): Promise<RawIssueRow[]> {
   const guards = await client.query<{ missing_count: unknown }>(
     `/* reference_fence_coverage */ ${npAgentReferenceFenceCoverageSqlV1([
-      ...AGENT_TABLES.filter((name) => name !== "np_agent_reference_fence"),
+      // Source-only content capture uses a composite RESTRICT FK for its sole
+      // emitted Event reference; it must not lock this fence during CMS writes.
+      ...AGENT_TABLES.filter(
+        (name) => name !== "np_agent_reference_fence" && name !== "np_agent_content_receipts",
+      ),
       "np_audit_events",
     ])}`,
   );
@@ -1441,7 +1472,21 @@ async function collectReferenceGuardIssues(
         and pg_get_expr(i.indpred,i.indrelid)='(source_kind = ''runtime-run''::text)'
     ) then 0 else 1 end)::text as missing_count`,
   );
-  const count = integer(guards.rows[0]?.missing_count) + integer(keyIndex.rows[0]?.missing_count);
+  const guardianKeyIndex = await client.query<{ missing_count: unknown }>(
+    `/* guardian_source_release_key_index */
+    select (case when exists (
+      select 1 from pg_index i join pg_class c on c.oid=i.indexrelid
+      where c.relname='np_agent_source_releases_guardian_key_unique'
+        and i.indrelid='public.np_agent_source_releases'::regclass
+        and i.indisunique and i.indisvalid and i.indisready
+        and pg_get_indexdef(i.indexrelid) like '%(site_id, ((evidence_body ->> ''deliveryKeyDigest''::text)))%'
+        and pg_get_expr(i.indpred,i.indrelid)='(source_kind = ''guardian-event''::text)'
+    ) then 0 else 1 end)::text as missing_count`,
+  );
+  const count =
+    integer(guards.rows[0]?.missing_count) +
+    integer(keyIndex.rows[0]?.missing_count) +
+    integer(guardianKeyIndex.rows[0]?.missing_count);
   return count ? [issue("AGENT_SCHEMA_CONSTRAINT_MISSING", count)] : [];
 }
 
@@ -1682,15 +1727,16 @@ async function collectReleasedAuditIssues(
   for (;;) {
     const result = await client.query<Record<string, unknown>>(
       `/* source_release_audit_rows: original audit projection, no rewriting */
-      select e.id, e.owner_evidence_digest as digest, e.verifier_version as version,
+      select e.id, e.owner_kind as "ownerKind", e.owner_evidence_digest as digest, e.verifier_version as version,
         a.id as "auditId", a.site_id as "siteId", a.actor_kind as "actorKind", a.action,
         a.target_type as "targetType", a.target_id as "targetId", a.created_at as "createdAt",
         case when octet_length(a.payload::text)<=65536 then a.payload else null end as payload,
-        e.released_at=r.released_at as "sameReleaseTime"
+        e.released_at=r.released_at as "sameReleaseTime",
+        case when e.owner_kind in ('guardian-audit','guardian-closure-audit') and octet_length(to_jsonb(r)::text)<=32768 then to_jsonb(r) else null end as release
       from public.np_agent_source_release_edges e
       left join public.np_audit_events a on a.id=e.owner_id and a.site_id=e.site_id
       left join public.np_agent_source_releases r on r.id=e.source_release_id and r.site_id=e.site_id
-      where e.owner_kind='runtime-audit' and e.id>$1::uuid order by e.id limit 32`,
+      where e.owner_kind in ('runtime-audit','guardian-audit','guardian-closure-audit') and e.id>$1::uuid order by e.id limit 32`,
       [after],
     );
     if (!result.rows.length) break;
@@ -1712,6 +1758,64 @@ async function collectReleasedAuditIssues(
           createdAt: row.createdAt.toISOString(),
         });
         if (digest !== row.digest) throw new Error("Invalid retained audit digest");
+        if (row.ownerKind === "guardian-audit" || row.ownerKind === "guardian-closure-audit") {
+          const release = decodeDiagnosticRecord(row.release) as unknown as Parameters<
+            typeof npRequireAgentSourceReleaseRecordV1
+          >[0];
+          const body = await npRequireAgentSourceReleaseRecordV1(release);
+          if (body.kind !== "guardian-event" || body.siteId !== row.siteId)
+            throw new Error("Invalid retained Guardian attribution");
+          const payload = row.payload;
+          if (!payload || typeof payload !== "object" || Array.isArray(payload))
+            throw new Error("Invalid retained Guardian audit");
+          const proof = payload as Record<string, unknown>;
+          if (row.ownerKind === "guardian-closure-audit") {
+            const closure = npRequireAgentGuardianSourceClosureV1(proof.closure);
+            if (
+              row.actorKind !== "system" ||
+              row.action !== "agent.guardian.source_closed" ||
+              row.targetType !== "agent-guardian-source" ||
+              row.targetId !== body.family ||
+              Object.keys(proof).length !== 2 ||
+              proof.closureDigest !== body.closureDigest ||
+              closure.siteId !== body.siteId ||
+              closure.family !== body.family ||
+              closure.closedBefore !== body.closedBefore ||
+              closure.namespaceDigest !== body.namespaceDigest ||
+              closure.closedAt !== row.createdAt.toISOString() ||
+              closure.closedAt > body.releasedAt ||
+              closure.namespaceDigest !==
+                (await npAgentGuardianSourceNamespaceDigestV1(body.family)) ||
+              (await npDigestAgentGuardianRetentionValueV1(
+                "np.agent-guardian-source-closure.v1",
+                closure,
+              )) !== body.closureDigest
+            )
+              throw new Error("Invalid retained Guardian closure");
+          } else if (
+            !["requests", "security-transitions", "sentry", "http"].includes(body.family) ||
+            (body.family === "security-transitions"
+              ? typeof row.actorKind !== "string" ||
+                !["staff", "member", "system"].includes(row.actorKind)
+              : row.actorKind !== "system") ||
+            row.targetType !== "agent-event" ||
+            row.targetId !== body.sourceId ||
+            row.action !==
+              (body.family === "requests"
+                ? "agent.guardian_request.source"
+                : body.family === "sentry"
+                  ? "agent.guardian_external.source"
+                  : body.family === "http"
+                    ? "agent.guardian_http.source"
+                    : "agent.guardian_security.source") ||
+            proof.eventId !== body.sourceId ||
+            proof.eventHash !== body.eventHash ||
+            typeof proof.sourceMac !== "string" ||
+            !/^hmac-sha256:[A-Za-z0-9_-]{43}$/u.test(proof.sourceMac)
+          )
+            throw new Error("Invalid retained Guardian source audit");
+          // Compact evidence verifies retained attribution, not the deleted Event's live MAC.
+        }
       } catch {
         count += 1;
       }

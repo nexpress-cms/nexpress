@@ -1,4 +1,14 @@
 import type { NpAgentProfileEvaluationReviewArtifactV1 } from "./profile-evaluation-review-contract.js";
+import type {
+  NpAgentGuardianEvaluationArtifactV1,
+  NpAgentGuardianEvaluationSummaryV1,
+} from "./guardian-evaluation-contract.js";
+import type {
+  NpAgentGuardianEvaluationReviewArtifactV1,
+  NpAgentGuardianEvaluationReviewSummaryV1,
+  NpAgentGuardianEvaluationReviewComparisonV1,
+} from "./guardian-evaluation-review-contract.js";
+import type { npCompareAgentGuardianEvaluationArtifactsV1 } from "./guardian-evaluation-contract.js";
 import {
   npAgentEvaluationReportRecipesV1,
   type NpAgentEvaluationReportRecipeV1,
@@ -47,13 +57,17 @@ export interface NpAgentEvaluationReportManifestV1 {
   }[];
 }
 export interface NpAgentEvaluationReportEvidenceV1 {
-  evaluation: NpAgentEvaluationArtifactV1 | NpAgentModeratorEvaluationArtifact;
+  evaluation:
+    | NpAgentEvaluationArtifactV1
+    | NpAgentModeratorEvaluationArtifact
+    | NpAgentGuardianEvaluationArtifactV1;
   review:
     | NpAgentEvaluationReviewArtifactV1
     | NpAgentProfileEvaluationReviewArtifactV1
     | NpAgentOperatorPlanEvaluationReviewArtifactV1
     | NpAgentModeratorProposalEvaluationReviewArtifactV1
     | NpAgentModeratorEvaluationReviewArtifact
+    | NpAgentGuardianEvaluationReviewArtifactV1
     | null;
 }
 export interface NpAgentEvaluationReportInputV1 {
@@ -70,14 +84,26 @@ export interface NpAgentEvaluationReportRowV1 {
   mode: "deterministic-offline" | "fake" | "provider" | null;
   fixtureGate: "missing" | "passed" | "failed";
   cases: number | null;
-  metrics: NpAgentEvaluationMetricsV1 | NpAgentModeratorEvaluationSummaryV1 | null;
+  metrics:
+    | NpAgentEvaluationMetricsV1
+    | NpAgentModeratorEvaluationSummaryV1
+    | NpAgentGuardianEvaluationSummaryV1
+    | null;
   review: {
     status: "missing" | "present";
-    summary: NpAgentEvaluationReviewSummaryV1 | NpAgentModeratorEvaluationReviewSummaryV1 | null;
+    summary:
+      | NpAgentEvaluationReviewSummaryV1
+      | NpAgentModeratorEvaluationReviewSummaryV1
+      | NpAgentGuardianEvaluationReviewSummaryV1
+      | null;
   };
   evaluationComparison: {
     status: "missing-current" | "missing-baseline" | "compared";
-    result: NpAgentEvaluationComparisonV1 | NpAgentModeratorEvaluationComparisonV1 | null;
+    result:
+      | NpAgentEvaluationComparisonV1
+      | NpAgentModeratorEvaluationComparisonV1
+      | Awaited<ReturnType<typeof npCompareAgentGuardianEvaluationArtifactsV1>>
+      | null;
   };
   reviewComparison: {
     status:
@@ -91,6 +117,7 @@ export interface NpAgentEvaluationReportRowV1 {
       | NpAgentOperatorPlanEvaluationReviewComparisonV1
       | NpAgentModeratorProposalEvaluationReviewComparisonV1
       | NpAgentModeratorEvaluationReviewComparisonV1
+      | NpAgentGuardianEvaluationReviewComparisonV1
       | null;
   };
 }
@@ -169,7 +196,11 @@ export function npRequireAgentEvaluationReportManifestV1(
 }
 /** Format only independently validated reports; no rates are pooled across recipes. */
 export function npFormatAgentEvaluationReportV1(report: NpAgentEvaluationReportV1): string {
-  const lines = ["R6 offline evaluation evidence report"];
+  const lines = [
+    report.rows.some((row) => row.recipe === "guardian")
+      ? "Offline evaluation evidence report (legacy R6 and separate Guardian evidence)"
+      : "R6 offline evaluation evidence report",
+  ];
   for (const row of report.rows) {
     lines.push(
       `${row.recipe}: ${row.status}; mode=${row.mode ?? "missing"}; fixture/schema gate=${row.fixtureGate}; cases=${row.cases ?? "unknown"}`,
@@ -177,11 +208,13 @@ export function npFormatAgentEvaluationReportV1(report: NpAgentEvaluationReportV
     const metrics = row.metrics;
     if (metrics)
       lines.push(
-        "matchedSignalExpectations" in metrics
-          ? `  Synthetic detector: matched=${metrics.matchedSignalExpectations}; missing=${metrics.missingExpectedSignals}; unexpected=${metrics.unexpectedSignals}; falsePositive=${metrics.syntheticClassification.falsePositive}; falseNegative=${metrics.syntheticClassification.falseNegative}`
-          : row.recipe === "moderator-proposal"
-            ? `  Synthetic proposal/abstention conformance: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; fixtureDecisionPrecisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`
-            : `  Synthetic structured decisions: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; precisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`,
+        "syntheticRules" in metrics
+          ? `  Guardian synthetic reference: matched=${metrics.syntheticRules.matchedCases}; missing=${metrics.syntheticRules.missingSignals}; unexpected=${metrics.syntheticRules.unexpectedSignals}; syntheticIntentFalsePositive=${metrics.syntheticIntent.falsePositive}; syntheticIntentFalseNegative=${metrics.syntheticIntent.falseNegative}; requiredLiveChecksNotRun=${metrics.liveChecks.notRun}`
+          : "matchedSignalExpectations" in metrics
+            ? `  Synthetic detector: matched=${metrics.matchedSignalExpectations}; missing=${metrics.missingExpectedSignals}; unexpected=${metrics.unexpectedSignals}; falsePositive=${metrics.syntheticClassification.falsePositive}; falseNegative=${metrics.syntheticClassification.falseNegative}`
+            : row.recipe === "moderator-proposal"
+              ? `  Synthetic proposal/abstention conformance: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; fixtureDecisionPrecisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`
+              : `  Synthetic structured decisions: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; precisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`,
       );
     const summary = row.review.summary;
     lines.push(
@@ -191,9 +224,11 @@ export function npFormatAgentEvaluationReportV1(report: NpAgentEvaluationReportV
     );
     if (summary)
       lines.push(
-        "accepted" in summary
-          ? `  Outcomes: accepted=${summary.accepted}; edited=${summary.edited}; rejected=${summary.rejected}`
-          : `  Outcomes: confirmedSpam=${summary.confirmedSpam}; falsePositive=${summary.falsePositive}`,
+        "supported" in summary
+          ? `  Self-reported synthetic prediction review: supported=${summary.supported}; unsupported=${summary.unsupported}`
+          : "accepted" in summary
+            ? `  Outcomes: accepted=${summary.accepted}; edited=${summary.edited}; rejected=${summary.rejected}`
+            : `  Outcomes: confirmedSpam=${summary.confirmedSpam}; falsePositive=${summary.falsePositive}`,
       );
     for (const [label, comparison] of [
       ["Evaluation comparison", row.evaluationComparison],

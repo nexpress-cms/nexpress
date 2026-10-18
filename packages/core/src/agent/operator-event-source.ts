@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npAuditEvents } from "../db/schema/community.js";
-import { npAgentOperatorPlans } from "../db/schema/agent.js";
+import { npAgentEvents, npAgentOperatorPlans } from "../db/schema/agent.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { npRequireAgentEventCanonical } from "../agent-contract/canonical-events.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -13,9 +13,18 @@ import {
   type NpAgentOperatorMonitorSnapshotV1,
   type NpAgentOperatorRecoveryAssessmentV1,
 } from "../agent-contract/operator-monitor-contract.js";
-import type { NpAgentEventCanonicalV1, NpAgentEventPayload } from "../agent-contract/types.js";
+import type {
+  NpAgentEventCanonicalV1,
+  NpAgentEventPayload,
+  NpAgentJsonObject,
+} from "../agent-contract/types.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npReadAgentEventRowEvidenceV1 } from "./event-evidence.js";
+import {
+  npRequireAgentGuardianOperatorCoverageV1,
+  type NpAgentGuardianOperatorCoverageV1,
+} from "../agent-contract/guardian-operator-coverage-contract.js";
 import {
   npCollectAgentOperatorEventObservationV1,
   type NpAgentOperatorEventObservationV1,
@@ -424,6 +433,7 @@ export function createAgentOperatorEventSourceV1(options: NpAgentOperatorEventSo
         checks,
         observedAt: snapshot.observedAt,
         complete: snapshot.complete,
+        paused: snapshot.paused,
         failuresComplete,
         failureCursor,
         statusObserved: status !== null,
@@ -608,6 +618,130 @@ export function createAgentOperatorEventSourceV1(options: NpAgentOperatorEventSo
     await access(input.siteId, database());
     return { sampled };
   }
-  return { observe, startMonitor, sampleMonitor, sampleDueMonitors };
+  /** Reads existing persisted source facts only. Caller owns the DB timeout/current staff ACL.
+   * This neither polls a queue/health adapter nor recreates Operator Events as Guardian Signals. */
+  async function coverage(input: {
+    db: Db;
+    siteId: string;
+  }): Promise<NpAgentGuardianOperatorCoverageV1> {
+    const absent = (state: "disabled" | "not-observed" | "unavailable") =>
+      npRequireAgentGuardianOperatorCoverageV1({
+        schemaVersion: "np.agent-guardian-operator-coverage.v1",
+        basis: "operator-recorded-facts",
+        state,
+        observedAt: null,
+        jobs: { complete: null, paused: null, failuresComplete: null },
+        health: { observed: null },
+        events: { sampled: null, invalid: null, truncated: false },
+      });
+    if (!npIsCanonicalSiteId(input.siteId)) fail();
+    if (!(await options.isInstalledSite(input.siteId))) return absent("disabled");
+    try {
+      await access(input.siteId, input.db);
+      const at = now();
+      const [record] = await input.db
+        .select({
+          actorKind: npAuditEvents.actorKind,
+          actorUserId: npAuditEvents.actorUserId,
+          actorMemberId: npAuditEvents.actorMemberId,
+          createdAt: npAuditEvents.createdAt,
+          payload: sql<NpAgentJsonObject | null>`case when octet_length(${npAuditEvents.payload}::text)<=16384 then ${npAuditEvents.payload} else null end`,
+        })
+        .from(npAuditEvents)
+        .where(
+          and(
+            eq(npAuditEvents.siteId, input.siteId),
+            eq(npAuditEvents.targetType, SOURCE_TARGET),
+            eq(npAuditEvents.targetId, "canonical"),
+            eq(npAuditEvents.action, "agents.operator.source.observed"),
+          ),
+        )
+        .orderBy(
+          desc(
+            sql`case when ${npAuditEvents.payload}->>'revision' ~ '^[1-9][0-9]{0,9}$' then (${npAuditEvents.payload}->>'revision')::bigint end`,
+          ),
+          desc(npAuditEvents.createdAt),
+          desc(npAuditEvents.id),
+        )
+        .limit(1);
+      if (!record) {
+        await access(input.siteId, input.db);
+        return absent("not-observed");
+      }
+      const value = record.payload;
+      if (!value) fail();
+      if (
+        record.actorKind !== "system" ||
+        record.actorUserId !== null ||
+        record.actorMemberId !== null ||
+        record.createdAt > at ||
+        value.schemaVersion !== "np.agent-operator-source.v1" ||
+        !utc(value.observedAt) ||
+        Date.parse(value.observedAt) > at.getTime() ||
+        typeof value.complete !== "boolean" ||
+        typeof value.failuresComplete !== "boolean" ||
+        typeof value.statusObserved !== "boolean" ||
+        (value.paused !== undefined && value.paused !== null && typeof value.paused !== "boolean")
+      )
+        fail();
+      const rows = await input.db
+        .select()
+        .from(npAgentEvents)
+        .where(
+          and(
+            eq(npAgentEvents.siteId, input.siteId),
+            eq(npAgentEvents.sourceComponent, "operator-source"),
+            inArray(npAgentEvents.kind, [
+              "jobs.handler.failed",
+              "jobs.worker.stale",
+              "jobs.backlog.threshold",
+              "ops.check.changed",
+              "ops.backup.failed",
+              "ops.backup.stale",
+            ]),
+            gte(npAgentEvents.recordedAt, new Date(at.getTime() - 86400000)),
+          ),
+        )
+        .orderBy(desc(npAgentEvents.recordedAt), desc(npAgentEvents.id))
+        .limit(101);
+      let invalid = 0;
+      for (const row of rows.slice(0, 100)) {
+        try {
+          const event = await npReadAgentEventRowEvidenceV1(row);
+          if (
+            event.source.kind !== (event.kind.startsWith("jobs.") ? "jobs" : "ops") ||
+            event.subject?.kind !== "site" ||
+            event.subject.siteId !== input.siteId ||
+            event.actor !== null ||
+            event.causation !== null ||
+            event.correlationId !== null ||
+            event.privacy !== "internal" ||
+            !event.deduplicationKey?.startsWith("operator:") ||
+            row.recordedAt > at
+          )
+            invalid++;
+        } catch {
+          invalid++;
+        }
+      }
+      await access(input.siteId, input.db);
+      return npRequireAgentGuardianOperatorCoverageV1({
+        schemaVersion: "np.agent-guardian-operator-coverage.v1",
+        basis: "operator-recorded-facts",
+        state: at.getTime() - Date.parse(value.observedAt) > 300000 ? "stale" : "observed",
+        observedAt: value.observedAt,
+        jobs: {
+          complete: value.complete,
+          paused: value.paused ?? null,
+          failuresComplete: value.failuresComplete,
+        },
+        health: { observed: value.statusObserved },
+        events: { sampled: Math.min(rows.length, 100), invalid, truncated: rows.length > 100 },
+      });
+    } catch {
+      return absent("unavailable");
+    }
+  }
+  return { observe, startMonitor, sampleMonitor, sampleDueMonitors, coverage };
 }
 export type NpAgentOperatorEventSourceV1 = ReturnType<typeof createAgentOperatorEventSourceV1>;

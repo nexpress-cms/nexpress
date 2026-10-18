@@ -335,20 +335,20 @@ describe.skipIf(skipIfNoTestDb())("Guardian request observations", () => {
     expect(await f.db.select().from(npAgentIncidents)).toHaveLength(0);
   });
 
-  it("uses existing maintenance to expire unreferenced samples while preserving open Incident evidence", async () => {
+  it("defers expired unsigned Guardian samples to proof-owning retention while preserving open Incident evidence", async () => {
     const f = await setup();
     const orphan = await f.observe(f.observation({ networkAddress: "198.51.100.2" }));
     const id = await f.cohort();
     const future = new Date("2026-10-19T00:01:00.000Z");
     const pruned = await pruneAgentRuntimeEventsV1({ siteId, now: future, limit: 100 });
-    expect(pruned.pruned).toBeGreaterThanOrEqual(1);
-    expect(
-      await f.db
-        .select()
-        .from(npAgentEvents)
-        .where(and(eq(npAgentEvents.siteId, siteId), eq(npAgentEvents.id, orphan.eventId!))),
-    ).toHaveLength(0);
-    expect(await f.db.select().from(npAgentEvents)).toHaveLength(5);
+    expect(pruned.pruned).toBe(0);
+    const retained = await f.db
+      .select()
+      .from(npAgentEvents)
+      .where(and(eq(npAgentEvents.siteId, siteId), eq(npAgentEvents.id, orphan.eventId!)));
+    expect(retained).toHaveLength(1);
+    expect(retained[0]!.expiresAt.getTime()).toBeLessThan(future.getTime());
+    expect(await f.db.select().from(npAgentEvents)).toHaveLength(6);
     expect(
       (await f.studio.get({ siteId, actor: f.actor.actor, incidentId: id })).guardianEvidence,
     ).toHaveLength(1);

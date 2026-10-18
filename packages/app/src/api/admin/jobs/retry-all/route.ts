@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, getOptionalJobQueue, can } from "@nexpress/core";
 import { npRequireJobListWire, npRequireRetryAllJobsWire } from "@nexpress/core/jobs-contract";
 import { readJsonBody } from "@nexpress/next";
@@ -27,7 +28,7 @@ import {
  * Admin-only + CSRF; same gate as the per-job retry endpoint.
  */
 const BULK_LIMIT = 200;
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -89,3 +90,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("jobs-retry-all", npGuardianPOST);

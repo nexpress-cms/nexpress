@@ -1,3 +1,4 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "./guardian-assessment-recipe-contract.js";
 import { canonicalBodyRecord, failCanonicalBody } from "./canonical-body-validation.js";
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
@@ -157,7 +158,9 @@ export function npIsAgentRuntimeManualRecipeSupportedV1(
   recipe: NpAgentRecipeDefinitionCanonicalV1,
 ): boolean {
   if (
-    (recipe.task !== "interactive-capability" && !npIsAgentModeratorAssessmentProfileV1(recipe)) ||
+    (recipe.task !== "interactive-capability" &&
+      !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+      !npIsAgentGuardianAssessmentRecipeV1(recipe)) ||
     !recipe.triggerKinds.includes("manual")
   )
     return false;
