@@ -56,7 +56,7 @@ export function npAgentReferenceMigrationSqlV1(): string {
 export function npAgentReferenceMigrationSqlV12(): string {
   return (
     "-- NexPress verified Guardian source audit reference lifecycle v12\n" +
-    NP_AGENT_REFERENCE_FENCE_SQL_V6 +
+    NP_AGENT_REFERENCE_FENCE_SQL_V6.trimEnd() +
     "\n"
   );
 }

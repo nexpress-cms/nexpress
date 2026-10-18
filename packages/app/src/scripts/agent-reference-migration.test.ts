@@ -439,6 +439,15 @@ it("adds immutable Guardian audit ownership without rewriting the original fence
   await npEnsureAgentReferenceMigrationV12(options);
   const generated = await readFile(join(migrationsFolder, "0002.sql"), "utf8");
   expect(generated).toBe(npAgentReferenceMigrationSqlV12());
+  expect(generated).toBe(
+    await readFile(
+      new URL(
+        "../../../../apps/web/drizzle/0077_agent-guardian-source-reference-lifecycle.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
   expect(generated).toContain("guardian-closure-audit");
   await npEnsureAgentReferenceMigrationV12(options);
   expect(createCustomMigration).toHaveBeenCalledTimes(1);
