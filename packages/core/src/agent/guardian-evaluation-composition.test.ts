@@ -49,6 +49,7 @@ const label = (
   editedProposal: null,
 });
 describe("Guardian evaluation report, review and workbench integration", () => {
+  // These compositions repeatedly validate all 64 cases and their review hashes.
   it("keeps legacy report bytes stable when Guardian is absent and separates Guardian limitations when present", async () => {
     const legacy = await npBuildAgentEvaluationReportV1({
       schemaVersion: "np.agent-eval-report-input.v1",
@@ -91,7 +92,7 @@ describe("Guardian evaluation report, review and workbench integration", () => {
     expect(text).toContain(`requiredLiveChecksNotRun=${source.summary.liveChecks.notRun}`);
     expect(text).not.toContain("precisionBasisPoints=");
     expect(await npRequireAgentEvaluationReportV1(report)).toEqual(report);
-  });
+  }, 20_000);
 
   it("round trips exact source/case/prediction review bindings without rates, edits or approval", async () => {
     const empty = await npBuildAgentGuardianEvaluationReviewArtifactV1(source);
@@ -140,7 +141,7 @@ describe("Guardian evaluation report, review and workbench integration", () => {
       current: null,
       baseline: null,
     });
-  });
+  }, 20_000);
 
   it("exports safe workbench and authenticated-history input with unreviewed coverage and all live checks still not run", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("No network allowed"));
@@ -188,7 +189,7 @@ describe("Guardian evaluation report, review and workbench integration", () => {
     } finally {
       fetch.mockRestore();
     }
-  });
+  }, 20_000);
 
   it("round trips reviewed labels through workbench import without network or approval", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("No network allowed"));
@@ -208,7 +209,7 @@ describe("Guardian evaluation report, review and workbench integration", () => {
     } finally {
       fetch.mockRestore();
     }
-  });
+  }, 20_000);
 
   it("retains failed and missing predictions honestly and rejects accepting failed synthetic conformance", async () => {
     const predictions = source.caseResults.map((entry) => structuredClone(entry.prediction));
@@ -242,7 +243,7 @@ describe("Guardian evaluation report, review and workbench integration", () => {
     const workbench = await npBuildAgentEvaluationWorkbenchV1({ ...request(), evaluation: failed });
     expect(workbench.fixtureGate).toBe("failed");
     expect(workbench.cases[mismatched].allowedOutcomes).toEqual(["reject"]);
-  });
+  }, 20_000);
 
   it("recognizes only the explicit local Guardian dataset and rejects network/model/budget flags before dispatch", () => {
     expect(

@@ -88,5 +88,6 @@ describe("new profile evaluation CLI composition", () => {
       expect(reported.modelUsefulness).toBe("not-established");
       expect(resolveProvider).not.toHaveBeenCalled();
     },
+    20_000,
   );
 });

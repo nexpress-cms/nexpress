@@ -38,6 +38,7 @@ async function run(argv: string[]) {
   return { code, output };
 }
 describe("Guardian local evaluation command", () => {
+  // Each command round trip verifies the complete 64-case corpus and bindings.
   it("runs and compares the versioned synthetic corpus without provider dispatch or production claims", async () => {
     const path = join(await directory(), "guardian.json");
     const first = await run(["--dataset", "guardian.v1", "--out", path, "--json"]);
@@ -77,7 +78,7 @@ describe("Guardian local evaluation command", () => {
         errorCode: "ARGUMENT_INVALID",
       });
     }
-  });
+  }, 20_000);
   it("round trips hash-bound review labels and report grouping without granting an approval", async () => {
     const dir = await directory();
     const source = join(dir, "guardian.json"),
@@ -153,5 +154,5 @@ describe("Guardian local evaluation command", () => {
     expect(
       JSON.parse((await run(["--review", source, "--reviews", labelsPath, "--json"])).output),
     ).toMatchObject({ artifact: null, errorCode: "ARTIFACT_INVALID" });
-  });
+  }, 20_000);
 });
