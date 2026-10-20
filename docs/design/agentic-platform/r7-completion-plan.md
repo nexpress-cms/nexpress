@@ -39,16 +39,16 @@ complete.
 
 ## Current requirement matrix
 
-| Requirement                                     | Implemented scope                                                                                                                                                   | Local acceptance and remaining qualification                                                                                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| AP-701 security subjects and exact restrictions | Pure security subjects, exact restriction persistence, retained encoding and golden vectors                                                                         | Local cross-source compatibility and complete repository gates pass                                                            |
-| AP-702 collectors                               | Six source families: requests, security transitions, content, Runtime, HTTP and Sentry; explicit existing Operator jobs/health composition                          | Integrated local collector gates pass; custom HTTP origins and direct content mutation owners retain explicit coverage gaps    |
-| AP-703 detection and advisory summary           | Fifteen bounded detectors, immutable source/Signal proof, coalescing, monotonic escalation, two manual advisory recipes and offline evaluation                      | Adverse-evidence and browser gates pass; production usefulness and false-positive rates remain unestablished                   |
-| AP-704 narrow responses                         | Human-approved temporary restrictions and exact browser-family revocation; separately deployment-authorized narrow automatic limits; early removal and TTL recovery | Integrated recovery gates pass; actual production qualification is absent and unattended admission stays disabled              |
-| AP-705 external signals                         | Fixed host adapter and authenticated Sentry issue-created reference protocol, exercised without outbound calls                                                      | Integrated recovery and packed-host gates pass                                                                                 |
-| AP-706 Admin workspace                          | Current safe evidence, advisory history, read-only complete export, action/approval/notification and unavailable states                                             | Production browser, access-loss and download gates pass                                                                        |
-| AP-707 operations                               | Exact-source retention and reference checks, held/unknown states, export, Doctor/health, capture controls and local CLI recovery                                    | Complete local repository/database/browser/scaffold gates pass; terminal response/advisory graphs remain conservatively pinned |
-| AP-708 acceptance                               | Versioned threat/control matrix, 64-case hostile/control corpus, actual authority/concurrency/recovery tests, 10,000-input capacity and real-maintenance fairness   | All required local gates below pass; independent production security approval and real shadow evidence remain absent           |
+| Requirement                                     | Implemented scope                                                                                                                                                   | Local acceptance and remaining qualification                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| AP-701 security subjects and exact restrictions | Pure security subjects, exact restriction persistence, retained encoding and golden vectors                                                                         | Local cross-source compatibility and complete repository gates pass                                                               |
+| AP-702 collectors                               | Six source families: requests, security transitions, content, Runtime, HTTP and Sentry; explicit existing Operator jobs/health composition                          | Integrated local collector gates pass; custom HTTP origins and unregistered content mutation owners retain explicit coverage gaps |
+| AP-703 detection and advisory summary           | Fifteen bounded detectors, immutable source/Signal proof, coalescing, monotonic escalation, two manual advisory recipes and offline evaluation                      | Adverse-evidence and browser gates pass; production usefulness and false-positive rates remain unestablished                      |
+| AP-704 narrow responses                         | Human-approved temporary restrictions and exact browser-family revocation; separately deployment-authorized narrow automatic limits; early removal and TTL recovery | Integrated recovery gates pass; actual production qualification is absent and unattended admission stays disabled                 |
+| AP-705 external signals                         | Fixed host adapter and authenticated Sentry issue-created reference protocol, exercised without outbound calls                                                      | Integrated recovery and packed-host gates pass                                                                                    |
+| AP-706 Admin workspace                          | Current safe evidence, advisory history, read-only complete export, action/approval/notification and unavailable states                                             | Production browser, access-loss and download gates pass                                                                           |
+| AP-707 operations                               | Exact-source retention and reference checks, held/unknown states, export, Doctor/health, capture controls and local CLI recovery                                    | Complete local repository/database/browser/scaffold gates pass; terminal response/advisory graphs remain conservatively pinned    |
+| AP-708 acceptance                               | Versioned threat/control matrix, 64-case hostile/control corpus, actual authority/concurrency/recovery tests, 10,000-input capacity and real-maintenance fairness   | All required local gates below pass; independent production security approval and real shadow evidence remain absent              |
 
 The existing slices retain their own evidence:
 [observations](r7-guardian-observation-flow.md),
@@ -93,8 +93,15 @@ source-only receipt without Runtime/quota/Event/Incident locks. Explicit
 maintenance verifies receipts and emits Events. Indexed pending selection includes
 late commits without a timestamp/UUID high-water cursor. Reused autosaves emit
 no revision fact, and revisions-off collections retain a committed-save basis.
-Scheduler publication, member promotion and deletion remain distinct, uncovered
-mutation owners; universal CMS mutation coverage is not claimed.
+Scheduler publication, staff promotion of pending member documents and pipeline
+deletion now record separate same-transaction lifecycle facts. They create no
+revision and do not count toward the save/revision detectors. Deletion records
+the status returned by the actual DELETE without retaining document content.
+Failed receipts roll back their mutations; failed promotion CAS and losing
+concurrent deletion emit no successful fact. Direct SQL and custom mutation
+owners remain outside this installation; universal CMS coverage is not claimed.
+The [content lifecycle follow-up receipt](r7-guardian-operations-flow.md#content-lifecycle-follow-up-2026-10-20)
+records the later regression gate and its corrected test fixture.
 
 Runtime capture likewise uses a signed source-only outbox. Facts retain actual
 Run/Agent/version/principal and Action/provider-accounting relationships. Existing

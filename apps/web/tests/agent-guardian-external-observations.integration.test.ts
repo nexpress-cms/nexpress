@@ -203,11 +203,51 @@ describe.skipIf(skipIfNoTestDb())("Guardian authenticated external source", () =
     expect(await f.db.select().from(npAgentRuns)).toHaveLength(0);
   });
 
-  it("replays exact signed bytes across replicas and conflicts when the same source identity changes body", async () => {
+  it("denies in-flight replica contention, then replays exact signed bytes without accepting a changed body", async () => {
     const f = await setup();
     const other = createAgentGuardianExternalObservationServiceV1(f.options);
     const input = f.request();
-    const results = await Promise.all([f.source.ingest(input), other.ingest(input)]);
+    let inserted = () => {};
+    let release = () => {};
+    const insertion = new Promise<void>((resolve) => {
+      inserted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = createAgentGuardianExternalObservationServiceV1({
+      ...f.options,
+      events: {
+        record: async (recordInput) => {
+          const result = await f.options.events.record(recordInput);
+          inserted();
+          await released;
+          return result;
+        },
+      },
+    });
+    // Establish contention while the first INSERT is uncommitted. The real
+    // lock budget must reject the second sender; do not widen it or hope a
+    // racing duplicate happens to wait for less than 100 ms on a busy runner.
+    const first = holding.ingest(input).finally(inserted);
+    const second = (async () => {
+      await insertion;
+      try {
+        await expect(other.ingest(input)).rejects.toMatchObject({
+          code: "GUARDIAN_EXTERNAL_SOURCE_UNAVAILABLE",
+          status: 503,
+        });
+      } finally {
+        release();
+      }
+    })();
+    const attempts = await Promise.allSettled([first, second]);
+    for (const attempt of attempts) {
+      if (attempt.status === "rejected") throw attempt.reason;
+    }
+    const recorded = await first;
+    const replayed = await other.ingest(input);
+    const results = [recorded, replayed];
     expect(results.map((r) => r.disposition).sort()).toEqual(["recorded", "replayed"]);
     expect(new Set(results.map((r) => r.eventId)).size).toBe(1);
     expect(await f.db.select().from(npAgentEvents)).toHaveLength(1);

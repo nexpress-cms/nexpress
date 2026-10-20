@@ -127,6 +127,10 @@ interface InsertValuesQuery extends Promise<unknown> {
   returning(): Promise<unknown[]>;
 }
 
+interface DeleteWhereQuery extends Promise<unknown> {
+  returning(): Promise<unknown[]>;
+}
+
 interface DrizzleTransactionLike {
   execute(query: SQL): Promise<unknown>;
   insert(table: PgTable): {
@@ -140,7 +144,7 @@ interface DrizzleTransactionLike {
     };
   };
   delete(table: PgTable): {
-    where(condition: QueryCondition): Promise<unknown>;
+    where(condition: QueryCondition): DeleteWhereQuery;
   };
   select(selection?: Record<string, unknown>): {
     from(table: PgTable | SQL): SelectQuery;
@@ -1929,6 +1933,7 @@ export async function promoteMemberDocument(
   staffUserId: string,
 ): Promise<NpSaveResult> {
   npAssertAgentPreviewEffectsAllowed();
+  const mutationObserver = npGetCollectionMutationObserverV1();
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
@@ -1972,37 +1977,52 @@ export async function promoteMemberDocument(
   // between the load and the update can't promote the wrong row.
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
-  const updated = (await db
-    .update(table)
-    .set({
-      status: "published",
-      updatedAt: now,
-      updatedBy: staffUserId,
-      ...(hiddenField ? { [hiddenField]: false } : {}),
-    })
-    .where(
-      sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")} and ${eq(getTableColumn(table, "siteId"), requestSiteId)}`,
-    )
-    .returning()) as Array<Record<string, unknown>>;
-  if (updated.length === 0) {
-    // Either a concurrent promote already flipped this row, or
-    // staff edited it out of `pending` between our read and our
-    // write. Surface as a validation error — the caller should
-    // re-fetch and retry only if they still want to act.
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "status",
-        message: "Cannot promote: row is no longer pending (concurrent change)",
-      },
-    ]);
-  }
-  const [persistedDoc] = await hydratePersistedDocuments(
-    db,
-    registration,
-    [toRecord(updated[0])],
-    "write-result",
-  );
-  if (!persistedDoc) throw new Error(`Promoted ${collection} document could not be hydrated.`);
+  const promote = async (tx: DrizzleTransactionLike): Promise<Record<string, unknown>> => {
+    const updated = (await tx
+      .update(table)
+      .set({
+        status: "published",
+        updatedAt: now,
+        updatedBy: staffUserId,
+        ...(hiddenField ? { [hiddenField]: false } : {}),
+      })
+      .where(
+        sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")} and ${eq(getTableColumn(table, "siteId"), requestSiteId)}`,
+      )
+      .returning()) as Array<Record<string, unknown>>;
+    if (updated.length === 0) {
+      // Either a concurrent promote already flipped this row, or
+      // staff edited it out of `pending` between our read and our
+      // write. Surface as a validation error — the caller should
+      // re-fetch and retry only if they still want to act.
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "status",
+          message: "Cannot promote: row is no longer pending (concurrent change)",
+        },
+      ]);
+    }
+    const [persistedDoc] = await hydratePersistedDocuments(
+      tx,
+      registration,
+      [toRecord(updated[0])],
+      "write-result",
+    );
+    if (!persistedDoc) throw new Error(`Promoted ${collection} document could not be hydrated.`);
+    if (mutationObserver)
+      await mutationObserver.record({
+        db: tx,
+        siteId: requireDocumentSiteId(persistedDoc, `Promoted ${collection} document`),
+        collection,
+        documentId: getRecordId(persistedDoc),
+        writeId: randomUUID(),
+        occurredAt: new Date(),
+        actor: { kind: "staff", userId: staffUserId },
+        fact: { kind: "member-promotion", revision: null },
+      });
+    return persistedDoc;
+  };
+  const persistedDoc = mutationObserver ? await db.transaction(promote) : await promote(db);
 
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
@@ -2320,6 +2340,11 @@ async function deleteDocumentImpl(
   actor: SaveActor,
   options?: { tx?: NpTransaction },
 ): Promise<void> {
+  const mutationObserver = npGetCollectionMutationObserverV1();
+  const mutationActor: NpCollectionMutationActorV1 =
+    actor.kind === "staff"
+      ? { kind: "staff", userId: actor.user.id }
+      : { kind: "member", memberId: actor.memberId };
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -2408,6 +2433,19 @@ async function deleteDocumentImpl(
   const documentSiteId = requireDocumentSiteId(originalDoc, `Deleted ${collection} document`);
 
   const cascade = async (tx: DrizzleTransactionLike): Promise<void> => {
+    if (mutationObserver) {
+      // Take the parent lock before cascading, matching save/autosave lock order.
+      // A losing concurrent delete must not emit another successful source fact.
+      const [locked] = await tx
+        .select({ id: getTableColumn(table, "id") })
+        .from(table)
+        .where(
+          sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "siteId"), siteId)}`,
+        )
+        .limit(1)
+        .for("update");
+      if (!locked) throw new NpNotFoundError(collection, docId);
+    }
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
     await tx
@@ -2486,7 +2524,32 @@ async function deleteDocumentImpl(
       .where(
         sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, docId)}`,
       );
-    await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
+    const deletion = tx
+      .delete(table)
+      .where(
+        mutationObserver
+          ? sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "siteId"), siteId)}`
+          : eq(getTableColumn(table, "id"), docId),
+      );
+    if (mutationObserver) {
+      const [deleted] = await deletion.returning();
+      if (!deleted) throw new NpNotFoundError(collection, docId);
+      const row = toRecord(deleted);
+      await mutationObserver.record({
+        db: tx,
+        siteId: requireDocumentSiteId(row, `Deleted ${collection} document`),
+        collection,
+        documentId: getRecordId(row),
+        writeId: randomUUID(),
+        occurredAt: new Date(),
+        actor: mutationActor,
+        fact: {
+          kind: "document-delete",
+          status: collectionMutationStatus(row.status),
+          revision: null,
+        },
+      });
+    } else await deletion;
   };
 
   if (options?.tx) {

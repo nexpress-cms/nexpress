@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, sql } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentGuardianContentObservationServiceV1,
@@ -29,10 +30,13 @@ import { npRevisions, npSessions, npUsers } from "../../../packages/core/src/db/
 import {
   autosaveRevision,
   createMemberDocument,
+  deleteDocument,
+  promoteMemberDocument,
   saveDocument,
   updateMemberDocument,
   withDeferredPostCommit,
 } from "../../../packages/core/src/collections/pipeline.js";
+import { publishScheduledDocuments } from "../../../packages/core/src/collections/scheduled.js";
 import {
   resetCollectionMutationObserverV1,
   setCollectionMutationObserverV1,
@@ -52,6 +56,7 @@ import {
   ensureMigrated,
   getTestDb,
   registerTestCollections,
+  seedActiveMember,
   seedUser,
   skipIfNoTestDb,
   truncateAll,
@@ -247,6 +252,72 @@ describe.skipIf(skipIfNoTestDb())("Guardian retained content activity observatio
       sourceMac: receipt.sourceMac,
     });
     expect((await f.source.collect({ siteId })).processed).toBe(0);
+  });
+
+  it("delivers real lifecycle receipts after deletion without counting promotions as saves or revisions", async () => {
+    const f = await fixture();
+    resetCollectionMutationObserverV1();
+    await saveDocument(
+      "posts",
+      null,
+      { ...post("Scheduled lifecycle"), publishedAt: new Date(Date.now() - 60_000) },
+      f.actors[0].user,
+      { status: "scheduled" },
+    );
+    const registration = getCollectionRegistration("discussions");
+    registerCollection("discussions", registration.table, {
+      ...registration.config,
+      community: {
+        ...registration.config.community,
+        memberWrite: {
+          ...registration.config.community?.memberWrite,
+          defaultStatus: "pending",
+        },
+      },
+    });
+    const member = await seedActiveMember();
+    const pending = await createMemberDocument(
+      "discussions",
+      { title: "Private lifecycle source", body: npCreateEmptyRichTextContent() },
+      member.memberId,
+    );
+    const documentId = id(pending.doc.id);
+    const table = registration.table as PgTable;
+    const columns = getTableColumns(table);
+    setCollectionMutationObserverV1(f.source.mutationObserver);
+    expect((await publishScheduledDocuments()).published).toBe(1);
+    for (let index = 0; index < 5; index++) {
+      // Fixture preparation is deliberately outside capture. Each observed
+      // transition still comes from the real conditional promotion owner.
+      if (index > 0)
+        await f.db.update(table).set({ status: "pending" }).where(eq(columns.id, documentId));
+      await promoteMemberDocument("discussions", documentId, f.actors[index % 3].user.id);
+    }
+    await deleteDocument("discussions", documentId, f.actors[0].user);
+    const receipts = await f.db.select().from(npAgentContentReceipts);
+    expect(receipts).toHaveLength(7);
+    expect(receipts.every((row) => row.body.fact.revision === null)).toBe(true);
+    expect(receipts.filter((row) => row.body.fact.kind === "member-promotion")).toHaveLength(5);
+    expect(await f.db.select().from(npAgentEvents)).toEqual([]);
+    expect(await f.source.collect({ siteId })).toMatchObject({
+      emitted: 7,
+      blocked: 0,
+      backlog: 0,
+    });
+    expect(await f.db.select().from(npAgentSignals)).toEqual([]);
+    expect(await f.db.select().from(npAgentIncidents)).toEqual([]);
+    const delivered = await f.db.select().from(npAgentContentReceipts);
+    for (const receipt of delivered) {
+      expect(
+        await f.source.verifyReceiptForRetention({ db: f.db, siteId, receiptId: receipt.id }),
+      ).toMatchObject({ state: "emitted", emittedEventId: receipt.emittedEventId });
+      expect(
+        await f.source.verifyEvent({ db: f.db, siteId, eventId: id(receipt.emittedEventId) }),
+      ).toMatchObject({ source: "content", detectorId: null });
+    }
+    expect(JSON.stringify(delivered)).not.toMatch(
+      /Private lifecycle source|snapshot|changedFields/,
+    );
   });
 
   it("freezes exact churn cohorts, coalesces later windows and leaves a closed window closed", async () => {
