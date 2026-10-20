@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   npAgentActions,
@@ -36,7 +36,11 @@ async function fixture(options: Parameters<typeof guardianAssessmentFixture>[0] 
 }
 const run = (f: Fixture) => f.executor.process({ siteId, runId: f.runId });
 const calls = (f: Fixture) =>
-  f.db.select().from(npAgentProviderCalls).where(eq(npAgentProviderCalls.runId, f.runId));
+  f.db
+    .select()
+    .from(npAgentProviderCalls)
+    .where(eq(npAgentProviderCalls.runId, f.runId))
+    .orderBy(asc(npAgentProviderCalls.sequence));
 const rows = (f: Fixture) =>
   f.db
     .select()

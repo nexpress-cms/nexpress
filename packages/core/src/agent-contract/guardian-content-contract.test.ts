@@ -76,4 +76,36 @@ describe("Guardian content source contracts", () => {
       }).observedCount,
     ).toBe(20);
   });
+  it("separates committed lifecycle owners without inventing revisions or accepting another actor", () => {
+    const value = activity();
+    const scheduled = {
+      ...value,
+      actor: { kind: "system", component: "content.publish-scheduled" },
+      fact: { kind: "scheduled-publish", revision: null },
+    };
+    const promoted = { ...value, fact: { kind: "member-promotion", revision: null } };
+    const deleted = {
+      ...value,
+      actor: { kind: "member", memberId: id },
+      fact: { kind: "document-delete", status: "pending", revision: null },
+    };
+    for (const source of [value, scheduled, promoted, deleted])
+      expect(npRequireAgentGuardianContentActivityV1(source)).toEqual(source);
+    for (const source of [
+      { ...scheduled, actor: value.actor },
+      { ...scheduled, actor: { kind: "system", component: "arbitrary-worker" } },
+      { ...promoted, actor: deleted.actor },
+      { ...deleted, actor: scheduled.actor },
+      { ...deleted, fact: { ...deleted.fact, status: "deleted" } },
+      { ...promoted, fact: { ...promoted.fact, previousBody: "private" } },
+      ...[scheduled, promoted, deleted].map((source) => ({
+        ...source,
+        fact: {
+          ...source.fact,
+          revision: { id, version: 1, status: "published", createdAt: at },
+        },
+      })),
+    ])
+      expect(() => npRequireAgentGuardianContentActivityV1(source)).toThrow();
+  });
 });

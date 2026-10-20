@@ -162,10 +162,37 @@ host-only seams; they are not capabilities or Admin mutation inputs.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Requests             | Actual failed login/rejected rate-limit owners with optional independent per-Event receipt MAC; exact successful browser-family evidence remains separately owned | Fixed bounded buckets; existing first-line lockout/rate limits remain independent                                                                          |
 | Security transitions | Authority/policy, password/reset, Gateway token/principal, Connection final credential CAS, plugin persistence/config and shared local CLI facade                 | Actual same-transaction facts; full locked catalog for deployment impact; keyed state commitments exclude secrets/config bodies                            |
-| Content              | Actual document save and newly inserted autosave revision                                                                                                         | Source-only capture; repeated autosave reuse emits no new fact; scheduled publication/deletion are separate owners                                         |
+| Content              | Actual save, new autosave revision, scheduled publication, staff member-document promotion and pipeline deletion                                                  | Source-only capture; autosave reuse emits no new fact; lifecycle facts create no revision and do not count as saves or revisions                           |
 | Runtime              | Actual Action INSERT, terminal repeated proposal/scope denial and call-linked accounting transition                                                               | Source-only capture; proposal pair, five scope denials or admitted Actions, or USD 0.10 of known cohort cost; unknown actual cost never becomes zero/spend |
 | HTTP                 | Actual final 401/403/404 response at explicit App/auth/proxy/Agent owners                                                                                         | Five distinct responses per exact status/family/network bucket in a UTC ten-minute window; no raw URL, body, address or attack verdict                     |
 | Sentry               | Fixed installed site/project signed `issue-created` ingress                                                                                                       | Authenticated external fact only; no outbound request or invented source severity                                                                          |
+
+Content lifecycle capture uses the existing optional mutation observer. A
+`scheduled-publish` fact belongs to the canonical `content.publish-scheduled`
+system component; a `member-promotion` fact belongs to the staff actor that wins
+the pending-to-published CAS. A `document-delete` fact belongs to the deleting
+staff/member actor and carries only the actual deleted row's status. All three
+have `revision: null`; they neither manufacture revision history nor satisfy the
+existing committed-save/revision-volume rules. Existing save/autosave source
+bytes and detector versions remain unchanged.
+
+For scheduled publication, each collection's UPDATE and its receipts commit
+together. Promotion captures its receipt before post-commit audit/reputation
+follow-ups. Deletion locks the parent before cascading and records only the
+actual DELETE result, using the caller's transaction when supplied. Outer
+transaction callers retain responsibility for the existing
+`withDeferredPostCommit` scope. A failed receipt or outer rollback discards the
+source and the mutation; unsuccessful CAS or concurrent deletion cannot claim
+another committed transition. Follow-up hooks and jobs retain their existing
+post-commit ownership. An absent observer keeps the existing write path; no
+observer, maintenance job or worker is installed here.
+
+Deletion does not erase earlier signed receipts, and the normal collector,
+source verifier and retention owners can verify historical facts without a
+document/revision FK. This does not restore item-read authority: Incident content
+evidence still requires the current document and its current ACL. Direct SQL,
+custom mutation owners and background writers outside these pipeline functions
+remain uncovered.
 
 Inject Runtime collection through the existing `guardianRuntime.collect`
 maintenance option, and content through `guardianContent.collect`. Register
@@ -208,9 +235,17 @@ Response, including cookies/headers/stream, and skip unknown site/network
 metadata. Proxy `next()` is never treated as a downstream response observation.
 A dedicated preview origin with no trusted site mapping remains outside this
 collector; its fail-closed response is preserved. Uninstrumented custom host
-finalizers and direct content mutation owners remain explicit coverage gaps, not
+finalizers and unregistered content mutation owners remain explicit coverage gaps, not
 verified healthy zeros. A 404 is a review observation, not an authorization
 failure or verified attack.
+
+Concurrent authenticated Sentry deliveries retain the existing short transaction
+and lock budgets. A busy duplicate may receive 503; a later exact delivery can
+replay only while the current signature, mapping, authority and retained proof
+remain valid. The replica fixture establishes an uncommitted insertion, checks
+the real contention denial, drains both transactions, then requires one retained
+Event/Signal and an exact replay. It does not widen admission deadlines or add
+automatic retries to the source.
 
 ## Safe evidence export and source failures
 
@@ -238,8 +273,45 @@ limitations; Guardian complements application authentication, rate limiting and
 WAF/IDS/SIEM controls.
 
 The [final local gate ledger](r7-completion-plan.md#final-local-gate-ledger) records
-remaining repository, database, Redis, theme, native preview, production browser
-and packed-scaffold checks. Focused source/control and automatic-response tests
-do not substitute for those gates. The fixed request-performance gate remains
-open until all six isolated reports pass; no production shadow or independent
-production security approval is claimed.
+the completed R7 repository, database, Redis, theme, native preview, production
+browser, packed-scaffold and six-report request-performance gates. Focused
+source/control and automatic-response tests do not substitute for those gates.
+These local results do not establish production shadow evidence or independent
+production security approval.
+
+## Content lifecycle follow-up (2026-10-20)
+
+The scheduled-publication, member-promotion and deletion follow-up has the
+following local verification:
+
+| Gate                     | Result                                                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Workspace                | `pnpm verify`: 113 tasks; Core 2,792, App 839 and Web 170 unit cases pass                                            |
+| Lint and test types      | 41 lint tasks pass, with the existing Admin warning; explicit typechecking of all four changed Web test files passes |
+| PostgreSQL               | Core 71; Web 2,093 ordinary cases across the full run and corrected-file run, covering all 242 registered files      |
+| Theme and native preview | All 12 theme files pass within the Web run; the separately enabled native-browser preview case passes                |
+| Redis                    | All 16 cases pass with a real local Redis instance                                                                   |
+| Production browser       | All 132 cases pass without skips, retries or flaky outcomes                                                          |
+| Fresh packed scaffold    | All 40 packages and 67 stages pass, including fresh schema/migration, normal Next build, extensions and journey      |
+
+The original full Web run had 2,092 passes, one failure and four explicit opt-in
+skips. Its failure came from reading provider calls without SQL ordering and
+assuming that physical row order represented retry order. The fixture now orders
+by the existing unique per-Run call sequence; its complete 25-case file passes.
+The accepted coverage replaces that file's results without double-counting
+overlapping cases. The native-preview skip is covered by its separate enabled
+run. The other three skips are the unchanged AP-708 capacity, fairness and request
+performance fixtures; this follow-up retains their earlier ledger and makes no
+new performance measurement. The separate Sentry contention fixture also passes
+within the full Web run, preserving its existing admission budgets.
+The scaffold gate includes its four expected closed-port diagnostic failures.
+
+Real mutation cases cover receipt failure, outer rollback, concurrent promotion
+and deletion, current tenant/ACL denial, captured actor/observer identity and
+actual deletion status. Actual signed lifecycle receipts still collect and
+verify after document deletion, without creating revision history or satisfying
+save/revision detectors. Existing save/autosave facts and detector versions are
+unchanged. Schema generation reports no SQL changes; package versions, changesets
+and the workspace lockfile remain unchanged. Validation uses local synthetic
+fixtures without paid provider calls or production activation. Production shadow
+evidence and independent security approval remain outstanding.

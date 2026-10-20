@@ -23,6 +23,17 @@ export type NpCollectionMutationFactV1 =
   | {
       kind: "revision-autosave";
       revision: NpCollectionRevisionFactV1 & { status: "autosave" };
+    }
+  | {
+      /** Actual scheduled -> published or pending -> published transition. */
+      kind: "scheduled-publish" | "member-promotion";
+      revision: null;
+    }
+  | {
+      kind: "document-delete";
+      /** Status returned by the actual DELETE, not an earlier access read. */
+      status: NpDocumentStatus;
+      revision: null;
     };
 
 export interface NpCollectionMutationObservationV1 {
