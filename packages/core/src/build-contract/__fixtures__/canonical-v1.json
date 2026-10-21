@@ -1,0 +1,91 @@
+{
+  "structured": [
+    {
+      "purpose": "np.build-site-brief.v1",
+      "canonical": "{\"assumptions\":[],\"audience\":[{\"name\":\"Readers\",\"needs\":[\"Find information\"],\"priority\":\"primary\"}],\"constraints\":[],\"content\":[],\"design\":{\"accessibility\":\"AA\",\"adjectives\":[\"clear\"],\"avoid\":[],\"references\":[{\"label\":\"Inspiration\",\"url\":\"https://example.com/\"}]},\"features\":[],\"locales\":[\"en\",\"ko\"],\"operations\":{\"agentOperation\":false,\"expectedEditors\":null,\"expectedMembers\":0,\"target\":\"local\"},\"pages\":[{\"name\":\"Home\",\"priority\":\"required\",\"purpose\":\"Introduce the project\"}],\"project\":{\"name\":\"Demo\",\"primaryGoal\":\"Publish articles\",\"successSignals\":[\"Readers find articles\"],\"summary\":\"Synthetic example\"},\"schemaVersion\":\"np.agent-site-brief.v1\",\"unresolved\":[]}",
+      "digest": "nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI"
+    },
+    {
+      "purpose": "np.build-site-blueprint.v1",
+      "canonical": "{\"briefHash\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"collections\":[],\"commandRegistryFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"commands\":[{\"cwd\":\"project\",\"files\":[\"src/home.ts\"],\"id\":\"format\",\"prerequisites\":[],\"template\":\"format\",\"timeoutSeconds\":60}],\"deployment\":{\"database\":\"postgres\",\"notes\":[],\"requiredEnvironment\":[],\"storage\":\"local\",\"target\":\"local\",\"workerRequired\":false},\"directionSetHash\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"discoveryFingerprint\":\"cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"filePlan\":[{\"action\":\"create\",\"contentHash\":\"nb1:file-sha256:oVHGFK3MMkfiBaZaUZMT-CrOVWD47t5M-rnK2FiZFcU\",\"expectedHash\":null,\"generatedByCommandId\":null,\"owner\":\"page\",\"path\":\"src/home.ts\",\"rationale\":\"Create the home page\",\"source\":\"staged\",\"stagedArtifactPath\":\".nexpress/site/files/home.ts\"}],\"framework\":{\"nexpressVersion\":\"0.4.6\",\"nodeRange\":\">=20.19.0\",\"pnpmVersion\":\"10.33.0\"},\"navigation\":[],\"pages\":[{\"audience\":\"public\",\"blocks\":[],\"id\":\"home\",\"locale\":null,\"patternId\":null,\"patternOverrides\":null,\"route\":\"/\",\"source\":\"custom\",\"templateId\":\"home\"}],\"plugins\":[],\"risks\":[],\"schemaVersion\":\"np.agent-site-blueprint.v1\",\"seed\":{\"documents\":[],\"media\":[],\"mode\":\"none\"},\"selectedDirectionHash\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"selectedDirectionId\":\"clear\",\"selectedDirectionProjectionDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"theme\":{\"package\":\"@nexpress/theme-default\",\"tokens\":{}},\"verification\":[{\"artifactPath\":null,\"commandId\":\"format\",\"expected\":\"exit-zero\",\"id\":\"format-exit\",\"required\":true},{\"artifactPath\":null,\"commandId\":\"format\",\"expected\":\"no-diff\",\"id\":\"format-source\",\"required\":true}]}",
+      "digest": "nb1:sha256:NgjRn8MHidcUmI1gZPSWbrT3KH_hKP_Q4CSes0GuLgg"
+    },
+    {
+      "purpose": "np.build-generated-media-prompt.v1",
+      "canonical": "{\"aspectRatio\":\"16:9\",\"avoid\":[\"text\"],\"prompt\":\"A blue geometric placeholder\",\"referenceArtifactIds\":[],\"schemaVersion\":\"np.agent-generated-media-prompt.v1\",\"textPolicy\":{\"exactText\":[],\"kind\":\"none\"}}",
+      "digest": "nb1:sha256:71BxPXm_I2Ga9HbGdTtzDEX6wlVGsHgymHUTG-BrbqE"
+    },
+    {
+      "purpose": "np.build-command-output.v1",
+      "canonical": "{\"schemaVersion\":\"np.agent-build-command-output.v1\",\"stderr\":{\"base64url\":\"\",\"truncated\":true},\"stdout\":{\"base64url\":\"G1szMm1vaw0K\",\"truncated\":false}}",
+      "digest": "nb1:sha256:-WtdG3KQ6RvkCUCzL4dowT7JZpEc20ihsTYyxqwm7tM"
+    },
+    {
+      "purpose": "np.build-source-tree.v1",
+      "canonical": "{\"files\":[{\"digest\":\"nb1:file-sha256:LCRddR9FddHuMXg7oM37hNGfaUiYr3DbsHgyRdbE-Xs\",\"kind\":\"file\",\"mode\":\"100644\",\"path\":\"a.txt\"},{\"digest\":\"nb1:file-sha256:3n38rdYkQftwiDgJ7hkL0dlu5HnRRmVTO7Zct23jxDk\",\"kind\":\"file\",\"mode\":\"100755\",\"path\":\"bin/run\"},{\"digest\":\"nb1:file-sha256:WMJFo27w3wD-BWqkluqoGl9_6vw6Mty1hnNg3Roo1KU\",\"kind\":\"file\",\"mode\":\"100644\",\"path\":\"한글.txt\"}],\"schemaVersion\":\"np.agent-build-source-tree.v1\"}",
+      "digest": "nb1:sha256:BCXz_Ts5TseatAD9DtizZ6R5vbu0dL5B6A3IFMeKn0Q"
+    }
+  ],
+  "files": [
+    {
+      "purpose": "np.build-source-file.v1",
+      "base64url": "",
+      "digest": "nb1:file-sha256:LCRddR9FddHuMXg7oM37hNGfaUiYr3DbsHgyRdbE-Xs"
+    },
+    {
+      "purpose": "np.build-source-file.v1",
+      "base64url": "AAH_",
+      "digest": "nb1:file-sha256:3n38rdYkQftwiDgJ7hkL0dlu5HnRRmVTO7Zct23jxDk"
+    },
+    {
+      "purpose": "np.build-source-file.v1",
+      "base64url": "bGluZQ0K",
+      "digest": "nb1:file-sha256:oSf_XBmftN4GMI0BewAKwi5JaQsuAfo3BieMoCIRBRU"
+    },
+    {
+      "purpose": "np.build-staged-artifact.v1",
+      "base64url": "",
+      "digest": "nb1:file-sha256:TA3_z-s-AK1C_Fge_cml7vapxK3i_w6IwFEHiUzD1Hc"
+    },
+    {
+      "purpose": "np.build-staged-artifact.v1",
+      "base64url": "AAH_",
+      "digest": "nb1:file-sha256:NXzJfkDx52sZZN-4EC-zPebPuUF9A-ecIqv5TJ3x4po"
+    },
+    {
+      "purpose": "np.build-staged-artifact.v1",
+      "base64url": "bGluZQ0K",
+      "digest": "nb1:file-sha256:vNPYmUnxesUKMoGAERh__C_h6qaNzUNT3W--bzC9WUs"
+    },
+    {
+      "purpose": "np.build-preview-artifact.v1",
+      "base64url": "",
+      "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ"
+    },
+    {
+      "purpose": "np.build-preview-artifact.v1",
+      "base64url": "AAH_",
+      "digest": "nb1:file-sha256:5V1mFzWFULcGd7Q7CSoppFGirCBCEtbR_WyfxSJAkSA"
+    },
+    {
+      "purpose": "np.build-preview-artifact.v1",
+      "base64url": "bGluZQ0K",
+      "digest": "nb1:file-sha256:rAyx1J-ciYzR2ZtjYjWLT_ugmKPrmKqKKpTlFChwEiM"
+    },
+    {
+      "purpose": "np.build-verification-artifact.v1",
+      "base64url": "",
+      "digest": "nb1:file-sha256:OA9nXlhJb_Hw8xNZJ9pULJJWcwBEZUsL6ccaxT97NYk"
+    },
+    {
+      "purpose": "np.build-verification-artifact.v1",
+      "base64url": "AAH_",
+      "digest": "nb1:file-sha256:Az526pfZljQ3vga-DZ08OY8U3iBXUG0OBzNJERkijVw"
+    },
+    {
+      "purpose": "np.build-verification-artifact.v1",
+      "base64url": "bGluZQ0K",
+      "digest": "nb1:file-sha256:rtrc_kb7o4xNTCJxCYNpKiKgFxxofooLxllRo8sYtmE"
+    }
+  ]
+}

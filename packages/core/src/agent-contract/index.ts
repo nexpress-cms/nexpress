@@ -161,3 +161,5 @@ export * from "./guardian-http-contract.js";
 export * from "./guardian-credential-contract.js";
 export * from "./guardian-plugin-contract.js";
 export * from "./guardian-delivery-contract.js";
+
+export * from "../build-contract/index.js";

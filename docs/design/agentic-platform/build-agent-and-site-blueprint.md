@@ -1,6 +1,6 @@
 # Build Agent and Site Blueprint
 
-> Status: proposed build-plane contract.
+> Status: AP-801 proposal contracts implemented; CLI/render/generation workflow remains proposed.
 > This workflow changes a normal repository; it is not a Runtime Agent
 > capability and cannot mutate a live production schema.
 > Baseline: `9b1c04e8927e195b8e8e23c7b1261756067ee25f` (2026-07-24).
@@ -1411,3 +1411,70 @@ The first release must prove:
 9. preview screenshots correspond to the selected blueprint hash;
 10. a developer can continue without the agent using normal NexPress files,
     commands, Admin, and deployment docs.
+
+## 14. AP-801 implementation boundary
+
+The browser-safe `@nexpress/core/agent-contract` entry exports the Site Brief
+and Site Blueprint types, `npAnalyzeAgentSiteBriefV1`,
+`npAnalyzeAgentSiteBlueprintV1`, their `npRequire…`/raw JSON parsers, and
+`npRequireBuildBlueprintForBriefV1`. The latter requires all brief questions
+resolved, recomputes the brief hash, checks deployment and locale membership,
+and recomputes generated-media prompt digests. It returns a detached proposal,
+not an executable or approved plan.
+
+The pure parsers enforce exact fields and discriminants, byte/depth/count
+limits, safe integer and Unicode JSON, duplicate raw keys, unique ids,
+source precondition shapes, portable paths and conservative Unicode/case
+collisions, command/seed graph resolution and canonical order, required
+command checks, and full-route preview declarations. Block content, theme
+tokens, navigation and transport JSON reuse their owning contracts. Plugin
+capabilities reuse `NpPluginDiscoveryItem["capabilities"]`; there is no separate
+shipped `NpPluginCapability` type. Paths in this v1 proposal surface use a
+portable subset without whitespace, percent escapes, device names or reserved
+credential/output paths. Source-manifest validation does not read files.
+
+The 16 structured purposes and four raw-file purposes are closed inventories.
+Five structured body validators currently ship: brief, blueprint, generated
+media prompt, command output, and source tree. Each has fixed canonical bytes
+and independent Python SHA-256 vectors; all four file purposes have
+empty/binary/CRLF vectors. The other 11 structured purposes are reserved and
+fail closed until their exact owning artifact schemas ship. No generic JSON
+fallback can hash a renderer, command registry, collection definition, direction
+set or verification result under one of those reserved purposes. The Build
+profile uses separate domain bytes from Runtime; its JCS serializer preserves
+Unicode without normalization.
+
+AP-802–805 still own installed discovery/schema/prop/environment checks,
+collection-definition hashing, resolved direction and set membership,
+filesystem kind/stability/source preconditions, media sniffing and rights,
+seed relationship/media-field interpretation, privacy review of free prose and
+fixture content, trusted rendering/rerendering, registry executables and
+sandboxing, repository writes and observed verification results. Proposal
+parsing or an `nb1` digest proves none of those facts. This slice introduces no
+CLI execution, provider call, database mutation, worker or deployment.
+
+Validation for this slice (2026-10-22):
+
+- Build contract unit suite: 19 cases, including the 200-route/401-artifact
+  declaration, 1,000 seed documents, 10,000 source files, maximum multibyte
+  prompt fields, duplicate JSON keys, hostile containers and invalid graphs.
+- `VITEST_MAX_WORKERS=4 pnpm verify --concurrency=2`: all 113 tasks passed;
+  Core 2,811, App 839 and Web 170 unit cases passed. `pnpm lint`: all 41 tasks
+  passed. The first default-concurrency run hit the existing Runtime-jobs
+  `beforeEach` 10-second import deadline; its isolated eight-case suite and the
+  complete bounded-concurrency run passed without changing test deadlines.
+- The current Core tarball installed outside the workspace, resolved its own
+  published entry and declarations, and passed an external TypeScript consumer.
+  Node and real Chromium 152 each reproduced the five structured and twelve
+  file golden vectors. The browser bundle ran without `process`, `Buffer` or
+  `require`. A Node VM attempt was replaced because its missing/cross-realm
+  `structuredClone` did not model browser object prototypes correctly.
+- Formatting, `git diff --check`, credential-shaped-value inspection and the
+  existing handoff preservation check passed. Package versions, changesets,
+  lockfile and migrations were unchanged.
+
+PostgreSQL, Redis, theme integration, native preview, production-site browser
+and the complete packed-scaffold journey were not rerun for this pure-contract
+slice. The ordinary verify run explicitly skipped its three Redis integration
+cases. The external Core consumer and Chromium API checks are narrower than
+those gates and do not establish full R8 acceptance.

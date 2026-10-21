@@ -485,6 +485,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 
 These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
 
+- **Build-plane proposal contracts** — the AP-801 Site Brief/Blueprint parsers and Build digests in `@nexpress/core/agent-contract` validate bounded proposals. CLI discovery, rendering and generation remain separate and unimplemented; proposal parsing grants no execution authority. See the [Build contract boundary](../../design/agentic-platform/build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
 - **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
 - **Framework-host bootstrap wiring** — `@nexpress/core/bootstrap` exposes raw singleton setters, registry lifecycle, and hook dispatch for integration packages. Application code must use `@nexpress/next` or domain subpaths; individual host symbols may move while this boundary is experimental.
