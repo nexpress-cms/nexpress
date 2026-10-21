@@ -856,6 +856,10 @@ brief while following existing codegen/migration/release contracts.
 The artifact and workflow contract is
 [build-agent-and-site-blueprint.md](build-agent-and-site-blueprint.md).
 
+AP-801 pure proposal types/parsers and five owning canonical bodies are
+implemented. Reserved canonical owners and AP-802–806 remain open; see the
+[implementation boundary](build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
+
 | ID     | Scope                                                                                                              |
 | ------ | ------------------------------------------------------------------------------------------------------------------ |
 | AP-801 | Versioned Site Brief and Site Blueprint schemas                                                                    |
