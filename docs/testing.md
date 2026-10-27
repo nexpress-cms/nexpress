@@ -5,6 +5,34 @@ pure contracts, PostgreSQL integration for persistence and transaction behavior,
 browser tests for rendering and interaction, and packed scaffolds for consumer
 installation and generated-project behavior.
 
+## Verification scope and completion
+
+The R8 acceptance work exposed avoidable delays from growing evidence-management
+procedures and repairing QA helpers during expensive runs. Apply these rules:
+
+- Define the required checks, their scope and the completion criteria before
+  expensive acceptance work. Do not expand the gate merely to collect more
+  evidence after those criteria pass.
+- Reuse passed results when their covered source, dependencies and environment
+  remain applicable. After a change or failure, rerun the affected checks and
+  required final gates. Broaden only to resolve a concrete remaining concern;
+  preserve the scope, skips and reused status of earlier observations.
+- Keep one compact evidence index pointing to existing command results and logs.
+  Add hashes or extra receipts only when needed for a concrete reproducibility,
+  integrity or security requirement. Evidence organization alone does not justify
+  another application build or browser journey.
+- Check a QA helper's preconditions and smallest representative path before
+  launching a long suite. Distinguish helper failures from product regressions,
+  and preserve a successful user edit when repairing the verification path.
+- Before restarting Docker, inspect the owned test database's mounts and
+  persistence. Container identity does not prove retained data: tmpfs is lost
+  on restart. Check actual readiness and database existence afterward; rebuild
+  only the owned disposable fixture through its normal migration and seed owners
+  when necessary, without resetting unrelated or production data.
+- Stop implementation work when the required checks and self-review pass, and
+  report remaining limitations. Documentation or evidence-only edits need their
+  relevant checks, not another full application acceptance cycle.
+
 ## Documentation-only PR checks
 
 CI still starts for every pull request and preserves the required check names.
@@ -69,6 +97,18 @@ while paying for one fixture. Record registered cases, exercised inputs, and
 fixture work separately when comparing changes.
 
 ## Keeping tests useful
+
+On hosts with many logical CPUs, bound both workspace fan-out and Vitest file
+workers when running the combined gate:
+
+```bash
+VITEST_MAX_WORKERS=2 pnpm verify --concurrency=2
+```
+
+Turbo passes this test-runner setting through without incorporating it into
+application configuration. The CLI suite also defaults to at most two file
+workers because it owns filesystem capsules and child-process fixtures. These
+limits keep existing assertions, fixture cardinalities and deadlines unchanged.
 
 - Assert observable results and effects. Source-text checks belong only to
   contracts that are themselves structural, such as browser-safe entrypoints,
@@ -440,6 +480,30 @@ allowed overflow.
 
 Publish flow, theme switching, and plugin config regression coverage
 are now part of the Playwright suite.
+
+## R8 Build workflow acceptance
+
+Use the [Build completion sequence](design/agentic-platform/build-agent-and-site-blueprint.md#15-r8-completion-sequence)
+and [generation test matrix](design/agentic-platform/testing-and-evaluation.md#11-build-plane-generation-tests)
+for local R8 acceptance. Framework `verify` and lint do not replace actual
+packed-project commands, native direction rerendering, selected previews,
+schema/SQL review or ordinary Admin/member continuation. Keep each result bound
+to its observed package/source/environment graph and report opt-in skips.
+
+The ordinary seed regression uses the real reference bootstrap and isolated
+PostgreSQL harness. It covers direct facade commits, dependent Forum saves and
+replay in one caller transaction, late-failure rollback and closed-board 403.
+After its per-case truncate, the existing `reloadPlugins()` owner restores the
+configured plugin registration inventory; ACLs and block validation stay active.
+Run affected Core/Forum builds before this consumer check:
+
+```bash
+pnpm --filter @nexpress/web exec vitest run --config vitest.config.ts tests/site-build-seed.integration.test.ts tests/forum-board-policy.integration.test.ts
+```
+
+Set the isolated `TEST_DATABASE_URL` explicitly as described above. Keep
+paid/provider tests, real credentials and Runtime activation outside this local
+acceptance profile. The flow records the actual executed scope and limitations.
 
 ## CI
 

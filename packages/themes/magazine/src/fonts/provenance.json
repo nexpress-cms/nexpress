@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "np.magazine-vendored-fonts.v1",
+  "sourceRepository": "https://github.com/google/fonts",
+  "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+  "modifications": "Font binaries are unchanged. License texts have trailing horizontal whitespace removed; all other text is unchanged.",
+  "fontFaces": [
+    {
+      "file": "newsreader-normal.ttf",
+      "family": "Newsreader",
+      "style": "normal",
+      "weight": "400 800",
+      "opticalSizeAxis": "6 72"
+    },
+    {
+      "file": "newsreader-italic.ttf",
+      "family": "Newsreader",
+      "style": "italic",
+      "weight": "400 800",
+      "opticalSizeAxis": "6 72"
+    },
+    {
+      "file": "hanken-grotesk-normal.ttf",
+      "family": "Hanken Grotesk",
+      "style": "normal",
+      "weight": "400 700"
+    }
+  ],
+  "files": [
+    {
+      "file": "newsreader-normal.ttf",
+      "license": "OFL-1.1",
+      "upstreamPath": "ofl/newsreader/Newsreader[opsz,wght].ttf",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "bytes": 451664,
+      "sha256": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1",
+      "gitBlobSha1": "ad4a9a8c44ec328c80b61c773f1ba02f6b5ed292",
+      "upstreamSha256": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1"
+    },
+    {
+      "file": "newsreader-italic.ttf",
+      "license": "OFL-1.1",
+      "upstreamPath": "ofl/newsreader/Newsreader-Italic[opsz,wght].ttf",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "bytes": 495684,
+      "sha256": "796668611f80b64d5adf182fde3b6f29ed83b4e7cbec7b96937e84ac01364792",
+      "gitBlobSha1": "d25879656a601d44c49836f9e773d100190c62e1",
+      "upstreamSha256": "796668611f80b64d5adf182fde3b6f29ed83b4e7cbec7b96937e84ac01364792"
+    },
+    {
+      "file": "hanken-grotesk-normal.ttf",
+      "license": "OFL-1.1",
+      "upstreamPath": "ofl/hankengrotesk/HankenGrotesk[wght].ttf",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "bytes": 132892,
+      "sha256": "813b3f8fa0965405669a89b38e51bbefd95eef6b8e20d1cb2d8c10cce062662f",
+      "gitBlobSha1": "ed6efac663fab76e550a2c994d95ca143587da18",
+      "upstreamSha256": "813b3f8fa0965405669a89b38e51bbefd95eef6b8e20d1cb2d8c10cce062662f"
+    },
+    {
+      "file": "OFL.newsreader.txt",
+      "license": "OFL-1.1",
+      "upstreamPath": "ofl/newsreader/OFL.txt",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "bytes": 4393,
+      "sha256": "afdae9053282ba66bbacbc4cb20ad20b12ef46379ac587fd464fe3ff8ce1cd4a",
+      "gitBlobSha1": "d2d4f407109e9c74b8ab502fc79b912408ab8e41",
+      "upstreamSha256": "fdfad38143ec470553cae82a1e45320bdd1b9ec70415d37bd0171051d8a4ded8",
+      "modifications": "Trailing horizontal whitespace removed; upstream original bytes are identified by upstreamSha256 and gitBlobSha1."
+    },
+    {
+      "file": "OFL.hanken-grotesk.txt",
+      "license": "OFL-1.1",
+      "upstreamPath": "ofl/hankengrotesk/OFL.txt",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "bytes": 4401,
+      "sha256": "bb93c61eef5b10204ac305aeb3d204ce74c22c40aa8398f9e2c3bdab2263f2d1",
+      "gitBlobSha1": "9c8185d846e13882e03bdd700743e717e67189dc",
+      "upstreamSha256": "e02ccb89a86839b22feff7872ff5cc355cc0f58318d29eee20e2cf83a612f16d",
+      "modifications": "Trailing horizontal whitespace removed; upstream original bytes are identified by upstreamSha256 and gitBlobSha1."
+    }
+  ]
+}

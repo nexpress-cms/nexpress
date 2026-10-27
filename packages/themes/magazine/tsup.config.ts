@@ -1,3 +1,4 @@
+import { cp } from "node:fs/promises";
 import { defineConfig } from "tsup";
 
 export default defineConfig([
@@ -7,6 +8,15 @@ export default defineConfig([
     dts: true,
     clean: true,
     sourcemap: true,
+    onSuccess: async () => {
+      await cp(
+        new URL("./src/fonts/", import.meta.url),
+        new URL("./dist/fonts/", import.meta.url),
+        {
+          recursive: true,
+        },
+      );
+    },
     external: [
       "react",
       "react-dom",

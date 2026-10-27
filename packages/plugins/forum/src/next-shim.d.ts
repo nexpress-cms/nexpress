@@ -3,6 +3,7 @@ declare module "next/link" {
 
   export interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
     href: string;
+    prefetch?: boolean;
   }
 
   const Link: React.ForwardRefExoticComponent<LinkProps & React.RefAttributes<HTMLAnchorElement>>;

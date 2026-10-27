@@ -17,6 +17,7 @@ import { buildPageMetadata, getSiteMember, JsonLd } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactElement } from "react";
 
 import {
   ForumPostActions,
@@ -71,8 +72,26 @@ export function createForumPostMetadata(runtime: NpForumRuntime) {
   };
 }
 
-export function createForumPostDetailRoute(runtime: NpForumRuntime) {
-  return async function ForumPostDetailRoute({ params }: NpRouteRenderProps) {
+type ForumPostDetailComponent = (props: NpRouteRenderProps) => Promise<ReactElement>;
+const buildPreviewRoutes = new WeakMap<ForumPostDetailComponent, ForumPostDetailComponent>();
+
+/** Internal identity lookup. Only the source-owned build adapter exposes this closure. */
+export function requireForumPostDetailBuildPreviewRoute(
+  component: ForumPostDetailComponent,
+): ForumPostDetailComponent {
+  const preview = buildPreviewRoutes.get(component);
+  if (!preview) throw new Error("Forum build preview requires its original detail route.");
+  return preview;
+}
+
+export function createForumPostDetailRoute(runtime: NpForumRuntime): ForumPostDetailComponent {
+  // Both closures use the same normal read/auth/skin pipeline. Preview behavior is
+  // captured by this factory; no request, DTO, environment or ambient context selects it.
+  async function renderDetail(
+    { params }: NpRouteRenderProps,
+    recordViews: boolean,
+    prefetchLinks?: boolean,
+  ) {
     const member = await getSiteMember();
     const result = await getPost(
       runtime,
@@ -207,6 +226,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
       : null;
     const page = await resolveForumSkin(runtime, board.skinId).renderPostDetail({
       basePath: runtime.basePath,
+      prefetchLinks,
       board,
       post: summary,
       body: body ? renderRichText(body) : <p>{messages.emptyBody}</p>,
@@ -217,6 +237,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
         (permissions?.actions.length ?? 0) > 0 ? (
           <ForumPostActions
             basePath={runtime.basePath}
+            prefetchLinks={prefetchLinks}
             collectionSlug={runtime.collections.posts}
             boardKey={board.key}
             postId={post.id}
@@ -301,7 +322,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
           initial={summary.engagement}
           locale={messages.locale}
           isAuthenticated={member !== null}
-          trackViews={isPublic}
+          trackViews={recordViews && isPublic}
           labels={{
             views: messages.views,
             comments: messages.commentsCount,
@@ -320,7 +341,9 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
           data-np-forum-question-context={summary.questionContext.type}
         >
           {summary.questionContext.href ? (
-            <Link href={summary.questionContext.href}>{summary.questionContext.label}</Link>
+            <Link href={summary.questionContext.href} prefetch={prefetchLinks}>
+              {summary.questionContext.label}
+            </Link>
           ) : (
             <span>{messages.questionContextUnavailable}</span>
           )}
@@ -346,5 +369,13 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
         {page}
       </>
     );
-  };
+  }
+  function ForumPostDetailRoute(props: NpRouteRenderProps) {
+    return renderDetail(props, true);
+  }
+  function ForumPostDetailBuildPreviewRoute(props: NpRouteRenderProps) {
+    return renderDetail(props, false, false);
+  }
+  buildPreviewRoutes.set(ForumPostDetailRoute, ForumPostDetailBuildPreviewRoute);
+  return ForumPostDetailRoute;
 }

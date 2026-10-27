@@ -108,14 +108,69 @@ describe("community realtime stream lifecycle", () => {
     await expect(response.body?.getReader().read()).rejects.toThrow("poll failed");
   });
 
-  it("releases the slot at the bounded stream timeout", async () => {
-    vi.useFakeTimers();
-    const response = await GET(new NextRequest(URL));
-    expect(npGetCommunityRealtimeCapacitySnapshot().activeStreams).toBe(1);
+  it("releases the slot after 25 seconds even when the wall clock is frozen", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    let response: Response | undefined;
+    try {
+      response = await GET(new NextRequest(URL));
+      await vi.advanceTimersByTimeAsync(24_999);
+      expect(npGetCommunityRealtimeCapacitySnapshot().activeStreams).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(26_000);
-    expect(npGetCommunityRealtimeCapacitySnapshot().activeStreams).toBe(0);
-    await response.body?.cancel();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(npGetCommunityRealtimeCapacitySnapshot()).toEqual(
+        expect.objectContaining({ activeStreams: 0, pollFailures: 0 }),
+      );
+      expect(await response.text()).toContain(": connected");
+    } finally {
+      try {
+        if (response && !response.bodyUsed) await response.body?.cancel();
+      } finally {
+        wallClock.mockRestore();
+      }
+    }
+  });
+
+  it("sends heartbeats every 10 seconds while keeping their wall-clock timestamp", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const now = 1_800_000_000_000;
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(now);
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const response = await GET(new NextRequest(URL));
+      if (!response.body) throw new Error("Expected an event stream");
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      expect(decoder.decode((await reader.read()).value)).toContain(": connected");
+
+      let received = false;
+      const first = reader.read().then((chunk) => {
+        received = true;
+        return chunk;
+      });
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(received).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(received).toBe(true);
+      expect(decoder.decode((await first).value)).toBe(`: heartbeat ${now.toString()}\n\n`);
+
+      received = false;
+      const second = reader.read().then((chunk) => {
+        received = true;
+        return chunk;
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(received).toBe(true);
+      expect(decoder.decode((await second).value)).toBe(`: heartbeat ${now.toString()}\n\n`);
+      await reader.cancel();
+      expect(npGetCommunityRealtimeCapacitySnapshot().activeStreams).toBe(0);
+    } finally {
+      try {
+        await reader?.cancel();
+      } finally {
+        wallClock.mockRestore();
+      }
+    }
   });
 
   it("closes a non-consuming stream when its exact byte queue fills", async () => {

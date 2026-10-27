@@ -1,0 +1,244 @@
+{
+  "navigation": [
+    {
+      "items": [
+        {
+          "id": "home",
+          "label": "커뮤니티 홈",
+          "pageId": "00000000-0000-4000-8000-000000000001",
+          "type": "page"
+        },
+        {
+          "id": "about",
+          "label": "프로젝트 소개 · About",
+          "pageId": "00000000-0000-4000-8000-000000000002",
+          "type": "page"
+        }
+      ],
+      "location": "header"
+    }
+  ],
+  "schemaVersion": "np.site-build-seed.v1",
+  "seed": {
+    "documents": [
+      {
+        "collection": "forum-boards",
+        "data": {
+          "attachmentsEnabled": true,
+          "audience": "members",
+          "categories": [],
+          "commentsEnabled": true,
+          "description": "Synthetic demonstration board. No real member history or personal data.",
+          "key": "members",
+          "maxAttachmentSizeMb": 20,
+          "maxAttachments": 5,
+          "moderation": "published",
+          "name": "합성 회원 안내 · Fictional members",
+          "pageSize": 20,
+          "skin": "classic",
+          "slug": "members",
+          "visibility": "public",
+          "writeMode": "members"
+        },
+        "dependsOnDocumentIds": [],
+        "documentId": "00000000-0000-4000-8000-000000000003",
+        "locale": null,
+        "provenance": "demo",
+        "translationGroupId": null
+      },
+      {
+        "collection": "forum-posts",
+        "data": {
+          "attachments": [],
+          "audience": "members",
+          "board": "00000000-0000-4000-8000-000000000003",
+          "boardKey": "members",
+          "body": {
+            "document": {
+              "root": {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "detail": 0,
+                        "format": 0,
+                        "mode": "normal",
+                        "style": "",
+                        "text": "회원 전용 합성 안내 — 이 본문은 인증된 합성 회원에게만 보여야 합니다. Synthetic member-only body.",
+                        "type": "text",
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "format": "",
+                    "indent": 0,
+                    "type": "paragraph",
+                    "version": 1
+                  }
+                ],
+                "direction": null,
+                "format": "",
+                "indent": 0,
+                "type": "root",
+                "version": 1
+              }
+            },
+            "version": 1
+          },
+          "locked": false,
+          "moderationHidden": false,
+          "pinned": false,
+          "title": "합성 회원을 위한 안내 · Fictional members guide",
+          "visibility": "public"
+        },
+        "dependsOnDocumentIds": ["00000000-0000-4000-8000-000000000003"],
+        "documentId": "00000000-0000-4000-8000-000000000004",
+        "locale": null,
+        "provenance": "demo",
+        "translationGroupId": null
+      },
+      {
+        "collection": "pages",
+        "data": {
+          "blocks": [
+            {
+              "id": "home-notice",
+              "props": {
+                "body": "합성 데이터입니다. 실제 회원, 운영 이력, 고객 주장이나 외부 서비스는 사용하지 않습니다.",
+                "showIcon": true,
+                "title": "함께 배우고 기록하는 작은 공간",
+                "tone": "info"
+              },
+              "type": "callout"
+            },
+            {
+              "id": "home-body",
+              "props": {
+                "content": {
+                  "document": {
+                    "root": {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "detail": 0,
+                              "format": 0,
+                              "mode": "normal",
+                              "style": "",
+                              "text": "이 페이지의 모든 이름과 운영 내용은 테스트용 허구입니다. 긴 한국어 문장과 English text를 같은 화면에서 읽고, 작은 화면의 줄바꿈과 탐색 메뉴를 확인합니다.",
+                              "type": "text",
+                              "version": 1
+                            }
+                          ],
+                          "direction": null,
+                          "format": "",
+                          "indent": 0,
+                          "type": "paragraph",
+                          "version": 1
+                        }
+                      ],
+                      "direction": null,
+                      "format": "",
+                      "indent": 0,
+                      "type": "root",
+                      "version": 1
+                    }
+                  },
+                  "version": 1
+                }
+              },
+              "type": "rich-text"
+            }
+          ],
+          "slug": "/",
+          "template": "front",
+          "title": "함께 배우는 작은 커뮤니티 — 합성 데모"
+        },
+        "dependsOnDocumentIds": [],
+        "documentId": "00000000-0000-4000-8000-000000000001",
+        "locale": "ko",
+        "provenance": "demo",
+        "translationGroupId": "00000000-0000-4000-8000-000000000011"
+      },
+      {
+        "collection": "pages",
+        "data": {
+          "blocks": [
+            {
+              "id": "about-notice",
+              "props": {
+                "body": "합성 데이터입니다. 실제 회원, 운영 이력, 고객 주장이나 외부 서비스는 사용하지 않습니다.",
+                "showIcon": true,
+                "title": "About this fictional community",
+                "tone": "info"
+              },
+              "type": "callout"
+            },
+            {
+              "id": "about-body",
+              "props": {
+                "content": {
+                  "document": {
+                    "root": {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "detail": 0,
+                              "format": 0,
+                              "mode": "normal",
+                              "style": "",
+                              "text": "이 페이지의 모든 이름과 운영 내용은 테스트용 허구입니다. 긴 한국어 문장과 English text를 같은 화면에서 읽고, 작은 화면의 줄바꿈과 탐색 메뉴를 확인합니다.",
+                              "type": "text",
+                              "version": 1
+                            }
+                          ],
+                          "direction": null,
+                          "format": "",
+                          "indent": 0,
+                          "type": "paragraph",
+                          "version": 1
+                        }
+                      ],
+                      "direction": null,
+                      "format": "",
+                      "indent": 0,
+                      "type": "root",
+                      "version": 1
+                    }
+                  },
+                  "version": 1
+                }
+              },
+              "type": "rich-text"
+            }
+          ],
+          "slug": "about",
+          "template": "callout-guide",
+          "title": "소개 · About this fictional project"
+        },
+        "dependsOnDocumentIds": [],
+        "documentId": "00000000-0000-4000-8000-000000000002",
+        "locale": "ko",
+        "provenance": "demo",
+        "translationGroupId": "00000000-0000-4000-8000-000000000012"
+      }
+    ],
+    "media": [
+      {
+        "alt": "Synthetic community illustration placeholder",
+        "kind": "placeholder",
+        "materialization": "reference-only",
+        "mediaId": "00000000-0000-4000-8000-000000000099",
+        "placeholderId": "community-illustration-placeholder",
+        "provenanceNote": "Labelled synthetic placeholder metadata only; no upload, fetch or persisted media-field reference."
+      }
+    ],
+    "mode": "demo-fixtures"
+  },
+  "theme": {
+    "id": "community",
+    "package": "@nexpress/theme-community",
+    "tokens": {}
+  }
+}

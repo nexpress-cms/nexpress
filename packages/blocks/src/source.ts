@@ -115,14 +115,23 @@ export function isBlockSourceActive(
 export function getRegisteredBlocksForActiveSources(
   ctx: NpActiveSourceContext,
 ): NpBlockDefinition[] {
-  const selected: NpBlockDefinition[] = [];
-  for (const candidates of getSharedBlockCandidates().values()) {
-    const definition = [...candidates]
-      .reverse()
-      .find((candidate) => isBlockSourceActive(candidate.source, ctx));
-    if (definition) selected.push(definition);
+  return npSelectBlockCandidatesForActiveSources(
+    [...getSharedBlockCandidates().values()].flat(),
+    ctx,
+  );
+}
+
+/** Apply the same owner precedence to an isolated host snapshot, without mutating shared registries. */
+export function npSelectBlockCandidatesForActiveSources(
+  candidates: readonly NpBlockDefinition[],
+  ctx: NpActiveSourceContext,
+): NpBlockDefinition[] {
+  const selected = new Map<string, NpBlockDefinition | undefined>();
+  for (const candidate of candidates) {
+    if (!selected.has(candidate.type)) selected.set(candidate.type, undefined);
+    if (isBlockSourceActive(candidate.source, ctx)) selected.set(candidate.type, candidate);
   }
-  return selected;
+  return [...selected.values()].filter((value): value is NpBlockDefinition => value !== undefined);
 }
 
 /** Resolve the last-loaded block owner that is active for one site. */
@@ -161,7 +170,19 @@ export function getRegisteredBlockMetadataForActiveSources(
  * site-scoped contribution snapshot.
  */
 export function getRegisteredPatternsForActiveSources(ctx: NpActiveSourceContext): NpPattern[] {
-  const definitions = getRegisteredBlocksForActiveSources(ctx);
+  return npSelectPatternCandidatesForActiveSources(
+    [...getSharedPatternCandidates().values()].flat(),
+    getRegisteredBlocksForActiveSources(ctx),
+    ctx,
+  );
+}
+
+/** Isolated counterpart of the shared pattern filter, including prop and child validation. */
+export function npSelectPatternCandidatesForActiveSources(
+  candidates: readonly NpPattern[],
+  definitions: readonly NpBlockDefinition[],
+  ctx: NpActiveSourceContext,
+): NpPattern[] {
   const activeTypes = new Set(definitions.map((definition) => definition.type));
   const referencesOnlyActiveTypes = (blocks: readonly NpBlockInstance[]): boolean =>
     blocks.every(
@@ -169,9 +190,12 @@ export function getRegisteredPatternsForActiveSources(ctx: NpActiveSourceContext
         activeTypes.has(block.type) &&
         (!block.children || referencesOnlyActiveTypes(block.children)),
     );
+  const byId = new Map<string, NpPattern[]>();
+  for (const candidate of candidates)
+    byId.set(candidate.id, [...(byId.get(candidate.id) ?? []), candidate]);
   const selected: NpPattern[] = [];
-  for (const candidates of getSharedPatternCandidates().values()) {
-    const pattern = [...candidates].reverse().find((candidate) => {
+  for (const group of byId.values()) {
+    const pattern = [...group].reverse().find((candidate) => {
       if (!isBlockSourceActive(candidate.source, ctx)) return false;
       if (!referencesOnlyActiveTypes(candidate.blocks)) return false;
       return !npAnalyzeBlockContent(candidate.blocks, definitions).some(

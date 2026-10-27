@@ -135,10 +135,12 @@ export async function discoverFiles(plan, cwd = process.cwd()) {
   return [...files].map((file) => path.relative(cwd, file)).sort(compare);
 }
 
-export function batches(files) {
+export function batches(files, size = batchSize) {
+  if (!Number.isSafeInteger(size) || size < 1 || size > batchSize)
+    throw new Error(`Lint batch size must be an integer from 1 to ${batchSize}.`);
   const unique = [...new Set(files)].sort(compare);
-  return Array.from({ length: Math.ceil(unique.length / batchSize) }, (_, index) =>
-    unique.slice(index * batchSize, (index + 1) * batchSize),
+  return Array.from({ length: Math.ceil(unique.length / size) }, (_, index) =>
+    unique.slice(index * size, (index + 1) * size),
   );
 }
 
@@ -161,7 +163,9 @@ export async function runBatches(
   { cwd = process.cwd(), spawn = spawnSync, output = console.log, env = process.env } = {},
 ) {
   const files = await discoverFiles(plan, cwd);
-  const groups = batches(files);
+  // Composition-heavy packages may lower the per-child file bound while
+  // preserving the same discovery, rules, heap limit and aggregate status.
+  const groups = batches(files, Number(env.NP_LINT_BATCH_SIZE ?? batchSize));
   if (plan.cache)
     await mkdir(path.resolve(cwd, plan.cacheLocation) + ".batches", { recursive: true });
   let exitCode = 0;

@@ -35,7 +35,9 @@ const externals = [
 // directive, breaking the RSC boundary.
 export default defineConfig([
   {
-    entry: { index: "src/index.ts" },
+    entry: { index: "src/index.ts", "build-contract": "src/build-contract.ts" },
+    // The light guard entry and normal factory must use the same private WeakSets.
+    splitting: true,
     format: ["esm"],
     dts: !fast,
     // No `clean: true` here — the build script does `rm -rf

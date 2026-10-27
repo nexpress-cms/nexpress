@@ -65,7 +65,7 @@ resident watcher memory.
 When a leaf package changes and you used the default `pnpm dev`, the leaf's `dist/` is stale. Either rebuild that leaf (`pnpm --filter <pkg> build`) or switch to the `... dev` filter for the rest of the session.
 
 - `pnpm build` / `pnpm test` — turbo fan-out over all workspaces. `pnpm dev` is now scoped to apps/web (see above).
-- `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Each package runs `eslint . --cache --cache-location node_modules/.cache/eslint`, so the heavy `recommendedTypeChecked` rule set's TS programs stay bounded per process and incremental runs hit cache. The previous root `eslint .` over 1000+ files OOMed at an 8 GB heap; the per-package fan-out caps peak RSS at ~1.2 GB. Use `pnpm --filter <pkg> lint` to target one package, or `turbo run lint --filter=<pkg>...` for a dependency-aware subset.
+- `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Packages use cached ESLint checks; large package targets use `scripts/lint-batches.mjs` to run sequential children over at most 16 files. App `lint:shared` sets `NP_LINT_BATCH_SIZE=8` because its composition graph can exhaust the 6 GB heap with 16 files. The smaller batches preserve file discovery, rules, heap limits and failure aggregation. Use `pnpm --filter <pkg> lint` for one package, or `turbo run lint --filter=<pkg>...` for its dependencies.
 - `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier
@@ -485,7 +485,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 
 These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
 
-- **Build-plane proposal contracts** — the AP-801 Site Brief/Blueprint parsers and Build digests in `@nexpress/core/agent-contract` validate bounded proposals. CLI discovery, rendering and generation remain separate and unimplemented; proposal parsing grants no execution authority. See the [Build contract boundary](../../design/agentic-platform/build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
+- **Build-plane proposal contracts and CLI** — Site Brief/Blueprint parsers and Build digests in `@nexpress/core/agent-contract`, plus the project-side `nexpress site` brief/proposal validation, Build skill installer and isolated configured-catalog inspection, validate bounded local declarations/proposals. Rendering and generation remain separate; parsing or catalog inspection grants no execution authority. See the [Build contract boundary](../../design/agentic-platform/build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
 - **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
 - **Framework-host bootstrap wiring** — `@nexpress/core/bootstrap` exposes raw singleton setters, registry lifecycle, and hook dispatch for integration packages. Application code must use `@nexpress/next` or domain subpaths; individual host symbols may move while this boundary is experimental.

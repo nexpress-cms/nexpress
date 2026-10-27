@@ -1532,10 +1532,12 @@ only this monorepo. Its suite must cover:
   cache receipt are hash-bound; an arbitrary image, cross-direction receipt,
   missing, expired, overwritten, symlinked, or byte/source mismatch
   invalidates selection. The unsigned receipt alone never establishes trust;
-- sealing independently rerenders every final montage in a fresh sandbox and
-  requires canonical byte equality plus recomputed source/receipt/file/set
-  digests. Missing second render, nondeterminism, or receipt-only/offline
-  success cannot produce a final DirectionSet;
+- accepting a sealed set for selection or generation independently rerenders
+  every final montage in a fresh sandbox and requires canonical byte equality
+  plus recomputed source/receipt/file/set digests. As specified in the direction
+  workflow, `direction render` seals the first observation; `direction validate`
+  and generation perform the fresh acceptance check. Missing second render,
+  nondeterminism, or receipt-only/offline success cannot pass that check;
 - collection/page/navigation/block/theme/plugin references reparsed against
   live discovery contracts before any file edit;
 - selected-direction id/hash/catalog fingerprint and independently recomputed
@@ -1551,8 +1553,12 @@ only this monorepo. Its suite must cover:
 - every blueprint write confined to the resolved project root, with absolute
   paths, `..`, symlink escapes, duplicate destinations, case-folding
   collisions, and reserved paths rejected;
-- create/update preconditions checked with absent/current source hashes and
-  failed atomically when the worktree changed after planning;
+- create/update preconditions checked with absent/current source hashes;
+  preflight rejection writes no original source. The same-principal FD/CAS
+  profile does not promise atomic protection from an uncooperative process or
+  a multi-file transaction: partial publication is reported without automatic
+  rollback. Reexecution reports exact planned-file precondition conflicts and
+  never turns matching final bytes into fresh verification authority;
 - the closed command-template registry rejects arbitrary argv, shell
   metacharacters, environment assignment, package-script substitution, and
   commands not fingerprinted by the blueprint;
@@ -1564,18 +1570,26 @@ only this monorepo. Its suite must cover:
   remains confined to the repository plan;
 - generated collection changes produce schema output and a reviewable
   migration plan, enumerate every command-owned generated path/final hash, and
-  never apply a database migration;
+  never apply a migration to the original or production database; reviewed
+  migrations may run against disposable synthetic preview PostgreSQL;
 - environment requirements remain owner/source placeholders and no provider,
   deployment, database, or runtime secret appears in files, logs, fixtures, or
   blueprint artifacts;
 - seed data has explicit demo provenance and no live PII; only digest/MIME/size
   verified staged media ids can populate media fields, while licensed
   references/placeholders remain non-materialized;
+- ordinary caller-transaction seeds can create a relationship target and its
+  dependent document, replay without extra revisions, and roll back documents,
+  theme, navigation and deferred effects after a later failure. Existing ACLs
+  still reject closed Forum boards. Callback-scoped by-id reads preserve the
+  actor, tenant boundary, read ACL and hooks, and cannot return a pending read
+  after that callback has ended;
 - command/check ids and references are closed, prerequisites are acyclic and
   canonically topologically sorted, review checks point to one observed
   verification-result manifest rather than predeclared output hashes,
-  verification artifact branches obey their discriminants, and any unplanned
-  tracked write fails with the source snapshot restored;
+  verification artifact branches obey their discriminants, and an unplanned
+  candidate source write fails and discards the owned private copy, preserving
+  the original project and any concurrent operator changes;
 - the preview command copies all route/page/locale/audience/fixture tuples,
   produces two screenshots per route plus one report inside a single bounded
   manifest, and remains valid for 200 pages without exceeding the 64-check
@@ -1590,16 +1604,41 @@ only this monorepo. Its suite must cover:
   blueprint, and render-environment fingerprint produce identical files,
   checks, manifest, and artifact hashes; changing browser/font/canonicalizer
   changes the fingerprint and invalidates comparison rather than silently
-  drifting;
-- generated source passes format, typecheck, lint, unit tests, build, Doctor,
-  `pnpm verify`, and the existing packed-scaffold acceptance workflow;
+  drifting. Actual start/finish timestamps, measured durations, and bounded
+  command-output artifacts remain in separately hash-linked audit observations;
+  they are not normalized or fixed to obtain equal manifests. Rehash both the
+  stable result and its observed outputs before accepting handoff evidence;
+- generated source passes the installed project's format, typecheck, lint,
+  unit-test, build and Doctor owners; the framework passes `pnpm verify` and
+  the existing packed-scaffold acceptance workflow. The ordinary generated
+  project need not invent a monorepo `verify` package script;
 - desktop/mobile preview artifacts correspond to the selected exact tokens,
-  patterns, blocks, and repository commit.
+  patterns, blocks and observed source manifest, with the Git baseline recorded
+  separately when available.
 
 The external coding agent remains outside the trusted generator. Adversarial
 prompt text may change the proposed brief or blueprint only after schema
 validation; it cannot add a command, bypass a source precondition, or widen
 filesystem authority.
+
+The [completed local acceptance evidence](build-agent-and-site-blueprint.md#current-local-implementation)
+records the final 113-task `verify`, 41-task lint, CLI 809 passes plus five
+native opt-in skips, and separately executed 18-case PostgreSQL seed/Forum
+regression. Community public dry-run/execute and Editorial final ten-command
+validation preserve their distinct immutable package epochs. Ordinary browser
+continuation proves real staff editing, persisted readback, CSRF rejection and
+anonymous/member isolation; its seven-row wrapper explicitly reuses two closed
+proofs rather than claiming seven fresh executions. Final privacy classification
+retains the original ten-profile findings and narrowly identifies exact public
+example values; generic-pattern coverage does not claim actual session-literal
+absence. Original screenshots received separate visual privacy review.
+
+Retained broader PostgreSQL, Redis, theme, native, production-browser and
+packed-scaffold results keep their actual scopes, corrected attempts and skips.
+A prior package graph's passed gate is not a fresh result for changed
+dependencies. Launchpad remains a separate
+[defer decision](r8-launchpad-evaluation.md), with no hosted deployment or
+provider call needed for the local R8 outcome.
 
 ## 12. Performance and capacity
 

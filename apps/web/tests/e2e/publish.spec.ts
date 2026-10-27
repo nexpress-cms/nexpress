@@ -17,6 +17,8 @@
  */
 
 import { expect, test } from "@playwright/test";
+import { DEFAULT_SITE_SEO_SETTINGS } from "@nexpress/core/seo";
+import { isNpAdminSettingsSnapshot } from "@nexpress/core/settings";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
@@ -37,6 +39,12 @@ test.describe("publish a page", () => {
 
     await context.clearCookies();
     await signInAsE2EAdmin(page);
+
+    const settingsResponse = await page.request.get("/api/settings");
+    expect(settingsResponse.status()).toBe(200);
+    const settings: unknown = await settingsResponse.json();
+    if (!isNpAdminSettingsSnapshot(settings)) throw new Error("Invalid site settings snapshot");
+    const canonicalSiteUrl = settings.site.url ?? DEFAULT_SITE_SEO_SETTINGS.siteUrl;
 
     // Navigate by URL rather than chasing nav-link selectors so
     // the spec doesn't fight admin-sidebar wording changes.
@@ -97,11 +105,12 @@ test.describe("publish a page", () => {
     expect(response?.status()).toBe(200);
     await expect(page.getByText(bodyCopy)).toBeVisible({ timeout: 10_000 });
 
-    // `seo-audit` contributes this relative canonical link through the
-    // canonical `render:beforePage` hook. Next metadata emits an absolute
-    // canonical URL, so the relative href uniquely proves the plugin render
-    // contribution crossed the host and reached the real page DOM.
-    await expect(page.locator(`link[rel="canonical"][href="/${slug}"]`)).toHaveCount(1);
+    // The normal page metadata owner emits the canonical from the stored
+    // site origin (or its shared default), independently of the test port.
+    // Require one exact URL so conflicting plugin contributions fail here.
+    const canonical = page.locator('link[rel="canonical"]');
+    await expect(canonical).toHaveCount(1);
+    await expect(canonical).toHaveAttribute("href", new URL(`/${slug}`, canonicalSiteUrl).href);
 
     // Confirm the doc shows up in the filtered admin list. Pin the search
     // query so repeated local runs cannot push the new row beyond page 1.

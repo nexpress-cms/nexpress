@@ -3,7 +3,7 @@ import type * as ProgressObservationModule from "./operator-progress-observation
 import type * as JobsModule from "@nexpress/core/jobs";
 import type * as MediaModule from "@nexpress/core/media";
 import type * as CacheModule from "@nexpress/core/cache";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -103,6 +103,9 @@ describe("Operator host owner boundary", () => {
         ],
       }),
     );
+    // Keep the fresh fixture behind Date.now() even with APFS submillisecond mtimes.
+    const recordedAt = new Date(Date.now() - 1000);
+    await utimes(path, recordedAt, recordedAt);
     let allowed = true;
     const host = npCreateAgentOperatorAppHostV1({
       authorize: async () => {},
