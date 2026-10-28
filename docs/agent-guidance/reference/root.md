@@ -513,7 +513,7 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
   in [testing guidance](../../testing.md#documentation-only-pr-checks). The named
   gates below require that validation or their corresponding full job; mixed,
   uncertain and manual-dispatch runs retain full checks:
-  1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
+  1. `typecheck + build + test` — requires both independent jobs: formatting/production build/runtime smoke/typecheck, and `pnpm test` with its dependency builds.
   2. `integration tests (Postgres)` — aggregates two independent Postgres 16 partitions with exact Web file coverage, Core once and Redis once. Covers the pipeline / write-path code that mocked unit tests cannot. Local `pnpm test:integration` remains unchanged; see `docs/testing.md`.
   3. `E2E (Playwright)` — Postgres 16 + Playwright + `next start` against the built bundle. Runs on PRs and manual dispatch, not push-to-main.
   4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages, scaffolds a temp project outside the monorepo, installs it, typechecks it, and runs the deploy-readiness journey smoke.
@@ -534,4 +534,4 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
-- **Turbo typecheck/test tasks depend on `^build`** — packages must be built before typecheck/test will run. This increases CI time.
+- **Turbo build prerequisites** — package tests depend on their own `build` (including dependency builds), so published self-imports resolve on a clean checkout. Reference Web unit tests only need `^build`; typechecks retain their existing build prerequisites. Run these through Turbo rather than testing consumers against incomplete output.

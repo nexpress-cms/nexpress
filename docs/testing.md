@@ -52,8 +52,9 @@ contract checks without building packages, starting databases or running browser
 and scaffold suites. Deleted documents still undergo repository contract checks.
 
 The four existing result names report success only after documentation validation
-or their corresponding full job succeeds. Scope/validation failure or cancellation
-cannot become a green required check. Full PostgreSQL runs still require both
+or all their corresponding full jobs succeed. The build/typecheck result requires
+both the build/runtime job and the independent unit-test job. Scope/validation
+failure or cancellation cannot become a green required check. Full PostgreSQL runs still require both
 partitions and exact coverage receipts; only a validated documentation-only PR
 may intentionally skip them. Gate logs explicitly distinguish these paths.
 Version PR dispatch and Dependabot's named-result checks retain their contracts.
@@ -236,10 +237,12 @@ Redis 7 containers. After the usual full build, `scripts/integration-partitions.
 uses Vitest's configured file discovery and splits Web files by descending
 historical duration, assigning each next file to the lighter group. The timing
 seed in `scripts/integration-durations.json` comes from the successful PostgreSQL
-jobs in [main CI 38942471534](https://github.com/nexpress-cms/nexpress/actions/runs/38942471534)
-at `8c872426`, covering all 211 discovered files; it is a weight,
+jobs in [PR CI 40694818265](https://github.com/nexpress-cms/nexpress/actions/runs/40694818265)
+at `637b368c`, covering all 243 discovered files; it is a weight,
 not an allowlist or a wall-time prediction. New files use the median known weight,
-and removed files are ignored. Core runs once in partition 1 and Redis once in
+and removed files are ignored. Four opt-in Guardian/native-preview files were
+discovered but skipped in that run and retain zero measured weight; their enabled
+acceptance is separate. Core runs once in partition 1 and Redis once in
 partition 2. Each Web partition runs at most two forks, matching the complete
 local acceptance configuration. This bounds contention between CPU-heavy recipe
 journeys and other DB/contract files without extending their deadlines. Worker
@@ -273,7 +276,12 @@ node scripts/integration-partitions.mjs --plan
 
 To reproduce a partition locally, build dependencies first and set `DATABASE_URL`,
 `TEST_DATABASE_URL`, `NP_SECRET`, `SITE_URL`, `TEST_REDIS_URL` (partition 2), and
-`GITHUB_SHA` to the tested commit. Use a disposable database for each partition:
+`GITHUB_SHA` to the tested commit.
+
+Set `SITE_URL=http://localhost:3000`, matching CI and the sitemap assertions.
+Preview/browser helper ports are separate from this integration fixture.
+
+Use a disposable database for each partition:
 
 ```bash
 node scripts/integration-partitions.mjs 1 --output /tmp/np-integration-results
@@ -527,15 +535,34 @@ their normal assertions and setup.
 
 ## CI
 
+Full verification runs build/typecheck/runtime smoke and unit tests on independent
+runners. The first job keeps full formatting, production build, script-runtime
+smoke and workspace typechecks. The second runs the existing
+`pnpm test --concurrency=2`, including repository tests. Package tests wait for
+their own build, which also builds dependencies; self-imports of published
+subpaths therefore resolve on a clean checkout. The reference Web unit tests
+use source aliases and only need dependency builds, so their task retains
+`^build` without a production Web build. No build artifacts pass between runners.
+The required `typecheck + build + test` gate waits for both jobs and
+requires each to succeed.
+Validated documentation-only PRs intentionally skip both jobs; missing, failed or
+cancelled results still fail the gate.
+
+This separation repeats required library builds on the unit runner in exchange
+for independent execution and reruns. It preserves test assertions, fixture sizes,
+per-test deadlines and package ownership. A shorter hosted critical path must be
+measured on successful CI runs; local caches and historical partition weights
+alone do not demonstrate a hosted speedup.
+
 `.github/workflows/ci.yml` runs on every pull request, manual
 `workflow_dispatch`, and selected `push: main` changes (docs-only and
 changeset-only pushes are ignored on `main`). It preserves four required result
 names; documentation-only validation or the corresponding full jobs satisfy them.
 Full jobs use Ubuntu, Node 22 and pnpm 10.33:
 
-1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
-   The full job runs `pnpm test --concurrency=2`: workspace packages share a
-   bounded fan-out while each package retains its existing file parallelism.
+1. `typecheck + build + test` — aggregates independent build/runtime/typecheck
+   and unit-test jobs. The unit job runs `pnpm test --concurrency=2`: workspace
+   packages share a bounded fan-out while each retains its existing file parallelism.
    This avoids overlapping Vitest pools consuming test deadlines; test counts,
    assertions and timeout values are unchanged.
 2. `integration tests (Postgres)` — validates both PostgreSQL partition results
