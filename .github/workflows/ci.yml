@@ -312,6 +312,11 @@ jobs:
           NP_TEST_PREVIEW_BROWSER: "1"
         run: pnpm --filter @nexpress/web exec vitest run tests/agent-preview-browser.integration.test.ts
 
+      - name: CLI browser transport fixture
+        env:
+          NP_BUILD_REQUIRE_CHROMIUM: "1"
+        run: pnpm --filter @nexpress/cli exec vitest run src/site-build/chromium-render.test.ts
+
       - name: E2E tests
         run: pnpm --filter @nexpress/web test:e2e
 

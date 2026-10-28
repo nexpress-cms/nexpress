@@ -22,6 +22,7 @@ import { createForumPostDetailRoute, createForumPostMetadata } from "./routes/fo
 import { createForumPostEditRoute } from "./routes/forum-post-edit.js";
 import { createForumPostNewRoute } from "./routes/forum-post-new.js";
 import type { NpForumRuntime } from "./runtime.js";
+import { createForumBuildRouteOwnerV1 } from "./build-route-owner.js";
 import { classicForumSkin } from "./skins/classic.js";
 import { communityFullForumSkin } from "./skins/community-full.js";
 import type { NpForumCollectionSlugs, NpForumQuestionContextSource, NpForumSkin } from "./types.js";
@@ -442,6 +443,11 @@ const messages = {
 export function createForum(options: NpForumOptions = {}) {
   const runtime = createRuntime(options);
   const contextualQuestions = createForumContextualQuestionsAdapter(runtime);
+  const detailRoute = {
+    pattern: `${runtime.basePath}/:boardKey/:postId`,
+    component: createForumPostDetailRoute(runtime),
+    metadata: createForumPostMetadata(runtime),
+  };
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -458,11 +464,7 @@ export function createForum(options: NpForumOptions = {}) {
       component: createForumPostEditRoute(runtime),
       surface: "member",
     },
-    {
-      pattern: `${runtime.basePath}/:boardKey/:postId`,
-      component: createForumPostDetailRoute(runtime),
-      metadata: createForumPostMetadata(runtime),
-    },
+    detailRoute,
     {
       pattern: `${runtime.basePath}/:boardKey`,
       component: createBoardPostsRoute(runtime),
@@ -474,6 +476,12 @@ export function createForum(options: NpForumOptions = {}) {
     defineForumBoardsCollection(runtime),
     defineForumPostsCollection(runtime),
   ] as const;
+  const buildRouteOwner = createForumBuildRouteOwnerV1(
+    runtime,
+    detailRoute,
+    collections[0],
+    collections[1],
+  );
   const blocks = createForumHomeBlocks(runtime);
   const plugin = definePlugin({
     manifest: {
@@ -696,10 +704,14 @@ export function createForum(options: NpForumOptions = {}) {
         : {}),
     },
     pageRoutes,
+    templates: { [runtime.collections.posts]: { detail: buildRouteOwner.template } },
   });
 
-  return { plugin, collections, runtime, contextualQuestions } as const;
+  return { plugin, collections, runtime, contextualQuestions, buildRouteOwner } as const;
 }
+
+export { npIsForumBuildRouteOwnerV1, npIsForumBuildPreviewAdapterV1 } from "./build-contract.js";
+export type { NpForumBuildRouteOwnerV1, NpForumBuildPreviewAdapterV1 } from "./build-contract.js";
 
 const defaultForum = createForum();
 

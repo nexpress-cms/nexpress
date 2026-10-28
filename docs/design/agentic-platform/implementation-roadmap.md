@@ -856,9 +856,17 @@ brief while following existing codegen/migration/release contracts.
 The artifact and workflow contract is
 [build-agent-and-site-blueprint.md](build-agent-and-site-blueprint.md).
 
-AP-801 pure proposal types/parsers and five owning canonical bodies are
-implemented. Reserved canonical owners and AP-802–806 remain open; see the
-[implementation boundary](build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
+AP-801–805 local implementation and unpaid acceptance are complete for the
+recorded package/source/environment epochs (2026-10-27). The workflow includes
+all sixteen canonical artifact owners, three-direction trusted rendering and
+fresh rerender acceptance, reviewed schema/SQL generation, bounded repository
+publication, ordinary Admin/member continuation and a non-authorizing handoff.
+The [completion evidence and limits](build-agent-and-site-blueprint.md#current-local-implementation)
+record the final 113-task `verify`, 41-task lint, focused PostgreSQL regression,
+packed-scaffold, native, preview and privacy results without conflating package
+epochs or opt-in skips. The [Launchpad evaluation](r8-launchpad-evaluation.md)
+completes AP-806 with a defer decision. Hosted adoption, production enablement,
+Git publication and deployment require their own later authorization.
 
 | ID     | Scope                                                                                                              |
 | ------ | ------------------------------------------------------------------------------------------------------------------ |

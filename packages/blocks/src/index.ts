@@ -52,6 +52,7 @@ export {
   npValidatePattern,
   npValidatePatternDefinition,
 } from "./pattern-contract.js";
+export { npApplyPatternOverridesV1, type NpPatternOverridesV1 } from "./pattern-overrides.js";
 export type {
   NpPatternDefinitionAnalysisOptions,
   NpPatternDefinitionIssue,
@@ -85,6 +86,8 @@ export {
   getRegisteredBlocksForActiveSources,
   getRegisteredBlockMetadataForActiveSources,
   getRegisteredPatternsForActiveSources,
+  npSelectBlockCandidatesForActiveSources,
+  npSelectPatternCandidatesForActiveSources,
   type NpBlockSource,
   type NpActiveSourceContext,
 } from "./source.js";

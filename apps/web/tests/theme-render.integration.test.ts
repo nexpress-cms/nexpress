@@ -73,8 +73,10 @@ describe.skipIf(skipIfNoTestDb())("built-in theme shell and slot rendering", () 
     );
     expect(html).toContain('<div class="np-magazine">&lt;probe&gt;hello&lt;/probe&gt;</div>');
     expect(html).not.toContain("<probe>");
-    expect(html).toContain('rel="preconnect" href="https://fonts.googleapis.com"');
-    expect(html).toContain("Newsreader");
+    expect(html.match(/@font-face\s*\{/gu)).toHaveLength(3);
+    expect(html).toContain('font-family: "Newsreader"');
+    expect(html).toContain('font-family: "Hanken Grotesk"');
+    expect(html).not.toMatch(/fonts\.(?:googleapis|gstatic)\.com/u);
     expect(html).toContain("--np-color-rule:");
   });
 

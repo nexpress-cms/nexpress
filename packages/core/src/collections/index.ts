@@ -28,6 +28,7 @@ export {
   npAssertCollectionReadAccess,
 } from "./pipeline.js";
 export type { NpTransaction } from "./pipeline.js";
+export type { NpCollectionDocumentReader } from "../config/types.js";
 export type {
   NpCollectionMutationActorV1,
   NpCollectionRevisionFactV1,

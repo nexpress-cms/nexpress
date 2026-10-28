@@ -1,5 +1,5 @@
 import type { NpCollectionConfig, NpFieldConfig } from "./types.js";
-import { collectionConfigSchema } from "./validation.js";
+import { collectionConfigSchema } from "./collection-schema.js";
 import { npAnalyzeMediaProcessingOptions } from "../media-contract/contract.js";
 
 export type NpCollectionDefinitionIssueCode = "shape" | "field" | "reference";

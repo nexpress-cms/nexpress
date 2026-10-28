@@ -1,0 +1,10 @@
+{
+  "note": "Independent Python vector over ASCII property names. Source digest is synthetic, not observed module provenance.",
+  "structured": [
+    {
+      "purpose": "np.build-collection-definition.v1",
+      "canonical": "{\"callbacks\":[\"/access/read\"],\"configuration\":{\"access\":{\"read\":null},\"fields\":[{\"name\":\"title\",\"required\":true,\"type\":\"text\"}],\"labels\":{\"plural\":\"Notes\",\"singular\":\"Note\"},\"slug\":\"notes\"},\"schemaVersion\":\"np.agent-build-collection-definition.v1\",\"sourceCapsuleDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}",
+      "digest": "nb1:sha256:KavY52FZHcJgoiZvDTSrhTZs3yfpvKFOAt-Y96ug0EM"
+    }
+  ]
+}

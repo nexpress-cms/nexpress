@@ -22,9 +22,9 @@ function audienceLabel(
       : privateLabel;
 }
 
-function author(post: NpForumPostSummary, staffLabel: string) {
+function author(post: NpForumPostSummary, staffLabel: string, prefetchLinks?: boolean) {
   return post.author ? (
-    <Link href={`/u/${post.author.handle}`} className="np-forum-author">
+    <Link href={`/u/${post.author.handle}`} prefetch={prefetchLinks} className="np-forum-author">
       @{post.author.handle}
     </Link>
   ) : (
@@ -341,7 +341,11 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
     >
       <article className="np-forum-post">
         <header className="np-forum-post-header">
-          <Link href={`${basePath}/${board.key}`} className="np-forum-back-link">
+          <Link
+            href={`${basePath}/${board.key}`}
+            prefetch={props.prefetchLinks}
+            className="np-forum-back-link"
+          >
             ← {messages.backToBoard}
           </Link>
           <div className="np-forum-post-kicker">
@@ -359,7 +363,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
           </div>
           <h1>{post.title}</h1>
           <div className="np-forum-post-meta">
-            {author(post, messages.staff)}
+            {author(post, messages.staff, props.prefetchLinks)}
             <time dateTime={post.createdAt.toISOString()}>
               {post.createdAt.toLocaleString(messages.locale)}
             </time>

@@ -55,36 +55,38 @@ test("runs every file once in sequential bounded children and aggregates failure
     for (let index = 0; index < 34; index++)
       await writeFile(path.join(f.cwd, "src", `extra-${index}.js`), "export {};\n");
     const plan = parseArgs(["src", "--", "--cache", "--cache-location", "cache/routes"]);
-    const calls = [],
-      output = [];
-    const result = await runBatches(plan, {
-      cwd: f.cwd,
-      env: {},
-      output: (line) => output.push(line),
-      spawn: (command, args, options) => {
-        calls.push({ command, args, options });
-        return { status: calls.length === 1 ? 1 : calls.length === 2 ? 2 : 0 };
-      },
-    });
-    assert.equal(result.exitCode, 2);
-    assert.equal(result.batchCount, 3);
-    assert.equal(calls.length, 3);
-    const actual = calls.flatMap((call) => call.args.slice(1, call.args.indexOf("--cache")));
-    assert.deepEqual(actual, result.files);
-    assert.equal(new Set(actual).size, 37);
-    assert.ok(batches(result.files).every((group) => group.length <= 16));
-    assert.ok(
-      calls.every(
-        (call) =>
-          call.options.cwd === f.cwd &&
-          call.options.env.NODE_OPTIONS === "--max-old-space-size=6144",
-      ),
-    );
-    const caches = calls.map((call) => call.args.at(-1));
-    assert.equal(new Set(caches).size, 3);
-    assert.equal(batchOptions(plan, batches(result.files)[0], f.cwd).at(-1), caches[0]);
-    assert.ok(output.some((line) => line.includes("batch 1 failed")));
-    assert.ok(output.some((line) => line.includes("batch 2 failed")));
+    for (const size of [undefined, 8]) {
+      const calls = [],
+        output = [];
+      const result = await runBatches(plan, {
+        cwd: f.cwd,
+        env: size === undefined ? {} : { NP_LINT_BATCH_SIZE: String(size) },
+        output: (line) => output.push(line),
+        spawn: (command, args, options) => {
+          calls.push({ command, args, options });
+          return { status: calls.length === 1 ? 1 : calls.length === 2 ? 2 : 0 };
+        },
+      });
+      assert.equal(result.exitCode, 2);
+      assert.equal(result.batchCount, Math.ceil(37 / (size ?? 16)));
+      assert.equal(calls.length, result.batchCount);
+      const actual = calls.flatMap((call) => call.args.slice(1, call.args.indexOf("--cache")));
+      assert.deepEqual(actual, result.files);
+      assert.equal(new Set(actual).size, 37);
+      assert.ok(batches(result.files, size).every((group) => group.length <= (size ?? 16)));
+      assert.ok(
+        calls.every(
+          (call) =>
+            call.options.cwd === f.cwd &&
+            call.options.env.NODE_OPTIONS === "--max-old-space-size=6144",
+        ),
+      );
+      const caches = calls.map((call) => call.args.at(-1));
+      assert.equal(new Set(caches).size, result.batchCount);
+      assert.equal(batchOptions(plan, batches(result.files, size)[0], f.cwd).at(-1), caches[0]);
+      assert.ok(output.some((line) => line.includes("batch 1 failed")));
+      assert.ok(output.some((line) => line.includes("batch 2 failed")));
+    }
   } finally {
     await f.dispose();
   }
@@ -117,6 +119,8 @@ test("preserves explicit config/ignore/extension options and rejects ambiguous i
     ),
   );
   assert.deepEqual(batchOptions(parseArgs(["src"]), ["src/a.js"], "/tmp"), []);
+  for (const size of [0, -1, 17, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
+    assert.throws(() => batches(["src/a.js"], size), /Lint batch size/);
   for (const args of [
     [],
     ["--cache"],

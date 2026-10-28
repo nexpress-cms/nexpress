@@ -287,6 +287,8 @@ export interface NpForumPostListSkinProps {
 
 export interface NpForumPostDetailSkinProps {
   basePath: string;
+  /** Skins must disable automatic navigation prefetch when false, as in isolated previews. */
+  prefetchLinks?: boolean;
   board: NpForumBoard;
   post: NpForumPostSummary;
   body: ReactNode;

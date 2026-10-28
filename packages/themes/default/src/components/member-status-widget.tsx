@@ -106,11 +106,12 @@ export function MemberStatusWidget({
   if (member) {
     return (
       <div className="np-member-status">
-        <Link href={`/u/${member.handle}`} className="np-member-status-handle">
+        <Link href={`/u/${member.handle}`} prefetch={false} className="np-member-status-handle">
           @{member.handle}
         </Link>
         <Link
           href="/members/me/notifications"
+          prefetch={false}
           className="np-member-notifications"
           aria-label={notificationLabel(unreadNotifications)}
         >
@@ -135,8 +136,10 @@ export function MemberStatusWidget({
 
   return (
     <div className="np-member-status">
-      <Link href="/members/login">Sign in</Link>
-      <Link href="/members/register" className="np-button-primary">
+      <Link href="/members/login" prefetch={false}>
+        Sign in
+      </Link>
+      <Link href="/members/register" prefetch={false} className="np-button-primary">
         Register
       </Link>
     </div>

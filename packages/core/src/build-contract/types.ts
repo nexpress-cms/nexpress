@@ -3,6 +3,7 @@ import type { NpBlockContent } from "../fields/block-content.js";
 import type { NpNavigationItems } from "../navigation/types.js";
 import type { NpThemeTokensOverlay } from "../theme/types.js";
 import type { NpPluginDiscoveryItem } from "../discovery-contract/types.js";
+import type { NpAgentBuildCollectionDefinitionV1 } from "./collection-definition.js";
 
 export interface NpAgentPreviewViewportV1 {
   width: number;
@@ -60,7 +61,7 @@ export interface NpAgentBlueprintCollection {
   slug: string;
   sourcePath: string;
   expectedSourceHash: string | null;
-  definition: NpAgentJsonObject;
+  definition: NpAgentBuildCollectionDefinitionV1;
   definitionHash: string;
   migrationClass: "none" | "additive" | "rename" | "destructive-review";
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { magazineFontCss } from "./fonts.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
 const MAGAZINE_TOKEN_FALLBACKS = `:root{--np-color-rule:#d8ccb4;--np-color-background-elev:#fcfaf3;--np-color-accent:#c08a3e;--np-font-chrome:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}`;
@@ -7,8 +8,8 @@ const MAGAZINE_TOKEN_FALLBACKS = `:root{--np-color-rule:#d8ccb4;--np-color-backg
 /**
  * Wraps the entire site in the magazine class so theme CSS
  * can scope everything under a single root attribute. The
- * shell also bootstraps two Google font families (Newsreader +
- * Hanken Grotesk) and emits an inline `<style>` block with the
+ * shell also bootstraps the vendored Newsreader + Hanken Grotesk
+ * font families and emits an inline `<style>` block with the
  * `--np-*` custom properties that aren't part of the strict
  * `NpThemeColors` contract (rule + elevated background +
  * accent + chrome font) but are referenced throughout
@@ -31,12 +32,7 @@ export async function MagazineShell({ children }: { children: ReactNode }) {
   }
   return (
     <>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..800;1,6..72,400..800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
-      />
+      <style>{magazineFontCss}</style>
       <style>{MAGAZINE_TOKEN_FALLBACKS}</style>
       <div
         className="np-magazine"

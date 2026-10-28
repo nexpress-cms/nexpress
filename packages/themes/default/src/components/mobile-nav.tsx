@@ -123,10 +123,14 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
         <div className="np-mobile-nav-account" aria-label="Member">
           {member ? (
             <>
-              <Link href={`/u/${member.handle}`} onClick={() => setOpen(false)}>
+              <Link href={`/u/${member.handle}`} prefetch={false} onClick={() => setOpen(false)}>
                 @{member.handle}
               </Link>
-              <Link href="/members/me/notifications" onClick={() => setOpen(false)}>
+              <Link
+                href="/members/me/notifications"
+                prefetch={false}
+                onClick={() => setOpen(false)}
+              >
                 <span>Notifications</span>
                 {unread > 0 ? (
                   <span className="np-mobile-nav-badge">{formatUnreadCount(unread)}</span>
@@ -135,10 +139,10 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
             </>
           ) : (
             <>
-              <Link href="/members/login" onClick={() => setOpen(false)}>
+              <Link href="/members/login" prefetch={false} onClick={() => setOpen(false)}>
                 Sign in
               </Link>
-              <Link href="/members/register" onClick={() => setOpen(false)}>
+              <Link href="/members/register" prefetch={false} onClick={() => setOpen(false)}>
                 Register
               </Link>
             </>
@@ -148,7 +152,7 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
           {items.map((item, index) => (
             <li key={`mobile-nav-${index.toString()}`}>
               {item.url ? (
-                <Link href={item.url} onClick={() => setOpen(false)}>
+                <Link href={item.url} prefetch={false} onClick={() => setOpen(false)}>
                   {item.label}
                 </Link>
               ) : (
@@ -159,7 +163,7 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
                   {item.children.map((child, childIndex) => (
                     <li key={`mobile-nav-${index.toString()}-${childIndex.toString()}`}>
                       {child.url ? (
-                        <Link href={child.url} onClick={() => setOpen(false)}>
+                        <Link href={child.url} prefetch={false} onClick={() => setOpen(false)}>
                           {child.label}
                         </Link>
                       ) : (

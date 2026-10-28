@@ -8,6 +8,7 @@ export {
   getAllPluginIds,
   getPluginDiscoveryItems,
   getPluginDiscoveryDiagnostics,
+  npProjectPluginDeclarationDiscoveryV1,
   getPluginAdminExtension,
   getPluginAdminActionDiagnostics,
   getRegisteredPluginActions,
