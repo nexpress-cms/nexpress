@@ -195,15 +195,17 @@ describe("private np.png-rgba.v1 screenshot canonicalizer", () => {
     const output = canonicalizeSiteBuildPngV1(image(256, 257, scanlines));
     const compressed = canonicalChunks(output).get("IDAT")!;
     expect(compressed[2] & 7).toBe(0);
-    expect(inflateSync(compressed)).toEqual(scanlines);
+    // Native full-byte comparisons avoid enumerating hundreds of thousands of
+    // byte properties through generic deep equality within this test's deadline.
+    expect(inflateSync(compressed).equals(scanlines)).toBe(true);
     expect(output.length).toBeLessThanOrEqual(
       scanlines.length + 70 + 6 + Math.ceil(scanlines.length / 65_535) * 5,
     );
-    expect(canonicalizeSiteBuildPngV1(output)).toEqual(output);
+    expect(Buffer.from(canonicalizeSiteBuildPngV1(output)).equals(output)).toBe(true);
     // Exercise stored -> fixed -> stored transitions and dictionary continuity.
     scanlines.fill(0, 65_535, 131_070);
     const mixed = canonicalizeSiteBuildPngV1(image(256, 257, scanlines));
-    expect(inflateSync(canonicalChunks(mixed).get("IDAT")!)).toEqual(scanlines);
+    expect(inflateSync(canonicalChunks(mixed).get("IDAT")!).equals(scanlines)).toBe(true);
     expect(mixed.length).toBeLessThan(output.length - 50_000);
   });
 
