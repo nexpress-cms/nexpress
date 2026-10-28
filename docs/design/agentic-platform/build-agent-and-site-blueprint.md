@@ -1578,7 +1578,7 @@ AP-806 has a documented **defer** decision. The generated application remains an
 ordinary owned NexPress project. No provider call, Runtime activation, hosted
 service, Git publication, deployment or production migration was performed.
 
-The final code checkpoint passed all **113 `verify` tasks and 41 lint tasks**
+The pre-PR code checkpoint passed all **113 `verify` tasks and 41 lint tasks**
 against one 4,375-file source inventory (`38dda614…`). CLI tests passed 809 cases
 with five explicit native opt-in skips. Separate native profiles retain their
 own executed coverage below; those skips are not counted as passes. Focused
@@ -1586,8 +1586,9 @@ collection tests passed 17 cases, seed-generator tests passed 28, and the real
 PostgreSQL continuation regression passed **18 cases without skips**: seed 4
 and Forum policy 14. The latter proves dependent saves and replay, rollback
 after a later failure, and closed-board rejection. Root rehashed the same
-source inventory after acceptance; subsequent completion edits are documentation
-only and do not constitute a new application build.
+source inventory after acceptance. Completion edits up to the initial PR head
+were documentation only. The subsequent Linux CI portability correction below
+has its own affected checks and final gate.
 
 The continuation regression repaired a transaction visibility defect. The
 seed creates a Forum board and post in one caller transaction, while Forum's
@@ -1689,6 +1690,26 @@ continuation pass their scoped checks, without a full WCAG or all-route audit.
 Failed attempts, development warnings, reused stages and opt-in skips remain in
 the evidence rather than being counted as fresh passes. Package versions,
 changesets, the root lockfile and root migration sources are unchanged.
+
+The first PR CI run exposed a compiler portability defect: GCC rejected
+misleading indentation in three embedded POSIX publication helpers that Clang
+had accepted. The correction changes whitespace only and preserves the C tokens,
+all file-descriptor checks and `-Wall -Werror`. All three helpers then compiled
+successfully with Linux GCC. The optional browser transport fixture also stops
+assuming Linux's `/usr/bin/chromium` is a usable browser. CI requires the actual
+Playwright headless shell already installed in the E2E job; a missing required
+or explicitly configured executable fails instead of skipping. This does not widen host authority
+or substitute transport fixtures for native sandbox acceptance.
+
+The new seed integration suite now closes only its DB harness, matching the
+existing `isolate:false` shared-worker contract. Terminal bootstrap shutdown in
+that suite had prevented later files from initializing. A targeted real
+PostgreSQL run forced seed first, then Guardian health and Forum policy in the
+same worker: all 22 cases passed without skips. After the portability correction,
+`verify` again passed 113 tasks (CLI 809 passes / five native opt-in skips), lint
+passed 41 tasks, and the required-browser transport fixture passed all 13 cases.
+These affected checks supplement the earlier scoped acceptance; they do not
+relabel every retained native image or packed graph as freshly rerun.
 
 #### Earlier implementation and verification checkpoints
 

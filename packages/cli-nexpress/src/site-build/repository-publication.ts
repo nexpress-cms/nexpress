@@ -106,9 +106,11 @@ static int checkdirs(void){for(int i=0;i<nd;i++){struct stat s;if(fstat(dirs[i].
 static int enter(int parent,const char*name,int create){
  if(parent<0||parent>=nd||!name[0]||strlen(name)>255||!strcmp(name,".")||!strcmp(name,".."))return -1;
  for(int i=0;i<nd;i++)if(dirs[i].parent==parent&&!strcmp(dirs[i].name,name)){struct stat s;if(fstatat(dirs[parent].fd,name,&s,AT_SYMLINK_NOFOLLOW)||!dirsame(&s,&dirs[i].identity))return -1;return i;}
- if(nd>=MAXD)return -1;int fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);
+ if(nd>=MAXD)return -1;
+ int fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);
  if(fd<0&&errno==ENOENT&&create){if(mkdirat(dirs[parent].fd,name,0700)&&errno!=EEXIST)return -1;fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);}
- if(fd<0)return -1;struct stat s,at;if(!exactname(parent,name)||fstat(fd,&s)||!S_ISDIR(s.st_mode)||fstatat(dirs[parent].fd,name,&at,AT_SYMLINK_NOFOLLOW)||!dirsame(&s,&at)){close(fd);return -1;}
+ if(fd<0)return -1;
+ struct stat s,at;if(!exactname(parent,name)||fstat(fd,&s)||!S_ISDIR(s.st_mode)||fstatat(dirs[parent].fd,name,&at,AT_SYMLINK_NOFOLLOW)||!dirsame(&s,&at)){close(fd);return -1;}
  int id=nd++;dirs[id].fd=fd;dirs[id].parent=parent;strcpy(dirs[id].name,name);dirs[id].identity=s;return id;
 }
 static int absolute(const char*path){if(path[0]!='/'||strlen(path)>=PATH_MAX||nd>=MAXD)return -1;int fd=open("/",O_RDONLY|O_DIRECTORY|O_NOFOLLOW);if(fd<0)return -1;int id=nd++;dirs[id].fd=fd;dirs[id].parent=-1;dirs[id].name[0]=0;if(fstat(fd,&dirs[id].identity))return -1;char copy[PATH_MAX];strcpy(copy,path);char*save=NULL,*p=strtok_r(copy,"/",&save);while(p){id=enter(id,p,0);if(id<0)return -1;p=strtok_r(NULL,"/",&save);}return id;}

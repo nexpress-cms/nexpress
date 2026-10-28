@@ -505,6 +505,23 @@ Set the isolated `TEST_DATABASE_URL` explicitly as described above. Keep
 paid/provider tests, real credentials and Runtime activation outside this local
 acceptance profile. The flow records the actual executed scope and limitations.
 
+The CLI's POSIX publication helpers compile with the same `-Wall -Werror`
+settings on macOS Clang and Linux GCC. Keep embedded C statements unambiguously
+indented for both compilers. The optional native Chromium transport fixture
+uses discovered macOS Playwright browsers or an explicit
+`NP_BUILD_CHROMIUM_EXECUTABLE`; automatic discovery selects Playwright's
+headless shell on macOS and Linux, not an OS Chromium launcher or the separate
+headed browser. CI executes that fixture in the E2E job using the headless shell
+already installed there, with `NP_BUILD_REQUIRE_CHROMIUM=1` preventing a missing
+browser from silently skipping. An explicitly configured missing browser also
+fails. This fixture does not replace the separate R8 native sandbox acceptance.
+
+Web integration files share bootstrap within a worker (`isolate:false`). A suite
+must close its own DB harness without calling terminal `shutdownBootstrap()`;
+later files still use that bootstrap. A focused lifecycle regression can force
+seed tests before existing Guardian/Forum suites in one worker while retaining
+their normal assertions and setup.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every pull request, manual

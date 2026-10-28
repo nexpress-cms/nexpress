@@ -108,11 +108,13 @@ static int enter(int parent,const char*name,int create){
  if(nd>=MAXD||!name[0]||strlen(name)>255||!strcmp(name,".")||!strcmp(name,"..")||checkdirs())return -1;
  int fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);
  if(fd<0&&errno==ENOENT&&create){if(mkdirat(dirs[parent].fd,name,0700)&&errno!=EEXIST)return -1;fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);}
- if(fd<0)return -1;struct stat s,at;if(fstat(fd,&s)||!S_ISDIR(s.st_mode)||fstatat(dirs[parent].fd,name,&at,AT_SYMLINK_NOFOLLOW)||!dirsame(&s,&at)){close(fd);return -1;}
+ if(fd<0)return -1;
+ struct stat s,at;if(fstat(fd,&s)||!S_ISDIR(s.st_mode)||fstatat(dirs[parent].fd,name,&at,AT_SYMLINK_NOFOLLOW)||!dirsame(&s,&at)){close(fd);return -1;}
  int id=nd++;dirs[id].fd=fd;dirs[id].parent=parent;strcpy(dirs[id].name,name);dirs[id].identity=s;return checkdirs()?-1:id;
 }
 static int absolute(const char*path){
- if(path[0]!='/'||strlen(path)>=PATH_MAX)return -1;int fd=open("/",O_RDONLY|O_DIRECTORY|O_NOFOLLOW);if(fd<0||nd>=MAXD)return -1;
+ if(path[0]!='/'||strlen(path)>=PATH_MAX)return -1;
+ int fd=open("/",O_RDONLY|O_DIRECTORY|O_NOFOLLOW);if(fd<0||nd>=MAXD)return -1;
  int id=nd++;dirs[id].fd=fd;dirs[id].parent=-1;dirs[id].name[0]=0;if(fstat(fd,&dirs[id].identity))return -1;
  char copy[PATH_MAX];strcpy(copy,path);char*save=NULL,*part=strtok_r(copy,"/",&save);while(part){id=enter(id,part,0);if(id<0)return -1;part=strtok_r(NULL,"/",&save);}return id;
 }
@@ -128,7 +130,8 @@ static int frame(int workspace,int apply){
  if(!f||fread(magic,1,8,f)!=8||memcmp(magic,apply?"NPEDAP01":"NPEDCP01",8)||u32(f,&count)||count>(apply?500:MAXF))goto done;
  if(apply){ne=(int)count;for(int i=0;i<ne;i++){Edit*e=&edits[i];e->fd=-1;if(u32(f,&e->old)||u32(f,&e->new)||u32(f,&e->mode)||u32(f,&e->write)||pathread(f,e->path)||e->new>=MAXF||(e->old!=UINT32_MAX&&e->old>=MAXF)||(e->mode!=0644&&e->mode!=0755)||e->write>1)goto done;}}
  else{ni=(int)count;for(int i=0;i<ni;i++)if(u32(f,&inputs[i].mode)||u32(f,&inputs[i].copy)||pathread(f,inputs[i].path)||inputs[i].copy>1||(inputs[i].mode!=0&&inputs[i].mode!=0644&&inputs[i].mode!=0755))goto done;}
- if(fgetc(f)!=EOF)goto done;result=0;
+ if(fgetc(f)!=EOF)goto done;
+ result=0;
 done:if(f)fclose(f);else close(fd);return result;
 }
 static int copybytes(int from,int to,off_t size){char b[65536];for(off_t p=0;p<size;){size_t n=size-p>(off_t)sizeof(b)?sizeof(b):(size_t)(size-p);if(pread(from,b,n,p)!=(ssize_t)n||pwrite(to,b,n,p)!=(ssize_t)n)return -1;p+=n;}return 0;}
@@ -136,7 +139,8 @@ static int bytesame(int a,int b,off_t size){char x[65536],y[65536];for(off_t p=0
 static int samepath(int parent,const char*leaf,int fd,const struct stat*expected){struct stat s,at;return regular(fd,&s)||!same(&s,expected)||fstatat(dirs[parent].fd,leaf,&at,AT_SYMLINK_NOFOLLOW)||!same(&s,&at)?-1:0;}
 static int lease(int workspace,const char*name,int writing,int files){
  int fd=openat(dirs[workspace].fd,name,(writing?O_WRONLY|O_CREAT|O_EXCL:O_RDONLY)|O_NOFOLLOW|O_NONBLOCK,0600);struct stat s;if(fd<0||regular(fd,&s))return -1;FILE*f=fdopen(fd,writing?"wb":"rb");int result=-1;uint32_t count=(uint32_t)nd;
- if(!f)goto done;if(writing){if(fwrite(&count,sizeof(count),1,f)!=1)goto done;for(int i=0;i<nd;i++){if(fwrite(&dirs[i].parent,sizeof(int),1,f)!=1||fwrite(dirs[i].name,256,1,f)!=1||fwrite(&dirs[i].identity,sizeof(struct stat),1,f)!=1)goto done;}if(files&&fwrite(inputs,sizeof(Input),(size_t)ni,f)!=(size_t)ni)goto done;if(fflush(f)||fsync(fd))goto done;}
+ if(!f)goto done;
+ if(writing){if(fwrite(&count,sizeof(count),1,f)!=1)goto done;for(int i=0;i<nd;i++){if(fwrite(&dirs[i].parent,sizeof(int),1,f)!=1||fwrite(dirs[i].name,256,1,f)!=1||fwrite(&dirs[i].identity,sizeof(struct stat),1,f)!=1)goto done;}if(files&&fwrite(inputs,sizeof(Input),(size_t)ni,f)!=(size_t)ni)goto done;if(fflush(f)||fsync(fd))goto done;}
  else{if(fread(&count,sizeof(count),1,f)!=1||count>MAXD)goto done;for(uint32_t i=0;i<count;i++){int parent;char nameV[256];struct stat identity;if(fread(&parent,sizeof(int),1,f)!=1||fread(nameV,256,1,f)!=1||fread(&identity,sizeof(struct stat),1,f)!=1||!memchr(nameV,0,256))goto done;int id;if(parent<0){id=absolute("/");}else{if(parent>=(int)i)goto done;id=enter(parent,nameV,0);}if(id!=(int)i||!dirsame(&dirs[id].identity,&identity))goto done;}if(files){Input expected;for(int i=0;i<ni;i++){if(fread(&expected,sizeof(Input),1,f)!=1||strcmp(expected.path,inputs[i].path)||expected.mode!=inputs[i].mode||expected.copy!=inputs[i].copy)goto done;inputs[i].identity=expected.identity;}}if(fgetc(f)!=EOF)goto done;}
  result=checkdirs();
 done:if(f)fclose(f);else close(fd);return result;
@@ -154,12 +158,14 @@ static int preflight(int root,int cache){
  for(int i=0;i<ne;i++){Edit*e=&edits[i];e->parent=parentof(root,e->path,e->leaf,0);e->state=0;if(e->parent<0){if(errno==ENOENT&&e->old==UINT32_MAX&&e->write)continue;return -1;}e->fd=openat(dirs[e->parent].fd,e->leaf,O_RDONLY|O_NOFOLLOW|O_NONBLOCK);
  if(e->fd<0){if(errno==ENOENT&&e->old==UINT32_MAX&&e->write)continue;return -1;}if(regular(e->fd,&e->identity))return -1;
  if(matches(e->fd,&e->identity,cache,e->new,e->mode)){e->state=1;continue;}
- if(!e->write||e->old==UINT32_MAX||!matches(e->fd,&e->identity,cache,e->old,e->mode))return -1;e->state=2;
+ if(!e->write||e->old==UINT32_MAX||!matches(e->fd,&e->identity,cache,e->old,e->mode))return -1;
+ e->state=2;
  }return checkdirs();
 }
 static int checkedits(void){if(checkdirs())return -1;for(int i=0;i<ne;i++)if(edits[i].fd>=0&&samepath(edits[i].parent,edits[i].leaf,edits[i].fd,&edits[i].identity))return -1;return 0;}
 static int apply(int root,int cache){
- if(preflight(root,cache))return -1;int changed=0;
+ if(preflight(root,cache))return -1;
+ int changed=0;
  for(int i=0;i<ne;i++){Edit*e=&edits[i];if(e->state==1)continue;if(checkedits())return -1;struct stat payload;int data=cachefile(cache,e->new,&payload);if(data<0)return -1;
  int parent=parentof(root,e->path,e->leaf,1);if(parent<0||checkdirs()){close(data);return -1;}int target;
  if(e->state==0){target=openat(dirs[parent].fd,e->leaf,O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_NONBLOCK,e->mode);if(target<0){close(data);return -1;}e->parent=parent;}
@@ -168,11 +174,13 @@ static int apply(int root,int cache){
  }return changed;
 }
 int main(int argc,char**argv){
- if(argc!=4)return 3;int mode=!strcmp(argv[1],"capture")?0:!strcmp(argv[1],"check")?1:!strcmp(argv[1],"snapshot")?2:!strcmp(argv[1],"apply")?3:-1;if(mode<0)return 3;
+ if(argc!=4)return 3;
+ int mode=!strcmp(argv[1],"capture")?0:!strcmp(argv[1],"check")?1:!strcmp(argv[1],"snapshot")?2:!strcmp(argv[1],"apply")?3:-1;if(mode<0)return 3;
  int result=2,applied=0,workspace=absolute(argv[3]);if(workspace<0)goto done;int cache=enter(workspace,"inputs",0);if(cache<0||frame(workspace,mode==3))goto done;
  if(mode==3){struct stat s;if(!fstatat(dirs[workspace].fd,"applied.lease",&s,AT_SYMLINK_NOFOLLOW)){if(!S_ISREG(s.st_mode)||s.st_nlink!=1)goto done;applied=1;}else if(errno!=ENOENT)goto done;}
  if(mode==1||mode==3){/* Rebuild in exactly the captured order, starting with the private workspace. */
-  for(int i=nd-1;i>=0;i--)close(dirs[i].fd);nd=0;int fd=open(argv[3],O_RDONLY|O_DIRECTORY|O_NOFOLLOW);if(fd<0)goto done;
+  for(int i=nd-1;i>=0;i--)close(dirs[i].fd);
+  nd=0;int fd=open(argv[3],O_RDONLY|O_DIRECTORY|O_NOFOLLOW);if(fd<0)goto done;
   /* The lease reader uses this temporary FD while reconstructing all directory leases. */
   Dir saved;memset(&saved,0,sizeof(saved));saved.fd=fd;dirs[MAXD-1]=saved;
   if(lease(MAXD-1,mode==1?"original.lease":applied?"applied.lease":"private.lease",0,mode==1)){close(fd);goto done;}close(fd);

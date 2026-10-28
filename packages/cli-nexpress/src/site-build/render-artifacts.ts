@@ -85,7 +85,8 @@ static int enter(int parent,const char *name,int create){
  if(nd>=ND||strlen(name)>128||checkdirs()||exactname(parent,name))return -1;
  int fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);
  if(fd<0&&errno==ENOENT&&create){if(mkdirat(dirs[parent].fd,name,0700)&&errno!=EEXIST)return -1;if(fsync(dirs[parent].fd))return -1;fd=openat(dirs[parent].fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK);}
- if(fd<0)return -1;struct stat s,at;if(fstat(fd,&s)||!S_ISDIR(s.st_mode)||fstatat(dirs[parent].fd,name,&at,AT_SYMLINK_NOFOLLOW)||!dirid(&s,&at)){close(fd);return -1;}
+ if(fd<0)return -1;
+ struct stat s,at;if(fstat(fd,&s)||!S_ISDIR(s.st_mode)||fstatat(dirs[parent].fd,name,&at,AT_SYMLINK_NOFOLLOW)||!dirid(&s,&at)){close(fd);return -1;}
  int id=nd++;dirs[id].fd=fd;dirs[id].parent=parent;strcpy(dirs[id].name,name);dirs[id].identity=s;return checkdirs()? -1:id;
 }
 static int absolute(const char *path){
@@ -111,7 +112,8 @@ static int preflight(int root,int payloadRoot,int index,const char *path){
  if(exactname(f->parent,f->name))return -1;
  f->fd=openat(dirs[f->parent].fd,f->name,O_RDONLY|O_NOFOLLOW|O_NONBLOCK);
  if(f->fd<0)return errno==ENOENT?0:-1;
- if(regular(f->fd,&f->identity))return -1;return checkfile(f);
+ if(regular(f->fd,&f->identity))return -1;
+ return checkfile(f);
 }
 static int existingcheck(void){if(checkdirs())return -1;for(int i=0;i<nf;i++)if(checkfile(&files[i]))return -1;return 0;}
 static int createfile(int root,int payloadRoot,int index,const char *path){
@@ -122,7 +124,8 @@ static int createfile(int root,int payloadRoot,int index,const char *path){
  if(fsync(stage)||regular(stage,&s)||s.st_size!=f->payloadIdentity.st_size||bytesame(stage,f->payload,s.st_size)||existingcheck())return -1;
  if(linkat(dirs[payloadRoot].fd,name,dirs[parent].fd,f->name,0))return -1;
  f->fd=stage;changed=1;
- if(unlinkat(dirs[payloadRoot].fd,name,0)||fstat(stage,&f->identity)||fsync(dirs[parent].fd)||existingcheck())return -1;return 0;
+ if(unlinkat(dirs[payloadRoot].fd,name,0)||fstat(stage,&f->identity)||fsync(dirs[parent].fd)||existingcheck())return -1;
+ return 0;
 }
 int main(int argc,char **argv){
  for(int i=0;i<NF;i++){files[i].fd=-1;files[i].payload=-1;files[i].parent=-1;}
@@ -132,10 +135,12 @@ int main(int argc,char **argv){
  int count=argc-4;int result=2;int root=absolute(argv[2]),payloadRoot=absolute(argv[3]);if(root<0||payloadRoot<0)goto done;
  for(int i=0;i<count;i++)if(preflight(root,payloadRoot,i,argv[i+4]))goto done;
  for(int i=0;i<count;i++)if(createfile(root,payloadRoot,i,argv[i+4])){if(errno==EXDEV)result=3;goto done;}
- if(existingcheck())goto done;result=0;
+ if(existingcheck())goto done;
+ result=0;
 done:
  for(int i=0;i<nf;i++){if(files[i].fd>=0)close(files[i].fd);if(files[i].payload>=0)close(files[i].payload);}for(int i=nd-1;i>=0;i--)close(dirs[i].fd);
- if(!result&&!strcmp(argv[1],"publish"))puts(changed?"written":"unchanged");return result;
+ if(!result&&!strcmp(argv[1],"publish"))puts(changed?"written":"unchanged");
+ return result;
 }
 `;
 

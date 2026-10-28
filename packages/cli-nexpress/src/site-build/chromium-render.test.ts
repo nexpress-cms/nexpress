@@ -9,21 +9,31 @@ import { NpSiteBuildBrowserFailureV1, renderSiteBuildBrowserPngV1 } from "./chro
 
 async function installedBrowser(): Promise<string> {
   if (process.env.NP_BUILD_CHROMIUM_EXECUTABLE) return process.env.NP_BUILD_CHROMIUM_EXECUTABLE;
-  if (process.platform !== "darwin") return "/usr/bin/chromium";
   const cache =
-    process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(homedir(), "Library/Caches/ms-playwright");
+    process.env.PLAYWRIGHT_BROWSERS_PATH ??
+    join(
+      homedir(),
+      process.platform === "darwin" ? "Library/Caches/ms-playwright" : ".cache/ms-playwright",
+    );
+  // Use the installed headless-shell owner, never an OS Chromium launcher or
+  // Playwright's separate headed browser with a different CDP configuration.
+  const candidates =
+    process.platform === "darwin"
+      ? [
+          ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
+          ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+        ]
+      : [
+          ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+          ["chrome-linux", "headless_shell"],
+        ];
   try {
     const versions = (await readdir(cache))
       .filter((name) => /^chromium_headless_shell-[0-9]+$/u.test(name))
       .sort((a, b) => Number(b.split("-").at(-1)) - Number(a.split("-").at(-1)));
     for (const version of versions)
-      for (const architecture of ["arm64", "x64"]) {
-        const executable = join(
-          cache,
-          version,
-          `chrome-headless-shell-mac-${architecture}`,
-          "chrome-headless-shell",
-        );
+      for (const [directory, binary] of candidates) {
+        const executable = join(cache, version, directory, binary);
         try {
           await access(executable);
           return executable;
@@ -44,6 +54,9 @@ try {
 } catch {
   /* Optional native transport fixture. */
 }
+const nativeRequired =
+  Boolean(process.env.NP_BUILD_CHROMIUM_EXECUTABLE) ||
+  process.env.NP_BUILD_REQUIRE_CHROMIUM === "1";
 const roots: string[] = [];
 async function output(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "np-browser-transport-"));
@@ -294,7 +307,7 @@ input.on("data", chunk => {
   );
 });
 
-describe.skipIf(!nativeAvailable)(
+describe.skipIf(!nativeAvailable && !nativeRequired)(
   "native Chromium transport/image fixture (not R8 sandbox evidence)",
   () => {
     let server: Server;

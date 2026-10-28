@@ -29,7 +29,7 @@ import {
   truncateAll,
 } from "./harness.js";
 
-import { reloadPlugins, shutdownBootstrap } from "@/lib/bootstrap";
+import { reloadPlugins } from "@/lib/bootstrap";
 import { ensureFor } from "@/lib/init-core";
 
 async function seedActor() {
@@ -83,13 +83,9 @@ describe.skipIf(skipIfNoTestDb())("site build seed through the actual reference 
     await reloadPlugins();
   });
 
-  afterAll(async () => {
-    try {
-      await closeTestDb();
-    } finally {
-      await shutdownBootstrap();
-    }
-  });
+  // Integration files share the worker's bootstrap (isolate:false). This suite
+  // owns only its DB harness; terminal bootstrap shutdown would break later files.
+  afterAll(closeTestDb);
 
   it("publishes the four actual Community documents and replays their exact stored projection", async () => {
     const seed = npRequireSiteBuildSeedArtifactV1(communitySeed);
