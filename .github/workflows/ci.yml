@@ -66,13 +66,11 @@ jobs:
           pnpm test:repo
 
   checks:
-    name: Full typecheck + build + test
+    name: Build + typecheck + runtime smoke
     needs: [scope]
     if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    # Budget covers formatting, build, runtime smoke, typecheck and all units.
-    # Hosted runner variance can exceed 15 minutes; per-test deadlines stay intact.
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     # `next build` runs page-data collection at the end of the build, which
     # imports `nexpress.config.ts` and validates the project contract.
@@ -117,7 +115,31 @@ jobs:
       - name: Typecheck (tsc --noEmit per package)
         run: pnpm typecheck
 
-      - name: Test
+  unit-tests:
+    name: Unit tests + package builds
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_build
+      NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      SITE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.33.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test with required package builds
+        # Turbo builds package outputs before each consumer test;
+        # this job needs neither another job's artifacts nor a production Web build.
         # Each Vitest package already runs files in parallel. Bound the workspace
         # fan-out as in local verify so competing pools do not consume deadlines.
         run: pnpm test --concurrency=2
@@ -538,7 +560,7 @@ jobs:
 
   checks-gate:
     name: typecheck + build + test
-    needs: [scope, checks]
+    needs: [scope, checks, unit-tests]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -547,12 +569,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Require validated docs or full check
+      - name: Require validated docs or both build and unit jobs
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
           FULL_RESULT: ${{ needs.checks.result }}
-        run: node scripts/ci-scope.mjs gate
+          UNIT_RESULT: ${{ needs.unit-tests.result }}
+        run: |
+          node scripts/ci-scope.mjs gate
+          FULL_RESULT="$UNIT_RESULT" node scripts/ci-scope.mjs gate
 
   e2e-gate:
     name: E2E (Playwright)
