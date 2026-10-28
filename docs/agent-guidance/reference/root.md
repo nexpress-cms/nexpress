@@ -430,6 +430,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 - **React packages** declare React as a `peerDependency`; do not bundle it.
 - **Formatting**: Prettier — double quotes (`singleQuote: false`), semicolons, trailing commas, 100 char width.
 - **tsup builds**: all packages use `format: ["esm"]`, `dts: true` (except CLI). Multi-entry packages (editor, blocks, admin) produce separate client bundles with `"use client"` banner.
+- **Parallel tsup entries**: when array configs share `dist/`, clean once in the package's `build` script (`rm -rf dist && tsup`) and disable per-entry cleaning. tsup's declaration cleanup otherwise removes sibling entries' already-emitted `.d.ts` files. Keep `dev` on `--no-clean` so fast watch preserves declarations from the last full build; verify exported and relative declarations in the packed consumer after changing these configs.
 - `NEXPRESS_DB_PORT` in `.env` must match the port Postgres is bound to in `docker-compose.yml` (default 5433, not 5432).
 
 ## PR cadence (for agents)
