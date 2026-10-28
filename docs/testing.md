@@ -515,6 +515,9 @@ headed browser. CI executes that fixture in the E2E job using the headless shell
 already installed there, with `NP_BUILD_REQUIRE_CHROMIUM=1` preventing a missing
 browser from silently skipping. An explicitly configured missing browser also
 fails. This fixture does not replace the separate R8 native sandbox acceptance.
+Timeout diagnostics assert the actual timeout outcome, wait phase, pending
+requests, timing consistency and cleanup. Avoid millisecond equality between
+wall-clock scheduling and rounded monotonic telemetry.
 
 Web integration files share bootstrap within a worker (`isolate:false`). A suite
 must close its own DB harness without calling terminal `shutdownBootstrap()`;
