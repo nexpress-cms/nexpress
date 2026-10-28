@@ -28,7 +28,7 @@ export const docsCss = `
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
-.np-docs-shell a { color: inherit; }
+.np-docs-shell :where(a) { color: inherit; }
 .np-docs-header,
 .np-docs-shell .np-site-main {
   width: 100%;
