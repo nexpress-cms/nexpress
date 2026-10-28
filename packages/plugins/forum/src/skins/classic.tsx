@@ -117,7 +117,7 @@ function PostRows({
 
 function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinProps) {
   return (
-    <main
+    <div
       className="np-forum np-forum-classic"
       data-np-forum-skin="classic"
       data-np-forum-surface="board-index"
@@ -144,7 +144,7 @@ function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinP
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }
 
@@ -156,7 +156,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
     board.categories.map((category) => [category.key, category.label] as const),
   );
   return (
-    <main
+    <div
       className="np-forum np-forum-classic"
       data-np-forum-skin="classic"
       data-np-forum-surface="post-list"
@@ -327,14 +327,14 @@ function renderPostList(props: NpForumPostListSkinProps) {
           )}
         </nav>
       ) : null}
-    </main>
+    </div>
   );
 }
 
 function renderPostDetail(props: NpForumPostDetailSkinProps) {
   const { basePath, board, post, messages } = props;
   return (
-    <main
+    <div
       className="np-forum np-forum-classic"
       data-np-forum-skin="classic"
       data-np-forum-surface="post-detail"
@@ -398,7 +398,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
         {props.engagement}
         {props.comments ? <section className="np-forum-comments">{props.comments}</section> : null}
       </article>
-    </main>
+    </div>
   );
 }
 
@@ -411,7 +411,7 @@ function formatFileSize(bytes: number, locale: string): string {
 
 function renderPostComposer(props: NpForumPostComposerSkinProps) {
   return (
-    <main
+    <div
       className="np-forum np-forum-classic np-forum-member-page"
       data-np-forum-skin="classic"
       data-np-forum-surface="composer"
@@ -426,7 +426,7 @@ function renderPostComposer(props: NpForumPostComposerSkinProps) {
         </div>
       </header>
       {props.content}
-    </main>
+    </div>
   );
 }
 

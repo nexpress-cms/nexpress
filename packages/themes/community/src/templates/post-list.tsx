@@ -184,7 +184,7 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const data = doc as CommunityPostListDoc;
   const docs = await hydrateCommunityPostTags(data.docs ?? []);
   return (
-    <main className="np-community-page np-community-index-page">
+    <div className="np-community-page np-community-index-page">
       <div className="np-community-container np-community-content-grid">
         <CommunityPostList
           docs={docs}
@@ -194,7 +194,7 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
         />
         <CommunitySideRail />
       </div>
-    </main>
+    </div>
   );
 }
 

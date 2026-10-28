@@ -5,7 +5,7 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
 export function PageDefaultTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const page = doc as { title?: string; blocks?: NpPageBlocks };
   return (
-    <main className="np-community-page np-community-page-default">
+    <div className="np-community-page np-community-page-default">
       <div className="np-community-container">
         <header className="np-community-page-header">
           <span>COMMUNITY PAGE</span>
@@ -17,6 +17,6 @@ export function PageDefaultTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
             : null}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
