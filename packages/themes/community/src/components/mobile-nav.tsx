@@ -5,6 +5,7 @@ import { useState } from "react";
 export interface CommunityNavItem {
   label: string;
   url: string;
+  current?: boolean;
   children?: CommunityNavItem[];
 }
 
@@ -45,14 +46,22 @@ export function CommunityMobileNav({ items }: { items: CommunityNavItem[] }) {
             <ul className="np-community-mobile-list">
               {items.map((item) => (
                 <li key={`${item.url}-${item.label}`}>
-                  <a href={item.url} onClick={() => setOpen(false)}>
+                  <a
+                    href={item.url}
+                    aria-current={item.current ? "page" : undefined}
+                    onClick={() => setOpen(false)}
+                  >
                     {item.label}
                   </a>
                   {item.children && item.children.length > 0 ? (
                     <ul className="np-community-mobile-subnav">
                       {item.children.map((child) => (
                         <li key={`${child.url}-${child.label}`}>
-                          <a href={child.url} onClick={() => setOpen(false)}>
+                          <a
+                            href={child.url}
+                            aria-current={child.current ? "page" : undefined}
+                            onClick={() => setOpen(false)}
+                          >
                             {child.label}
                           </a>
                         </li>

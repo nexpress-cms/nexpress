@@ -53,7 +53,7 @@ export async function PostDefaultTemplate({ doc }: NpTemplateRenderProps) {
   const tags = tagsOf(post);
 
   return (
-    <main className="np-community-page np-community-post-page">
+    <div className="np-community-page np-community-post-page">
       <article className="np-community-article">
         <nav className="np-community-breadcrumbs" aria-label="현재 위치">
           <a href="/">홈</a>
@@ -84,6 +84,6 @@ export async function PostDefaultTemplate({ doc }: NpTemplateRenderProps) {
           <a href="/blog">목록으로 돌아가기</a>
         </footer>
       </article>
-    </main>
+    </div>
   );
 }

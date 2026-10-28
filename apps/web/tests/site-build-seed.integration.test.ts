@@ -7,6 +7,7 @@ import {
   NpError,
   NpForbiddenError,
   NpValidationError,
+  registerThemes,
 } from "@nexpress/core";
 import { getCacheInvalidationDiagnostics, npInvalidateCache } from "@nexpress/core/cache";
 import { getDocumentById, withDeferredPostCommit } from "@nexpress/core/collections";
@@ -29,7 +30,7 @@ import {
   truncateAll,
 } from "./harness.js";
 
-import { reloadPlugins } from "@/lib/bootstrap";
+import { nexpressConfig, reloadPlugins } from "@/lib/bootstrap";
 import { ensureFor } from "@/lib/init-core";
 
 async function seedActor() {
@@ -79,6 +80,9 @@ describe.skipIf(skipIfNoTestDb())("site build seed through the actual reference 
     await truncateAll();
     await ensureFor("write");
     await ensureDefaultSite();
+    // Other files deliberately replace this process-wide registry. Restore the
+    // actual configured owners before exercising normal seed admission.
+    registerThemes(nexpressConfig.themes ?? []);
     // TRUNCATE removes plugin installation rows while bootstrap remains initialized.
     await reloadPlugins();
   });

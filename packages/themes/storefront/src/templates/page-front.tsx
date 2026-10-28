@@ -18,7 +18,7 @@ export async function StorefrontPageFront({ doc, blockCtx }: NpTemplateRenderPro
   const result = await fetchFrontListPosts({ kind: "article", limit: 3 });
   const stories = result as StoryDoc[];
   return (
-    <main className="np-storefront-home">
+    <div className="np-storefront-home">
       <section className="np-storefront-hero">
         <div className="np-storefront-container">
           <p>Independent storefront theme</p>
@@ -56,6 +56,6 @@ export async function StorefrontPageFront({ doc, blockCtx }: NpTemplateRenderPro
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

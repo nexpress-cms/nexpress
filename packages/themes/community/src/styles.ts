@@ -264,6 +264,10 @@ export const communityCss = `
   font-size: 0.84rem;
   text-decoration: none;
 }
+.np-community-mobile-list a[aria-current="page"] {
+  color: var(--np-community-accent);
+  background: var(--np-community-soft);
+}
 .np-community-mobile-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-top: 1rem; }
 .np-community-mobile-actions a {
   padding: 0.7rem;

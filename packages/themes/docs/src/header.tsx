@@ -1,5 +1,5 @@
 import * as React from "react";
-import { NavMenu, getCachedSite } from "@nexpress/next";
+import { NavMenu, getCachedNavigation, getCachedSite } from "@nexpress/next";
 
 import { SearchKeyboardShortcut } from "./components/search-keyboard-shortcut.js";
 import { resolveDocsSettings } from "./settings-helpers.js";
@@ -25,7 +25,11 @@ const FALLBACK_SITE_NAME = "NexPress";
  * independently.
  */
 export async function DocsHeader(): Promise<React.ReactElement> {
-  const [settings, site] = await Promise.all([resolveDocsSettings(), getCachedSite()]);
+  const [settings, site, navigation] = await Promise.all([
+    resolveDocsSettings(),
+    getCachedSite(),
+    getCachedNavigation("header"),
+  ]);
   const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   return (
     <header className="np-docs-header">
@@ -65,6 +69,14 @@ export async function DocsHeader(): Promise<React.ReactElement> {
         <nav className="np-docs-nav" aria-label="Primary">
           <NavMenu location="header" className="np-docs-primary-nav" />
         </nav>
+        {navigation.length > 0 ? (
+          <details className="np-docs-mobile-nav">
+            <summary>Menu</summary>
+            <nav aria-label="Primary">
+              <NavMenu location="header" className="np-docs-mobile-nav-list" />
+            </nav>
+          </details>
+        ) : null}
       </div>
     </header>
   );

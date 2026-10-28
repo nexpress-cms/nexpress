@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { renderToReadableStream } from "react-dom/server";
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import type { NpRouteRenderProps, NpThemeDefinition } from "@nexpress/theme";
 
 import {
@@ -12,7 +12,7 @@ import {
   truncateAll,
 } from "./harness.js";
 
-type BuiltinThemeId = "community" | "default" | "docs" | "magazine" | "portfolio";
+type BuiltinThemeId = "community" | "default" | "docs" | "magazine" | "portfolio" | "storefront";
 
 interface ThemeFixture {
   id: BuiltinThemeId;
@@ -22,9 +22,13 @@ interface ThemeFixture {
 type RouteComponent = (props: NpRouteRenderProps) => ReactElement | Promise<ReactElement>;
 
 async function renderHtml(element: ReactElement): Promise<string> {
-  const stream = await renderToReadableStream(element);
+  const stream = await renderToReadableStream(
+    createElement("main", { className: "np-site-main" }, element),
+  );
   await stream.allReady;
-  return new Response(stream).text();
+  const html = await new Response(stream).text();
+  expect(html.match(/<main(?:\s|>)/gu)).toHaveLength(1);
+  return html;
 }
 
 /**
@@ -69,6 +73,10 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
     if (id === "magazine") {
       const { magazineTheme } = await import("@nexpress/theme-magazine");
       return { id, theme: magazineTheme };
+    }
+    if (id === "storefront") {
+      const { storefrontTheme } = await import("@nexpress/theme-storefront");
+      return { id, theme: storefrontTheme };
     }
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
     return { id, theme: portfolioTheme };
@@ -209,6 +217,37 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
     expect(html).toContain("오래 머무는 커뮤니티");
     expect(html).toContain("커뮤니티</li>");
     expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
+    const ListTemplate = fixture.theme.impl.templates!.posts!.list!.component;
+    expect(
+      await renderHtml(
+        await ListTemplate({
+          doc: { docs: posts.docs },
+          blockCtx: await createSiteScopedBlockRenderContext(),
+        }),
+      ),
+    ).toContain("np-community-index-page");
+  });
+
+  it("storefront renders all four seeded templates inside the host main landmark", async () => {
+    const fixture = await activateThemeForSeed("storefront");
+    await seedTheme(fixture);
+    await renderPageTemplate(fixture, "/", "np-storefront-home");
+    await renderPageTemplate(fixture, "about", "np-storefront-page");
+    const { createSiteScopedBlockRenderContext } = await import("@nexpress/next");
+    const { findDocuments } = await import("@nexpress/core");
+    const posts = await findDocuments<Record<string, unknown>>("posts", {
+      where: { status: "published", seedSource: "theme:storefront" },
+      limit: 3,
+    });
+    expect(posts.docs.length).toBeGreaterThan(0);
+    const blockCtx = await createSiteScopedBlockRenderContext();
+    const templates = fixture.theme.impl.templates!.posts!;
+    expect(
+      await renderHtml(await templates.default!.component({ doc: posts.docs[0]!, blockCtx })),
+    ).toContain("np-storefront-post");
+    expect(
+      await renderHtml(await templates.list!.component({ doc: { docs: posts.docs }, blockCtx })),
+    ).toContain("np-storefront-journal");
   });
 
   it("docs renders its seeded landing, search, and doc detail route", async () => {

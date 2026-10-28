@@ -230,7 +230,9 @@ describe("generator evidence retention before private cleanup", () => {
       item.path.endsWith("baseline-audit-baseline.json"),
     )!;
     expect(record.bytes).toBeGreaterThan(4 * 1024 * 1024);
-    expect(await readFile(join(value.original, record.path))).toEqual(bytes);
+    // Buffer.equals compares every byte without Vitest recursively traversing
+    // millions of indexed properties under concurrent CI load.
+    expect((await readFile(join(value.original, record.path))).equals(bytes)).toBe(true);
     await retained.assertUnchanged();
   }, 30_000);
 

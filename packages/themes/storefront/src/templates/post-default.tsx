@@ -18,7 +18,7 @@ export async function StorefrontPostDefault({ doc }: NpTemplateRenderProps) {
     ? await getMediaUrl(post.coverImage, { variant: "large" })
     : null;
   return (
-    <main className="np-storefront-container np-storefront-post">
+    <div className="np-storefront-container np-storefront-post">
       <Link href="/blog">Journal</Link>
       <header>
         <h1>{post.title ?? "Untitled"}</h1>
@@ -33,6 +33,6 @@ export async function StorefrontPostDefault({ doc }: NpTemplateRenderProps) {
       <article className="np-storefront-prose">
         {isNpRichTextContent(post.content) ? renderRichText(post.content) : null}
       </article>
-    </main>
+    </div>
   );
 }

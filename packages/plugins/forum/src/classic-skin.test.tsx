@@ -222,7 +222,9 @@ function hrefForQuery(query: NpForumPostListQuery) {
 }
 
 async function markup(node: ReturnType<typeof classicForumSkin.renderPostList>): Promise<string> {
-  return renderToStaticMarkup(<>{await node}</>);
+  const html = renderToStaticMarkup(<main className="np-site-main">{await node}</main>);
+  expect(html.match(/<main(?:\s|>)/gu)).toHaveLength(1);
+  return html;
 }
 
 describe("classic forum skin", () => {
