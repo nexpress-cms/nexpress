@@ -7,7 +7,8 @@ export default defineConfig([
     entry: { index: "src/index.ts" },
     format: ["esm"],
     dts: !fast,
-    clean: true,
+    // Clean once in the build script so parallel entries retain their declarations.
+    clean: false,
     sourcemap: !fast,
     external: ["react", "react-dom", "@nexpress/core", "@nexpress/editor", "@nexpress/blocks"],
   },
