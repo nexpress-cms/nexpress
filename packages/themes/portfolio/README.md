@@ -27,4 +27,10 @@ For authoring your own theme see
 
 ## License
 
-MIT
+Theme code: MIT.
+
+Instrument Serif (normal and italic) and Hanken Grotesk (variable weight 400–700)
+are bundled under the SIL Open Font License 1.1. The shell serves them from the
+host's own static assets; no Google Fonts request or CSP exception is needed.
+Original font binaries, copyright notices, licenses and pinned upstream sources
+are included in `dist/fonts/` in the installed package.

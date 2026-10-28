@@ -49,7 +49,8 @@ describe.skipIf(skipIfNoTestDb())("built-in theme shell and slot rendering", () 
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     const { docsTheme } = await import("@nexpress/theme-docs");
     const { communityTheme } = await import("@nexpress/theme-community");
-    registerThemes([defaultTheme, magazineTheme, docsTheme, communityTheme]);
+    const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    registerThemes([defaultTheme, magazineTheme, docsTheme, communityTheme, portfolioTheme]);
   });
   afterAll(async () => {
     restoreThemes?.();
@@ -109,6 +110,24 @@ describe.skipIf(skipIfNoTestDb())("built-in theme shell and slot rendering", () 
     expect(html).toContain('font-family: "Hanken Grotesk"');
     expect(html).not.toMatch(/fonts\.(?:googleapis|gstatic)\.com/u);
     expect(html).toContain("--np-color-rule:");
+  });
+
+  it("portfolio shell emits its local font faces and keeps its scoped children and font aliases", async () => {
+    const { portfolioTheme, PortfolioShell } = await import("@nexpress/theme-portfolio");
+    expect(portfolioTheme.impl.shell).toBe(PortfolioShell);
+    const html = await renderHtml(
+      createElement(PortfolioShell, { children: "<probe>hello</probe>" }),
+    );
+    expect(html).toContain('class="np-portfolio"');
+    expect(html).toContain("&lt;probe&gt;hello&lt;/probe&gt;</div>");
+    expect(html).not.toContain("<probe>");
+    expect(html.match(/@font-face\s*\{/gu)).toHaveLength(3);
+    expect(html.match(/font-family: "Instrument Serif"/gu)).toHaveLength(2);
+    expect(html).toContain("font-style: italic");
+    expect(html).toContain('font-family: "Hanken Grotesk"');
+    expect(html).not.toMatch(/fonts\.(?:googleapis|gstatic)\.com/u);
+    expect(html).toContain("--np-font-display: var(--np-font-heading)");
+    expect(html).toContain("--np-font-chrome: var(--np-font-body)");
   });
 
   it("magazine header renders its masthead and current persisted section navigation", async () => {
