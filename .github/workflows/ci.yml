@@ -70,7 +70,9 @@ jobs:
     needs: [scope]
     if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Budget covers formatting, build, runtime smoke, typecheck and all units.
+    # Hosted runner variance can exceed 15 minutes; per-test deadlines stay intact.
+    timeout-minutes: 20
 
     # `next build` runs page-data collection at the end of the build, which
     # imports `nexpress.config.ts` and validates the project contract.
