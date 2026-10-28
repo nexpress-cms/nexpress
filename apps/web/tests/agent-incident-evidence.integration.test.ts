@@ -1,5 +1,17 @@
 import { eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import pg from "pg";
+import { writeFileSync } from "node:fs";
+import {
+  createIntegrationWorkScope,
+  settleIntegrationWork,
+} from "../../../packages/core/src/integration/work-scope.js";
+import type { NpTransaction } from "../../../packages/core/src/collections/pipeline.js";
+import { getCollectionConfig } from "../../../packages/core/src/collections/registry.js";
+import {
+  npInspectCommunityCommentEvidenceV1,
+  npInspectCommunityCommentEvidenceBatchV1,
+} from "../../../packages/core/src/community/content-containment.js";
 import { npRequireAuthUser } from "../../../packages/core/src/auth-contract/contract.js";
 import { saveDocument } from "../../../packages/core/src/collections/pipeline.js";
 import {
@@ -268,92 +280,269 @@ describe.skipIf(skipIfNoTestDb())("Incident canonical comment evidence", () => {
     registerTestCollections();
   });
   beforeEach(truncateAll);
-  afterEach(() => {
+  afterEach(async () => {
+    await settleIntegrationWork();
     resetCommunityModerationObserverV1();
     resetSpamAdapter();
   });
   afterAll(closeTestDb);
   it("keeps all 151 flood sources authorized and reaches the final response page and feedback", async () => {
-    const f = await setup(151);
-    const detail = await f.studio.get(f.input);
-    expect(detail.incident.eventCount).toBe(151);
-    expect(detail.signals.length).toBeGreaterThan(1);
-    const response = await responses(f);
-    const defaultPage = await response.get(f.input);
-    expect(defaultPage.choices).toHaveLength(10);
-    expect(defaultPage.nextCursor).toEqual(expect.any(String));
-    expect(defaultPage.truncated).toBe(true);
-    const targets = new Set<string>();
-    let cursor: string | null = null;
-    let finalCursor: string | null = null;
-    let lastChoice;
-    let firstCursor: string | null = null;
-    for (let page = 0; page < 20; page++) {
-      const current = await response.get({ ...f.input, cursor });
-      if (page === 0) expect(current.choices).toEqual(defaultPage.choices);
-      expect(current.choices.length).toBeLessThanOrEqual(10);
-      for (const choice of current.choices) targets.add(choice.target.id);
-      if (page === 0) firstCursor = current.nextCursor ?? null;
-      if (current.nextCursor === null) {
-        finalCursor = cursor;
-        lastChoice = current.choices.at(-1);
-        break;
+    const scope = createIntegrationWorkScope(() => {});
+    await scope.run(async () => {
+      const query = vi.spyOn(pg.Client.prototype, "query");
+      const startedAt = performance.now();
+      let fixtureMs = 0;
+      let fixtureQueries = 0;
+      try {
+        const f = await setup(151);
+        fixtureMs = performance.now() - startedAt;
+        fixtureQueries = query.mock.calls.length;
+        const detail = await f.studio.get(f.input);
+        expect(detail.incident.eventCount).toBe(151);
+        expect(detail.signals.length).toBeGreaterThan(1);
+        const response = await responses(f);
+        const defaultPage = await response.get(f.input);
+        expect(defaultPage.choices).toHaveLength(10);
+        expect(defaultPage.nextCursor).toEqual(expect.any(String));
+        expect(defaultPage.truncated).toBe(true);
+        const targets = new Set<string>();
+        let cursor: string | null = null;
+        let finalCursor: string | null = null;
+        let lastChoice;
+        let firstCursor: string | null = null;
+        for (let page = 0; page < 20; page++) {
+          const current = await response.get({ ...f.input, cursor });
+          if (page === 0) expect(current.choices).toEqual(defaultPage.choices);
+          expect(current.choices.length).toBeLessThanOrEqual(10);
+          for (const choice of current.choices) targets.add(choice.target.id);
+          if (page === 0) firstCursor = current.nextCursor ?? null;
+          if (current.nextCursor === null) {
+            finalCursor = cursor;
+            lastChoice = current.choices.at(-1);
+            break;
+          }
+          cursor = current.nextCursor ?? null;
+        }
+        expect(targets).toEqual(new Set(f.comments.map((comment) => comment.id)));
+        expect(finalCursor).not.toBeNull();
+        expect(lastChoice).toBeDefined();
+        const lastEvidence = await f.studio.evidence({ ...f.input, cursor: finalCursor });
+        expect(lastEvidence.items.some((item) => item.target?.id === lastChoice!.target.id)).toBe(
+          true,
+        );
+        expect(lastEvidence.nextCursor).toBeNull();
+        const responseStudio = createAgentIncidentStudioServiceV1({
+          reads: f.reads,
+          response,
+          evidence: f.evidence,
+          writer: f.writer,
+          cursorHmacKey: key,
+        });
+        const finalDetail = await responseStudio.get({ ...f.input, responseCursor: finalCursor });
+        expect(finalDetail.response?.choices.at(-1)?.target.id).toBe(lastChoice!.target.id);
+        expect(finalDetail.timeline[0]?.sequence).toBe(1);
+        await response.responsePlan({
+          ...f.input,
+          command: {
+            schemaVersion: "np.agent-incident-response-plan-input.v1",
+            expectedVersion: detail.incident.versionNumber,
+            capabilityId: "moderation.quarantine",
+            proposal: {
+              incidentId: f.input.incidentId,
+              target: lastChoice!.target,
+              expectedVersionDigest: lastChoice!.expectedVersionDigest,
+              reasonCode: "REPEATED_LINK_SPAM",
+            },
+            idempotencyKey: randomUUID(),
+          },
+        });
+        const current = await f.reads.get({ incidentId: f.input.incidentId }, f.input);
+        await f.studio.feedback({
+          ...f.input,
+          command: {
+            schemaVersion: "np.agent-incident-feedback-input.v1",
+            expectedVersion: current.incident.versionNumber,
+            signalId: current.incident.signalIds[0],
+            label: "confirmed-spam",
+            supersedesId: null,
+            idempotencyKey: randomUUID(),
+          },
+        });
+        expect((await f.studio.get(f.input)).feedback).toHaveLength(1);
+        await expect(response.get({ ...f.input, cursor: firstCursor })).rejects.toMatchObject({
+          code: "INCIDENT_EVIDENCE_CURSOR_INVALID",
+        });
+        expect(await f.db.select().from(npComments).where(eq(npComments.status, "hidden"))).toEqual(
+          [],
+        );
+        // An absent source outside the first returned page still denies the whole
+        // Incident; pagination never weakens the source owner's all-ref ACL check.
+        await f.db.delete(npComments).where(eq(npComments.id, lastChoice!.target.id));
+        await expect(f.studio.get(f.input)).rejects.toMatchObject({ code: "INCIDENT_NOT_FOUND" });
+        // A SQL budget guards repeated parent hydration without a flaky wall-time assertion.
+        expect(query.mock.calls.length - fixtureQueries).toBeGreaterThan(0);
+        expect(query.mock.calls.length - fixtureQueries).toBeLessThan(15_000);
+      } finally {
+        const measurement = {
+          sources: 151,
+          fixtureMs,
+          fixtureQueries,
+          reviewMs: performance.now() - startedAt - fixtureMs,
+          reviewQueries: query.mock.calls.length - fixtureQueries,
+        };
+        query.mockRestore();
+        const measurementPath = process.env.NP_INCIDENT_PERFORMANCE_LOG;
+        if (measurementPath) writeFileSync(measurementPath, JSON.stringify(measurement));
       }
-      cursor = current.nextCursor ?? null;
-    }
-    expect(targets).toEqual(new Set(f.comments.map((comment) => comment.id)));
-    expect(finalCursor).not.toBeNull();
-    expect(lastChoice).toBeDefined();
-    const lastEvidence = await f.studio.evidence({ ...f.input, cursor: finalCursor });
-    expect(lastEvidence.items.some((item) => item.target?.id === lastChoice!.target.id)).toBe(true);
-    expect(lastEvidence.nextCursor).toBeNull();
-    const responseStudio = createAgentIncidentStudioServiceV1({
-      reads: f.reads,
-      response,
-      evidence: f.evidence,
-      writer: f.writer,
-      cursorHmacKey: key,
     });
-    const finalDetail = await responseStudio.get({ ...f.input, responseCursor: finalCursor });
-    expect(finalDetail.response?.choices.at(-1)?.target.id).toBe(lastChoice!.target.id);
-    expect(finalDetail.timeline[0]?.sequence).toBe(1);
-    await response.responsePlan({
-      ...f.input,
-      command: {
-        schemaVersion: "np.agent-incident-response-plan-input.v1",
-        expectedVersion: detail.incident.versionNumber,
-        capabilityId: "moderation.quarantine",
-        proposal: {
-          incidentId: f.input.incidentId,
-          target: lastChoice!.target,
-          expectedVersionDigest: lastChoice!.expectedVersionDigest,
-          reasonCode: "REPEATED_LINK_SPAM",
-        },
-        idempotencyKey: randomUUID(),
-      },
-    });
-    const current = await f.reads.get({ incidentId: f.input.incidentId }, f.input);
-    await f.studio.feedback({
-      ...f.input,
-      command: {
-        schemaVersion: "np.agent-incident-feedback-input.v1",
-        expectedVersion: current.incident.versionNumber,
-        signalId: current.incident.signalIds[0],
-        label: "confirmed-spam",
-        supersedesId: null,
-        idempotencyKey: randomUUID(),
-      },
-    });
-    expect((await f.studio.get(f.input)).feedback).toHaveLength(1);
-    await expect(response.get({ ...f.input, cursor: firstCursor })).rejects.toMatchObject({
-      code: "INCIDENT_EVIDENCE_CURSOR_INVALID",
-    });
-    expect(await f.db.select().from(npComments).where(eq(npComments.status, "hidden"))).toEqual([]);
-    // An absent source outside the first returned page still denies the whole
-    // Incident; pagination never weakens the source owner's all-ref ACL check.
-    await f.db.delete(npComments).where(eq(npComments.id, lastChoice!.target.id));
-    await expect(f.studio.get(f.input)).rejects.toMatchObject({ code: "INCIDENT_NOT_FOUND" });
   }, 180_000);
+  it("matches single-target evidence and checks each ACL independently within a shared parent read", async () => {
+    const f = await setup();
+    const targets = f.comments.map((comment) => ({
+      kind: "comment" as const,
+      collection: "posts",
+      id: comment.id,
+    }));
+    const batch = () =>
+      withCurrentSite(siteId, () =>
+        npInspectCommunityCommentEvidenceBatchV1(f.db as unknown as NpTransaction, {
+          siteId,
+          user: f.user,
+          targets,
+        }),
+      );
+    const expected = await withCurrentSite(siteId, () =>
+      Promise.all(
+        targets.map((target) =>
+          npInspectCommunityCommentEvidenceV1(f.db as unknown as NpTransaction, {
+            siteId,
+            user: f.user,
+            target,
+          }),
+        ),
+      ),
+    );
+    expect(await batch()).toEqual(expected);
+    await withCurrentSite(siteId, async () => {
+      const tx = f.db as unknown as NpTransaction;
+      expect(
+        await npInspectCommunityCommentEvidenceBatchV1(tx, {
+          siteId,
+          user: f.user,
+          targets: targets.slice(0, 1),
+        }),
+      ).toEqual(expected.slice(0, 1));
+      expect(
+        await npInspectCommunityCommentEvidenceBatchV1(tx, { siteId, user: f.user, targets: [] }),
+      ).toEqual([]);
+      await expect(
+        npInspectCommunityCommentEvidenceBatchV1(tx, {
+          siteId,
+          user: f.user,
+          targets: Array.from({ length: 101 }, () => targets[0]!),
+        }),
+      ).rejects.toThrow();
+      expect(
+        await npInspectCommunityCommentEvidenceBatchV1(tx, {
+          siteId,
+          user: f.user,
+          targets: [
+            { ...targets[0]!, id: randomUUID() },
+            { ...targets[0]!, collection: "pages" },
+          ],
+        }),
+      ).toEqual([null, null]);
+    });
+    const config = getCollectionConfig("posts"),
+      previous = config.access;
+    let checked = 0;
+    const seenTitles: unknown[] = [];
+    config.access = {
+      ...previous,
+      read: ({ doc }) => {
+        seenTitles.push(doc?.title);
+        if (doc) doc.title = "ACL-local mutation";
+        return ++checked !== 3;
+      },
+    };
+    try {
+      const inspected = await batch();
+      expect(checked).toBe(5);
+      expect(new Set(seenTitles)).toEqual(new Set([f.saved.doc.title]));
+      expect(inspected.map((item) => item !== null)).toEqual([true, true, false, true, true]);
+    } finally {
+      config.access = previous;
+    }
+  });
+  it("rejects parent revocation and sibling deletion during an evidence pass and rereads on the next call", async () => {
+    const f = await setup();
+    const targets = f.comments.map((comment) => ({
+      kind: "comment" as const,
+      collection: "posts",
+      id: comment.id,
+    }));
+    const batch = () =>
+      withCurrentSite(siteId, () =>
+        npInspectCommunityCommentEvidenceBatchV1(f.db as unknown as NpTransaction, {
+          siteId,
+          user: f.user,
+          targets,
+        }),
+      );
+    const config = getCollectionConfig("posts"),
+      previous = config.access;
+    const community = config.community;
+    if (!community) throw new Error("Expected the registered comment collection");
+    const previousComments = community.comments;
+    let changed = false;
+    config.access = {
+      ...previous,
+      read: async ({ doc }) => {
+        if (!changed) {
+          changed = true;
+          await f.db
+            .update(postsTable)
+            .set({ visibility: "private" })
+            .where(eq(postsTable.id, f.saved.doc.id));
+        }
+        return doc?.visibility === "public";
+      },
+    };
+    try {
+      expect(await batch()).toEqual(targets.map(() => null));
+      await expect(f.studio.get(f.input)).rejects.toMatchObject({ code: "INCIDENT_NOT_FOUND" });
+      await f.db
+        .update(postsTable)
+        .set({ visibility: "public" })
+        .where(eq(postsTable.id, f.saved.doc.id));
+      expect((await batch()).every((item) => item !== null)).toBe(true);
+      config.access = {
+        ...previous,
+        read: () => {
+          community.comments = false;
+          return true;
+        },
+      };
+      expect(await batch()).toEqual(targets.map(() => null));
+      community.comments = previousComments;
+      changed = false;
+      config.access = {
+        ...previous,
+        read: async () => {
+          if (!changed) {
+            changed = true;
+            await f.db.delete(npComments).where(eq(npComments.id, targets[4]!.id));
+          }
+          return true;
+        },
+      };
+      expect((await batch())[4]).toBeNull();
+      await expect(f.studio.get(f.input)).rejects.toMatchObject({ code: "INCIDENT_NOT_FOUND" });
+    } finally {
+      config.access = previous;
+      community.comments = previousComments;
+    }
+  });
   it("preserves the complete default response at the existing 100-target ceiling", async () => {
     const f = await setup(100);
     const response = await responses(f);

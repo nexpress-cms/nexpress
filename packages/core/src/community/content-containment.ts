@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, getTableColumns } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, inArray } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -122,15 +122,33 @@ function version(input: NpCommunityContentContainmentInputV1, loaded: LoadedTarg
   });
 }
 
-async function load(
-  tx: NpTransaction,
-  input: NpCommunityContentContainmentInputV1,
-): Promise<LoadedTarget> {
+async function assertInput(input: NpCommunityContentContainmentInputV1): Promise<void> {
   npAssertAgentPreviewEffectsAllowed();
   if (!can(input.user, "community.moderate") || (await requireSiteId()) !== input.siteId)
     throw new NpForbiddenError("content", "moderate");
   npRequireCommunityId(input.target.id, "content-containment.target.id");
   if (input.target.kind !== "comment" && input.target.kind !== "document") conflict();
+}
+
+async function assertReadable(
+  config: NpCollectionConfig,
+  input: NpCommunityContentContainmentInputV1,
+  document: Record<string, unknown>,
+): Promise<void> {
+  await npAssertCollectionReadAccess(config, input.target.collection, input.user, document);
+  await npRequireReadableCommunityDocument(
+    config,
+    document,
+    { kind: "staff", user: input.user },
+    { allowUnpublished: true },
+  );
+}
+
+async function load(
+  tx: NpTransaction,
+  input: NpCommunityContentContainmentInputV1,
+): Promise<LoadedTarget> {
+  await assertInput(input);
   const config = getCollectionConfig(input.target.collection);
   let comment: NpCommentRow | null = null;
   if (input.target.kind === "comment") {
@@ -175,13 +193,7 @@ async function load(
     { tx },
   );
   if (!document) throw new NpNotFoundError("content", input.target.id);
-  await npAssertCollectionReadAccess(config, input.target.collection, input.user, document);
-  await npRequireReadableCommunityDocument(
-    config,
-    document,
-    { kind: "staff", user: input.user },
-    { allowUnpublished: true },
-  );
+  await assertReadable(config, input, document);
   return { document, config, comment };
 }
 
@@ -321,6 +333,191 @@ export async function npInspectCommunityCommentEvidenceV1(
   const loaded = await load(tx, input);
   if (!loaded.comment) conflict();
   return { versionDigest: version(input, loaded), comment: loaded.comment };
+}
+
+type CommentEvidence = { versionDigest: string; comment: NpCommentRow };
+
+/** One fresh, bounded evidence pass. Parent hydration is shared only within this
+ * call; every comment still gets its own current ACL check and version digest.
+ * Mutations continue to use the single-target loader and its original locks. */
+export async function npInspectCommunityCommentEvidenceBatchV1(
+  tx: NpTransaction,
+  input: Omit<NpCommunityContentContainmentInputV1, "target"> & {
+    targets: readonly NpCommunityContentTargetV1[];
+  },
+): Promise<(CommentEvidence | null)[]> {
+  if (input.targets.length > 100) conflict();
+  const result: (CommentEvidence | null)[] = input.targets.map(() => null);
+  if (!input.targets.length) return result;
+  for (const target of input.targets) {
+    await assertInput({ ...input, target });
+    if (target.kind !== "comment") conflict();
+  }
+  const initial = await tx
+    .select()
+    .from(npComments)
+    .where(
+      and(
+        eq(npComments.siteId, input.siteId),
+        inArray(
+          npComments.id,
+          input.targets.map((t) => t.id),
+        ),
+      )!,
+    );
+  const byId = new Map(
+    initial.map((row) => {
+      const comment = npRequireCommentRow(row);
+      return [comment.id, comment] as const;
+    }),
+  );
+  const groups = new Map<string, { collection: string; documentId: string; indices: number[] }>();
+  for (const [index, target] of input.targets.entries()) {
+    const comment = byId.get(target.id);
+    if (!comment || comment.targetType !== target.collection) continue;
+    const key = JSON.stringify([target.collection, comment.targetId]);
+    const group = groups.get(key) ?? {
+      collection: target.collection,
+      documentId: comment.targetId,
+      indices: [],
+    };
+    group.indices.push(index);
+    groups.set(key, group);
+  }
+  const denied = (error: unknown) =>
+    error instanceof NpForbiddenError ||
+    error instanceof NpNotFoundError ||
+    error instanceof NpValidationError;
+  for (const [, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+    try {
+      // Unshared parents keep the original single-target read cost and checks.
+      if (group.indices.length === 1) {
+        const index = group.indices[0];
+        result[index] = await npInspectCommunityCommentEvidenceV1(tx, {
+          siteId: input.siteId,
+          user: input.user,
+          target: input.targets[index],
+        });
+        continue;
+      }
+      const config = getCollectionConfig(group.collection);
+      if (config.community?.comments !== true) conflict();
+      const columns = getTableColumns(getCollectionTable(group.collection) as PgTable);
+      if (!columns.id || !columns.siteId) conflict();
+      await tx
+        .select({ id: columns.id })
+        .from(getCollectionTable(group.collection) as PgTable)
+        .where(and(eq(columns.id, group.documentId), eq(columns.siteId, input.siteId))!)
+        .limit(1)
+        .for("update");
+      // Preserve parent-before-comment locking, then reject moved targets.
+      const locked = await tx
+        .select()
+        .from(npComments)
+        .where(
+          and(
+            eq(npComments.siteId, input.siteId),
+            inArray(
+              npComments.id,
+              group.indices.map((i) => input.targets[i].id),
+            ),
+          )!,
+        )
+        .orderBy(asc(npComments.id))
+        .for("update");
+      const current = new Map(
+        locked.map((row) => {
+          const comment = npRequireCommentRow(row);
+          return [comment.id, comment] as const;
+        }),
+      );
+      const parent = await npGetPersistedCollectionDocumentById(
+        group.collection,
+        group.documentId,
+        input.siteId,
+        { tx },
+      );
+      if (!parent) continue;
+      for (const index of group.indices) {
+        const target = input.targets[index];
+        const selected = { siteId: input.siteId, user: input.user, target };
+        try {
+          await assertInput(selected);
+          if (
+            getCollectionConfig(group.collection) !== config ||
+            config.community?.comments !== true
+          )
+            conflict();
+          const comment = current.get(target.id);
+          if (
+            !comment ||
+            comment.targetType !== group.collection ||
+            comment.targetId !== group.documentId
+          )
+            continue;
+          // A custom ACL must never mutate the document seen by another target.
+          const document = structuredClone(parent);
+          await assertReadable(config, selected, document);
+          result[index] = {
+            comment,
+            versionDigest: version(selected, { document, config, comment }),
+          };
+        } catch (error) {
+          if (!denied(error)) throw error;
+        }
+      }
+      // ACL callbacks may await host policy reads. A changed/deleted parent or
+      // sibling comment must not survive the shared hydration interval, even
+      // when the caller supplied an autocommit DB handle rather than a tx.
+      if (getCollectionConfig(group.collection) !== config || config.community?.comments !== true)
+        conflict();
+      const latestParent = await npGetPersistedCollectionDocumentById(
+        group.collection,
+        group.documentId,
+        input.siteId,
+        { tx },
+      );
+      if (
+        !latestParent ||
+        serializeAgentCanonicalJson(json(latestParent)) !==
+          serializeAgentCanonicalJson(json(parent))
+      )
+        conflict();
+      const latestRows = await tx
+        .select()
+        .from(npComments)
+        .where(
+          and(
+            eq(npComments.siteId, input.siteId),
+            inArray(
+              npComments.id,
+              group.indices.map((i) => input.targets[i].id),
+            ),
+          )!,
+        );
+      const latest = new Map(
+        latestRows.map((row) => {
+          const comment = npRequireCommentRow(row);
+          return [comment.id, comment] as const;
+        }),
+      );
+      for (const index of group.indices) {
+        const id = input.targets[index].id;
+        const before = current.get(id),
+          after = latest.get(id);
+        if (
+          !before ||
+          !after ||
+          serializeAgentCanonicalJson(json(before)) !== serializeAgentCanonicalJson(json(after))
+        )
+          result[index] = null;
+      }
+    } catch (error) {
+      if (!denied(error)) throw error;
+      for (const index of group.indices) result[index] = null;
+    }
+  }
+  return result;
 }
 
 /** Server-only document review uses the same current ACL, lock and version owner. */
