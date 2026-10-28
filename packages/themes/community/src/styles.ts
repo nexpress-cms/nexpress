@@ -210,7 +210,8 @@ export const communityCss = `
   font-weight: 800;
   cursor: pointer;
 }
-.np-community-mobile-backdrop {
+.np-community-mobile-backdrop,
+.np-community-mobile-drawer::backdrop {
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -223,6 +224,14 @@ export const communityCss = `
   inset-block: 0;
   inset-inline-start: auto;
   inset-inline-end: 0;
+  margin: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  height: 100dvh;
+  box-sizing: border-box;
+  color: var(--np-community-ink);
+  font: inherit;
   z-index: 61;
   width: min(22rem, 88vw);
   padding: 1rem;
@@ -230,6 +239,7 @@ export const communityCss = `
   background: var(--np-community-surface);
   box-shadow: -16px 0 36px rgba(13, 22, 36, 0.2);
 }
+.np-community-mobile-drawer:not([open]) { display: none; }
 .np-community-mobile-drawer-head {
   display: flex;
   align-items: center;

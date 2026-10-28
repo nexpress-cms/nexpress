@@ -1138,6 +1138,16 @@ export const magazineCss = `
 .np-magazine-mobile-nav-drawer {
   position: fixed;
   inset: 0;
+  margin: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100dvh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  color: var(--np-color-foreground, #1a1411);
+  font: inherit;
   background: var(--np-color-background, #f6f1e7);
   z-index: 50;
   display: none;
@@ -1148,7 +1158,9 @@ export const magazineCss = `
 .np-magazine-mobile-nav-drawer[data-open="true"] {
   display: flex;
 }
-.np-magazine-mobile-nav-overlay {
+.np-magazine-mobile-nav-drawer:not([open]) { display: none; }
+.np-magazine-mobile-nav-overlay,
+.np-magazine-mobile-nav-drawer::backdrop {
   position: fixed;
   inset: 0;
   background: color-mix(
