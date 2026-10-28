@@ -1,5 +1,7 @@
 # Testing
 
+<!-- Temporary documentation routing verification for the split CI jobs. -->
+
 Choose the lowest test layer that can detect the regression: unit tests for
 pure contracts, PostgreSQL integration for persistence and transaction behavior,
 browser tests for rendering and interaction, and packed scaffolds for consumer
