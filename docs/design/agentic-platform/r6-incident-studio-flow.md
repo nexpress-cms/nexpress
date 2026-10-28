@@ -149,6 +149,35 @@ no schema, package version, changeset or lockfile.
 
 ## Verification
 
+### Bounded comment evidence read performance
+
+The October 2026 performance follow-up keeps the canonical whole-Incident ACL
+proof, ten-item pages, fresh source/parent generation checks and exact response
+planning. The content owner inspects at most 100 comments per batch, hydrates
+shared parents for the batch and its final recheck, and still runs collection/audience checks
+for every target. Parent and comment rows are checked again after those checks;
+changed, moved, missing or denied targets fail closed. Each authorization and
+final evidence pass builds fresh batches. No authorization cache crosses passes
+or requests, and mutation loaders retain their existing lock order and behavior.
+
+A local PostgreSQL 16 comparison used the same 151-source review journey, one
+Vitest worker, unchanged assertions and the existing 180-second deadline. Fixture
+construction issued 11,516 SQL calls in both runs and took 9.8–12.9 seconds.
+The subsequent review/pagination/final-plan/feedback work fell from 123,801 to
+6,854 SQL calls and from 87.9 to 13.7 seconds. This measures the complete existing
+journey after fixture preparation, not one HTTP request or the whole hosted CI
+suite. The test records optional phase timings and enforces a generous SQL-call
+budget instead of adding a wall-clock speed assertion. Its async body uses the
+existing integration work-scope barrier so a timeout cannot race fixture reset.
+
+Real PostgreSQL coverage compares batch results to the single-target owner,
+checks per-item ACL denial and isolation of ACL-local document mutations, and
+rejects parent revocation or sibling deletion during a pass. Existing 100-target
+compatibility, all 151 targets, final-page planning/feedback, off-page denial,
+session/cursor invalidation, mixed document reports and quarantine/restore
+coverage remain required. This is a read-performance slice; it adds no Runtime,
+provider or automatic-moderation authority.
+
 ### Current paging and optional-summary verification
 
 On 2026-10-15, the focused PostgreSQL run passed 24 cases across Incident Studio,
