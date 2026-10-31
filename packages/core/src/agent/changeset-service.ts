@@ -778,7 +778,7 @@ export function createAgentChangeSetServiceV1(
       });
     if (!options.admission) throw missing();
     const auth = input.authentication;
-    await options.admission.project({ authentication: auth });
+    await options.admission.authorize({ authentication: auth });
     if (
       !auth.scopes.includes(scope) ||
       auth.principal.authority.kind !== "user" ||
@@ -5132,7 +5132,7 @@ export function createAgentChangeSetServiceV1(
     const authorizationContext = await principalContext(actorInput);
     if (actorInput.kind === "principal") {
       if (!options.admission) throw missing();
-      const projected = await options.admission.project({
+      const projected = await options.admission.authorize({
         authentication: actorInput.authentication,
       });
       if (
