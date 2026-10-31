@@ -103,6 +103,36 @@ unknown outcomes and required audit/approval/rollback evidence.
 
 ## Verification
 
+### Bounded source reads
+
+The V2 source uses the existing comment evidence batch reader in chunks of at
+most 100. Retained observed-comment facts reuse their original source-integrity
+owner and fact construction; reported comments and documents keep their existing
+source owners. Source validation and excerpt projection each perform a fresh pass.
+Every segment still rechecks the complete union, including completed segments,
+current per-item ACLs, parent publication, version digests and visible fields.
+No evidence or authorization is cached between passes or provider calls.
+
+A local PostgreSQL 16 comparison kept the same 151 targets, 16 sequential fake
+provider calls, aggregate/replay/tampering assertions and 240-second deadline.
+Fixture construction used 9,655 SQL calls in both runs. Execution used 104,012
+before and 18,572 after, about 82% fewer; observed execution time was 80.053 and
+22.573 seconds. Both runs used the same native Node runtime and at most two
+forks. Other project work was active on the host, so the times are local
+observations, not a controlled throughput or hosted-CI latency guarantee.
+
+The retained journey guards execution below 30,000 SQL calls without reducing
+targets or provider-call coverage. Its integration work scope drains the whole
+body before fixture disposal. Regressions compare single and batch facts and
+reject changed comments, parents or ACLs from earlier segments before aggregation.
+
+This bundle passed eight PostgreSQL files / 56 cases without skips, workspace
+`verify` 113 tasks, lint 41 tasks and an explicit Node-targeted TypeScript check
+of the changed integration entrypoint. Existing conditional unit skips remain:
+three Redis cases and five CLI/Linux cases.
+
+### Earlier acceptance
+
 Completed on 2026-10-15 with fake inference and explicitly simulated trusted host
 approval. Independent review and self-review corrected stale-source campaign
 continuation, prior-segment projection drift, missing compensation preflight,
