@@ -11,7 +11,7 @@ import { npSerializeCollectionDocument } from "../collection-contract/contract.j
 import type { NpTransaction } from "../collections/pipeline.js";
 import { npGetPersistedCollectionDocumentById } from "../collections/pipeline.js";
 import {
-  npInspectCommunityCommentEvidenceV1,
+  npInspectCommunityCommentEvidenceBatchV1,
   npInspectCommunityDocumentEvidenceV1,
 } from "../community/content-containment.js";
 import { npAgentEvents, npAgentSignals, type npAgentProviderCalls } from "../db/schema/agent.js";
@@ -21,7 +21,10 @@ import {
 } from "./incident-service.js";
 import { npAgentModeratorAssessmentIncidentContextV1 } from "./moderator-assessment-context.js";
 import { npReadAgentModeratorContentEvidenceFactV1 } from "./moderator-content-evidence.js";
-import { npResolveAgentModeratorStaffUserV1 } from "./moderator-collector.js";
+import {
+  npResolveAgentModeratorStaffUserV1,
+  npReadAgentModeratorCommentFactsBatchV1,
+} from "./moderator-collector.js";
 import {
   npDigestAgentModeratorSegmentedEvidenceV2 as digest,
   npModeratorSegmentedAssessmentUnavailableV2 as unavailable,
@@ -111,9 +114,19 @@ export async function npReadAgentModeratorSegmentedSourcesV2(
       )
       .orderBy(asc(npAgentEvents.id));
     if (rows.length !== Math.min(100, ids.length - offset)) incomplete = true;
+    const observed = rows.filter((row) => row.kind !== "community.content.reported");
+    const commentFacts = await npReadAgentModeratorCommentFactsBatchV1(context.db, {
+      siteId: context.siteId,
+      sources: observed,
+      user,
+    });
+    const facts = new Map(observed.map((row, index) => [row.id, commentFacts[index]]));
     for (const row of rows) {
       eventBindings.push({ id: row.id, digest: row.eventHash, evidence: events.get(row.id)! });
-      const fact = await npReadAgentModeratorContentEvidenceFactV1(context.db, row, user);
+      const fact =
+        row.kind === "community.content.reported"
+          ? await npReadAgentModeratorContentEvidenceFactV1(context.db, row, user)
+          : facts.get(row.id);
       if (
         !fact ||
         !settings.collectionSlugs.includes(fact.subject.collection) ||
@@ -147,6 +160,44 @@ export async function npReadAgentModeratorSegmentedSourcesV2(
     text: string | null;
     truncated: boolean;
   }[] = [];
+  // A second fresh pass binds current excerpts independently of source validation.
+  // Never reuse these facts across segments or provider calls.
+  const comments = new Map<
+    Binding,
+    Awaited<ReturnType<typeof npInspectCommunityCommentEvidenceBatchV1>>[number]
+  >();
+  for (let offset = 0; offset < bounded.length; offset += 100) {
+    const page = bounded.slice(offset, offset + 100).flatMap((binding) => {
+      const subject = binding.subject;
+      return subject.kind === "comment"
+        ? [
+            {
+              binding,
+              target: {
+                kind: "comment" as const,
+                collection: subject.collection,
+                id: subject.commentId,
+              },
+            },
+          ]
+        : [];
+    });
+    try {
+      const inspected = await npInspectCommunityCommentEvidenceBatchV1(
+        context.db as unknown as NpTransaction,
+        {
+          siteId: context.siteId,
+          user,
+          targets: page.map((entry) => entry.target),
+        },
+      );
+      for (const [index, entry] of page.entries())
+        comments.set(entry.binding, inspected[index] ?? null);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      for (const entry of page) comments.set(entry.binding, null);
+    }
+  }
   // Bind every current visible-field projection, including completed segments. Configuration/ACL
   // changes can alter a projection without changing the content's own version digest.
   for (const binding of bounded) {
@@ -161,10 +212,8 @@ export async function npReadAgentModeratorSegmentedSourcesV2(
       };
       let fullText: string, versionDigest: string;
       if (target.kind === "comment") {
-        const current = await npInspectCommunityCommentEvidenceV1(
-          context.db as unknown as NpTransaction,
-          { siteId: context.siteId, target, user },
-        );
+        const current = comments.get(binding);
+        if (!current) throw new Error("Current source is unavailable");
         const parent = await npGetPersistedCollectionDocumentById(
           target.collection,
           current.comment.targetId,
