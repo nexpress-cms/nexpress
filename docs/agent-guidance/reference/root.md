@@ -64,6 +64,15 @@ resident watcher memory.
 
 When a leaf package changes and you used the default `pnpm dev`, the leaf's `dist/` is stale. Either rebuild that leaf (`pnpm --filter <pkg> build`) or switch to the `... dev` filter for the rest of the session.
 
+Admin, Editor, Default, Community and Magazine use the workspace's `tsx watch`
+owner for their package `dev` commands. It watches `src/`, `package.json`,
+`tsup.config.ts`, `tsconfig.json` and the shared `tsconfig.base.json`, then runs
+that package's existing tsup configuration in a fresh process. Source edits,
+added/removed dependencies and compiler/build config changes therefore reload
+current inputs. Output under `dist/` and tsup's temporary bundled config files
+are excluded so a build does not restart itself. The normal full `build` command
+and its one-time clean remain unchanged; dev builds retain existing declarations.
+
 - `pnpm build` / `pnpm test` — turbo fan-out over all workspaces. `pnpm dev` is now scoped to apps/web (see above).
 - `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Packages use cached ESLint checks; large package targets use `scripts/lint-batches.mjs` to run sequential children over at most 16 files. App `lint:shared` sets `NP_LINT_BATCH_SIZE=8` because its composition graph can exhaust the 6 GB heap with 16 files. The smaller batches preserve file discovery, rules, heap limits and failure aggregation. Use `pnpm --filter <pkg> lint` for one package, or `turbo run lint --filter=<pkg>...` for its dependencies.
 - `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
@@ -157,9 +166,15 @@ import { foo } from "./bar.js"; // correct
 import { foo } from "./bar"; // breaks the build
 ```
 
-Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after fresh clone; `pnpm dev` keeps dists fresh with `tsup --watch`.
+Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after a fresh clone; the selected package dev command keeps its runtime output current as sources change.
 
-Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's _signature_ during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NP_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
+Root dev commands load `NP_DEV_FAST` from `.env` (default `1`). Configs that
+support fast mode, including Admin and Editor, skip dts emit and sourcemaps;
+other configs retain their existing declaration settings. In fast mode,
+sibling packages use `.d.ts` files from the last full build. Changes to exported
+type signatures need a targeted package build, or a dev restart with
+`NP_DEV_FAST=0`, before consumer typechecks see them. Root `pnpm build` always
+sets `NP_DEV_FAST=0`, so published output retains full declarations.
 
 ### Core service singletons (critical)
 
