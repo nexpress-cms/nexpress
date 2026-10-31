@@ -24,7 +24,12 @@ import {
   npAgentInvocations,
   npAgentChangesets,
   npAgentPrincipals,
+  npAgentServiceTokens,
 } from "../../../packages/core/src/db/schema/agent.js";
+import { createAgentCapabilityAdmissionServiceV1 } from "../../../packages/core/src/agent/capability-admission.js";
+import { createAgentChangeSetCapabilityFacadeV1 } from "../../../packages/core/src/agent/changeset-capability.js";
+import { createAgentReadCapabilityRegistryV1 } from "../../../packages/core/src/agent/capability-registry.js";
+import { createAgentCoreReadCapabilityExecutorsV1 } from "../../../packages/core/src/agent/read-capability-executors.js";
 import {
   createDbConnection,
   npCloseDbConnection,
@@ -40,6 +45,83 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet review and propose surfaces", () =>
     registerTestCollections();
   });
   afterAll(closeTestDb);
+  it("keeps discovery fingerprints and fresh invocation admission aligned as installation and authority change", async () => {
+    const f = await fixture();
+    const p = await principalFixture(f);
+    const registry = await createAgentReadCapabilityRegistryV1(
+      createAgentCoreReadCapabilityExecutorsV1({
+        cursorHmacKey: { id: "admission-review", key: new Uint8Array(32).fill(26) },
+        resolveBlockSchemas: () => [],
+        resolveUser: () => f.actor.actor.user,
+      }),
+    );
+    const installed = createAgentChangeSetCapabilityFacadeV1(p.service);
+    let facade: typeof installed | null = installed;
+    const admission = createAgentCapabilityAdmissionServiceV1({
+      registry,
+      resolveGatewaySettings: () => p.gatewaySettings,
+      resolveChangeSetCapabilities: () => facade,
+    });
+    const input = { authentication: p.authentication };
+    const discovery = await admission.project(input);
+    expect(discovery.entries.map((entry) => entry.definition.descriptor.id)).toContain(
+      "changeset.create",
+    );
+    expect(await admission.authorize(input)).toEqual({
+      principal: discovery.principal,
+      settings: discovery.settings,
+      entries: discovery.entries,
+    });
+
+    // Installation metadata is rechecked even after a successful projection.
+    facade = {
+      ...installed,
+      async entry(id) {
+        return {
+          ...(await installed.entry(id)),
+          capabilityFingerprint: registry.registryFingerprint,
+        };
+      },
+    };
+    await expect(admission.authorize(input)).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
+    await expect(admission.project(input)).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
+
+    facade = null;
+    expect(
+      (await admission.authorize(input)).entries.map((entry) => entry.definition.descriptor.id),
+    ).not.toContain("changeset.create");
+    expect((await admission.project(input)).registryFingerprint).toBe(registry.registryFingerprint);
+    const request = {
+      schemaVersion: "np.agent-invocation-request.v1" as const,
+      capabilityId: "changeset.create" as const,
+      arguments: { input: draft(), idempotencyKey: randomUUID() },
+    };
+    await expect(admission.invoke({ ...input, request })).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
+    expect(await f.db.select().from(npAgentChangesets)).toHaveLength(0);
+
+    facade = installed;
+    expect((await admission.project(input)).registryFingerprint).toBe(
+      discovery.registryFingerprint,
+    );
+    await admission.invoke({ ...input, request });
+    await f.db
+      .update(npAgentServiceTokens)
+      .set({ status: "revoked", revokedAt: new Date() })
+      .where(eq(npAgentServiceTokens.id, p.authentication.serviceToken.id));
+    for (const attempt of [
+      () => admission.authorize(input),
+      () => admission.project(input),
+      () => admission.invoke({ ...input, request }),
+    ])
+      await expect(attempt()).rejects.toMatchObject({ code: "AUTHORIZATION_CHANGED" });
+    expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
+  });
   it("projects sealed proposed values and no snapshots, then rejects revoked viewer authority", async () => {
     const f = await fixture();
     const created = await f.service.create({ actor: f.actor, command: await command() });

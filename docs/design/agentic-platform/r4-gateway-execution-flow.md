@@ -163,3 +163,26 @@ checks do not certify a deployment's cache/search/media adapters. Unknown
 external effects remain fenced and inspection-only. No R5 runtime, provider,
 automatic worker/factory, scanner, seed, default activation, package-version
 change or changeset is added.
+
+### Gateway admission cost
+
+Discovery (`admission.project`) still returns the complete installed registry
+fingerprint. Invocation and ChangeSet requester revalidation use
+`admission.authorize`, which shares the same current authentication, settings,
+transport, scopes, installed-definition checks and full canonical registry
+validation. It omits the unused discovery fingerprint; it does not cache authority
+or remove a database check. Execution still uses its existing transaction fences.
+
+A local PostgreSQL 16 comparison retained all 13 Gateway execution scenarios,
+fixtures, assertions and deadlines. With the same native Node runtime, at most
+two forks and temporary CPU/query instrumentation, test time fell from 101.97 to
+65.79 seconds; command wall time fell from 112.459 to 75.437 seconds. The same
+single approval/apply journey fell from 20.084 to 11.852 seconds with 3,217 SQL
+calls in both runs. These are local observations, not a hosted CI or single API
+latency guarantee. The regression journey checks discovery/admission parity,
+changed installation metadata, uninstall/reinstall and revocation without writes
+after denial. Temporary instrumentation is absent from the test sources.
+
+Bundle verification passed 10 PostgreSQL files / 97 cases without skips,
+workspace `verify` 113 tasks and lint 41 tasks. Existing conditional unit skips
+remain: three Redis cases and five CLI/Linux cases.
