@@ -77,6 +77,13 @@ import { npCreateAgentGuardianTransactionScopeV1 } from "./guardian-transaction-
 type Db = ReturnType<typeof getDb>;
 type Receipt = typeof npAgentRuntimeReceipts.$inferSelect;
 type EventRow = typeof npAgentEvents.$inferSelect;
+interface ProofSources {
+  runs: Map<string, typeof npAgentRuns.$inferSelect>;
+  versions: Map<string, typeof npAgentVersions.$inferSelect>;
+  calls: Map<string, typeof npAgentProviderCalls.$inferSelect>;
+  actions: Map<string, typeof npAgentActions.$inferSelect>;
+  verifiedRuns: Set<string>;
+}
 type Detector = (typeof npAgentGuardianRuntimeDetectorIdsV1)[number];
 type Failure = "KEY_UNAVAILABLE" | "SOURCE_INTEGRITY" | "DELIVERY_UNAVAILABLE";
 interface Proof {
@@ -238,8 +245,12 @@ function matches(proofs: readonly Proof[]): NpAgentGuardianRuntimeRuleMatchV1[] 
     activities: proofs.map((p) => p.activity),
   });
 }
-function cohort(proofs: readonly Proof[], detector: Detector): Proof[] | null {
-  const match = matches(proofs).find((m) => m.detectorId === detector);
+function cohort(
+  proofs: readonly Proof[],
+  detector: Detector,
+  evaluated: readonly NpAgentGuardianRuntimeRuleMatchV1[] = matches(proofs),
+): Proof[] | null {
+  const match = evaluated.find((m) => m.detectorId === detector);
   if (!match) return null;
   const ids = new Set(match.observationIds);
   return proofs
@@ -419,12 +430,20 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       },
     });
   }
-  async function verifyRun(db: Db, activity: NpAgentGuardianRuntimeActivityV1): Promise<void> {
-    const [run] = await db
-      .select()
-      .from(npAgentRuns)
-      .where(and(eq(npAgentRuns.siteId, activity.siteId), eq(npAgentRuns.id, activity.runId)))
-      .limit(1);
+  async function verifyRun(
+    db: Db,
+    activity: NpAgentGuardianRuntimeActivityV1,
+    sources?: ProofSources,
+  ): Promise<void> {
+    const run = sources
+      ? sources.runs.get(activity.runId)
+      : (
+          await db
+            .select()
+            .from(npAgentRuns)
+            .where(and(eq(npAgentRuns.siteId, activity.siteId), eq(npAgentRuns.id, activity.runId)))
+            .limit(1)
+        )[0];
     if (
       !run ||
       run.agentId !== activity.agentId ||
@@ -433,19 +452,26 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       run.admissionFingerprint !== activity.runAdmissionDigest
     )
       sourceFailure();
-    await npRequireAgentRuntimeExecutionIntegrityV1(run);
+    if (!sources?.verifiedRuns.has(run.id)) {
+      await npRequireAgentRuntimeExecutionIntegrityV1(run);
+      sources?.verifiedRuns.add(run.id);
+    }
     const fact = activity.fact;
     if (fact.kind === "scope-denied") {
-      const [version] = await db
-        .select()
-        .from(npAgentVersions)
-        .where(
-          and(
-            eq(npAgentVersions.siteId, activity.siteId),
-            eq(npAgentVersions.id, activity.agentVersionId),
-          ),
-        )
-        .limit(1);
+      const version = sources
+        ? sources.versions.get(activity.agentVersionId)
+        : (
+            await db
+              .select()
+              .from(npAgentVersions)
+              .where(
+                and(
+                  eq(npAgentVersions.siteId, activity.siteId),
+                  eq(npAgentVersions.id, activity.agentVersionId),
+                ),
+              )
+              .limit(1)
+          )[0];
       if (
         !version ||
         version.agentId !== activity.agentId ||
@@ -457,18 +483,27 @@ export function createAgentGuardianRuntimeObservationServiceV1(
     if (fact.kind === "proposal-repeated" || fact.kind === "scope-denied") {
       const refs = fact.kind === "proposal-repeated" ? fact.responses : [fact.response];
       for (const ref of refs) {
-        const [call] = await db
-          .select()
-          .from(npAgentProviderCalls)
-          .where(
-            and(
-              eq(npAgentProviderCalls.siteId, activity.siteId),
-              eq(npAgentProviderCalls.runId, activity.runId),
-              eq(npAgentProviderCalls.id, ref.providerCallId),
-            ),
-          )
-          .limit(1);
-        if (!call || call.sequence !== ref.sequence || call.responseDigest !== ref.responseDigest)
+        const call = sources
+          ? sources.calls.get(ref.providerCallId)
+          : (
+              await db
+                .select()
+                .from(npAgentProviderCalls)
+                .where(
+                  and(
+                    eq(npAgentProviderCalls.siteId, activity.siteId),
+                    eq(npAgentProviderCalls.runId, activity.runId),
+                    eq(npAgentProviderCalls.id, ref.providerCallId),
+                  ),
+                )
+                .limit(1)
+            )[0];
+        if (
+          !call ||
+          call.runId !== activity.runId ||
+          call.sequence !== ref.sequence ||
+          call.responseDigest !== ref.responseDigest
+        )
           sourceFailure();
         const output = await npRequireAgentRuntimeProviderDecisionV1(call);
         if (
@@ -487,13 +522,20 @@ export function createAgentGuardianRuntimeObservationServiceV1(
           sourceFailure();
       }
     } else if (fact.kind === "action-admitted") {
-      const [action] = await db
-        .select()
-        .from(npAgentActions)
-        .where(
-          and(eq(npAgentActions.siteId, activity.siteId), eq(npAgentActions.id, fact.actionId)),
-        )
-        .limit(1);
+      const action = sources
+        ? sources.actions.get(fact.actionId)
+        : (
+            await db
+              .select()
+              .from(npAgentActions)
+              .where(
+                and(
+                  eq(npAgentActions.siteId, activity.siteId),
+                  eq(npAgentActions.id, fact.actionId),
+                ),
+              )
+              .limit(1)
+          )[0];
       if (
         !action ||
         action.runId !== activity.runId ||
@@ -525,16 +567,20 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       });
       if ((await npDigestAgentActionCanonical(canonical)) !== fact.actionDigest) sourceFailure();
     } else {
-      const [call] = await db
-        .select()
-        .from(npAgentProviderCalls)
-        .where(
-          and(
-            eq(npAgentProviderCalls.siteId, activity.siteId),
-            eq(npAgentProviderCalls.id, fact.providerCallId),
-          ),
-        )
-        .limit(1);
+      const call = sources
+        ? sources.calls.get(fact.providerCallId)
+        : (
+            await db
+              .select()
+              .from(npAgentProviderCalls)
+              .where(
+                and(
+                  eq(npAgentProviderCalls.siteId, activity.siteId),
+                  eq(npAgentProviderCalls.id, fact.providerCallId),
+                ),
+              )
+              .limit(1)
+          )[0];
       if (
         !call ||
         call.runId !== activity.runId ||
@@ -547,7 +593,7 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       // late reconciliation may legitimately supersede mutable call/reservation rows.
     }
   }
-  async function verifyReceipt(row: Receipt, currentTime: Date, db: Db, budget?: CollectionBudget) {
+  async function authenticateReceipt(row: Receipt, currentTime: Date, budget?: CollectionBudget) {
     budget?.checkpoint();
     let activity: NpAgentGuardianRuntimeActivityV1;
     try {
@@ -572,6 +618,10 @@ export function createAgentGuardianRuntimeObservationServiceV1(
     const key = await resolveKey(row.keyId, budget);
     const expected = mac(key, row.keyId, activity, row.bodyHash);
     if (!timingSafeEqual(Buffer.from(row.sourceMac), Buffer.from(expected))) sourceFailure();
+    return activity;
+  }
+  async function verifyReceipt(row: Receipt, currentTime: Date, db: Db, budget?: CollectionBudget) {
+    const activity = await authenticateReceipt(row, currentTime, budget);
     await verifyRun(db, activity);
     return activity;
   }
@@ -604,23 +654,28 @@ export function createAgentGuardianRuntimeObservationServiceV1(
     if (receipts.length !== rows.length) sourceFailure();
     const byId = new Map(receipts.map((row) => [row.id, row]));
     const proofs: Proof[] = [];
-    for (const [index, row] of rows.entries()) {
-      const receipt = byId.get(ids[index]);
-      if (!receipt) sourceFailure();
-      budget?.checkpoint();
-      proofs.push(await verifyProof(db, row, receipt, currentTime, parsed[index], budget));
+    for (let offset = 0; offset < rows.length; offset += 100) {
+      const batch: Proof[] = [];
+      for (let index = offset; index < Math.min(offset + 100, rows.length); index++) {
+        const receipt = byId.get(ids[index]);
+        if (!receipt) sourceFailure();
+        budget?.checkpoint();
+        batch.push(
+          await authenticateProof(rows[index], receipt, currentTime, parsed[index], budget),
+        );
+      }
+      proofs.push(...(await verifyProofSources(db, batch, false, budget)));
     }
     return proofs;
   }
-  async function verifyProof(
-    db: Db,
+  async function authenticateProof(
     row: EventRow,
     receipt: Receipt,
     currentTime: Date,
     event?: NpAgentEventCanonicalV1,
     budget?: CollectionBudget,
   ): Promise<Proof> {
-    const activity = await verifyReceipt(receipt, currentTime, db, budget);
+    const activity = await authenticateReceipt(receipt, currentTime, budget);
     if (
       receipt.state !== "emitted" ||
       receipt.failureCode !== null ||
@@ -631,6 +686,100 @@ export function createAgentGuardianRuntimeObservationServiceV1(
     )
       sourceFailure();
     return { row, activity };
+  }
+  /** One fresh, bounded source pass after all host key callbacks. Nothing is
+   * retained across a receipt callback, detector pass, or public proof read. */
+  async function verifyProofSources(
+    db: Db,
+    proofs: readonly Proof[],
+    tolerateInvalid: boolean,
+    budget?: CollectionBudget,
+  ): Promise<Proof[]> {
+    if (!proofs.length) return [];
+    if (proofs.length > 100) sourceFailure();
+    budget?.checkpoint();
+    const siteId = proofs[0].activity.siteId;
+    if (proofs.some((proof) => proof.activity.siteId !== siteId)) sourceFailure();
+    const runIds = [...new Set(proofs.map((proof) => proof.activity.runId))];
+    const versionIds: string[] = [],
+      callIds: string[] = [],
+      actionIds: string[] = [];
+    for (const { activity } of proofs) {
+      const fact = activity.fact;
+      if (fact.kind === "scope-denied") versionIds.push(activity.agentVersionId);
+      if (fact.kind === "action-admitted") actionIds.push(fact.actionId);
+      else if (fact.kind === "proposal-repeated")
+        callIds.push(...fact.responses.map((ref) => ref.providerCallId));
+      else
+        callIds.push(
+          fact.kind === "scope-denied" ? fact.response.providerCallId : fact.providerCallId,
+        );
+    }
+    const sources: ProofSources = {
+      runs: new Map(),
+      versions: new Map(),
+      calls: new Map(),
+      actions: new Map(),
+      verifiedRuns: new Set(),
+    };
+    const runs = await db
+      .select()
+      .from(npAgentRuns)
+      .where(and(eq(npAgentRuns.siteId, siteId), inArray(npAgentRuns.id, runIds)));
+    sources.runs = new Map(runs.map((run) => [run.id, run]));
+    if (versionIds.length) {
+      budget?.checkpoint();
+      const versions = await db
+        .select()
+        .from(npAgentVersions)
+        .where(
+          and(
+            eq(npAgentVersions.siteId, siteId),
+            inArray(npAgentVersions.id, [...new Set(versionIds)]),
+          ),
+        );
+      sources.versions = new Map(versions.map((version) => [version.id, version]));
+    }
+    const uniqueCalls = [...new Set(callIds)];
+    for (let offset = 0; offset < uniqueCalls.length; offset += 100) {
+      budget?.checkpoint();
+      const calls = await db
+        .select()
+        .from(npAgentProviderCalls)
+        .where(
+          and(
+            eq(npAgentProviderCalls.siteId, siteId),
+            inArray(npAgentProviderCalls.id, uniqueCalls.slice(offset, offset + 100)),
+          ),
+        );
+      for (const call of calls) sources.calls.set(call.id, call);
+    }
+    if (actionIds.length) {
+      budget?.checkpoint();
+      const actions = await db
+        .select()
+        .from(npAgentActions)
+        .where(
+          and(
+            eq(npAgentActions.siteId, siteId),
+            inArray(npAgentActions.id, [...new Set(actionIds)]),
+          ),
+        );
+      sources.actions = new Map(actions.map((action) => [action.id, action]));
+    }
+    const verified: Proof[] = [];
+    for (const proof of proofs) {
+      budget?.checkpoint();
+      try {
+        await verifyRun(db, proof.activity, sources);
+        verified.push(proof);
+      } catch (error) {
+        budget?.checkpoint();
+        if (!tolerateInvalid || error instanceof CollectionTimeout) throw error;
+        // The collector retains corrupt older sources without counting them.
+      }
+    }
+    return verified;
   }
   async function candidate(proofs: readonly Proof[], detector: Detector) {
     const selected = cohort(proofs, detector);
@@ -702,7 +851,7 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       activity.siteId,
       receipts.flatMap((row) => (row.emittedEventId ? [row.emittedEventId] : [])),
     );
-    const proofs: Proof[] = [];
+    const authenticated: Proof[] = [];
     const receiptsByEvent = new Map(receipts.map((receipt) => [receipt.emittedEventId, receipt]));
     // Corrupt older retained sources cannot contaminate a new valid cohort.
     for (const row of rows) {
@@ -710,13 +859,15 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       try {
         const receipt = receiptsByEvent.get(row.id);
         if (receipt)
-          proofs.push(await verifyProof(db, row, receipt, currentTime, undefined, budget));
+          authenticated.push(await authenticateProof(row, receipt, currentTime, undefined, budget));
       } catch (error) {
         budget.checkpoint();
         if (error instanceof CollectionTimeout) throw error;
         /* Retain but do not count unverifiable facts. */
       }
     }
+    const proofs = await verifyProofSources(db, authenticated, true, budget);
+    let evaluated: NpAgentGuardianRuntimeRuleMatchV1[] | undefined;
     for (const detector of npAgentGuardianRuntimeDetectorIdsV1) {
       budget.checkpoint();
       const previous = await db
@@ -737,7 +888,7 @@ export function createAgentGuardianRuntimeObservationServiceV1(
       if (previous.length > 1) sourceFailure();
       // This freezes one cohort even after closing its Incident or a late source arrival.
       if (previous.length) continue;
-      const selected = cohort(proofs, detector);
+      const selected = cohort(proofs, detector, (evaluated ??= matches(proofs)));
       if (!selected) continue;
       const detected = (await candidate(selected, detector)).candidate;
       await npObserveIncidentCandidate({
