@@ -231,6 +231,8 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet approved forward compensation", () 
     await f.service.processRollback(f.rollbackJobs[0]);
     const review = await f.service.getReview({ actor: f.actor, id: f.id });
     expect(review.changeSet.state).toBe("rolled_back");
+    expect(review.rollbackDetail?.summary).toEqual(review.changeSet.rollback);
+    expect(review.rollbackDetail?.summary.state).toBe("verified");
     expect(await f.seo()).toBeUndefined();
     expect(await f.db.select().from(npAgentChangesetExecutions)).toHaveLength(2);
     expect(
@@ -259,6 +261,13 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet approved forward compensation", () 
         command: f.rollbackCommand,
       }),
     ).rejects.toThrow();
+    const historicalApproval = {
+      siteId,
+      actor: f.approver.actor,
+      id: f.rollbackApproved.item.approval.id,
+    };
+    const expired = await f.service.approvals!.get(historicalApproval);
+    expect(expired.rollbackReview?.summary).toEqual(review.rollbackDetail?.summary);
     const fresh = await f.service.prepareRollback({
       actor: f.actor,
       id: f.id,
@@ -266,6 +275,18 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet approved forward compensation", () 
     });
     expect(fresh.rollbackDetail?.summary.state).toBe("ready");
     expect(fresh.rollbackDetail?.summary.rollbackPlanId).not.toBe(f.rollbackPlanId);
+    await expect(f.service.approvals!.get(historicalApproval)).rejects.toMatchObject({
+      code: "APPROVAL_NOT_FOUND",
+    });
+    const latestPlanId = fresh.rollbackDetail?.summary.rollbackPlanId;
+    if (!latestPlanId) throw new Error("Expected a new rollback plan");
+    await f.db
+      .update(npAgentChangesetRollbackOperations)
+      .set({ expectedCurrentHash: `cj1:sha256:${"A".repeat(43)}` })
+      .where(eq(npAgentChangesetRollbackOperations.rollbackPlanId, latestPlanId));
+    await expect(f.service.getReview({ actor: f.actor, id: f.id })).rejects.toMatchObject({
+      code: "CHANGESET_NOT_FOUND",
+    });
   });
   it("revokes an unused approval without changing applied content or consuming the old approval", async () => {
     const f = await approvedRollbackFixture();
