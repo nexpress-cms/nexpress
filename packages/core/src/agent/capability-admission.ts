@@ -47,6 +47,7 @@ import {
   type NpAgentChangeSetCapabilityInvocationRequestV1,
 } from "../agent-contract/installed-capability-contract.js";
 import type { NpAgentChangeSetCapabilityFacadeV1 } from "./changeset-capability.js";
+import { npGetAgentChangeSetCapabilityEntryJsonV1 } from "./changeset-capability-entry.js";
 import type { NpAgentModerationCapabilityFacadeV1 } from "./moderation-capability.js";
 import {
   npIsAgentModerationCapabilityIdV1,
@@ -1173,14 +1174,17 @@ export function createAgentCapabilityAdmissionServiceV1(
       if (!npIsAgentChangeSetCapabilityIdV1(id) || (index > 0 && facade!.ids[index - 1] >= id))
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       const expected = await expectedDefinition(id);
+      const immutableJson = npGetAgentChangeSetCapabilityEntryJsonV1(entry);
       if (
         !npIsAgentChangeSetCapabilityIdV1(id) ||
         (index > 0 && facade!.ids[index - 1] >= id) ||
-        serializeAgentCanonicalJson(entry.definitionCanonical) !== expected.canonical ||
-        serializeAgentCanonicalJson(entry.canonical) !==
-          serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
-        serializeAgentCanonicalJson(entry.definition) !==
-          serializeAgentCanonicalJson(entry.canonical) ||
+        (immutableJson ?? serializeAgentCanonicalJson(entry.definitionCanonical)) !==
+          expected.canonical ||
+        (immutableJson === undefined &&
+          (serializeAgentCanonicalJson(entry.canonical) !==
+            serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
+            serializeAgentCanonicalJson(entry.definition) !==
+              serializeAgentCanonicalJson(entry.canonical))) ||
         entry.capabilityFingerprint !== expected.fingerprint
       )
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");

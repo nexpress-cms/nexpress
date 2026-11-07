@@ -186,3 +186,23 @@ after denial. Temporary instrumentation is absent from the test sources.
 Bundle verification passed 10 PostgreSQL files / 97 cases without skips,
 workspace `verify` 113 tasks and lint 41 tasks. Existing conditional unit skips
 remain: three Redis cases and five CLI/Linux cases.
+
+The ChangeSet facade serializes each deeply frozen definition when it builds the
+entry. Admission resolves the current installation on every call and compares
+the serialization and fingerprint with the expected definition. For entries
+supplied outside that factory, admission serializes the body and checks both
+definition aliases on each call. Discovery and invocation validate the assembled
+registry and check current authority, scopes, and Gateway exposure.
+
+Matched local PostgreSQL 16.8 runs on 2026-11-07 measured the complete approval
+and execution journeys. Apply fell from 9.745 to 5.740 seconds with 3,216 SQL
+calls in each run. Schedule fell from 9.653 to 5.670 seconds with 3,271 calls in
+each run. The existing installation regression covers a factory entry returned
+under the wrong capability ID and a custom entry whose definition changes after
+a successful projection.
+
+Scoped verification passed 87 PostgreSQL cases across eight files, including
+all 13 Gateway execution scenarios and the Runtime approval and unattended
+journeys. Integration-file typechecking, all 113 workspace `verify` tasks, and
+all 41 lint tasks passed. The existing optional Redis and CLI/Linux unit skips
+were reported by the workspace runner.

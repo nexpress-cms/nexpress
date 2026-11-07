@@ -90,6 +90,29 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet review and propose surfaces", () =>
       code: "CAPABILITY_UNAVAILABLE",
     });
 
+    // Factory entries must still match the requested installed capability ID.
+    facade = {
+      ...installed,
+      entry: (id) => installed.entry(id === "changeset.create" ? "changeset.get" : id),
+    };
+    await expect(admission.authorize(input)).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
+
+    const entry = await installed.entry("changeset.create");
+    const mutable = { ...entry, definition: structuredClone(entry.definition) };
+    facade = {
+      ...installed,
+      entry: (id) => (id === "changeset.create" ? Promise.resolve(mutable) : installed.entry(id)),
+    };
+    expect((await admission.project(input)).registryFingerprint).toBe(
+      discovery.registryFingerprint,
+    );
+    mutable.definition.implementationVersion += 1;
+    await expect(admission.authorize(input)).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
+
     facade = null;
     expect(
       (await admission.authorize(input)).entries.map((entry) => entry.definition.descriptor.id),
