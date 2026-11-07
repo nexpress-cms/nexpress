@@ -142,6 +142,14 @@ fields recursively, excluding hidden/read-only and undeclared snapshot metadata.
 Safe status and publish-time changes are shown explicitly. Missing or expired
 evidence has no invented diff. Approval review uses the same projection.
 
+ChangeSet review shares verified apply and rollback evidence between its summary
+and detail within one repeatable-read snapshot. A selected historical rollback
+plan receives its own verification. In a local PostgreSQL run with one operation
+per ChangeSet, each applied review used 20 SQL statements instead of 24 and each
+rolled-back review used 25 instead of 42. Across seven warm requests per state,
+median latency fell from 12.18 to 10.46 ms for applied review and from 24.42 to
+16.11 ms for rolled-back review.
+
 Buttons follow `rollbackActions`; known capability names do not create client
 permission. Unknown responses retain the identical attempt key. Conflict or
 access loss clears stale evidence, while safe reauthentication guidance remains
