@@ -924,9 +924,12 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
                 </dd>
               </dl>
               <p>
-                {detail.actionReview
-                  ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact reviewed target and plan."
-                  : "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks."}
+                {detail.item.approval.state === "pending" ||
+                detail.item.approval.state === "approved"
+                  ? detail.actionReview
+                    ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact reviewed target and plan."
+                    : "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks."
+                  : "This approval is closed. The record is available for reference."}
               </p>
             </section>
             {detail.actionReview && <ApprovalActionFacts review={detail.actionReview} />}

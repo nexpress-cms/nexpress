@@ -38,6 +38,10 @@ handle the exact `changeset_rollback` target and reuse the same MAC, expiry,
 reauthentication and one-time challenge contracts. Rollback approval detail
 uses `rollbackReview`; intendedOperation and scheduledFor remain null because
 the capability ID and exact rollback target identify the operation.
+An approval detail verifies the selected plan ID, hash and linked approval ID
+with the current viewer and resource ACLs in a read-only snapshot. A newer
+generation can coexist with this historical detail. Closed approvals show
+retained facts for reference and expired operation evidence remains redacted.
 
 Non-executing rollback cancellation reuses
 `POST /api/admin/agents/changesets/{id}/cancel`. The existing parent-cancel
@@ -143,8 +147,7 @@ Safe status and publish-time changes are shown explicitly. Missing or expired
 evidence has no invented diff. Approval review uses the same projection.
 
 ChangeSet review shares verified apply and rollback evidence between its summary
-and detail within one repeatable-read snapshot. A selected historical rollback
-plan receives its own verification. In a local PostgreSQL run with one operation
+and detail within one repeatable-read snapshot. In a local PostgreSQL run with one operation
 per ChangeSet, each applied review used 20 SQL statements instead of 24 and each
 rolled-back review used 25 instead of 42. Across seven warm requests per state,
 median latency fell from 12.18 to 10.46 ms for applied review and from 24.42 to

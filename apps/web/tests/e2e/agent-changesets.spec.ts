@@ -1104,13 +1104,25 @@ test("rollback succeeds through preparation, human approval and verified compens
     "Cancel rollback plan",
   ])
     await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Review rollback approval · consumed", exact: true }),
-  ).toBeVisible();
+  const consumedApproval = page.getByRole("link", {
+    name: "Review rollback approval · consumed",
+    exact: true,
+  });
+  await expect(consumedApproval).toBeVisible();
   await agentLifecycleCheckpoint(page, "rollback-verified");
   const screenshot = testInfo.outputPath("rollback-verified.png");
   await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
   await testInfo.attach("rollback-verified", { path: screenshot, contentType: "image/png" });
+  await consumedApproval.click();
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/approvals/${approvalId}$`));
+  await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeVisible();
+  await expect(facts.getByText(rollbackHash, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("This approval is closed. The record is available for reference."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^(Approve|Reject|Revoke|Execute approved rollback)$/ }),
+  ).toHaveCount(0);
   expect(unexpectedRequests).toEqual([]);
   expect(commands.map(({ path }) => path)).toEqual([
     `/api/admin/agents/changesets/${id}/rollback-plans`,

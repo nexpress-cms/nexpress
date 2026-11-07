@@ -152,6 +152,27 @@ These observations narrow what remains; they do not waive §20.3, §20.6 or §20
 or promote bounded samples to full acceptance. Only a reproduced defect warrants
 an implementation change and its affected regression check.
 
+### Rollback approval and Admin browser recheck (2026-11-08 KST)
+
+The [rollback approval reader](r4-rollback-flow.md#installation-and-surface)
+now serves the approval's exact retained plan even after a newer generation
+exists. The Admin detail presents closed approvals as records for reference.
+The existing compensation journey now opens the consumed approval, checks its
+plan hash and confirms that decision and execution controls are absent.
+
+The production build passed 47 Chromium cases across the existing Connections,
+Gateway and Activity, Runtime, shared states, Approvals and ChangeSet specs
+without retries or skips. Those cases include 320/768/1280 viewports, light and
+dark themes, reduced motion, long localized text and bounded lists. Direct
+image inspection covered the 320px approval error, rollback execution, Gateway
+suspension dialog, budget observations, policy list and manual form, plus the
+768px dark Connections list. The PostgreSQL recheck passed 93 cases across six
+related ChangeSet and approval suites.
+
+The local VoiceOver preflight found the feature off and did not obtain an
+actual utterance or caption. AT-01–06 remain unverified. The browser results
+cover the selected fixtures and visual samples.
+
 ### Health and Doctor requirement crosswalk
 
 The eight subjects in §20.10 are present in the shipped shared Health and Doctor
