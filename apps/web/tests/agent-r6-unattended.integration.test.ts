@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { npCreateAgentOperatorAppHostV1 } from "../../../packages/app/src/lib/agents/operator-host.js";
@@ -411,6 +411,49 @@ describe.skipIf(skipIfNoTestDb())("Explicit R6 unattended recipe journeys", () =
       ).toBe("PUBLISHER_PROPOSAL_DUPLICATE");
       expect(await f.db.select().from(npAgentChangesets)).toHaveLength(1);
       expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
+    }),
+    60_000,
+  );
+
+  it(
+    "rechecks a retained sibling recipe after provider inference before creating a Publisher draft",
+    journey(async () => {
+      const f = track(await publisherRuntimeFixture(await recipe("publisher.stale-content", 2)));
+      const id = await f.document();
+      const before = await f.db.select().from(postsTable).where(eq(postsTable.id, id));
+      const [version] = await f.db
+        .select()
+        .from(npAgentVersions)
+        .where(eq(npAgentVersions.id, f.runInput.expectedVersionId));
+      const changed = structuredClone(version.recipeRegistryBody);
+      const sibling = changed.recipes.find((entry) => entry.id === "operator.worker-not-draining");
+      if (!sibling?.instruction) throw new Error("Expected the retained Operator instruction");
+      sibling.instruction.text += "\nA different explicitly installed instruction.";
+      sibling.instruction.digest = `cj1:sha256:${createHash("sha256").update(sibling.instruction.text).digest("base64url")}`;
+      const readCurrent = () =>
+        f.admission.withCurrentRun({ siteId, runId: f.runId }, async () => true);
+      const setRegistry = (recipeRegistryBody: typeof changed) =>
+        f.db
+          .update(npAgentVersions)
+          .set({ recipeRegistryBody })
+          .where(eq(npAgentVersions.id, version.id));
+      expect(await readCurrent()).toBe(true);
+      await setRegistry(changed);
+      await expect(readCurrent()).rejects.toMatchObject({ code: "RUNTIME_DEFINITION_INVALID" });
+      expect(f.invoke).not.toHaveBeenCalled();
+      await setRegistry(version.recipeRegistryBody);
+      expect(await readCurrent()).toBe(true);
+      f.setBeforeProposal(async () => {
+        await setRegistry(changed);
+      });
+      await expect(f.executor.process({ siteId, runId: f.runId })).rejects.toMatchObject({
+        code: "RUNTIME_DEFINITION_INVALID",
+      });
+      expect(f.invoke).toHaveBeenCalledTimes(1);
+      expect(await f.db.select().from(npAgentChangesets)).toEqual([]);
+      expect(await f.previews()).toEqual([]);
+      expect(await f.db.select().from(postsTable).where(eq(postsTable.id, id))).toEqual(before);
+      await setRegistry(version.recipeRegistryBody);
     }),
     60_000,
   );

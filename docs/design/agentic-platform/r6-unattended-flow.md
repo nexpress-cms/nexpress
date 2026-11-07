@@ -138,6 +138,40 @@ review plan. The recipe has no `ops.execute`, shell or SQL capability. The separ
 approved execution owner retains its closed action set; queue-global drain or
 restart instructions remain local human handoffs.
 
+## Retained recipe fingerprint verification
+
+Runtime version and Run admission continue to read current persisted rows and
+check the complete retained registry, including recipes outside the selected
+Agent settings. The internal
+[recipe evidence helper](../../../packages/core/src/agent/runtime-recipe-evidence.ts)
+normalizes that complete registry once per invocation, then calculates its
+registry and exact member-definition fingerprints from the same snapshot. It
+uses the existing canonical purpose and foundation bytes; public canonical
+parsers, profile bytes and stored fingerprints are unchanged. Evidence is rebuilt
+for each read, with no cache across callbacks or authority checks. Current
+principal, staff, policy, connection, resource and lease checks retain their
+existing owners and SQL reads.
+
+The PostgreSQL suite retains both Publisher profiles' five-call draft/preview
+journey, terminal replay, sixth-call duplicate-proposal denial and 60-second
+case deadlines. A further case changes an unselected retained sibling recipe,
+checks rejection and restoration, then changes it during fake inference and
+requires rejection before draft creation or another provider call. Unit tests
+compare registry and all member fingerprints against the public contextual
+canonical owner for the three unattended and two assessment profiles and reject
+malformed siblings.
+
+On 2026-10-31, matched local instrumented V1/V2 journeys fell from 23.845/23.578
+seconds to 15.715/15.034 seconds. SQL counts remained 7,522/7,521, including 6,431
+queries for each initial five-call execution. These are local observations with
+unchanged fixture sizes and assertions, not a hosted-CI latency guarantee.
+
+Scoped verification passed 153 cases across 14 PostgreSQL files, with the 20
+unattended and Runtime service cases also repeated on the final source. Final
+`pnpm verify` passed 113 tasks and `pnpm lint` passed 41. The existing three
+optional Redis and five Linux-only CLI unit skips remained; PostgreSQL checks
+had no skips. Explicit integration-file typechecking and self-review passed.
+
 ## Verification ownership
 
 The new [pure profile suite](../../../packages/core/src/agent-contract/r6-recipe-registry.test.ts)
