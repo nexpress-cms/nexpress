@@ -4,21 +4,14 @@ import {
   npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
   type NpAgentChangeSetCapabilityIdV1,
 } from "../agent-contract/installed-capability-contract.js";
+import { npFreezeAgentCapabilityEntryV1 } from "./capability-registry-validation.js";
 
 const immutableDefinitionJson = new WeakMap<object, string>();
-
-function freeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const child of Object.values(value)) freeze(child);
-    Object.freeze(value);
-  }
-  return value;
-}
 
 export async function npBuildAgentChangeSetCapabilityEntryV1(id: NpAgentChangeSetCapabilityIdV1) {
   const body = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id);
   const definition = body.capabilities[0];
-  const entry = freeze({
+  const entry = npFreezeAgentCapabilityEntryV1({
     definition,
     canonical: definition,
     definitionCanonical: body,

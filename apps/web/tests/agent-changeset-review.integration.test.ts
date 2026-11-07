@@ -73,6 +73,20 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet review and propose surfaces", () =>
       entries: discovery.entries,
     });
 
+    facade = createAgentChangeSetCapabilityFacadeV1({
+      ...p.service,
+      capabilityIds: installed.ids.filter((id) => id !== "changeset.create"),
+    });
+    const reduced = await admission.project(input);
+    expect(reduced.entries.map((entry) => entry.definition.descriptor.id)).not.toContain(
+      "changeset.create",
+    );
+    expect(reduced.registryFingerprint).not.toBe(discovery.registryFingerprint);
+    facade = installed;
+    expect((await admission.project(input)).registryFingerprint).toBe(
+      discovery.registryFingerprint,
+    );
+
     // Installation metadata is rechecked even after a successful projection.
     facade = {
       ...installed,
