@@ -33,10 +33,8 @@ import { npAgentMcpToolDefinitionsV1 } from "../agent-contract/contract.js";
 import type { NpAgentMcpTaskV1 } from "../agent-contract/index.js";
 import type { NpAgentMcpTaskRequestV1 } from "./mcp-task-service.js";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  npDigestAgentCapabilityRegistryCanonical,
-  npRequireAgentCapabilityRegistryCanonical,
-} from "../agent-contract/canonical-capability-registry.js";
+import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
+import { npCreateAgentCapabilityRegistryValidatorV1 } from "./capability-registry-validation.js";
 import {
   npIsAgentChangeSetCapabilityIdV1,
   npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
@@ -552,6 +550,7 @@ async function assertCurrentAuthentication(
 export function createAgentCapabilityAdmissionServiceV1(
   options: NpAgentCapabilityAdmissionOptionsV1,
 ) {
+  const validateRegistry = npCreateAgentCapabilityRegistryValidatorV1();
   const runtimeScopeDenials = new WeakMap<object, Map<NpAgentCapabilityId, NpAgentScope[]>>();
   function runtimeUnavailable(
     context: NpAgentRuntimeRunContextV1,
@@ -1266,11 +1265,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       levels[settings[settingsKey]],
       levels[authentication.authorizationContext.gatewayExposure ?? "disabled"],
     );
-    const registry = npRequireAgentCapabilityRegistryCanonical({
-      schemaVersion: "np.agent-capability-registry.v1",
-      projection: "registry",
-      capabilities: all.map((entry) => entry.canonical),
-    });
+    const registry = validateRegistry(all);
     return {
       principal,
       settings,

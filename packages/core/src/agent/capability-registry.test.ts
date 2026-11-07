@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { npAgentReadCapabilityDescriptorsV1 } from "../agent-contract/index.js";
+import { NpAgentContractError } from "../agent-contract/contract.js";
+import {
+  npCreateAgentCapabilityRegistryValidatorV1,
+  npFreezeAgentCapabilityEntryV1,
+} from "./capability-registry-validation.js";
 import {
   NpAgentCapabilityRegistryError,
   createAgentReadCapabilityRegistryV1,
@@ -41,6 +46,35 @@ const executors = {
 };
 
 describe("Agent capability registry", () => {
+  it("reuses one immutable assembly and revalidates changed or custom entries", async () => {
+    const registry = await createAgentReadCapabilityRegistryV1(executors);
+    const entries = registry.ids.map((id) => registry.get(id));
+    const validate = npCreateAgentCapabilityRegistryValidatorV1();
+    const installed = validate(entries);
+    expect(installed).toEqual(registry.canonical);
+    expect(validate([...entries])).toBe(installed);
+    expect(validate(entries.slice(0, -1)).capabilities).toEqual(
+      installed.capabilities.slice(0, -1),
+    );
+    validate(entries);
+    expect(() => validate([...entries].reverse())).toThrow(NpAgentContractError);
+    expect(() => validate([...entries, registry.get("site.inspect")])).toThrow(
+      NpAgentContractError,
+    );
+
+    const site = registry.get("site.inspect");
+    const shallow = Object.freeze(structuredClone(site.canonical));
+    const frozen = npFreezeAgentCapabilityEntryV1({ canonical: shallow });
+    expect(Reflect.set(frozen.canonical.descriptor.requiredScopes, 0, "changeset:apply")).toBe(
+      false,
+    );
+    const custom = Object.freeze({ ...site, canonical: structuredClone(site.canonical) });
+    const customAssembly = [registry.get("content.query"), registry.get("schema.get"), custom];
+    expect(validate(customAssembly)).toEqual(installed);
+    custom.canonical.implementationVersion = 0;
+    expect(() => validate(customAssembly)).toThrow(NpAgentContractError);
+  });
+
   it("freezes the exact installed registry and stable per-definition fingerprints", async () => {
     const first = await createAgentReadCapabilityRegistryV1(executors);
     const second = await createAgentReadCapabilityRegistryV1({

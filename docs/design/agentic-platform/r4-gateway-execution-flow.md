@@ -206,3 +206,23 @@ all 13 Gateway execution scenarios and the Runtime approval and unattended
 journeys. Integration-file typechecking, all 113 workspace `verify` tasks, and
 all 41 lint tasks passed. The existing optional Redis and CLI/Linux unit skips
 were reported by the workspace runner.
+
+Gateway admission can reuse one validated canonical registry per service. The
+read capability and ChangeSet constructors identify their deeply frozen entries.
+Reuse requires that provenance for every entry and the same ordered sequence of
+canonical objects. A different sequence or a custom entry goes through the full
+registry parser. Each request resolves the live installation and checks current
+authentication, scopes, transport, and Gateway exposure. Discovery computes its
+fingerprint from the validated registry using the canonical digest owner.
+
+Matched PostgreSQL 16.8 runs on 2026-11-07 measured apply from 5.730 to 2.397
+seconds and schedule from 5.709 to 2.172 seconds. Each comparison performed
+3,216 and 3,271 SQL calls respectively. The regression checks cover a shortened
+inventory, duplicate or reordered definitions, mutable custom metadata, and a
+live installation replacement followed by credential revocation.
+
+Scoped verification passed 42 PostgreSQL cases across eight files, seven
+registry unit tests, and integration-file typechecking. Workspace verification
+passed all 113 tasks and lint passed all 41 tasks. The initial workspace run
+hit a Build blueprint unit test timeout. The file and workspace reruns passed
+with the same test deadline.
