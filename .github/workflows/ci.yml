@@ -51,7 +51,7 @@ jobs:
       - name: Classify the complete PR diff
         id: scope
         run: node scripts/ci-scope.mjs "$RUNNER_TEMP/np-doc-files.json"
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@v6.1.1
         if: steps.scope.outputs.docs_only == 'true'
         with:
           version: 10.33.0
@@ -84,7 +84,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@v6.1.1
         with:
           version: 10.33.0
           run_install: false
@@ -127,7 +127,7 @@ jobs:
       SITE_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@v6.1.1
         with:
           version: 10.33.0
           run_install: false
@@ -197,7 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@v6.1.1
         with:
           version: 10.33.0
           run_install: false
@@ -306,7 +306,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@v6.1.1
         with:
           version: 10.33.0
           run_install: false
@@ -402,7 +402,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@v6.1.1
         with:
           version: 10.33.0
           run_install: false
