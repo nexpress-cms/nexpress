@@ -11,7 +11,8 @@ not new failures reproduced during this assessment.
 The [November VoiceOver run](#voiceover-observation--2026-11-14-kst) captured
 actual captions from all six workflows. The [follow-up](#voiceover-follow-up--2026-11-14-kst)
 records the fixes and retest. The [supplemental checks](#remaining-voiceover-checks--2026-11-14-kst)
-record the later captions and remaining AT acceptance steps.
+record the later captions. The [grouped local acceptance](#grouped-local-acceptance--2026-11-14-kst)
+records automatic loading speech and the Incident response review.
 
 The [success-lifecycle bundle](admin-success-lifecycle.md) supplies the three
 synthetic success paths and local observation checkpoints identified below.
@@ -231,6 +232,38 @@ and [Release workflow](https://github.com/nexpress-cms/nexpress/actions/runs/435
 succeeded. Full Playwright ran successfully on the
 [PR](https://github.com/nexpress-cms/nexpress/actions/runs/43586931149) and was
 skipped by the push workflow.
+
+## Grouped local acceptance — 2026-11-14 KST
+
+The run used baseline `47f4b2aa`, an isolated PostgreSQL database, the reference
+production build, Chrome for Testing 151.0.7922.34 and VoiceOver 10 on macOS
+26.3. Responses for the Incident mutations and provider adapter were synthetic.
+
+| Workflow                            | Observed result                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connection entry                    | Keyboard activation of **Add connection** reached the create screen. Before the fix, two 7.8-second adapter delays displayed the loading message without a corresponding caption. After the fix, both delays produced **Loading Agent Studio data…** with no input after Enter. The immediate response settled without a loading caption and enabled the form.                        |
+| Moderator                           | Keyboard execution used current approval and target bindings supplied by the fixture. VoiceOver read the unchanged-request retry guidance and the returned **Quarantine plan · succeeded** and **Restore plan · succeeded** headings. A conflict and a 403 removed the old plan and focused the appropriate alert, which VoiceOver read.                                              |
+| Guardian                            | VoiceOver read the unchanged-request retry guidance, the 600-second plan and scope, approval pending, the verified network scope and shared-network impact in the approval review, and **Awaiting verification** followed by **succeeded** after explicit result checking. The fixture supplies the approved state.                                                                   |
+| Admin states and responsive layouts | Production browser assertions covered loading, retained refresh, empty and populated views, rate limits, contract failures, conflicts and access loss. Visual inspection covered Incident response at 320/768/1280 px with reduced motion and light and dark examples, the 320 px retry wait and evaluation states, and long Korean labels and bounded lists in Policies and Runtime. |
+
+The Studio loading status announces only after a short pending interval.
+Incident response results and alerts recover focus when the invoking control
+disappears. An unchanged retry preserves the existing request identity.
+Browser assertions cover the focus of pending and terminal results and
+conflict and access-loss alerts.
+
+The four headed scenarios passed after the loading and focus changes. Three
+Incident replays passed again after improving focus for uncertain outcomes.
+The production browser regression passed all 38 cases without retries.
+Workspace `verify` passed 113 tasks and `lint` passed 41.
+The temporary files and raw artifacts are under
+`/tmp/nexpress-at-caption.goH5MW`. The caption index is
+`grouped-caption-evidence.tsv` and the browser logs are
+`voiceover-grouped*.log` and `grouped-regression.log`.
+The November VoiceOver run remains the source for the other workflows.
+Exact-session revocation and other Incident controls have browser checks.
+Their complete screen-reader journeys and host operating qualification remain
+outside the evidence from this run.
 
 ## Result record template
 

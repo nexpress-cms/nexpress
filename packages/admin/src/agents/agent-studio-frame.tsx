@@ -1,7 +1,7 @@
 import { AgentReadObservation } from "./agent-read-observation.js";
 import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Activity, Bot, Cable, KeyRound } from "lucide-react";
 
 import { cn } from "../ui/utils.js";
@@ -24,6 +24,17 @@ export function AgentStudioFrame({
   observedAt?: number;
   recovery?: unknown;
 }) {
+  const initialLoading = busy && !refreshing;
+  const [announceLoading, setAnnounceLoading] = useState(false);
+  useEffect(() => {
+    if (!initialLoading) return;
+    // Leave the live region empty at mount and skip announcements for quick reads.
+    const timeout = window.setTimeout(() => setAnnounceLoading(true), 650);
+    return () => {
+      window.clearTimeout(timeout);
+      setAnnounceLoading(false);
+    };
+  }, [initialLoading]);
   return (
     <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
       <header className="space-y-2">
@@ -96,13 +107,18 @@ export function AgentStudioFrame({
         ))}
       </nav>
       <p role="status" aria-atomic="true" className="text-sm text-neutral-500 empty:m-0">
-        {busy
-          ? refreshing
-            ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
-            : "Loading Agent Studio data…"
-          : null}
+        {busy && refreshing
+          ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
+          : initialLoading && announceLoading
+            ? "Loading Agent Studio data…"
+            : null}
       </p>
-      {busy && !refreshing ? (
+      {initialLoading && !announceLoading ? (
+        <p aria-hidden className="text-sm text-neutral-500">
+          Loading Agent Studio data…
+        </p>
+      ) : null}
+      {initialLoading ? (
         <div aria-hidden className="h-12 rounded-lg bg-neutral-100 dark:bg-neutral-900" />
       ) : null}
       <AgentReadObservation receivedAt={observedAt} refreshing={refreshing} label={active} />

@@ -359,12 +359,18 @@ test("Guardian observations and explicit temporary limits preserve approval and 
   await response
     .getByRole("button", { name: "Prepare temporary request limit", exact: true })
     .click();
+  await expect(
+    response.getByRole("status").filter({ hasText: "The request outcome is unknown" }),
+  ).toBeFocused();
   await response
     .getByRole("button", { name: "Retry unchanged Guardian response request", exact: true })
     .click();
   await expect(
     response.getByRole("link", { name: "Review human approval", exact: true }),
   ).toBeVisible();
+  await expect(
+    response.getByRole("heading", { name: /Temporary request limit .*approval_pending/ }),
+  ).toBeFocused();
   expect(planCommands).toHaveLength(2);
   expect(planCommands[1]).toEqual(planCommands[0]);
   expect(planCommands[0]).toMatchObject({
@@ -394,6 +400,7 @@ test("Guardian observations and explicit temporary limits preserve approval and 
     .getByRole("button", { name: "Execute this approved Guardian response", exact: true })
     .click();
   await expect(response.getByText(/Awaiting verification/)).toBeVisible();
+  await expect(response.getByRole("heading", { name: /Awaiting verification/ })).toBeFocused();
   await response.getByRole("button", { name: "Check result", exact: true }).click();
   await expect(
     response.getByText(`Restriction ${signalId} · active`, { exact: true }),
@@ -942,6 +949,9 @@ test("incident response prepares an exact target, waits for approval, and explic
     response.getByText(`Current target version: ${targetDigest}`, { exact: true }),
   ).toBeVisible();
   await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect(
+    response.getByRole("status").filter({ hasText: "The response outcome is unconfirmed" }),
+  ).toBeFocused();
   await expect(response.getByRole("button", { name: "Retry unchanged response" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Record feedback", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
@@ -986,7 +996,7 @@ test("incident response prepares an exact target, waits for approval, and explic
   await response.getByRole("button", { name: "Retry unchanged response" }).click();
   await expect(
     response.getByRole("heading", { name: "Quarantine plan · succeeded" }),
-  ).toBeVisible();
+  ).toBeFocused();
   expect(executed[1]).toEqual(executed[0]);
   expect(executed[0]).toMatchObject({
     expectedVersion: 2,
@@ -1008,7 +1018,7 @@ test("incident response prepares an exact target, waits for approval, and explic
   result.response!.plans[1]!.canExecute = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await response.getByRole("button", { name: "Execute approved restore" }).click();
-  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeVisible();
+  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeFocused();
   await expect(page.getByText(/Containment: 1 total · 0 active · 1 restored/)).toBeVisible();
   expect(executed[2]).toMatchObject({
     expectedVersion: 4,
@@ -1147,7 +1157,7 @@ test("incident response conflict and access loss remove stale plans before retry
   await page.getByRole("button", { name: "Execute approved quarantine" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This response plan or its target changed" }),
-  ).toBeVisible();
+  ).toBeFocused();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Review response approval" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Retry unchanged response" })).toHaveCount(0);
@@ -1156,7 +1166,7 @@ test("incident response conflict and access loss remove stale plans before retry
   await page.getByRole("button", { name: "Execute approved quarantine" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
-  ).toBeVisible();
+  ).toBeFocused();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
 });
 
