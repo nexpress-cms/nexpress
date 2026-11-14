@@ -685,8 +685,10 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
       expect(attempts[0]).toEqual(attempts[1]);
     }
     await expect(
-      page.getByRole("alert").filter({ hasText: "Rollback request could not be confirmed" }),
-    ).toBeVisible();
+      page
+        .getByRole("alert")
+        .filter({ hasText: "The rollback request conflicts with current server facts" }),
+    ).toBeFocused();
     await expect(page.getByRole("region", { name: "Rollback plan facts" })).toHaveCount(0);
     expect(posted).toEqual(
       action === "cancel"
@@ -1094,6 +1096,7 @@ test("rollback succeeds through preparation, human approval and verified compens
   expect(commands).toHaveLength(5);
   release();
   await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeVisible();
+  await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeFocused();
   await expect(facts.getByText("succeeded", { exact: true })).toBeVisible();
   await expect(facts.getByText("passed", { exact: true })).toBeVisible();
   await expect(page.getByText("rolled_back", { exact: true })).toBeVisible();

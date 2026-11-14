@@ -225,6 +225,7 @@ test("Runtime activation waits for acknowledgement and readback before showing a
   await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toHaveCount(0);
   await readback!.fulfill({ json: active });
   await expect(activeStatus).toBeVisible();
+  await expect(activeStatus).toBeFocused();
   await expect(activate).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toBeEnabled();
@@ -232,7 +233,9 @@ test("Runtime activation waits for acknowledgement and readback before showing a
   await expect(page.getByRole("button", { name: "Archive Agent", exact: true })).toBeEnabled();
   await expect(page.getByText("manual · enabled", { exact: true })).toBeVisible();
   await expect(page.getByText(triggerId, { exact: true })).toBeVisible();
-  await expect(page.getByText("Effective configuration review", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /^Effective configuration review/ })).toHaveCount(
+    0,
+  );
   expect(detailReads).toBe(2);
   expect(writes).toHaveLength(1);
   expect(unexpected).toEqual([]);

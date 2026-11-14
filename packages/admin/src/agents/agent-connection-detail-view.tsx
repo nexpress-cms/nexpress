@@ -31,6 +31,7 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
   const [receivedAt, setReceivedAt] = React.useState<string | null>(null);
   const [revision, requestReload] = React.useReducer((value: number) => value + 1, 0);
   const alertRef = React.useRef<HTMLParagraphElement>(null);
+  const statusRef = React.useRef<HTMLSpanElement>(null);
   const current = React.useRef(0);
   const retry = React.useRef<{ id: string; version: number; key: string } | null>(null);
 
@@ -76,6 +77,13 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
   };
 
   const visible = connection?.id === connectionId ? connection : null;
+  const revokedByRequest = React.useRef(false);
+  React.useEffect(() => {
+    if (!revokedByRequest.current) return;
+    revokedByRequest.current = false;
+    if (visible?.status === "revoked" && document.activeElement === document.body)
+      statusRef.current?.focus();
+  }, [visible]);
   const revoke = async () => {
     if (
       retryBlocked ||
@@ -109,6 +117,7 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
       const value = npRequireAgentConnectionV1(await response.json());
       if (value.id !== visible.id) throw new Error("Connection mismatch");
       if (current.current !== generation) return;
+      revokedByRequest.current = true;
       setConnection(value);
       setReceivedAt(new Date().toISOString());
       retry.current = null;
@@ -165,7 +174,9 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
                         : "secondary"
                   }
                 >
-                  {visible.status}
+                  <span ref={statusRef} tabIndex={-1} aria-label={`Connection ${visible.status}`}>
+                    {visible.status}
+                  </span>
                 </Badge>
               </div>
               <p className="mt-1 text-[12.5px] text-neutral-500">

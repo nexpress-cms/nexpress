@@ -16,10 +16,18 @@ import { npFetch } from "../lib/api-client.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
 import { Button } from "../ui/button.js";
 
-export function AgentRollbackReviewFacts({ detail }: { detail: NpAgentRollbackDetailV1 }) {
+export function AgentRollbackReviewFacts({
+  detail,
+  headingRef,
+}: {
+  detail: NpAgentRollbackDetailV1;
+  headingRef?: React.Ref<HTMLHeadingElement>;
+}) {
   return (
     <section className="space-y-3" aria-label="Rollback plan facts">
-      <h3 className="font-semibold">Compensation plan · {detail.summary.state}</h3>
+      <h3 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="font-semibold">
+        Compensation plan · {detail.summary.state}
+      </h3>
       <dl className="grid gap-1">
         <dt>Generation</dt>
         <dd>{detail.summary.generation}</dd>
@@ -87,17 +95,23 @@ export function AgentChangeSetRollback({
   onChanged,
   onLost,
   idempotencyKeys,
+  headingRef,
 }: {
   review: NpAgentChangeSetReviewV1;
   onChanged: () => void;
   onLost: (message: string, error?: unknown) => void;
   idempotencyKeys?: React.RefObject<Record<string, string>>;
+  headingRef: React.RefObject<HTMLHeadingElement | null>;
 }) {
   const [failure, setFailure] = React.useState<unknown>(null);
   const blocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState<string | null>(null);
   const localKeys = React.useRef<Record<string, string>>({});
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    if (error && document.activeElement === document.body) errorRef.current?.focus();
+  }, [error]);
   const keys = idempotencyKeys ?? localKeys;
   const { changeSet, rollbackDetail: detail, rollbackActions: actions } = review;
   async function submit(action: "prepare" | "request_approval" | "execute" | "cancel") {
@@ -182,10 +196,16 @@ export function AgentChangeSetRollback({
       onChanged();
     } catch (caught) {
       setFailure(caught);
-      const message =
-        caught instanceof AgentStudioApiError && caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
-          ? "Recent staff-primary reauthentication is required. Reauthenticate and reload."
-          : "Rollback request could not be confirmed. Refresh current evidence before continuing; an unknown response does not prove that no compensation committed.";
+      let message =
+        "Rollback request could not be confirmed. Refresh current evidence before continuing; an unknown response does not prove that no compensation committed.";
+      if (caught instanceof AgentStudioApiError) {
+        if (caught.code === "RECENT_REAUTHENTICATION_REQUIRED") {
+          message = "Recent staff-primary reauthentication is required. Reauthenticate and reload.";
+        } else if (caught.status === 409) {
+          message =
+            "The rollback request conflicts with current server facts. Refresh and review the current rollback plan before trying again.";
+        }
+      }
       setError(message);
       if (
         caught instanceof AgentStudioApiError &&
@@ -199,14 +219,23 @@ export function AgentChangeSetRollback({
   return (
     <AgentRecoveryBoundary error={failure}>
       <section className="space-y-3" aria-labelledby="changeset-rollback-heading">
-        <h2 id="changeset-rollback-heading" className="text-lg font-semibold">
+        <h2
+          ref={detail ? undefined : headingRef}
+          tabIndex={detail ? undefined : -1}
+          id="changeset-rollback-heading"
+          className="text-lg font-semibold"
+        >
           Rollback compensation
         </h2>
         <p>
           Compensation creates new revisions and preserves audit history. Later resource changes
           block execution. Delivered external effects may remain.
         </p>
-        {error && <p role="alert">{error}</p>}
+        {error && (
+          <p ref={errorRef} tabIndex={-1} role="alert">
+            {error}
+          </p>
+        )}
         {actions.length === 0 && <p>No rollback actions are currently available.</p>}
         {actions.includes("prepare") && (
           <Button disabled={busy || blocked} onClick={() => void submit("prepare")}>
@@ -234,7 +263,7 @@ export function AgentChangeSetRollback({
         )}
         {detail ? (
           <>
-            <AgentRollbackReviewFacts detail={detail} />
+            <AgentRollbackReviewFacts detail={detail} headingRef={headingRef} />
             {detail.approval && (
               <Link className="underline" href={`/admin/agents/approvals/${detail.approval.id}`}>
                 Review rollback approval · {detail.approval.state}

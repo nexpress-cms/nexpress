@@ -423,12 +423,14 @@ test.describe("Agent Activity", () => {
     await expect(page.getByLabel("Reason", { exact: true })).toHaveValue("Review access");
     await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm", exact: true }));
     expect(attempts[1]).toEqual(attempts[0]);
+    await expect(page.getByLabel("Gateway principal suspended", { exact: true })).toBeFocused();
     await activateWithKeyboard(
       page,
       page.getByRole("button", { name: "Resume principal", exact: true }),
     );
     await expect(page.getByLabel("Reason", { exact: true })).toHaveCount(0);
     await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm", exact: true }));
+    await expect(page.getByLabel("Gateway principal active", { exact: true })).toBeFocused();
     await activateWithKeyboard(
       page,
       page.getByRole("button", { name: "Revoke principal", exact: true }),
@@ -441,6 +443,7 @@ test.describe("Agent Activity", () => {
       0,
     );
     expect(commands.map((command) => command.expectedVersion)).toEqual([1, 2, 3]);
+    await expect(page.getByLabel("Gateway principal revoked", { exact: true })).toBeFocused();
     expect(commands.map((command) => command.reason)).toEqual([
       "Review access",
       undefined,

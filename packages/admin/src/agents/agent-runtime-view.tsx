@@ -62,12 +62,22 @@ export const runtimeCatalogPath = "/api/admin/agents/capabilities";
 
 export const parseRuntimeAck = npRequireAgentRuntimeStudioMutationResultV1;
 
-export function RuntimeNotice({ loading, error }: { loading: boolean; error: string | null }) {
+export function RuntimeNotice({
+  loading,
+  error,
+  alertRef,
+}: {
+  loading: boolean;
+  error: string | null;
+  alertRef?: React.Ref<HTMLParagraphElement>;
+}) {
   return (
     <>
       {loading ? <p role="status">Loading Runtime data…</p> : null}
       {error ? (
         <p
+          ref={alertRef}
+          tabIndex={alertRef ? -1 : undefined}
           role="alert"
           className="rounded-lg border border-red-200 p-3 text-sm text-red-700 dark:text-red-300"
         >
@@ -636,6 +646,21 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
   const [failure, setFailure] = React.useState<unknown>(null);
   const retryBlocked = useAgentRetryBlocked(failure);
   const agent = state.value;
+  const summaryRef = React.useRef<HTMLParagraphElement>(null);
+  const stateAlertRef = React.useRef<HTMLParagraphElement>(null);
+  const reviewHeadingRef = React.useRef<HTMLHeadingElement>(null);
+  const stateReadback = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (state.loading) return;
+    const refocus = stateReadback.current === id;
+    stateReadback.current = null;
+    if (document.activeElement !== document.body) return;
+    if (state.error) stateAlertRef.current?.focus();
+    else if (refocus) summaryRef.current?.focus();
+  }, [agent, id, state.error, state.loading]);
+  React.useEffect(() => {
+    if (review?.rowVersion === agent?.rowVersion) reviewHeadingRef.current?.focus();
+  }, [review, agent?.rowVersion]);
   const refresh = () => {
     if (retryBlocked) return;
     setFailure(null);
@@ -672,7 +697,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
       <Link className="text-sm underline" href="/admin/agents/configurations">
         Back to Agents
       </Link>
-      <RuntimeNotice loading={false} error={state.error} />
+      <RuntimeNotice loading={false} error={state.error} alertRef={stateAlertRef} />
       {state.error ? <Button onClick={state.reload}>Reload Agent</Button> : null}
       {catalog.error ? (
         <>
@@ -688,7 +713,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
               Refresh
             </Button>
           </div>
-          <p>
+          <p ref={summaryRef} tabIndex={-1}>
             {agent.status} · {agent.definition.template} · version {agent.version} (
             {agent.versionStatus})
           </p>
@@ -741,7 +766,9 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
           {review && review.rowVersion === agent.rowVersion ? (
             <Card>
               <CardHeader>
-                <CardTitle>Effective configuration review</CardTitle>
+                <h3 ref={reviewHeadingRef} tabIndex={-1} className="text-sm font-semibold">
+                  Effective configuration review · version {agent.version}
+                </h3>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <p>
@@ -784,7 +811,10 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
                 )
                 .map((trigger) => trigger.definition) ?? []
             }
-            onChanged={refresh}
+            onChanged={() => {
+              stateReadback.current = id;
+              refresh();
+            }}
             onAccessLost={state.clear}
           />
           <Card>
@@ -849,6 +879,10 @@ function RuntimeAgentActions({
   const [key, setKey] = React.useState(() => crypto.randomUUID());
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const actionAlert = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    if (error && document.activeElement === document.body) actionAlert.current?.focus();
+  }, [error]);
   const [failure, setFailure] = React.useState<unknown>(null);
   const retryBlocked = useAgentRetryBlocked(failure);
   const [stale, setStale] = React.useState(false);
@@ -1105,7 +1139,11 @@ function RuntimeAgentActions({
                 </Button>
               </div>
             </fieldset>
-            {error ? <p role="alert">{error}</p> : null}
+            {error ? (
+              <p ref={actionAlert} tabIndex={-1} role="alert">
+                {error}
+              </p>
+            ) : null}
           </form>
         ) : null}
       </div>
