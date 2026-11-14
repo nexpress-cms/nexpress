@@ -21,6 +21,8 @@ import {
   npRequireAgentRuntimeStudioTriggerV1,
   npRequireAgentRuntimeAdminInputV1,
   npRequireAgentActivityRunResourceV1,
+  npRequireAgentActivityActionDetailV1,
+  npRequireAgentApprovalDetailV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -191,6 +193,200 @@ test("Runtime Run diagnoses the last provider call and clears the evidence on ac
   ).toBeVisible();
   await expect(page.getByText("Runtime diagnostics", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Retry eligible at", { exact: true })).toHaveCount(0);
+});
+
+test("Runtime activity connects admission policy evidence, a human approval and the verified execution", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 221 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const runId = "55111111-1111-4111-8111-111111111111";
+  const requestId = "55111111-1111-4111-8111-111111111112";
+  const executionId = "55111111-1111-4111-8111-111111111113";
+  const approvalId = "55111111-1111-4111-8111-111111111114";
+  const changeSetId = "55111111-1111-4111-8111-111111111115";
+  const startedAt = "2026-09-14T00:00:01.000Z";
+  const finishedAt = "2026-09-14T00:01:00.000Z";
+  let executed = false;
+  let denied = false;
+  const runDetail = () =>
+    npRequireAgentActivityRunResourceV1({
+      schemaVersion: "np.agent-activity-run.v1",
+      run: {
+        schemaVersion: "np.agent-run.v1",
+        id: runId,
+        siteId: "default",
+        origin: "runtime",
+        agent: { id, versionId },
+        principalId,
+        rootRunId: runId,
+        parentRunId: null,
+        causalDepth: 0,
+        state: executed ? "succeeded" : "waiting_approval",
+        goal: "[redacted]",
+        runLimits: {
+          schemaVersion: "np.agent-run-limits.v1",
+          maxAttempts: 2,
+          maxProviderCalls: 2,
+          maxCapabilityCalls: 2,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          maxCostMicros: 500,
+          maxWallClockSeconds: 120,
+        },
+        usage: null,
+        attempt: 1,
+        errorCode: null,
+        errorMessage: null,
+        queuedAt: "2026-09-14T00:00:00.000Z",
+        startedAt,
+        deadlineAt: "2026-09-14T00:02:00.000Z",
+        finishedAt: executed ? finishedAt : null,
+      },
+      invocationId: null,
+      evidence: "redacted",
+      auditEventIds: [],
+      runtimeDiagnostics: {
+        trigger: null,
+        retryAt: null,
+        providerCalls: [],
+        moreProviderCalls: false,
+        policyRefs: [{ kind: "site-policy", id: "editorial-policy", version: 3, digest }],
+      },
+    });
+  const action = (complete: boolean) =>
+    npRequireAgentActivityActionDetailV1({
+      schemaVersion: "np.agent-activity-action.v1",
+      principalId,
+      invocationId: null,
+      evidence: "redacted",
+      inputHash: digest,
+      outputHash: complete ? digest : null,
+      auditEventId: null,
+      action: {
+        schemaVersion: "np.agent-action-projection.v1",
+        id: complete ? executionId : requestId,
+        siteId: "default",
+        runId,
+        sequence: complete ? 2 : 1,
+        capabilityId: "changeset.apply",
+        capabilityContractVersion: 1,
+        capabilityFingerprint: digest,
+        effectProfile: { id: "changeset.apply", contractVersion: 1 },
+        risk: "reversible",
+        state: complete ? "succeeded" : "approval_pending",
+        approvalId,
+        proposalHash: digest,
+        requiredScopes: ["changeset:apply"],
+        targetRefs: [],
+        inputRedacted: {},
+        outputRedacted: complete ? {} : null,
+        verificationState: null,
+        errorCode: null,
+        createdAt: startedAt,
+        startedAt: complete ? startedAt : null,
+        finishedAt: complete ? finishedAt : null,
+      },
+    });
+  await page.route(`**/api/admin/agents/activity/${runId}`, (route) =>
+    route.fulfill({ json: runDetail() }),
+  );
+  await page.route("**/api/admin/agents/activity/actions?*", (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-actions.v1",
+        items: executed ? [action(true), action(false)] : [action(false)],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route(`**/api/admin/agents/activity/actions/${requestId}`, (route) =>
+    route.fulfill({ json: { ...action(false), changeSetId } }),
+  );
+  await page.route(`**/api/admin/agents/activity/actions/${executionId}`, (route) =>
+    route.fulfill(
+      denied
+        ? { status: 403, json: {} }
+        : {
+            json: {
+              ...action(true),
+              changeSetId,
+              verificationResult: { state: "passed", completedAt: finishedAt, digest },
+            },
+          },
+    ),
+  );
+  await page.route(`**/api/admin/agents/approvals/${approvalId}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentApprovalDetailV1({
+        schemaVersion: "np.agent-approval-detail.v1",
+        rollbackReview: null,
+        review: null,
+        item: {
+          schemaVersion: "np.agent-approval-list-item.v1",
+          approval: {
+            id: approvalId,
+            generation: 1,
+            state: executed ? "consumed" : "pending",
+            statementHash: digest,
+            requiredHumanCapabilities: ["content.author"],
+            requiredHumanPredicates: [],
+            requestedAt: startedAt,
+            expiresAt: "2026-09-14T00:02:00.000Z",
+            decidedAt: executed ? finishedAt : null,
+          },
+          version: executed ? 3 : 1,
+          target: { kind: "changeset", changeSetId, planHash: digest, scheduledFor: null },
+          intendedOperation: "apply",
+          scheduledFor: null,
+          statementHash: digest,
+          reauthentication: { mode: "none" },
+          allowedDecisions: [],
+          risk: "reversible",
+          capabilityId: "changeset.apply",
+          capabilityContractVersion: 1,
+          capabilityFingerprint: digest,
+          policyHashes: [],
+          requiresLivePreview: false,
+          reviewSummary: {
+            operationCount: 1,
+            targetCount: 1,
+            previewState: null,
+            checksRun: null,
+            rollbackPlan: "unavailable",
+          },
+          requiredScopes: ["changeset:apply"],
+          requester: { kind: "principal", id: principalId },
+        },
+      }),
+    }),
+  );
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByRole("region", { name: "Policies at admission" })).toContainText(
+    "Site policy · version 3",
+  );
+  await page.getByRole("link", { name: /changeset\.apply.*approval_pending/ }).click();
+  await expect(page.getByText("No result recorded", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Open approval" }).click();
+  await expect(page.getByRole("heading", { name: "Server approval facts" })).toBeVisible();
+  await expect(page.getByText("pending", { exact: true })).toBeVisible();
+  executed = true;
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await page.getByRole("link", { name: /changeset\.apply.*succeeded/ }).click();
+  await expect(page.getByText("passed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verification completed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open ChangeSet" })).toHaveAttribute(
+    "href",
+    `/admin/agents/changesets/${changeSetId}`,
+  );
+  await page.getByRole("link", { name: "Open approval" }).click();
+  await expect(page.getByText("consumed", { exact: true })).toBeVisible();
+  denied = true;
+  await page.goto(`/admin/agents/activity/actions/${executionId}`);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open approval" })).toHaveCount(0);
 });
 
 test("Runtime activation waits for acknowledgement and readback before showing active controls", async ({

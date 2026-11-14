@@ -55,6 +55,12 @@ unconfirmed dispatch has unknown usage. The retry time indicates eligibility;
 the worker must still claim the run. The panel excludes raw provider bodies and
 provider request identifiers.
 
+**Policies at admission** lists the versions and hashes frozen when the Run
+was admitted. Open an Action from the Run to follow its recorded approval and
+ChangeSet. The approval page shows the human decision under its existing access
+checks. The execution Action shows the recorded verification result, completion
+time and hash when available. The request Action retains its original state.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

@@ -751,6 +751,12 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const triggerLabels = { manual: "Manual", schedule: "Scheduled", event: "Event" };
+const policyLabels = {
+  "agent-policy": "Agent policy",
+  "site-policy": "Site policy",
+  "feature-setting": "Feature settings",
+  framework: "Framework rules",
+};
 const dispatchLabels = {
   "not-dispatched": "Not dispatched",
   dispatched: "Dispatched",
@@ -794,6 +800,33 @@ function RunDiagnostics({
                 </Fact>
               ) : null}
             </dl>
+            <section aria-labelledby="run-admission-policies" className="space-y-2">
+              <h3 id="run-admission-policies" className="text-sm font-semibold">
+                Policies at admission
+              </h3>
+              {diagnostics.policyRefs?.length ? (
+                <ul className="space-y-2">
+                  {diagnostics.policyRefs.map((policy) => (
+                    <li
+                      key={`${policy.kind}:${policy.id}:${policy.version}:${policy.digest}`}
+                      className="break-words text-sm [overflow-wrap:anywhere]"
+                    >
+                      <p>
+                        {policyLabels[policy.kind]} · version {policy.version}
+                      </p>
+                      {policy.id ? <p>{policy.id}</p> : null}
+                      <p className="font-mono text-xs">{policy.digest}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm">
+                  {diagnostics.policyRefs
+                    ? "No policy references recorded."
+                    : "Policy references are unavailable."}
+                </p>
+              )}
+            </section>
             <h3 className="text-sm font-semibold">Provider calls</h3>
             {diagnostics.providerCalls.length ? (
               <ol className="space-y-3">
@@ -1187,7 +1220,16 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                   <Fact label="Effect">
                     {action.effectProfile.id} v{action.effectProfile.contractVersion}
                   </Fact>
-                  <Fact label="Verification">{action.verificationState ?? "Not applicable"}</Fact>
+                  <Fact label="Verification">
+                    {detail.verificationResult?.state ??
+                      action.verificationState ??
+                      "No result recorded"}
+                  </Fact>
+                  {detail.verificationResult?.completedAt ? (
+                    <Fact label="Verification completed">
+                      <ActivityTime value={detail.verificationResult.completedAt} />
+                    </Fact>
+                  ) : null}
                   <Fact label="Created">
                     <ActivityTime value={action.createdAt} />
                   </Fact>
@@ -1198,7 +1240,30 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                     <ActivityTime value={action.finishedAt} />
                   </Fact>
                   <Fact label="Required scopes">{action.requiredScopes.join(", ")}</Fact>
-                  <Fact label="Approval">{action.approvalId ?? "None recorded"}</Fact>
+                  <Fact label="Approval">
+                    {action.approvalId ? (
+                      <Link
+                        className="underline"
+                        prefetch={false}
+                        href={`/admin/agents/approvals/${encodeURIComponent(action.approvalId)}`}
+                      >
+                        Open approval
+                      </Link>
+                    ) : (
+                      "None recorded"
+                    )}
+                  </Fact>
+                  {detail.changeSetId ? (
+                    <Fact label="ChangeSet">
+                      <Link
+                        className="underline"
+                        prefetch={false}
+                        href={`/admin/agents/changesets/${encodeURIComponent(detail.changeSetId)}`}
+                      >
+                        Open ChangeSet
+                      </Link>
+                    </Fact>
+                  ) : null}
                   <Fact label="Safe error">{action.errorCode ?? "None"}</Fact>
                 </dl>
               </CardContent>
@@ -1211,6 +1276,9 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <Fact label="Input hash">{detail.inputHash}</Fact>
                   <Fact label="Output hash">{detail.outputHash ?? "Not recorded"}</Fact>
+                  {detail.verificationResult?.digest ? (
+                    <Fact label="Verification hash">{detail.verificationResult.digest}</Fact>
+                  ) : null}
                   <Fact label="Proposal hash">{action.proposalHash}</Fact>
                   <Fact label="Capability fingerprint">{action.capabilityFingerprint}</Fact>
                   <Fact label="Audit reference">{detail.auditEventId ?? "Not recorded"}</Fact>

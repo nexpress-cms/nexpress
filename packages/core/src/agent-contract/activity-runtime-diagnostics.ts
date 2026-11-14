@@ -19,6 +19,7 @@ import {
 } from "./canonical-runtime-primitives.js";
 import { npAgentEventKinds } from "./types.js";
 import type { NpAgentRunV1 } from "./wire-contract.js";
+import { npRequireAgentRunAdmissionPolicyRefsV1 } from "./canonical-run-admission.js";
 
 export const npAgentActivityProviderCallLimitV1 = 20;
 const eventKinds = new Set<string>(npAgentEventKinds);
@@ -132,7 +133,7 @@ export function parseActivityRuntimeDiagnosticsV1(value: unknown, run: NpAgentRu
   if (value === null) return null;
   const inspection = { seen: new WeakSet<object>() };
   const keys = ["trigger", "retryAt", "providerCalls", "moreProviderCalls"];
-  const row = canonicalBodyRecord(value, path, keys, keys, inspection);
+  const row = canonicalBodyRecord(value, path, [...keys, "policyRefs"], keys, inspection);
   const retryAt = row.retryAt === null ? null : canonicalBodyUtc(row.retryAt, `${path}.retryAt`);
   if (
     (run.state === "waiting_retry") !== (retryAt !== null) ||
@@ -173,6 +174,12 @@ export function parseActivityRuntimeDiagnosticsV1(value: unknown, run: NpAgentRu
     retryAt,
     providerCalls,
     moreProviderCalls: row.moreProviderCalls,
+    ...(row.policyRefs === undefined
+      ? {}
+      : {
+          policyRefs:
+            row.policyRefs === null ? null : npRequireAgentRunAdmissionPolicyRefsV1(row.policyRefs),
+        }),
   };
 }
 
