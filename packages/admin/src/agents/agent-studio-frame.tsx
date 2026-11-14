@@ -14,6 +14,7 @@ export function AgentStudioFrame({
   children,
   busy = false,
   refreshing = false,
+  disableWhileRefreshing = true,
   observedAt,
   recovery,
 }: {
@@ -21,6 +22,7 @@ export function AgentStudioFrame({
   children: ReactNode;
   busy?: boolean;
   refreshing?: boolean;
+  disableWhileRefreshing?: boolean;
   observedAt?: number;
   recovery?: unknown;
 }) {
@@ -108,7 +110,9 @@ export function AgentStudioFrame({
       </nav>
       <p role="status" aria-atomic="true" className="text-sm text-neutral-500 empty:m-0">
         {busy && refreshing
-          ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
+          ? disableWhileRefreshing
+            ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
+            : "Refreshing — previous validated data is shown."
           : initialLoading && announceLoading
             ? "Loading Agent Studio data…"
             : null}
@@ -123,7 +127,11 @@ export function AgentStudioFrame({
       ) : null}
       <AgentReadObservation receivedAt={observedAt} refreshing={refreshing} label={active} />
       <AgentRecoveryBoundary error={recovery}>
-        <fieldset disabled={busy} aria-busy={busy} className="min-w-0 space-y-6">
+        <fieldset
+          disabled={busy && (!refreshing || disableWhileRefreshing)}
+          aria-busy={busy}
+          className="min-w-0 space-y-6"
+        >
           {children}
         </fieldset>
       </AgentRecoveryBoundary>

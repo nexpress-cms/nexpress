@@ -10,7 +10,7 @@ age. No API, persistence, provider or worker contract changes are needed.
 Admin's `AgentReadObservation` is shared by `AgentStudioFrame`, `AgentReadState`
 and the independently loaded budget/Runtime sections. Existing hooks own receipt
 state, cancellation, access-loss clearing and review invalidation. The shared
-presentation has no timer, fetch, mutation or new polling behavior.
+presentation does not schedule requests.
 
 - Browser receipt time is the existing hook's post-validation `Date.now()` value.
   A retained value keeps its original receipt while refresh is in progress.
@@ -32,7 +32,30 @@ static timestamp sections are named for their resource and wrap at narrow widths
 Review refresh still invalidates authorizing facts; retained background review
 reads and unchanged-request retries retain their existing behavior.
 
+## Automatic refresh
+
+Approvals and Incidents refresh their current filtered page every 30 seconds
+while visible. Returning to the tab or focusing its window brings the read
+forward, with a two-second minimum between a validated result and a new
+automatic read. The existing read hooks retain the last validated page during
+refresh and clear its data on failure. Incident filter edits stay available
+during refresh and only submitted filters affect the request.
+
+Active Run, ChangeSet and Incident details keep their existing polling
+backoff. Hiding the tab cancels scheduled reads. Returning to it resumes the
+current interval, with one immediate read if that interval has elapsed. An
+in-flight read may finish while hidden. Terminal or unavailable detail ends
+automatic reads. After a read fails, recover through the existing explicit
+reload controls, which still honor `Retry-After`.
+
+Production Playwright passed 50 cases without retries, including coalesced
+focus/visibility events, filtered-page refresh, hidden ChangeSet polling,
+`Retry-After`, access loss and resolved Incident polling. The workspace
+`verify` and `lint` gates passed 113 and 41 tasks respectively.
+
 ## Verification
+
+The results below cover the original read-observation bundle.
 
 - Final production build: 41/41 tasks. Final `pnpm verify`: 113/113 tasks,
   109 cached; Core units 2,122, Admin 168 and App 585. Final lint: 41/41,

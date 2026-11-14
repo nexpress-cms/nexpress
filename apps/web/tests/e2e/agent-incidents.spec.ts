@@ -486,7 +486,7 @@ test("Member response retains its duration draft while Incident polling refreshe
   ).toBeEnabled();
 });
 
-test("incident list defaults to unresolved and filters without treating failures as empty", async ({
+test("incident list keeps its filters through background refresh and distinguishes failure from empty", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -497,10 +497,15 @@ test("incident list defaults to unresolved and filters without treating failures
   const uninstalled = await page.request.get("/api/admin/agents/incidents");
   expect(uninstalled.status()).toBe(503);
   expect(uninstalled.headers()["cache-control"]).toContain("no-store");
+  const start = new Date();
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 1_000));
   let unavailable = false;
+  let pendingRead: Promise<void> | undefined;
   const queries: URLSearchParams[] = [];
-  await page.route("**/api/admin/agents/incidents?*", (route) => {
+  await page.route("**/api/admin/agents/incidents?*", async (route) => {
     queries.push(new URL(route.request().url()).searchParams);
+    await pendingRead;
     return unavailable
       ? route.fulfill({ status: 503, json: {} })
       : route.fulfill({
@@ -536,6 +541,21 @@ test("incident list defaults to unresolved and filters without treating failures
   expect(queries.at(-1)?.get("source")).toBe("moderator.repeated-domain");
   expect(queries.at(-1)?.get("observedAfter")).toBe(at);
   expect(queries.at(-1)?.get("containment")).toBe("inactive");
+  let releaseRead: (() => void) | undefined;
+  pendingRead = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const currentQueries = queries.map((query) => query.toString());
+  const selectedQuery = currentQueries.at(-1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => queries.length).toBe(currentQueries.length + 1);
+  await expect(page.getByText("No incidents match this view.")).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search incident title and summary" });
+  await search.fill("Unsubmitted search draft");
+  expect(queries.at(-1)?.toString()).toBe(selectedQuery);
+  releaseRead?.();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await expect(search).toHaveValue("Unsubmitted search draft");
   unavailable = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
@@ -690,9 +710,12 @@ test("incident investigation and closure retain one decision identity until conf
   await signInAsE2EAdmin(page);
   const result = detail();
   const commands: Record<string, unknown>[] = [];
-  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
-    route.fulfill({ json: result }),
-  );
+  await page.clock.install();
+  let reads = 0;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) => {
+    reads++;
+    return route.fulfill({ json: result });
+  });
   await page.route(`**/api/admin/agents/incidents/${id}/transitions`, (route) => {
     const command = route.request().postDataJSON();
     commands.push(command);
@@ -765,6 +788,9 @@ test("incident investigation and closure retain one decision identity until conf
     page.getByText("Reviewed <script>text</script>; retain quarantine.", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("No incident transitions are currently available.")).toBeVisible();
+  const terminalReads = reads;
+  await page.clock.fastForward(60_000);
+  expect(reads).toBe(terminalReads);
   expect(commands).toHaveLength(4);
   expect(commands[2]).toEqual(commands[1]);
   expect(commands[3]).toEqual(commands[1]);

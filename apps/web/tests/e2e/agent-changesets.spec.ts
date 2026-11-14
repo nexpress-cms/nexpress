@@ -130,7 +130,17 @@ test.describe("Agent ChangeSet review", () => {
     await page.goto(`/admin/agents/changesets/${id}`);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
     expect(reads).toBe(1);
-    await page.clock.fastForward(2_000);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.clock.fastForward(30_000);
+    expect(reads).toBe(1);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.clock.runFor(1);
     await expect.poll(() => reads).toBe(2);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
     await expect(page.getByText("Loading ChangeSet…", { exact: true })).toHaveCount(0);
