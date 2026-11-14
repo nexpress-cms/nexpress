@@ -169,6 +169,12 @@ export interface NpAgentActivityActionDetailV1 {
   auditEventId: string | null;
   evidence: "redacted" | "expired";
   operatorReview?: NpAgentOperatorReviewV1;
+  changeSetId?: string;
+  verificationResult?: {
+    state: "queued" | "running" | "passed" | "failed";
+    completedAt: string | null;
+    digest: string | null;
+  };
 }
 export type NpAgentActivityPrincipalsPageV1 = NpAgentCursorPageV1<
   NpAgentPrincipalV1,
@@ -262,7 +268,7 @@ export function npAnalyzeAgentActivityRunDetailV1(value: unknown) {
 export function npRequireAgentActivityRunDetailV1(value: unknown) {
   return npRequireAgentContractResult(npAnalyzeAgentActivityRunDetailV1(value));
 }
-export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
+function analyzeAction(value: unknown, includeDetail: boolean) {
   return analyzeCanonicalBody("agent.activity.action", () => {
     const allowed = [
       "schemaVersion",
@@ -278,7 +284,7 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
     const r = canonicalBodyRecord(
       cloneCanonicalRuntimeInput(value, "agent.activity.action", 512 * 1024),
       "agent.activity.action",
-      allowed,
+      includeDetail ? [...allowed, "changeSetId", "verificationResult"] : allowed,
       allowed.filter((key) => key !== "operatorReview"),
       {
         seen: new WeakSet(),
@@ -289,6 +295,46 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
       r.operatorReview === undefined ? undefined : npRequireAgentOperatorReviewV1(r.operatorReview);
     if (operatorReview && operatorReview.capabilityId !== action.capabilityId)
       failCanonicalBody("invalid-field", "operatorReview", "must match this Action capability");
+    const changeSetId =
+      r.changeSetId === undefined ? undefined : canonicalBodyUuid(r.changeSetId, "changeSetId");
+    if (
+      changeSetId &&
+      (!action.runId ||
+        !["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+          action.capabilityId,
+        ))
+    )
+      failCanonicalBody(
+        "invalid-field",
+        "changeSetId",
+        "requires a Run-linked ChangeSet execution capability",
+      );
+    let verificationResult: NpAgentActivityActionDetailV1["verificationResult"];
+    if (r.verificationResult !== undefined) {
+      const path = "verificationResult";
+      const keys = ["state", "completedAt", "digest"];
+      const verification = canonicalBodyRecord(r.verificationResult, path, keys, keys, {
+        seen: new WeakSet(),
+      });
+      const state = canonicalBodyEnum<NonNullable<typeof verificationResult>["state"]>(
+        verification.state,
+        path,
+        new Set(["queued", "running", "passed", "failed"]),
+      );
+      const completedAt =
+        verification.completedAt === null ? null : canonicalBodyUtc(verification.completedAt, path);
+      const digest =
+        verification.digest === null ? null : canonicalBodySha256Digest(verification.digest, path);
+      const terminal = state === "passed" || state === "failed";
+      if (
+        terminal !== (completedAt !== null) ||
+        terminal !== (digest !== null) ||
+        (completedAt !== null && completedAt < action.createdAt) ||
+        (!changeSetId && (!terminal || action.verificationState !== state))
+      )
+        failCanonicalBody("invalid-field", path, "must match recorded verification evidence");
+      verificationResult = { state, completedAt, digest };
+    }
     return {
       schemaVersion: canonicalBodyEnum<"np.agent-activity-action.v1">(
         r.schemaVersion,
@@ -308,8 +354,13 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
         r.outputHash === null ? null : canonicalBodySha256Digest(r.outputHash, "outputHash"),
       auditEventId: nullableUuid(r.auditEventId),
       ...(operatorReview === undefined ? {} : { operatorReview }),
+      ...(changeSetId === undefined ? {} : { changeSetId }),
+      ...(verificationResult === undefined ? {} : { verificationResult }),
     };
   });
+}
+export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
+  return analyzeAction(value, true);
 }
 export function npRequireAgentActivityActionDetailV1(value: unknown) {
   return npRequireAgentContractResult(npAnalyzeAgentActivityActionDetailV1(value));
@@ -331,7 +382,7 @@ export const npAnalyzeAgentActivityRunsPageV1 = (value: unknown) =>
 export const npAnalyzeAgentActivityActionsPageV1 = (value: unknown) =>
   npAnalyzeAgentCursorPageV1(value, {
     schemaVersion: "np.agent-activity-actions.v1" as const,
-    analyzeItem: npAnalyzeAgentActivityActionDetailV1,
+    analyzeItem: (value) => analyzeAction(value, false),
     itemIssueRoot: "action",
     maximumItems: 100,
   });
