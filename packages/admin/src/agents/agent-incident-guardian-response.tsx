@@ -70,9 +70,21 @@ export function IncidentGuardianResponse({
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<unknown>(null);
   const [message, setMessage] = React.useState<string | null>(null);
+  const noticeRef = React.useRef<HTMLParagraphElement>(null);
+  const pendingFocus = React.useRef<{ actionId?: string } | null>(null);
+  const resultId = React.useId();
   const request = React.useRef<AbortController | null>(null);
   const blocked = useAgentRetryBlocked(failure);
   const locked = disabled || state.loading || busy || pending !== null;
+  React.useEffect(() => {
+    if (!message || (disabled && !pending) || state.loading || busy || !pendingFocus.current)
+      return;
+    const { actionId } = pendingFocus.current;
+    pendingFocus.current = null;
+    if (document.activeElement !== document.body) return;
+    const plan = actionId ? document.getElementById(`${resultId}-${actionId}`) : null;
+    (plan ?? noticeRef.current)?.focus();
+  }, [message, disabled, pending, state.loading, busy, resultId]);
   React.useEffect(() => {
     if (runtimeAccessLost(state.failure)) onAccessLost(state.failure);
     else if (state.failure instanceof AgentStudioApiError && state.failure.status === 409)
@@ -97,14 +109,20 @@ export function IncidentGuardianResponse({
       onWriting(true);
       setFailure(null);
       setMessage(null);
+      pendingFocus.current = null;
       dispatched = true;
-      await runtimeRequest(`${root}/${command.path}`, npRequireAgentRuntimeStudioMutationResultV1, {
-        method: "POST",
-        signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(command.body),
-      });
+      const acknowledgement = await runtimeRequest(
+        `${root}/${command.path}`,
+        npRequireAgentRuntimeStudioMutationResultV1,
+        {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(command.body),
+        },
+      );
       if (controller.signal.aborted) return;
+      pendingFocus.current = { actionId: acknowledgement.resourceId };
       setPending(null);
       onWriting(false);
       setMessage(
@@ -117,6 +135,7 @@ export function IncidentGuardianResponse({
     } catch (error) {
       if (controller.signal.aborted) return;
       if (!dispatched) {
+        pendingFocus.current = {};
         setMessage(
           "Select at least one installed scope and enter a whole duration within the current policy limit.",
         );
@@ -135,6 +154,7 @@ export function IncidentGuardianResponse({
         onConflict();
         return;
       }
+      pendingFocus.current = {};
       if (
         error instanceof AgentStudioApiError &&
         error.status >= 400 &&
@@ -190,7 +210,9 @@ export function IncidentGuardianResponse({
               : state.error}
           </p>
         ) : null}
-        {message ? <p role="status">{message}</p> : null}
+        <p ref={noticeRef} tabIndex={-1} role="status" className="empty:m-0">
+          {message}
+        </p>
         {response ? (
           <>
             <p className="text-sm">
@@ -309,12 +331,12 @@ export function IncidentGuardianResponse({
             <ul className="space-y-3" aria-label="Guardian response plans">
               {response.plans.map((entry) => (
                 <li key={entry.actionId} className="min-w-0 space-y-2 rounded border p-3 text-sm">
-                  <p>
+                  <h4 id={`${resultId}-${entry.actionId}`} tabIndex={-1} className="font-medium">
                     {entry.operation.kind === "limit"
                       ? `Temporary request limit for ${entry.operation.durationSeconds} seconds (${entry.operation.actionScopes.join(", ")})`
                       : "Remove the selected request limit"}{" "}
                     · {entry.state === "executing" ? "Awaiting verification" : entry.state}
-                  </p>
+                  </h4>
                   <p className="break-all">Action: {entry.actionId}</p>
                   <p>
                     Approval expires{" "}

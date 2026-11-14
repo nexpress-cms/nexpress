@@ -340,6 +340,7 @@ export function AgentIncidentDetailView({ id }: { id: string }) {
   return <IncidentDetail key={id} id={id} />;
 }
 function IncidentDetail({ id }: { id: string }) {
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
   const [cursor, setCursor] = React.useState<string | null>(null);
   const [responseCursor, setResponseCursor] = React.useState<string | null>(null);
   const [writing, setWriting] = React.useState(false);
@@ -349,6 +350,9 @@ function IncidentDetail({ id }: { id: string }) {
   const path = `${root}/${encodeURIComponent(id)}${params.size ? `?${params}` : ""}`;
   const state = useRuntimeResource(path, npRequireAgentIncidentStudioDetailV1);
   const detail = state.value;
+  React.useEffect(() => {
+    if (state.error && document.activeElement === document.body) errorRef.current?.focus();
+  }, [state.error]);
   const securityEvidence = detail?.guardianSecurityEvidence;
   const contentEvidence = detail?.guardianContentEvidence;
   const externalEvidence = detail?.guardianExternalEvidence;
@@ -426,7 +430,11 @@ function IncidentDetail({ id }: { id: string }) {
           Refresh
         </Button>
       </div>
-      {state.error ? <p role="alert">{state.error}</p> : null}
+      {state.error ? (
+        <p ref={errorRef} tabIndex={-1} role="alert">
+          {state.error}
+        </p>
+      ) : null}
       {detail ? (
         <>
           <header className="space-y-2">

@@ -16,11 +16,9 @@ import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js
 import { RuntimeSelect } from "./agent-runtime-fields.js";
 import { Button } from "../ui/button.js";
 
-type PendingResponse = {
-  path: string;
-  body: NpAgentIncidentResponsePlanInputV1 | NpAgentIncidentResponseExecuteInputV1;
-  phase: "prepare" | "execute";
-};
+type PendingResponse =
+  | { path: string; body: NpAgentIncidentResponsePlanInputV1; phase: "prepare" }
+  | { path: string; body: NpAgentIncidentResponseExecuteInputV1; phase: "execute" };
 
 export function IncidentResponse({
   detail,
@@ -51,12 +49,23 @@ export function IncidentResponse({
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<unknown>(null);
   const [message, setMessage] = React.useState<string | null>(null);
+  const noticeRef = React.useRef<HTMLParagraphElement>(null);
+  const pendingFocus = React.useRef<{ actionId?: string } | null>(null);
+  const resultId = React.useId();
   const request = React.useRef<AbortController | null>(null);
   const blocked = useAgentRetryBlocked(failure);
   const choice = choiceIndex === "" ? undefined : response?.choices[Number(choiceIndex)];
   const root = `/api/admin/agents/incidents/${encodeURIComponent(detail.incident.id)}`;
   const locked = disabled || busy || command !== null;
   React.useEffect(() => () => request.current?.abort(), []);
+  React.useEffect(() => {
+    if (!message || (disabled && !command) || busy || !pendingFocus.current) return;
+    const { actionId } = pendingFocus.current;
+    pendingFocus.current = null;
+    if (document.activeElement !== document.body) return;
+    const plan = actionId ? document.getElementById(`${resultId}-${actionId}`) : null;
+    (plan ?? noticeRef.current)?.focus();
+  }, [message, disabled, command, busy, detail, resultId]);
 
   async function send(create: () => PendingResponse) {
     if (request.current || blocked || (disabled && !command)) return;
@@ -70,6 +79,7 @@ export function IncidentResponse({
       onWriting(true);
       setFailure(null);
       setMessage(null);
+      pendingFocus.current = null;
       sent = true;
       await runtimeRequest(`${root}/${next.path}`, npRequireAgentRuntimeStudioMutationResultV1, {
         method: "POST",
@@ -78,6 +88,7 @@ export function IncidentResponse({
         body: JSON.stringify(next.body),
       });
       if (controller.signal.aborted) return;
+      pendingFocus.current = next.phase === "execute" ? { actionId: next.body.actionId } : {};
       setCommand(null);
       onWriting(false);
       setMessage(
@@ -89,6 +100,7 @@ export function IncidentResponse({
     } catch (error) {
       if (controller.signal.aborted) return;
       if (!sent) {
+        pendingFocus.current = {};
         setMessage("Review the selected target and enter a valid reason code.");
         return;
       }
@@ -105,6 +117,7 @@ export function IncidentResponse({
         onConflict();
         return;
       }
+      pendingFocus.current = {};
       if (
         error instanceof AgentStudioApiError &&
         error.status >= 400 &&
@@ -257,7 +270,7 @@ export function IncidentResponse({
                   key={plan.actionId}
                   className="space-y-2 break-all rounded-lg border p-3 text-sm"
                 >
-                  <h4 className="font-medium">
+                  <h4 id={`${resultId}-${plan.actionId}`} tabIndex={-1} className="font-medium">
                     {plan.capabilityId === "moderation.quarantine"
                       ? "Quarantine plan"
                       : "Restore plan"}{" "}
@@ -333,7 +346,9 @@ export function IncidentResponse({
           ) : null}
         </AgentRecoveryBoundary>
       )}
-      {message ? <p role="status">{message}</p> : null}
+      <p ref={noticeRef} tabIndex={-1} role="status" className="empty:m-0">
+        {message}
+      </p>
     </section>
   );
 }
