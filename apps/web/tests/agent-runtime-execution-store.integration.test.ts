@@ -5,6 +5,7 @@ import { npAgentRuns } from "../../../packages/core/src/db/schema/agent.js";
 import { createAgentRuntimeBreakersV1 } from "../../../packages/core/src/agent/runtime-breakers.js";
 import { npAgentCircuitBreakers } from "../../../packages/core/src/db/schema/agent.js";
 import { createAgentRuntimeExecutionStoreV1 } from "../../../packages/core/src/agent/runtime-execution-store.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import { runtimeFixture, siteId } from "./agent-runtime-service-fixture.js";
 import {
   closeTestDb,
@@ -104,11 +105,24 @@ describe.skipIf(skipIfNoTestDb())("runtime execution claim persistence", () => {
     const claim = (await f.store.claim(f.input)).claim!;
     const retryAt = new Date(f.options.now!().getTime() + 20000).toISOString();
     await f.store.waitRetry({ ...f.input, claim, retryAt });
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(65),
+      now: f.options.now,
+    });
+    const read = () => activity.getRun({ ...f.input, actor: f.actor.actor, id: f.input.runId });
+    expect(await read()).toMatchObject({
+      run: { state: "waiting_retry" },
+      runtimeDiagnostics: { retryAt },
+    });
     expect((await f.store.claim(f.input)).claim).toBeNull();
     expect((await f.row()).leaseUntil).toBeNull();
     f.advance(21);
     expect((await f.store.claim(f.input)).claim?.attempt).toBe(2);
     expect((await f.row()).runtimeRetryAt).toBeNull();
+    expect(await read()).toMatchObject({
+      run: { state: "running" },
+      runtimeDiagnostics: { retryAt: null },
+    });
   });
   it("cancellation is terminal and independently replayable", async () => {
     const f = await fixture();

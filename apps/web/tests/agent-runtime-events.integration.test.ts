@@ -18,6 +18,7 @@ import {
   siteId,
 } from "./agent-runtime-service-fixture.js";
 import { createAgentRuntimeEventServiceV1 } from "../../../packages/core/src/agent/runtime-event-service.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import {
   npAgentRuns,
   npAgentEvents,
@@ -119,6 +120,25 @@ describe.skipIf(skipIfNoTestDb())("Runtime durable event dispatch", () => {
       .where(eq(npAgentRuns.id, result.runIds[0]!));
     expect(run?.triggerId).toBe(f.trigger.id);
     expect(run?.eventRef?.eventId).toBe(first.eventId);
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(63),
+      now: f.options.now,
+    });
+    const detail = await activity.getRun({ siteId, actor: f.actor.actor, id: result.runIds[0]! });
+    expect(detail).toMatchObject({
+      runtimeDiagnostics: {
+        trigger: {
+          id: f.trigger.id,
+          kind: "event",
+          eventKind: f.trigger.eventKind,
+          scheduledFor: null,
+        },
+        retryAt: null,
+        providerCalls: [],
+        moreProviderCalls: false,
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain(first.eventId);
     expect((await f.events.dispatch({ siteId, eventId: first.eventId })).replayed).toBe(true);
   });
   it("leaves dispatch pending when live admission pauses", async () => {

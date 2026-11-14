@@ -463,6 +463,15 @@ describe.skipIf(skipIfNoTestDb())("Runtime Studio current staff projections", ()
       if (detail.schemaVersion !== "np.agent-activity-run.v1") throw new Error("Expected live Run");
       expect(detail.run.usage).toBeNull();
       expect(detail.run.goal).toBe("[redacted]");
+      expect(detail.runtimeDiagnostics?.providerCalls).toMatchObject([
+        {
+          state: "ambiguous",
+          dispatchState: "unknown",
+          errorClass: "timeout",
+          latencyMs: 30000,
+          usage: null,
+        },
+      ]);
       const serialized = JSON.stringify({ budget, detail });
       expect(serialized).not.toContain(request.instruction.text);
       expect(serialized).not.toContain(request.connection.secretVersionId);
