@@ -1,5 +1,11 @@
 import { npRequireAgentContractResult } from "./contract.js";
 import {
+  parseActivityRuntimeDiagnosticsV1,
+  type NpAgentActivityRuntimeDiagnosticsV1,
+} from "./activity-runtime-diagnostics.js";
+export { npAgentActivityProviderCallLimitV1 } from "./activity-runtime-diagnostics.js";
+export type { NpAgentActivityRuntimeDiagnosticsV1 } from "./activity-runtime-diagnostics.js";
+import {
   npRequireAgentOperatorReviewV1,
   type NpAgentOperatorReviewV1,
 } from "./operator-review-contract.js";
@@ -66,7 +72,11 @@ export interface NpAgentActivityExpiredRunV1 {
   releasedAt: string;
   evidence: "expired";
 }
-export type NpAgentActivityRunResourceV1 = NpAgentActivityRunDetailV1 | NpAgentActivityExpiredRunV1;
+export type NpAgentActivityRunResourceV1 =
+  | (NpAgentActivityRunDetailV1 & {
+      runtimeDiagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
+    })
+  | NpAgentActivityExpiredRunV1;
 
 export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
   return analyzeCanonicalBody("agent.activity.runResource", (): NpAgentActivityRunResourceV1 => {
@@ -80,6 +90,7 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
         "invocationId",
         "evidence",
         "auditEventIds",
+        "runtimeDiagnostics",
         "runId",
         "siteId",
         "principalId",
@@ -91,8 +102,16 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
       ["schemaVersion"],
       { seen: new WeakSet() },
     );
-    if (r.schemaVersion === "np.agent-activity-run.v1")
-      return npRequireAgentActivityRunDetailV1(cloned);
+    if (r.schemaVersion === "np.agent-activity-run.v1") {
+      const { runtimeDiagnostics, ...base } = r;
+      const detail = npRequireAgentActivityRunDetailV1(base);
+      return Object.hasOwn(r, "runtimeDiagnostics")
+        ? {
+            ...detail,
+            runtimeDiagnostics: parseActivityRuntimeDiagnosticsV1(runtimeDiagnostics, detail.run),
+          }
+        : detail;
+    }
     const keys = [
       "schemaVersion",
       "runId",

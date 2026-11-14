@@ -47,6 +47,14 @@ reference shapes remain unavailable. Input is untrusted data, not permission to
 execute a capability. See the [Runtime management flow](design/agentic-platform/r5-runtime-studio-flow.md)
 for the host and executor boundaries.
 
+On a Runtime Run detail, **Runtime diagnostics** shows the recorded trigger and
+the earliest retry time while the run is waiting to retry. Each of the 20 most
+recent retained provider calls shows its recorded outcome, dispatch state,
+latency and available usage. Token and cost sources can differ. A call with
+unconfirmed dispatch has unknown usage. The retry time indicates eligibility;
+the worker must still claim the run. The panel excludes raw provider bodies and
+provider request identifiers.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

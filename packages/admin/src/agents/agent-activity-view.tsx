@@ -19,6 +19,7 @@ import {
   type NpAgentActivityKindV1,
   type NpAgentActivityPrincipalsPageV1,
   type NpAgentActivityRunsPageV1,
+  type NpAgentActivityRuntimeDiagnosticsV1,
   type NpAgentOperatorReviewV1,
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
@@ -749,6 +750,114 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+const triggerLabels = { manual: "Manual", schedule: "Scheduled", event: "Event" };
+const dispatchLabels = {
+  "not-dispatched": "Not dispatched",
+  dispatched: "Dispatched",
+  unknown: "Dispatch unconfirmed",
+};
+const usageSourceLabels = { provider: "Provider reported", "adapter-estimate": "Adapter estimate" };
+
+function RunDiagnostics({
+  diagnostics,
+}: {
+  diagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
+}) {
+  const trigger = diagnostics?.trigger;
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle className="text-[15px]">Runtime diagnostics</CardTitle>
+      </CardHeader>
+      <CardContent className="min-w-0 space-y-4">
+        {diagnostics ? (
+          <>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <Fact label="Trigger">
+                {trigger ? (
+                  <>
+                    {triggerLabels[trigger.kind]} · {trigger.id}
+                  </>
+                ) : (
+                  "No registered trigger recorded"
+                )}
+              </Fact>
+              {trigger?.eventKind ? <Fact label="Event kind">{trigger.eventKind}</Fact> : null}
+              {trigger?.scheduledFor ? (
+                <Fact label="Scheduled occurrence">
+                  <ActivityTime value={trigger.scheduledFor} />
+                </Fact>
+              ) : null}
+              {diagnostics.retryAt ? (
+                <Fact label="Retry eligible at">
+                  <ActivityTime value={diagnostics.retryAt} />
+                </Fact>
+              ) : null}
+            </dl>
+            <h3 className="text-sm font-semibold">Provider calls</h3>
+            {diagnostics.providerCalls.length ? (
+              <ol className="space-y-3">
+                {diagnostics.providerCalls.map((call) => (
+                  <li className="min-w-0 space-y-2 rounded-lg border p-3" key={call.sequence}>
+                    <h4 className="break-words text-sm font-medium [overflow-wrap:anywhere]">
+                      Call {call.sequence} · {call.provider} / {call.model}
+                    </h4>
+                    <p className="text-sm">
+                      <StateBadge state={call.state} /> · {dispatchLabels[call.dispatchState]}
+                      {call.errorClass ? ` · ${call.errorClass}` : ""}
+                    </p>
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <Fact label="Latency">
+                        {call.latencyMs === null ? "Unavailable" : `${call.latencyMs} ms`}
+                      </Fact>
+                      {call.startedAt ? (
+                        <Fact label="Started">
+                          <ActivityTime value={call.startedAt} />
+                        </Fact>
+                      ) : null}
+                      {call.finishedAt ? (
+                        <Fact label="Finished">
+                          <ActivityTime value={call.finishedAt} />
+                        </Fact>
+                      ) : null}
+                      {call.usage ? (
+                        <>
+                          <Fact label="Tokens · input / cached input / output">
+                            {call.usage.inputTokens} / {call.usage.cachedInputTokens} /{" "}
+                            {call.usage.outputTokens} · {usageSourceLabels[call.usage.tokenSource]}
+                          </Fact>
+                          <Fact label="Cost (USD micros)">
+                            {call.usage.costMicros} · {usageSourceLabels[call.usage.costSource]}
+                          </Fact>
+                        </>
+                      ) : (
+                        <Fact label="Usage">
+                          {call.dispatchState === "not-dispatched"
+                            ? "No dispatch recorded"
+                            : "Unknown"}
+                        </Fact>
+                      )}
+                    </dl>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-sm">No provider calls retained for this run.</p>
+            )}
+            {diagnostics.moreProviderCalls ? (
+              <p className="text-sm">
+                Showing the {diagnostics.providerCalls.length} most recent retained calls.
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-sm">Runtime diagnostics are unavailable.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function RunActions({ runId }: { runId: string }) {
   const query = `runId=${encodeURIComponent(runId)}&limit=25`;
   const resource = useActivity(`${apiPaths.actions}?${query}`, parseActionsPage);
@@ -922,6 +1031,9 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
                 </dl>
               </CardContent>
             </Card>
+            {run.origin === "runtime" ? (
+              <RunDiagnostics diagnostics={detail.runtimeDiagnostics} />
+            ) : null}
             <Card>
               <CardHeader>
                 <CardTitle className="text-[15px]">Recorded timeline</CardTitle>

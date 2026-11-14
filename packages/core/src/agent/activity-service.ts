@@ -13,6 +13,8 @@ import {
   npAgentActions,
   npAgentInvocations,
   npAgentChangesetExecutions,
+  npAgentProviderCalls,
+  npAgentTriggers,
 } from "../db/schema/agent.js";
 import {
   npRequireAgentChangeSetApplyCapabilityInputV1,
@@ -33,10 +35,13 @@ import {
   npRequireAgentActivityQueryV1,
   npRequireAgentActivityRunDetailV1,
   npRequireAgentActivityActionDetailV1,
+  npAgentActivityProviderCallLimitV1,
   type NpAgentActivityKindV1,
   type NpAgentActivityRunDetailV1,
+  type NpAgentActivityRunResourceV1,
   type NpAgentActivityActionDetailV1,
 } from "../agent-contract/activity-contract.js";
+import { parseActivityRuntimeDiagnosticsV1 } from "../agent-contract/activity-runtime-diagnostics.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
   npResolveAgentStaffSessionAuthorizationV1,
@@ -54,6 +59,7 @@ import type { NpAgentOperatorServiceV1 } from "./operator-service.js";
 
 type Action = typeof npAgentActions.$inferSelect;
 type Run = typeof npAgentRuns.$inferSelect;
+type Db = ReturnType<typeof getDb>;
 type Invocation = Pick<
   typeof npAgentInvocations.$inferSelect,
   "id" | "principalId" | "expiresAt" | "auditEventId" | "operationId" | "authorizationContextBody"
@@ -123,9 +129,9 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     if (serializeAgentCanonicalJson(current.auth) !== serializeAgentCanonicalJson(previous))
       throw new NpAgentGatewayError("ACTIVITY_FORBIDDEN", 403, "Activity permission is required.");
   }
-  async function invocation(siteId: string, id: string | null) {
+  async function invocation(siteId: string, id: string | null, db: Pick<Db, "select"> = getDb()) {
     if (!id) return null;
-    const [row] = await getDb()
+    const [row] = await db
       .select({
         id: npAgentInvocations.id,
         principalId: npAgentInvocations.principalId,
@@ -518,6 +524,100 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       throw missing();
     }
   }
+  async function runtimeDiagnostics(
+    db: Pick<Db, "select">,
+    row: Run,
+    run: NpAgentActivityRunDetailV1["run"],
+  ) {
+    const calls = await db
+      .select({
+        sequence: npAgentProviderCalls.sequence,
+        provider: npAgentProviderCalls.provider,
+        model: npAgentProviderCalls.model,
+        state: npAgentProviderCalls.state,
+        dispatchState: npAgentProviderCalls.dispatchState,
+        errorClass: npAgentProviderCalls.errorClass,
+        latencyMs: npAgentProviderCalls.latencyMs,
+        inputTokens: npAgentProviderCalls.inputTokens,
+        cachedInputTokens: npAgentProviderCalls.cachedInputTokens,
+        outputTokens: npAgentProviderCalls.outputTokens,
+        tokenSource: npAgentProviderCalls.usageSource,
+        costMicros: npAgentProviderCalls.costMicros,
+        costSource: npAgentProviderCalls.costSource,
+        startedAt: npAgentProviderCalls.startedAt,
+        finishedAt: npAgentProviderCalls.finishedAt,
+      })
+      .from(npAgentProviderCalls)
+      .where(
+        and(eq(npAgentProviderCalls.siteId, row.siteId), eq(npAgentProviderCalls.runId, row.id)),
+      )
+      .orderBy(desc(npAgentProviderCalls.sequence))
+      .limit(npAgentActivityProviderCallLimitV1 + 1);
+    const [trigger] =
+      row.triggerId && row.agentId && row.agentVersionId
+        ? await db
+            .select({
+              id: npAgentTriggers.id,
+              kind: npAgentTriggers.kind,
+              eventKind: npAgentTriggers.eventType,
+            })
+            .from(npAgentTriggers)
+            .where(
+              and(
+                eq(npAgentTriggers.siteId, row.siteId),
+                eq(npAgentTriggers.id, row.triggerId),
+                eq(npAgentTriggers.agentId, row.agentId),
+                eq(npAgentTriggers.agentVersionId, row.agentVersionId),
+              ),
+            )
+            .limit(1)
+        : [];
+    if (row.triggerId && !trigger) return null;
+    try {
+      return parseActivityRuntimeDiagnosticsV1(
+        {
+          trigger: trigger
+            ? { ...trigger, scheduledFor: row.eventRef?.scheduledFor ?? null }
+            : null,
+          retryAt: iso(row.runtimeRetryAt),
+          providerCalls: calls
+            .slice(0, npAgentActivityProviderCallLimitV1)
+            .map(
+              ({
+                inputTokens,
+                cachedInputTokens,
+                outputTokens,
+                tokenSource,
+                costMicros,
+                costSource,
+                startedAt,
+                finishedAt,
+                ...call
+              }) => ({
+                ...call,
+                usage:
+                  inputTokens === null
+                    ? null
+                    : {
+                        inputTokens,
+                        cachedInputTokens,
+                        outputTokens,
+                        tokenSource,
+                        costMicros,
+                        costSource,
+                      },
+                startedAt: iso(startedAt),
+                finishedAt: iso(finishedAt),
+              }),
+            ),
+          moreProviderCalls: calls.length > npAgentActivityProviderCallLimitV1,
+        },
+        run,
+      );
+    } catch {
+      return null;
+    }
+  }
   async function getPrincipal(input: Staff & { id: string }) {
     const { auth } = await staff(input);
     if (!uuid.test(input.id)) throw missing();
@@ -564,14 +664,12 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     await assertSameStaff(input, auth);
     return detail;
   }
-  async function getRun(input: Staff & { id: string }) {
+  async function getRun(input: Staff & { id: string }): Promise<NpAgentActivityRunResourceV1> {
     const { auth, visibility } = await staff(input);
     if (!uuid.test(input.id)) throw missing();
-    let [row] = await getDb()
-      .select()
-      .from(npAgentRuns)
-      .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, input.id)))
-      .limit(1);
+    const db = getDb();
+    const where = and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, input.id));
+    const [row] = await db.select().from(npAgentRuns).where(where).limit(1);
     if (!row) {
       const detail = await npReadReleasedRunHistoryV1({
         db: getDb(),
@@ -584,9 +682,37 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       return detail;
     }
     if (!(await runVisible(row, visibility))) throw missing();
-    row = await refreshRun(row);
-    if (!(await runVisible(row, visibility))) throw missing();
-    const detail = runDetail(row, await invocation(input.siteId, row.invocationId));
+    if (row.origin === "runtime") {
+      const snapshot = await db.transaction(
+        async (tx) => {
+          const [current] = await tx.select().from(npAgentRuns).where(where).limit(1);
+          if (
+            !current ||
+            current.origin !== "runtime" ||
+            current.admissionFingerprint !== row.admissionFingerprint
+          )
+            throw missing();
+          const detail = runDetail(
+            current,
+            await invocation(input.siteId, current.invocationId, tx),
+          );
+          return {
+            current,
+            detail: {
+              ...detail,
+              runtimeDiagnostics: await runtimeDiagnostics(tx, current, detail.run),
+            },
+          };
+        },
+        { accessMode: "read only", isolationLevel: "repeatable read" },
+      );
+      if (!(await runVisible(snapshot.current, visibility))) throw missing();
+      await assertSameStaff(input, auth);
+      return snapshot.detail;
+    }
+    const current = await refreshRun(row);
+    if (!(await runVisible(current, visibility))) throw missing();
+    const detail = runDetail(current, await invocation(input.siteId, current.invocationId));
     await assertSameStaff(input, auth);
     return detail;
   }

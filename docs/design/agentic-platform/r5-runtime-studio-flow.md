@@ -111,6 +111,16 @@ contract. Malformed nonempty usage remains unavailable. Canonical goals,
 execution input, raw provider bodies, locators, credentials, policy source
 bodies, internal errors and chain-of-thought remain outside activity projection.
 
+Runtime detail reads the Run, its same-version trigger and up to 20 retained
+provider attempts from one database snapshot. The optional
+`runtimeDiagnostics` field appears on the staff detail resource. The existing
+list, machine and expired-Run contracts keep their current shapes. Only the
+trigger kind, recorded schedule or event kind, retry time, call outcome,
+dispatch state, timing and usage metadata are selected for the new panel.
+Unknown usage remains null and an unparseable projection leaves the rest of
+the Run detail available. Existing item visibility and current staff authority
+still gate the response.
+
 ## Bounded policy simulation
 
 `agents.policies.simulate` now owns a fixed canonical v1 synthetic fixture.

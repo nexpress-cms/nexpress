@@ -20,6 +20,7 @@ import {
   npRequireAgentRuntimeStudioMutationResultV1,
   npRequireAgentRuntimeStudioTriggerV1,
   npRequireAgentRuntimeAdminInputV1,
+  npRequireAgentActivityRunResourceV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -83,6 +84,113 @@ test("Runtime management stays unavailable without a host and new writes retain 
   });
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ error: { code: "CSRF_INVALID" } });
+});
+
+test("Runtime Run diagnoses the last provider call and clears the evidence on access loss", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 216 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const runId = "55555555-5555-4555-8555-555555555555";
+  const triggerId = "44444444-4444-4444-8444-444444444444";
+  const retryAt = "2026-09-14T00:01:00.000Z";
+  const detail = npRequireAgentActivityRunResourceV1({
+    schemaVersion: "np.agent-activity-run.v1",
+    run: {
+      schemaVersion: "np.agent-run.v1",
+      id: runId,
+      siteId: "default",
+      origin: "runtime",
+      agent: { id, versionId },
+      principalId,
+      rootRunId: runId,
+      parentRunId: null,
+      causalDepth: 0,
+      state: "waiting_retry",
+      goal: "[redacted]",
+      runLimits: {
+        schemaVersion: "np.agent-run-limits.v1",
+        maxAttempts: 2,
+        maxProviderCalls: 2,
+        maxCapabilityCalls: 2,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxCostMicros: 500,
+        maxWallClockSeconds: 120,
+      },
+      usage: null,
+      attempt: 1,
+      errorCode: null,
+      errorMessage: null,
+      queuedAt: "2026-09-14T00:00:00.000Z",
+      startedAt: "2026-09-14T00:00:01.000Z",
+      deadlineAt: "2026-09-14T00:02:00.000Z",
+      finishedAt: null,
+    },
+    invocationId: null,
+    evidence: "redacted",
+    auditEventIds: [],
+    runtimeDiagnostics: {
+      trigger: {
+        id: triggerId,
+        kind: "schedule",
+        eventKind: null,
+        scheduledFor: "2026-09-14T00:00:00.000Z",
+      },
+      retryAt,
+      providerCalls: [
+        {
+          sequence: 1,
+          provider: "fake",
+          model: "fixture-model",
+          state: "failed",
+          dispatchState: "dispatched",
+          errorClass: "transient",
+          latencyMs: 752,
+          usage: {
+            inputTokens: 6,
+            cachedInputTokens: 2,
+            outputTokens: 3,
+            tokenSource: "provider",
+            costMicros: 11,
+            costSource: "adapter-estimate",
+          },
+          startedAt: "2026-09-14T00:00:02.000Z",
+          finishedAt: "2026-09-14T00:00:03.000Z",
+        },
+      ],
+      moreProviderCalls: false,
+    },
+  });
+  let denied = false;
+  await page.route(`**/api/admin/agents/activity/${runId}`, (route) =>
+    route.fulfill(denied ? { status: 403, json: {} } : { json: detail }),
+  );
+  await page.route("**/api/admin/agents/activity/actions?*", (route) =>
+    route.fulfill({
+      json: { schemaVersion: "np.agent-activity-actions.v1", items: [], nextCursor: null },
+    }),
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByText(`Scheduled · ${triggerId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Retry eligible at", { exact: true })).toBeVisible();
+  await expect(page.locator(`time[datetime="${retryAt}"]`)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Call 1 · fake / fixture-model" })).toBeVisible();
+  await expect(page.getByText(/Dispatched · transient/)).toBeVisible();
+  await expect(page.getByText("752 ms", { exact: true })).toBeVisible();
+  await expect(page.getByText("6 / 2 / 3 · Provider reported", { exact: true })).toBeVisible();
+  await expect(page.getByText("11 · Adapter estimate", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  denied = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).first().click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
+  ).toBeVisible();
+  await expect(page.getByText("Runtime diagnostics", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Retry eligible at", { exact: true })).toHaveCount(0);
 });
 
 test("Runtime activation waits for acknowledgement and readback before showing active controls", async ({
