@@ -244,8 +244,8 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet approved forward compensation", () 
       )[0].state,
     ).toBe("consumed");
   });
-  it("expires only the unused rollback plan and permits a fresh approved generation", async () => {
-    const f = await approvedRollbackFixture();
+  it("keeps an expired approval tied to its own verified rollback generation", async () => {
+    const f = await approvedRollbackFixture({ distinctApprover: true });
     f.advance(601);
     await f.service.approvals!.reconcileExpired({ siteId, limit: 100 });
     await f.service.reconcileRollbacks({ siteId });
@@ -275,8 +275,19 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet approved forward compensation", () 
     });
     expect(fresh.rollbackDetail?.summary.state).toBe("ready");
     expect(fresh.rollbackDetail?.summary.rollbackPlanId).not.toBe(f.rollbackPlanId);
-    await expect(f.service.approvals!.get(historicalApproval)).rejects.toMatchObject({
-      code: "APPROVAL_NOT_FOUND",
+    const history = await f.service.approvals!.get(historicalApproval);
+    expect(history).toMatchObject({
+      review: null,
+      item: {
+        target: {
+          kind: "changeset_rollback",
+          changeSetId: f.id,
+          rollbackPlanId: f.rollbackPlanId,
+          planHash: f.rollbackCommand.planHash,
+        },
+        allowedDecisions: [],
+      },
+      rollbackReview: expired.rollbackReview,
     });
     const latestPlanId = fresh.rollbackDetail?.summary.rollbackPlanId;
     if (!latestPlanId) throw new Error("Expected a new rollback plan");
@@ -286,6 +297,26 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet approved forward compensation", () 
       .where(eq(npAgentChangesetRollbackOperations.rollbackPlanId, latestPlanId));
     await expect(f.service.getReview({ actor: f.actor, id: f.id })).rejects.toMatchObject({
       code: "CHANGESET_NOT_FOUND",
+    });
+    expect(await f.service.approvals!.get(historicalApproval)).toEqual(history);
+    await expect(
+      f.service.approvals!.get({ ...historicalApproval, siteId: "different-site" }),
+    ).rejects.toMatchObject({ code: "APPROVAL_NOT_FOUND" });
+    await f.db.delete(npSessions).where(eq(npSessions.id, f.approver.actor.sessionId));
+    await expect(f.service.approvals!.get(historicalApproval)).rejects.toMatchObject({
+      code: "APPROVAL_NOT_FOUND",
+    });
+
+    const requesterHistory = { ...historicalApproval, actor: f.actor.actor };
+    expect((await f.service.approvals!.get(requesterHistory)).rollbackReview).toEqual(
+      history.rollbackReview,
+    );
+    await f.db
+      .update(npAgentChangesetRollbackOperations)
+      .set({ expectedCurrentHash: `cj1:sha256:${"A".repeat(43)}` })
+      .where(eq(npAgentChangesetRollbackOperations.rollbackPlanId, f.rollbackPlanId));
+    await expect(f.service.approvals!.get(requesterHistory)).rejects.toMatchObject({
+      code: "APPROVAL_NOT_FOUND",
     });
   });
   it("revokes an unused approval without changing applied content or consuming the old approval", async () => {

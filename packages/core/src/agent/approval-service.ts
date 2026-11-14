@@ -37,6 +37,7 @@ import {
   type NpAgentApprovalActionReviewV1,
 } from "../agent-contract/approval-contract.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import type { NpAgentRollbackDetailV1 } from "../agent-contract/rollback-contract.js";
 import {
   createAgentAdminAdmissionV1,
   npResolveAgentStaffSessionAuthorizationV1,
@@ -102,6 +103,16 @@ export interface NpAgentApprovalServiceOptionsV1 extends NpAgentAdminAdmissionOp
       target: Extract<NpAgentApprovalTargetV1, { kind: "action" }>;
       actor: NpAgentAdminActorV1;
     }) => Promise<NpAgentApprovalActionReviewV1>;
+    /** Read the exact approved rollback target, including retained generations. */
+    rollbackReview?: (input: {
+      siteId: string;
+      approvalId: string;
+      target: Extract<NpAgentApprovalTargetV1, { kind: "changeset_rollback" }>;
+      actor: NpAgentAdminActorV1;
+    }) => Promise<{
+      reviewSummary: NpAgentApprovalListItemV1["reviewSummary"];
+      detail: NpAgentRollbackDetailV1;
+    }>;
     visible: (input: {
       siteId: string;
       target: NpAgentApprovalTargetV1;
@@ -606,13 +617,16 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     try {
       const checked = await verify(row);
       await staff(getDb(), input.siteId, input.actor, checked.statement);
-      const reviewSummary = await targetsFor(checked.statement.target).visible({
-        ...input,
-        target: checked.statement.target,
-      });
+      const { target } = checked.statement;
+      const rollback =
+        target.kind === "changeset_rollback" && options.targets.rollbackReview
+          ? await options.targets.rollbackReview({ ...input, target, approvalId: row.id })
+          : null;
+      const reviewSummary =
+        rollback?.reviewSummary ?? (await targetsFor(target).visible({ ...input, target }));
       const projected = await item(row, input.actor, reviewSummary);
       const review =
-        projected.target.kind === "action"
+        projected.target.kind === "action" || rollback
           ? null
           : await targetsFor(projected.target).review({ ...input, target: projected.target });
       const actionReview =
@@ -629,9 +643,11 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
       return npRequireAgentApprovalDetailV1({
         schemaVersion: "np.agent-approval-detail.v1",
         item: projected,
-        review: projected.target.kind === "changeset_rollback" ? null : review,
+        review: target.kind === "changeset_rollback" ? null : review,
         rollbackReview:
-          projected.target.kind === "changeset_rollback" ? review?.rollbackDetail : null,
+          target.kind === "changeset_rollback"
+            ? (rollback?.detail ?? review?.rollbackDetail)
+            : null,
         ...(actionReview ? { actionReview } : {}),
       });
     } catch (error) {
