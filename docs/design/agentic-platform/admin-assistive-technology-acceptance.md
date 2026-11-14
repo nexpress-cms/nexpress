@@ -10,7 +10,8 @@ not new failures reproduced during this assessment.
 
 The [November VoiceOver run](#voiceover-observation--2026-11-14-kst) captured
 actual captions from all six workflows. The [follow-up](#voiceover-follow-up--2026-11-14-kst)
-records the fixes, retest and remaining AT acceptance checks.
+records the fixes and retest. The [supplemental checks](#remaining-voiceover-checks--2026-11-14-kst)
+record the later captions and remaining AT acceptance steps.
 
 The [success-lifecycle bundle](admin-success-lifecycle.md) supplies the three
 synthetic success paths and local observation checkpoints identified below.
@@ -186,6 +187,50 @@ verification run timed
 out in six App cases. The serial rerun passed all 931 App cases without a
 timeout change. The local sandbox and synthetic responses exercise user-facing
 behavior. Full operator-led AT and R5 acceptance remain open.
+
+## Remaining VoiceOver checks — 2026-11-14 KST
+
+The supplemental run exercised the production build from commit `fbce0500`,
+with the same VoiceOver caption window, a temporary Chrome profile and local
+synthetic responses. Native keyboard input and Chrome caret browsing were used
+for selected static text. Captions from these steps establish what was read
+at the selected locations.
+
+| Workflow            | Additional caption evidence                                                                                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AT-01 Connection    | **Installed adapter**, **acceptance-provider v1** and the selected item in the native menu.                                                                                                                    |
+| AT-02 Activation    | Effective configuration **version 2**, the server authority/version/dependency recheck sentence, the changed-resource instruction to reload and review the current version, and the Runtime access-loss alert. |
+| AT-03 Approval      | The refresh notice that review facts and authorizing controls are unavailable until validation completes. Caret browsing captured the statement-hash label and **Approval records a human decision**.          |
+| AT-04 Rollback      | With a forward caret selection, VoiceOver first read **Before: "Applied title"** and then **After: "Original title"**.                                                                                         |
+| AT-06 Service token | **Your session is no longer available. Sign in again to load current information.** The **Sign in** link was reachable and read by VoiceOver.                                                                  |
+
+The original bundle covers AT-05. Each supplemental browser fixture passed
+within the combined run or its focused replay. The temporary connection
+fixture initially expired its absolute retry deadline during the extended
+loading hold. Using a 60-second relative response deadline let the same
+product behavior pass with the hold intact.
+
+The final pass used the same production build on the merged tree `47b06834`
+with the existing synthetic fixtures. The operator used Chrome caret browsing
+to read text that had previously been visible only in the accessibility tree.
+
+| Workflow         | Captured VoiceOver output and reading action                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AT-01 Connection | **Loading Agent Studio data…** while the initial adapter response was held and Save was disabled. The operator read the status by keyboard during the load.                                                                                                                                                                                                                                                                         |
+| AT-02 Activation | Before submission, VoiceOver read the staff-primary reauthentication notice, the instruction to keep the same request key for an unknown outcome, the trigger registration and enablement guidance, and the replacement draft and fresh trigger identity requirement. Long text was read in sections.                                                                                                                               |
+| AT-03 Approval   | From **Server approval facts**, forward keyboard reading visited state and risk, approval version and generation, target and operation, statement hash, capability and scopes, capability contract, policy binding, preview and reauthentication requirements, human requirements, requester and expiry. The next caption explained that approval records a human decision and execution has its own authority and evidence checks. |
+
+The loading check verifies keyboard reading of the initial status. Automatic
+speech on page entry was not captured. The approval sequence came from
+consecutive forward caret selections on the same page, with long values
+split across captions. The three browser scenarios passed without retries.
+Local evidence is under `/tmp/nexpress-at-caption.goH5MW` in
+`closing-captions/`, `closing-approval-early.tsv` and `voiceover-closing.log`.
+The [merge CI](https://github.com/nexpress-cms/nexpress/actions/runs/43588705384)
+and [Release workflow](https://github.com/nexpress-cms/nexpress/actions/runs/43588705385)
+succeeded. Full Playwright ran successfully on the
+[PR](https://github.com/nexpress-cms/nexpress/actions/runs/43586931149) and was
+skipped by the push workflow.
 
 ## Result record template
 
