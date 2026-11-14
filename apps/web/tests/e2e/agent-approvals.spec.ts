@@ -240,6 +240,61 @@ test.describe("Agent approval review", () => {
     await expect(page.getByText(/Recorded check count: Unavailable/)).toBeVisible();
     await expect(page.getByText("Rollback plan: unavailable.", { exact: true })).toBeVisible();
   });
+  test("refreshes the current approval page on focus and stops automatic reads after a failure", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 219 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    const start = new Date();
+    await page.clock.install({ time: start });
+    await page.clock.pauseAt(new Date(start.getTime() + 1_000));
+    const queries: string[] = [];
+    await page.route(/\/api\/admin\/agents\/approvals\?/, (route) => {
+      queries.push(new URL(route.request().url()).search);
+      if (queries.length === 3)
+        return route.fulfill({ status: 429, headers: { "Retry-After": "30" }, json: {} });
+      if (queries.length === 5) return route.fulfill({ status: 403, json: {} });
+      return route.fulfill({
+        json: {
+          schemaVersion: "np.agent-approval-page.v1",
+          items: [item(queries.length === 1 ? "pending" : "approved")],
+          nextCursor: null,
+        },
+      });
+    });
+    const query = "?state=all&risk=reversible&cursor=opaque-page";
+    const approval = page.getByRole("article").filter({ hasText: "Approval request" });
+    const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+    await page.goto(`/admin/agents/approvals${query}`);
+    await expect(approval.getByText("pending", { exact: true })).toBeVisible();
+    await page.clock.fastForward(2_000);
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await page.clock.runFor(1);
+    await expect(approval.getByText("approved", { exact: true })).toBeVisible();
+    expect(queries).toEqual([query, query]);
+
+    await page.clock.fastForward(30_000);
+    await expect(refresh).toBeDisabled();
+    await expect(approval).toHaveCount(0);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.clock.fastForward(29_999);
+    expect(queries).toHaveLength(3);
+    await expect(refresh).toBeDisabled();
+    await page.clock.fastForward(1);
+    await expect(refresh).toBeEnabled();
+    expect(queries).toHaveLength(3);
+    await refresh.click();
+    await expect(approval.getByText("approved", { exact: true })).toBeVisible();
+    await page.clock.fastForward(30_000);
+    await expect(approval).toHaveCount(0);
+    await expect(page.getByText(/approvals are unavailable/i).last()).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.clock.fastForward(60_000);
+    expect(queries).toEqual(Array<string>(5).fill(query));
+  });
   test("requires a typed challenge and renders only the returned decision state", async ({
     page,
   }, testInfo) => {

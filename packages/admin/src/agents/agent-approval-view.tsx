@@ -21,6 +21,7 @@ import {
 } from "@nexpress/core/agent-contract";
 import { npFetch } from "../lib/api-client.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
+import { useAgentPolling } from "./use-agent-polling.js";
 import {
   AgentChangeSetReviewFacts,
   AgentChangeSetPreview,
@@ -86,10 +87,15 @@ const filterLabels: Record<string, string> = {
 };
 export function AgentApprovalListView({ queryString = "" }: { queryString?: string }) {
   const router = useRouter();
-  const result = useAgentReviewRead(
-    `${base}${queryString ? `?${queryString}` : ""}`,
-    npRequireAgentApprovalPageV1,
-    approvalError,
+  const path = `${base}${queryString ? `?${queryString}` : ""}`;
+  const result = useAgentReviewRead(path, npRequireAgentApprovalPageV1, approvalError);
+  useAgentPolling(
+    path,
+    result.value,
+    result.value !== null && !result.failure,
+    result.busy,
+    result.refreshBackground,
+    "list",
   );
   const [filterError, setFilterError] = React.useState<string | null>(null);
   const query = new URLSearchParams(queryString);
