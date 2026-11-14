@@ -815,6 +815,10 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
     [id],
   );
   const result = useAgentReviewRead(`${base}/${encodeURIComponent(id)}`, parse, approvalError);
+  const factsRef = React.useRef<HTMLHeadingElement>(null);
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
+  const moveFocusAfterRead = React.useRef(false);
+  const factsStatusId = React.useId();
   const [notice, setNotice] = React.useState<string | null>(null);
   const clear = result.clear;
   const onLost = React.useCallback(
@@ -829,6 +833,16 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
     [clear],
   );
   const detail = result.value;
+  React.useEffect(() => {
+    if (notice || result.error) {
+      moveFocusAfterRead.current = false;
+      if (document.activeElement === document.body) errorRef.current?.focus();
+      return;
+    }
+    if (result.busy || !moveFocusAfterRead.current) return;
+    moveFocusAfterRead.current = false;
+    if (detail && document.activeElement === document.body) factsRef.current?.focus();
+  }, [detail, notice, result.busy, result.error]);
   return (
     <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
       <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
@@ -838,9 +852,10 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
         </Link>
         <Button
           className="ml-3"
-          disabled={result.busy}
+          aria-disabled={result.busy}
           variant="outline"
           onClick={() => {
+            if (result.busy) return;
             setNotice(null);
             result.refresh();
           }}
@@ -854,13 +869,23 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
           observedAt={result.observedAt}
           label="approval"
         />
-        {result.error && <p role="alert">{result.error}</p>}
-        {notice && <p role="alert">{notice}</p>}
+        {(notice || result.error) && (
+          <p ref={errorRef} tabIndex={-1} role="alert">
+            {notice || result.error}
+          </p>
+        )}
         {detail && (
           <>
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold">Server approval facts</h2>
-              <p>
+              <h2
+                ref={factsRef}
+                tabIndex={-1}
+                aria-describedby={factsStatusId}
+                className="text-lg font-semibold"
+              >
+                Server approval facts
+              </h2>
+              <p id={factsStatusId}>
                 <Badge>{detail.item.approval.state}</Badge> · Risk: {detail.item.risk}
               </p>
               <dl className="grid gap-2 text-sm">
@@ -966,7 +991,10 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
             <DecisionControls
               key={`${id}:${detail.item.version}:${detail.item.statementHash}`}
               detail={detail}
-              onChanged={result.refresh}
+              onChanged={() => {
+                moveFocusAfterRead.current = true;
+                result.refresh();
+              }}
               onLost={onLost}
             />
           </>

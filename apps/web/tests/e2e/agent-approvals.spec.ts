@@ -378,6 +378,9 @@ test.describe("Agent approval review", () => {
     await tabTo(page, confirm);
     await page.keyboard.press("Enter");
     await expect(page.getByText("approved", { exact: true })).toBeVisible();
+    const returnedFacts = page.getByRole("heading", { name: "Server approval facts" });
+    await expect(returnedFacts).toBeFocused();
+    await expect(returnedFacts).toHaveAccessibleDescription(/approved/);
     expect(commands).toHaveLength(3);
     expect(commands[2]).toEqual(commands[1]);
     expect(commands[0]).toMatchObject({
@@ -612,6 +615,7 @@ test.describe("Agent approval review", () => {
     await page.getByRole("button", { name: "Confirm reject", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText(/Version 3/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Server approval facts" })).toBeFocused();
     expect(decisions).toBe(1);
     denied = true;
     await page.getByRole("button", { name: "Refresh", exact: true }).click();

@@ -95,17 +95,15 @@ export function AgentStudioFrame({
           </Link>
         ))}
       </nav>
-      {busy ? (
-        <div role="status" aria-live="polite" className="space-y-2 text-sm text-neutral-500">
-          <p>
-            {refreshing
-              ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
-              : "Loading Agent Studio data…"}
-          </p>
-          {!refreshing ? (
-            <div aria-hidden className="h-12 rounded-lg bg-neutral-100 dark:bg-neutral-900" />
-          ) : null}
-        </div>
+      <p role="status" aria-atomic="true" className="text-sm text-neutral-500 empty:m-0">
+        {busy
+          ? refreshing
+            ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
+            : "Loading Agent Studio data…"
+          : null}
+      </p>
+      {busy && !refreshing ? (
+        <div aria-hidden className="h-12 rounded-lg bg-neutral-100 dark:bg-neutral-900" />
       ) : null}
       <AgentReadObservation receivedAt={observedAt} refreshing={refreshing} label={active} />
       <AgentRecoveryBoundary error={recovery}>

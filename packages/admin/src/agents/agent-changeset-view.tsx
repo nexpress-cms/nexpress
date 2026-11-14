@@ -657,6 +657,9 @@ export function AgentChangeSetReviewFacts({ review }: { review: NpAgentChangeSet
 }
 
 export function AgentChangeSetDetailView({ id }: { id: string }) {
+  const rollbackHeading = React.useRef<HTMLHeadingElement>(null);
+  const mutationAlert = React.useRef<HTMLParagraphElement>(null);
+  const rollbackReadback = React.useRef<string | null>(null);
   const executionKeys = React.useRef<Record<string, string>>({});
   const rollbackKeys = React.useRef<Record<string, string>>({});
   React.useEffect(() => {
@@ -668,6 +671,18 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
   const [mutationError, setMutationError] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<NpAgentPreviewDetailWireV1 | null>(null);
   const changeSet = result.value?.changeSet;
+  React.useEffect(() => {
+    if (mutationError || result.error) {
+      rollbackReadback.current = null;
+      if (document.activeElement === document.body) mutationAlert.current?.focus();
+      return;
+    }
+    if (result.busy || rollbackReadback.current === null) return;
+    const refocus = rollbackReadback.current === id;
+    rollbackReadback.current = null;
+    if (refocus && changeSet && document.activeElement === document.body)
+      rollbackHeading.current?.focus();
+  }, [changeSet, id, mutationError, result.busy, result.error]);
   useAgentPolling(
     id,
     result.value,
@@ -765,8 +780,11 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
           observedAt={result.observedAt}
           label="ChangeSet"
         />
-        {result.error && <p role="alert">{result.error}</p>}
-        {mutationError && <p role="alert">{mutationError}</p>}
+        {(mutationError || result.error) && (
+          <p ref={mutationAlert} tabIndex={-1} role="alert">
+            {mutationError || result.error}
+          </p>
+        )}
         {result.value && changeSet && (
           <>
             <nav aria-label="ChangeSet stages" className="flex flex-wrap gap-4">
@@ -840,9 +858,13 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
               onLost={clearEvidence}
             />
             <AgentChangeSetRollback
+              headingRef={rollbackHeading}
               idempotencyKeys={rollbackKeys}
               review={result.value}
-              onChanged={result.refresh}
+              onChanged={() => {
+                rollbackReadback.current = id;
+                result.refresh();
+              }}
               onLost={(message, caught) => {
                 setMutationError(message);
                 clearEvidence(caught);

@@ -64,6 +64,11 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
 function AgentPrincipalDetailViewContent({ principalId }: { principalId: string }) {
   const router = useRouter();
   const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const principalStatusRef = React.useRef<HTMLSpanElement>(null);
+  const disclosureRef = React.useRef<HTMLHeadingElement>(null);
+  const tokenStatusPrefix = React.useId();
+  const disclosureInstructionsId = React.useId();
+  const statusReadback = React.useRef<"principal" | { tokenId: string } | null>(null);
   const errorRef = React.useRef<HTMLDivElement>(null);
   const createTokenRef = React.useRef<HTMLButtonElement>(null);
   const [copyStatus, setCopyStatus] = React.useState<string | null>(null);
@@ -86,6 +91,17 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
   const revokeRetry = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    if (oneTime && document.activeElement === document.body) disclosureRef.current?.focus();
+  }, [oneTime]);
+  React.useEffect(() => {
+    if (loading) return;
+    const target = statusReadback.current;
+    statusReadback.current = null;
+    if (!detail || error || document.activeElement !== document.body) return;
+    if (target === "principal") principalStatusRef.current?.focus();
+    else if (target) document.getElementById(`${tokenStatusPrefix}-${target.tokenId}`)?.focus();
+  }, [detail, error, loading, tokenStatusPrefix]);
   const [tokenName, setTokenName] = React.useState("Local client");
   const [transport, setTransport] = React.useState<NpAgentServiceTokenTransportV1>("stdio");
   const [exposure, setExposure] = React.useState<NpAgentEnabledGatewayExposureMode>("read");
@@ -273,11 +289,13 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
         },
       );
       if (!response.ok) throw await responseError(response);
-      npRequireAgentServiceTokenV1(await response.json());
+      const revoked = npRequireAgentServiceTokenV1(await response.json());
       if (requestAtStart?.signal.aborted) return;
+      if (revoked.id !== tokenId) throw new Error("Service token mismatch");
       revokeRetry.current = null;
       setOneTime(null);
       setCopyStatus(null);
+      statusReadback.current = { tokenId };
       await load();
     } catch (caught) {
       if (requestAtStart?.signal.aborted) return;
@@ -328,7 +346,13 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                   {detail.principal.name}
                 </h2>
                 <Badge variant={detail.principal.status === "active" ? "brand" : "destructive"}>
-                  {detail.principal.status}
+                  <span
+                    ref={principalStatusRef}
+                    tabIndex={-1}
+                    aria-label={`Gateway principal ${detail.principal.status}`}
+                  >
+                    {detail.principal.status}
+                  </span>
                 </Badge>
               </div>
               <p className="mt-1 text-[12.5px] text-neutral-500">
@@ -356,8 +380,9 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                 (error !== null &&
                   !(failure instanceof AgentStudioApiError && failure.status === 429))
               }
-              onChanged={async () => {
+              onChanged={async (focusResult) => {
                 setOneTime(null);
+                if (focusResult) statusReadback.current = "principal";
                 await load();
               }}
               onAccessLost={(message, caught) => {
@@ -384,13 +409,21 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
           {oneTime ? (
             <Card className="border-amber-300 dark:border-amber-900">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-[14px]">
-                  <KeyRound className="size-4" />
+                <h3
+                  ref={disclosureRef}
+                  tabIndex={-1}
+                  aria-describedby={disclosureInstructionsId}
+                  className="flex items-center gap-2 text-[14px] font-semibold"
+                >
+                  <KeyRound className="size-4" aria-hidden />
                   Copy this token now
-                </CardTitle>
+                </h3>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-[12.5px] text-neutral-600 dark:text-neutral-300">
+                <p
+                  id={disclosureInstructionsId}
+                  className="text-[12.5px] text-neutral-600 dark:text-neutral-300"
+                >
                   It will not be shown again. Losing it requires a new rotation generation.
                 </p>
                 <div className="flex min-w-0 gap-2">
@@ -418,11 +451,9 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                     <Copy className="size-4" />
                   </Button>
                 </div>
-                {copyStatus ? (
-                  <p role="status" className="text-[12px]">
-                    {copyStatus}
-                  </p>
-                ) : null}
+                <p role="status" aria-atomic="true" className="text-[12px] empty:m-0">
+                  {copyStatus}
+                </p>
                 <Button
                   type="button"
                   size="sm"
@@ -583,7 +614,13 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={token.status === "active_head" ? "brand" : "secondary"}>
-                          {token.status}
+                          <span
+                            id={`${tokenStatusPrefix}-${token.id}`}
+                            tabIndex={-1}
+                            aria-label={`Service token ${token.name}, ${token.status}`}
+                          >
+                            {token.status}
+                          </span>
                         </Badge>
                         {token.status === "active_head" || token.status === "overlap" ? (
                           <Button

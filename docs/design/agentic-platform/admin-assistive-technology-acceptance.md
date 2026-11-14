@@ -8,14 +8,12 @@ record; [error recovery](admin-error-recovery.md) owns recovery behavior. Older
 paragraphs in [Admin acceptance](admin-acceptance.md) describe historical gaps,
 not new failures reproduced during this assessment.
 
-**Actual screen-reader workflow acceptance remains not verified.** This record
-provides a consolidated execution checklist and identifies missing evidence. It
-does not turn automated keyboard checks into speech results or close full Admin/R5.
+The [November VoiceOver run](#voiceover-observation--2026-11-14-kst) captured
+actual captions from all six workflows. The [follow-up](#voiceover-follow-up--2026-11-14-kst)
+records the fixes, retest and remaining AT acceptance checks.
 
-The later [success-lifecycle bundle](admin-success-lifecycle.md) supplies the three
-synthetic success paths and local observation checkpoints identified below. The
-preparation gaps in this original investigation are historical; actual AT output
-remains unverified until separately observed.
+The [success-lifecycle bundle](admin-success-lifecycle.md) supplies the three
+synthetic success paths and local observation checkpoints identified below.
 
 <a id="environment-investigation"></a>
 
@@ -36,11 +34,8 @@ remains unverified until separately observed.
 The native app/AX capability can inspect controls and send keys, but those results
 are not the screen reader's utterances. Apple documents that the
 [caption panel displays what VoiceOver is speaking](https://support.apple.com/en-kw/guide/voiceover/unac078/mac).
-A readable caption sequence could support a future observation; none was obtained
-here. Audio quality, interruption and timing still require listening or equivalent
-captured evidence. Repeatedly launching the same inaccessible panel would not
-supply that evidence. The outstanding input is one consolidated run by an operator
-who can hear VoiceOver or capture its actual output, using the scenarios below.
+This investigation obtained no readable caption sequence. Audio quality,
+interruption and timing still require listening or equivalent captured evidence.
 
 See [Agent diagnostic presentation](admin-agent-diagnostics.md) for the follow-up
 Health/Doctor display and its explicit limits. Subsequent
@@ -118,10 +113,79 @@ order rather than requiring a particular punctuation string.
 | AT-05 Gateway principal | Open Suspend; hear title; Escape returns to invoker. Reopen, enter reason, submit failure and unchanged retry. Read returned suspended → active → revoked states. Verify meaningful focus when the initiating control disappears and after malformed detail recovery.                                                                                                                        | [Gateway fixtures](../../../apps/web/tests/e2e/agents.spec.ts), `uses a reviewed reason and fresh versions for principal suspension, resumption, and revocation`.                                                                                                                                                                                                                 |
 | AT-06 Service token     | Issue a synthetic token with initial failure and explicit retry. Read one-time disclosure instructions and labeled controls. Copy receives acknowledgement; “I saved it” removes the value and restores Create token focus. Refresh cannot redisclose it. Revoke failure/retry then returned revocation; 401 clears metadata/value and exposes Sign in.                                      | [Token fixtures](../../../apps/web/tests/e2e/agent-connections.spec.ts), `Gateway token keyboard issue, one-time disclosure and revocation preserve recovery identity`. Never capture an operational token in AT artifacts.                                                                                                                                                       |
 
-Current result for AT-01 through AT-06: **not verified**. Successful backend
-integration paths and the now-shipped success fixtures do not substitute for
-observed screen-reader presentation. The earlier success-fixture gaps are closed;
-interactive preparation and actual utterance/focus records remain required. Do not add redundant automated tests just to rename this checklist.
+## VoiceOver observation — 2026-11-14 KST
+
+Baseline `5592861a`, macOS 26.3, VoiceOver bundle version 10 and headed Chrome
+for Testing 151.0.7922.34. The caption panel used the host's Korean interface
+and existing verbosity settings. The test first captured **Read back alpha
+seven, 버튼** and **Read back beta nine, 버튼** on successive Tab presses.
+
+The six workflows ran together through 13 existing browser cases against an
+isolated PostgreSQL database and synthetic API responses. All 13 passed with
+retries disabled. Temporary copies held selected states for observation and
+logged keyboard focus alongside sampled images of the actual caption window.
+Native confirmation dialogs stayed open briefly before the fixtures supplied
+their existing response. The run sampled captions and focus around state
+changes. Audio and complete reading order remain unverified.
+
+| Workflow                | Observed with VoiceOver                                                                                                                                                                                | Still to verify                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| AT-01 Connection        | VoiceOver identified Name and read the write-only API key field as a secure text field. It read the failed request, invalid detail, access-loss and sign-in alerts and the native revoke confirmation. | Loading and rate-limit wait announcements, and reading the returned revoked state.                               |
+| AT-02 Activation        | VoiceOver read **Review effective configuration** and **Enable after activation, 선택됨, 체크박스**. After the active readback, keyboard focus was on the document body.                               | Reading the reviewed version and consequences, conflict and access-loss recovery, and the returned active state. |
+| AT-03 Approval          | VoiceOver read the Approve dialog heading, challenge field and uncertain decision message. Escape returned focus to Reject in the stale-challenge case. The later access-loss alert was captured.      | Temporary refresh invalidation, stale-challenge recovery and confirmation of the returned approved state.        |
+| AT-04 Rollback          | VoiceOver read Request rollback approval, Execute approved rollback and the warning that the rollback request could not be confirmed. After verified readback, focus was on the document body.         | Plan facts and Before/After reading order, conflict and cancel recovery, and the returned verified state.        |
+| AT-05 Gateway principal | VoiceOver read the Suspend dialog and the failure alert. Escape returned focus to Suspend principal. VoiceOver also read the malformed detail alert.                                                   | Reading the status after suspend, resume and revoke and following focus through detail recovery.                 |
+| AT-06 Service token     | VoiceOver read the token-issue failure and native revoke confirmation. The fixture confirmed that acknowledging storage cleared disclosure and restored focus to Create token.                         | VoiceOver reading of disclosure instructions, copy acknowledgement, final revocation and session recovery.       |
+
+This table records the first run. The local capture files and timestamped
+focus records for both runs are under `/tmp/nexpress-at-caption.goH5MW` on the
+test Mac.
+
+## VoiceOver follow-up — 2026-11-14 KST
+
+The follow-up used the same macOS, VoiceOver and headed Chrome environment,
+with synthetic responses and the isolated PostgreSQL fixture database. The
+test copies held key states and sampled the caption window. Keyboard focus was
+recorded from the active element alongside the captions.
+
+Focus returned to the document body after activation and verified rollback
+on the baseline. The fixed views focus the validated readback when the
+invoking control disappears and the user has not moved elsewhere. Approval
+refresh retains its focused control during invalidation, and decision
+readback or stale-challenge recovery returns to the approval facts as needed.
+Connection creation gives rate-limit wait guidance. Connection revocation
+focuses its returned status. Gateway mutations focus the returned principal
+or token status, and one-time token disclosure exposes its instructions and
+announces successful copy. A rollback conflict now tells the operator to
+refresh and review the current plan. An uncertain response retains the separate
+guidance to confirm the outcome before continuing.
+
+The production-build browser run passed all 13 cases without retries. The
+table distinguishes captured VoiceOver output from steps still requiring
+screen-reader observation. The run used keyboard fixture interactions, with
+native confirmation responses supplied by the fixtures after a short hold.
+A temporary Chrome profile disabled translation suggestions for supplemental
+checks. Chrome toolbar focus still interrupted some caption capture.
+
+| Workflow                | Captured VoiceOver evidence                                                                                                                                                                                                                     | Still to verify with VoiceOver                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| AT-01 Connection        | Write-only secure field, submission and access-loss alerts, 429 wait instructions, native confirmation, and **Connection revoked**.                                                                                                             | Initial loading and adapter availability announcements.                                                                     |
+| AT-02 Activation        | Effective configuration review heading, checked trigger control, and **active · operator · version 2 (active)**. Browser focus reached the changed-resource and access-loss alerts.                                                             | Exact pre-activation version and consequences, and the spoken conflict and access-loss recovery.                            |
+| AT-03 Approval          | Approval dialog and typed challenge, uncertain response, **Server approval facts pending · Risk: reversible** after stale challenge, access loss, and **Server approval facts approved · Risk: reversible** after decision readback.            | Explicit refresh invalidation announcement and reading the sealed facts and decision-versus-execution explanation in order. |
+| AT-04 Rollback          | **Compensation plan · ready**, request approval, execute and cancel controls, separate uncertain-outcome and conflict alerts, and **Compensation plan · verified** after readback.                                                              | Complete Before/After reading order.                                                                                        |
+| AT-05 Gateway principal | Suspend dialog and Escape return, failed change, **Gateway principal suspended**, **active**, **revoked**, and malformed-detail recovery alert.                                                                                                 | The caption and focus checkpoints cover the requested transitions.                                                          |
+| AT-06 Service token     | One-time disclosure instructions, **Token copied to clipboard**, return to Create token, and the named token's **revoked** state. Browser assertions confirmed disappearance of the token, lack of redisclosure and the Sign in link after 401. | Spoken session-recovery guidance in the token detail flow.                                                                  |
+
+For the primary follow-up, `voiceover-final.log` records the 13 browser
+results; `final-marks.jsonl` and `final-captions/` hold their checkpoints
+and captured output plus the supplemental passes. Workspace `verify` passed
+113 tasks and `lint` passed 41. After the conflict message changed, Admin build,
+typecheck and lint, the reference production build, and the five rollback
+cases in `voiceover-rollback-final.log` passed again. The first concurrent
+verification run timed
+out in six App cases. The serial rerun passed all 931 App cases without a
+timeout change. The local sandbox and synthetic responses exercise user-facing
+behavior. Full operator-led AT and R5 acceptance remain open.
 
 ## Result record template
 
