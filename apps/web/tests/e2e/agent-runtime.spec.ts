@@ -622,6 +622,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await expect.poll(() => requests.some((query) => query.includes("name=Worker"))).toBe(true);
   await page.getByRole("link", { name: "Worker observer", exact: true }).click();
+  await expect(page.getByRole("link", { name: "View activity", exact: true })).toHaveAttribute(
+    "href",
+    `/admin/agents/activity?origin=runtime&agentId=${id}`,
+  );
   await expect(
     page.getByRole("button", { name: "Activate reviewed version", exact: true }),
   ).toBeDisabled();

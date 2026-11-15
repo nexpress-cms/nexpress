@@ -25,9 +25,11 @@ import {
 } from "./canonical-runtime-primitives.js";
 import {
   npAgentCapabilityIds,
+  npAgentRecipeTriggerKinds,
   npAgentRunStates,
   npAgentActionStates,
   type NpAgentCapabilityId,
+  type NpAgentRecipeTriggerKind,
 } from "./types.js";
 import {
   npAnalyzeAgentPrincipalV1,
@@ -46,6 +48,8 @@ export interface NpAgentActivityQueryV1 {
   cursor?: string;
   principalId?: string;
   runId?: string;
+  agentId?: string;
+  triggerKind?: NpAgentRecipeTriggerKind;
   origin?: "gateway" | "runtime";
   kind?: "external" | "runtime";
   state?: string;
@@ -190,7 +194,18 @@ export type NpAgentActivityActionsPageV1 = NpAgentCursorPageV1<
 >;
 const keys = {
   principals: ["limit", "cursor", "state", "kind", "from", "to"],
-  runs: ["limit", "cursor", "state", "principalId", "origin", "capabilityId", "from", "to"],
+  runs: [
+    "limit",
+    "cursor",
+    "state",
+    "principalId",
+    "origin",
+    "agentId",
+    "triggerKind",
+    "capabilityId",
+    "from",
+    "to",
+  ],
   actions: ["limit", "cursor", "state", "principalId", "runId", "capabilityId", "from", "to"],
 } as const;
 export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value: unknown) {
@@ -214,7 +229,7 @@ export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value
               : npAgentActionStates,
         ),
       );
-    for (const key of ["principalId", "runId"] as const)
+    for (const key of ["principalId", "runId", "agentId"] as const)
       if (r[key] !== undefined) q[key] = canonicalBodyUuid(r[key], key);
     for (const key of ["from", "to"] as const)
       if (r[key] !== undefined) q[key] = canonicalBodyUtc(r[key], key);
@@ -224,6 +239,12 @@ export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value
       q.kind = canonicalBodyEnum(r.kind, "kind", new Set(["external", "runtime"]));
     if (r.origin !== undefined)
       q.origin = canonicalBodyEnum(r.origin, "origin", new Set(["gateway", "runtime"]));
+    if (r.triggerKind !== undefined)
+      q.triggerKind = canonicalBodyEnum(
+        r.triggerKind,
+        "triggerKind",
+        new Set(npAgentRecipeTriggerKinds),
+      );
     if (r.capabilityId !== undefined)
       q.capabilityId = canonicalBodyEnum(
         r.capabilityId,

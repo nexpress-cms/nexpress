@@ -736,7 +736,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
               </Button>
             ) : null}
             <Button asChild variant="outline">
-              <Link href={`/admin/agents/activity?origin=runtime&principalId=${agent.principalId}`}>
+              <Link href={`/admin/agents/activity?origin=runtime&agentId=${agent.id}`}>
                 View activity
               </Link>
             </Button>

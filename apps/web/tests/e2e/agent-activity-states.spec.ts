@@ -97,6 +97,60 @@ function makeRun(id: string, goal: string, origin: "gateway" | "runtime" = "gate
   };
 }
 
+test("Activity keeps Runtime Run filters across pagination and replaces the cursor on submit", async ({
+  page,
+}) => {
+  const run = makeRun("33333333-3333-4333-8333-333333333333", "Scheduled Runtime Run", "runtime");
+  const agentId = run.run.agent!.id;
+  await page.route(/\/api\/admin\/agents\/activity(?:\?|$)/, (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const match =
+      params.get("agentId") === agentId &&
+      params.get("triggerKind") === "schedule" &&
+      params.get("capabilityId") === "site.inspect";
+    const cursor = params.get("cursor");
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-runs.v1",
+        items: match && !cursor ? [run] : [],
+        nextCursor:
+          match && cursor !== "test-last-page"
+            ? cursor
+              ? "test-last-page"
+              : "test-next-page"
+            : null,
+      },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/activity?origin=runtime&agentId=${agentId}`);
+  await expect(page.getByLabel("Agent ID", { exact: true })).toHaveValue(agentId);
+  await page.getByLabel("Trigger kind", { exact: true }).selectOption("schedule");
+  await page.getByLabel("Capability", { exact: true }).selectOption("site.inspect");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByRole("link", { name: "Scheduled Runtime Run" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Next page" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toBeVisible();
+  await expect(page.getByText("No visible results on this page.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Next page" })).toBeVisible();
+  const filters = Object.fromEntries(new URL(page.url()).searchParams);
+  expect(filters).toMatchObject({
+    origin: "runtime",
+    agentId,
+    triggerKind: "schedule",
+    capabilityId: "site.inspect",
+    cursor: "test-next-page",
+  });
+  await expect(page.getByLabel("Trigger kind", { exact: true })).toHaveValue("schedule");
+
+  await page.getByLabel("Trigger kind", { exact: true }).selectOption("manual");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toHaveCount(0);
+  await expect(page.getByText("No Agent runs match these filters.")).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("cursor")).toBe(false);
+});
+
 test("Activity preserves read-only refresh facts and isolates failed run actions", async ({
   page,
 }, testInfo) => {

@@ -143,6 +143,19 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime approval resumption", () => 
     const listed = await activity.listActions({ ...staff, query: { runId: f.input.runId } });
     expect(listed.items).toHaveLength(5);
     expect(listed.items.every((item) => !Object.hasOwn(item, "verificationResult"))).toBe(true);
+    const query = {
+      agentId: waiting.agentId!,
+      capabilityId: "changeset.apply",
+    } as const;
+    const listRuns = async (filters: unknown) =>
+      (await activity.listRuns({ ...staff, query: filters })).items.map(({ run }) => run.id);
+    expect(await listRuns(query)).toEqual([f.input.runId]);
+    expect(await listRuns({ ...query, capabilityId: "schema.get" })).toEqual([]);
+    const withoutTargetAccess = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(61),
+      now: f.options.now,
+    });
+    expect((await withoutTargetAccess.listRuns({ ...staff, query })).items).toEqual([]);
 
     await f.db
       .update(npAgentChangesetExecutions)

@@ -332,6 +332,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime Studio current staff projections", ()
     const available = await service.getConfiguration({ ...staff(f), id: f.created.resourceId });
     expect(available.availableActions).toContain("agents.configurations.run");
     expect(available.manualRecipeIds).toEqual(["operator.worker-not-draining"]);
+    const manual = await f.admission.admit({ ...f.runInput, source: { triggerId } });
     expect(
       (await studio(f).getConfiguration({ ...staff(f), id: f.created.resourceId }))
         .availableActions,
@@ -343,6 +344,9 @@ describe.skipIf(skipIfNoTestDb())("Runtime Studio current staff projections", ()
     expect(
       (await service.getConfiguration({ ...staff(f), id: f.created.resourceId })).availableActions,
     ).not.toContain("agents.configurations.run");
+    const activity = createAgentActivityServiceV1({ cursorHmacKey: new Uint8Array(32).fill(61) });
+    const history = await activity.listRuns({ ...staff(f), query: { triggerKind: "manual" } });
+    expect(history.items.map(({ run }) => run.id)).toEqual([manual.runId]);
     const catalog = await service.getCatalog(staff(f));
     expect(catalog.scopes).toEqual(["site:read"]);
     expect(catalog.capabilities.map((entry) => entry.id)).toEqual(["site.inspect"]);

@@ -11,6 +11,7 @@ import {
 import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
 describe("Activity closed contract", () => {
   it("allows canonical bounded filters and rejects kind-specific/foreign inventory", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
     expect(
       npAnalyzeAgentActivityQueryV1("runs", {
         limit: 100,
@@ -19,6 +20,10 @@ describe("Activity closed contract", () => {
         from: "2026-09-01T00:00:00.000Z",
       }).ok,
     ).toBe(true);
+    expect(npAnalyzeAgentActivityQueryV1("runs", { agentId, triggerKind: "event" })).toMatchObject({
+      ok: true,
+      value: { agentId, triggerKind: "event" },
+    });
     for (const q of [
       { limit: 101 },
       { limit: 0 },
@@ -29,12 +34,16 @@ describe("Activity closed contract", () => {
       { siteId: "other" },
       { kind: "external" },
       { capabilityId: "plugin.read" },
+      { agentId: "observer" },
+      { triggerKind: "webhook" },
     ])
       expect(npAnalyzeAgentActivityQueryV1("runs", q).ok).toBe(false);
     expect(
       npAnalyzeAgentActivityQueryV1("principals", { runId: "11111111-1111-4111-8111-111111111111" })
         .ok,
     ).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("actions", { agentId }).ok).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("principals", { triggerKind: "manual" }).ok).toBe(false);
   });
   it("does not execute hostile query getters", () => {
     let calls = 0;
@@ -74,7 +83,7 @@ describe("Activity closed contract", () => {
       createHash("sha256")
         .update(serializeAgentCanonicalJson(npAgentActivityContractV1))
         .digest("hex"),
-    ).toBe("e3cfe7740ad0df81f6f0e8fd46a4228dfb782e540ac8c498ace9ea56af1fc756");
+    ).toBe("a6958b2814352bca496a6b2a820a46d5f9db5d192885ac6aa3de19a65fba8933");
   });
   it("locks only six read routes, leaving mutations in the shared admission registry", () => {
     expect(npAgentActivityReadRoutesV1.map(({ method, path }) => `${method} ${path}`)).toEqual([
