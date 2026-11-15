@@ -175,9 +175,12 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       ).status,
     ).toBe(200);
     const runtime = await runs(
-      buildRequest(`${root}/activity?origin=runtime&agentId=${missingId}&triggerKind=manual`, {
-        session,
-      }),
+      buildRequest(
+        `${root}/activity?origin=runtime&agentId=${missingId}&triggerKind=manual&approvalId=${missingId}&changeSetId=${missingId}`,
+        {
+          session,
+        },
+      ),
     );
     expect(runtime.status).toBe(200);
     expect(await runtime.json()).toMatchObject({ items: [], nextCursor: null });
@@ -193,6 +196,8 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       "agentId=observer",
       "triggerKind=webhook",
       "triggerKind=manual&triggerKind=event",
+      "approvalId=pending",
+      `changeSetId=${missingId}&changeSetId=${missingId}`,
       "from=2026-02-30T00%3A00%3A00.000Z",
     ]) {
       const response = await runs(buildRequest(`${root}/activity?${query}`, { session }));

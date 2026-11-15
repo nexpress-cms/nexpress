@@ -361,6 +361,21 @@ test("Runtime activity connects admission policy evidence, a human approval and 
       }),
     }),
   );
+  await page.route(/\/api\/admin\/agents\/activity\?/, (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const match = query.get("approvalId") === approvalId;
+    const { schemaVersion, run, invocationId, evidence, auditEventIds } = runDetail();
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-runs.v1",
+        items:
+          match && !query.has("cursor")
+            ? [{ schemaVersion, run, invocationId, evidence, auditEventIds }]
+            : [],
+        nextCursor: match && !query.has("cursor") ? "next-approval-page" : null,
+      },
+    });
+  });
   await page.goto(`/admin/agents/activity/${runId}`);
   await expect(page.getByRole("region", { name: "Policies at admission" })).toContainText(
     "Site policy · version 3",
@@ -370,6 +385,11 @@ test("Runtime activity connects admission policy evidence, a human approval and 
   await page.getByRole("link", { name: "Open approval" }).click();
   await expect(page.getByRole("heading", { name: "Server approval facts" })).toBeVisible();
   await expect(page.getByText("pending", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "View related runs" }).click();
+  await expect(page.getByLabel("Approval ID", { exact: true })).toHaveValue(approvalId);
+  await page.getByRole("link", { name: "Next page" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toBeVisible();
+  await expect(page.getByLabel("Approval ID", { exact: true })).toHaveValue(approvalId);
   executed = true;
   await page.goto(`/admin/agents/activity/${runId}`);
   await page.getByRole("link", { name: /changeset\.apply.*succeeded/ }).click();

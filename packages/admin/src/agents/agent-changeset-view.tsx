@@ -656,7 +656,13 @@ export function AgentChangeSetReviewFacts({ review }: { review: NpAgentChangeSet
   );
 }
 
-export function AgentChangeSetDetailView({ id }: { id: string }) {
+export function AgentChangeSetDetailView({
+  id,
+  canViewActivity = false,
+}: {
+  id: string;
+  canViewActivity?: boolean;
+}) {
   const rollbackHeading = React.useRef<HTMLHeadingElement>(null);
   const mutationAlert = React.useRef<HTMLParagraphElement>(null);
   const rollbackReadback = React.useRef<string | null>(null);
@@ -791,6 +797,13 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
               <a href="#proposal">Proposal</a>
               <a href="#validation">Validation</a>
               <a href="#preview">Preview</a>
+              {canViewActivity ? (
+                <Link
+                  href={`/admin/agents/activity?changeSetId=${encodeURIComponent(changeSet.id)}`}
+                >
+                  View related runs
+                </Link>
+              ) : null}
             </nav>
             <AgentChangeSetReviewFacts review={result.value} />
             <section id="validation" className="space-y-3">

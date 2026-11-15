@@ -87,6 +87,10 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime approval resumption", () => 
       changeSetId: f.required.changeSet.id,
     });
     expect(await readAction(f.requestActionId)).not.toHaveProperty("verificationResult");
+    const related = { approvalId: f.required.approvalId, changeSetId: f.required.changeSet.id };
+    const matchingRuns = async () =>
+      (await activity.listRuns({ ...staff, query: related })).items.map(({ run }) => run.id);
+    expect(await matchingRuns()).toEqual([f.input.runId]);
     await f.approve();
     const acquired = await f.store.claimApproval({
       ...f.input,
@@ -137,6 +141,7 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime approval resumption", () => 
       },
     });
     expect(await readAction(f.requestActionId)).not.toHaveProperty("verificationResult");
+    expect(await matchingRuns()).toEqual([f.input.runId]);
     expect(await f.service.approvals!.get({ ...staff, id: f.required.approvalId })).toMatchObject({
       item: { approval: { state: "consumed" } },
     });

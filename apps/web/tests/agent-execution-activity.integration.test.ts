@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createSite, grantSiteMembership } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from "vitest";
 import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
@@ -13,6 +14,7 @@ import {
   approveGatewayExecution,
 } from "./agent-changeset-gateway-execution-fixture.js";
 import { siteId } from "./agent-changeset-fixture.js";
+import { decideApproval } from "./agent-changeset-execution-fixture.js";
 import {
   ensureMigrated,
   truncateAll,
@@ -88,11 +90,49 @@ describe.skipIf(skipIfNoTestDb())("Gateway execution Activity item authority", (
       });
     if (f.result.output.state !== "approval_required" || !f.result.output.approvalId)
       throw new Error("Expected approval request");
-    await approveGatewayExecution(f, f.result.output.approvalId);
+    const approvalId = f.result.output.approvalId;
+    const list = (query: unknown) => f.activity.listRuns({ ...f.read, query });
+    const first = await list({ approvalId, limit: 1 });
+    expect(first.items.map(({ run }) => run.id)).toEqual([f.action.runId]);
+    expect(first.nextCursor).toBeTruthy();
+    await expect(
+      list({ approvalId, changeSetId: f.plan.id, limit: 1, cursor: first.nextCursor }),
+    ).rejects.toMatchObject({ code: "ACTIVITY_CURSOR_INVALID" });
+    const approved = await approveGatewayExecution(f, approvalId);
     expect((await f.activity.getRun({ ...f.read, id: f.action.runId! })).run.state).toBe(
       "succeeded",
     );
     expect(await f.seo()).toBeUndefined();
+    await decideApproval(f.service.approvals!, f.actor, approved, "revoke");
+    const next = await invokeGatewayExecution(
+      f,
+      gatewayExecutionRequest("changeset.apply", {
+        changeSetId: f.plan.id,
+        planHash: f.plan.planHash,
+        approvalId: null,
+      }),
+    );
+    if (next.output.state !== "approval_required") throw new Error("Expected another approval");
+    expect(next.output.approvalId).not.toBe(approvalId);
+    expect((await list({ approvalId })).items.map(({ run }) => run.id)).toEqual([f.action.runId]);
+    expect(
+      (await list({ approvalId: next.output.approvalId })).items.map(({ run }) => run.id),
+    ).toEqual([next.output.runId]);
+    expect(
+      new Set((await list({ changeSetId: f.plan.id })).items.map(({ run }) => run.id)),
+    ).toEqual(new Set([f.action.runId, next.output.runId]));
+    const otherSite = "other-activity-site";
+    await createSite({ id: otherSite, name: "Other Activity site" });
+    await grantSiteMembership(otherSite, f.read.actor.user.id, "admin");
+    expect(
+      (
+        await f.activity.listRuns({
+          ...f.read,
+          siteId: otherSite,
+          query: { approvalId, changeSetId: f.plan.id },
+        })
+      ).items,
+    ).toEqual([]);
   }, 90_000);
 
   it("hides existing runs and actions when the shared item authority is absent or denies access", async () => {
@@ -118,6 +158,9 @@ describe.skipIf(skipIfNoTestDb())("Gateway execution Activity item authority", (
         status: 404,
       });
       expect((await activity.listActions(f.read)).items).toEqual([]);
+      expect(
+        (await activity.listRuns({ ...f.read, query: { changeSetId: f.plan.id } })).items,
+      ).toEqual([]);
     }
   }, 90_000);
 

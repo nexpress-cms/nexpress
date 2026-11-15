@@ -811,7 +811,13 @@ function DecisionControls({
   );
 }
 
-export function AgentApprovalDetailView({ id }: { id: string }) {
+export function AgentApprovalDetailView({
+  id,
+  canViewActivity = false,
+}: {
+  id: string;
+  canViewActivity?: boolean;
+}) {
   const parse = React.useCallback(
     (value: unknown) => {
       const detail = npRequireAgentApprovalDetailV1(value);
@@ -894,6 +900,14 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
               <p id={factsStatusId}>
                 <Badge>{detail.item.approval.state}</Badge> · Risk: {detail.item.risk}
               </p>
+              {canViewActivity ? (
+                <Link
+                  className="underline"
+                  href={`/admin/agents/activity?approvalId=${encodeURIComponent(detail.item.approval.id)}`}
+                >
+                  View related runs
+                </Link>
+              ) : null}
               <dl className="grid gap-2 text-sm">
                 <dt>Approval</dt>
                 <dd>

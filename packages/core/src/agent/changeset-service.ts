@@ -22,6 +22,7 @@ import {
   npAdmitChangeSetExecutionProjectionV1,
   npHasFreshChangeSetExecutionOutputV1,
   npDigestChangeSetExecutionProjectionV1,
+  npDigestRuntimeChangeSetCapabilityOutputV1,
   npReconcileChangeSetExecutionProjectionV1,
 } from "./changeset-execution-projection.js";
 import { npAgentMcpTaskLimitsV1 } from "../agent-contract/mcp-task-contract.js";
@@ -4717,7 +4718,7 @@ export function createAgentChangeSetServiceV1(
         inputHash: await npDigestAgentActionCanonical(canonical),
         auditEventId: invocation.auditEventId,
         outputRedacted: json(output),
-        outputHash: hash("np.agent-runtime-changeset-output.v1", output),
+        outputHash: npDigestRuntimeChangeSetCapabilityOutputV1(output),
         createdAt: context.now,
         startedAt: context.now,
         finishedAt: context.now,
@@ -4852,7 +4853,7 @@ export function createAgentChangeSetServiceV1(
             action.capabilityId === "changeset.schedule" ||
             action.capabilityId === "changeset.rollback"
               ? npDigestChangeSetExecutionProjectionV1(output)
-              : hash("np.agent-runtime-changeset-output.v1", output))
+              : npDigestRuntimeChangeSetCapabilityOutputV1(output))
         )
           return null;
         const changeSets: NpAgentChangeSetWire[] = [];
