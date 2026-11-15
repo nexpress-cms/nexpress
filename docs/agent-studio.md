@@ -61,6 +61,12 @@ ChangeSet. The approval page shows the human decision under its existing access
 checks. The execution Action shows the recorded verification result, completion
 time and hash when available. The request Action retains its original state.
 
+In **Activity → Runs**, the **Agent ID** and **Trigger kind** filters narrow the
+list to Runtime runs. Trigger kind uses the registered trigger recorded at
+admission. **View activity** on an Agent opens that Agent's run history.
+**Capability** matches the initiating operation for Gateway runs and recorded,
+visible Actions for Runtime runs. Pagination preserves the filters.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

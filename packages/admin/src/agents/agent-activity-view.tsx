@@ -7,6 +7,7 @@ import {
   npAgentActionStates,
   npAgentCapabilityIds,
   npAgentPrincipalStatusesV1,
+  npAgentRecipeTriggerKinds,
   npAgentRunStates,
   npAnalyzeAgentActivityActionsPageV1,
   npAnalyzeAgentActivityPrincipalsPageV1,
@@ -336,20 +337,21 @@ function EvidenceNotice({ evidence }: { evidence: "redacted" | "expired" }) {
   );
 }
 
-function EmptyActivity({ section }: { section: NpAgentActivityKindV1 }) {
+function EmptyActivity({ section, hasMore }: { section: NpAgentActivityKindV1; hasMore: boolean }) {
   return (
     <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
       <p className="min-w-0 break-words text-[14px] font-medium [overflow-wrap:anywhere]">
-        {section === "runs"
-          ? "No Agent runs match these filters."
-          : section === "actions"
-            ? "No Agent actions match these filters."
-            : "No principals match these filters."}
+        {hasMore
+          ? "No visible results on this page."
+          : section === "runs"
+            ? "No Agent runs match these filters."
+            : section === "actions"
+              ? "No Agent actions match these filters."
+              : "No principals match these filters."}
       </p>
-      {section === "runs" ? (
+      {section === "runs" && !hasMore ? (
         <p className="mt-2 text-[12.5px] text-neutral-500">
-          Current read capabilities execute inline. Their activity appears under Actions without
-          creating a run.
+          Gateway operations that execute inline appear under Actions.
         </p>
       ) : null}
       <Button asChild size="sm" variant="ghost" className="mt-3">
@@ -455,6 +457,35 @@ function ActivityFilters({
             />
           </div>
         )}
+        {section === "runs" ? (
+          <>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-agent">Agent ID</Label>
+              <Input
+                id="activity-agent"
+                name="agentId"
+                maxLength={36}
+                defaultValue={query.get("agentId") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-trigger">Trigger kind</Label>
+              <select
+                id="activity-trigger"
+                name="triggerKind"
+                defaultValue={query.get("triggerKind") ?? ""}
+                className={selectClass}
+              >
+                <option value="">All trigger kinds</option>
+                {npAgentRecipeTriggerKinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        ) : null}
         {section === "actions" ? (
           <div className="grid gap-1.5">
             <Label htmlFor="activity-run">Run ID</Label>
@@ -633,13 +664,15 @@ function Pagination({
   queryString: string;
   nextCursor: string | null;
 }) {
-  const next = new URLSearchParams(queryString);
-  if (nextCursor) next.set("cursor", nextCursor);
   const first = new URLSearchParams(queryString);
+  const hasCursor = first.has("cursor");
+  if (!hasCursor && !nextCursor) return null;
+  const next = new URLSearchParams(first);
+  if (nextCursor) next.set("cursor", nextCursor);
   first.delete("cursor");
   return (
     <div className="flex justify-between gap-3">
-      {new URLSearchParams(queryString).has("cursor") ? (
+      {hasCursor ? (
         <Button asChild variant="outline" size="sm">
           <Link href={activityHref(section, first.toString())}>
             <ArrowLeft className="size-3.5" />
@@ -723,18 +756,14 @@ export function AgentActivityView({
           />
         ) : null}
         {page ? (
-          page.items.length ? (
-            <>
+          <>
+            {page.items.length ? (
               <PageRows page={page} />
-              <Pagination
-                section={section}
-                queryString={queryString}
-                nextCursor={page.nextCursor}
-              />
-            </>
-          ) : (
-            <EmptyActivity section={section} />
-          )
+            ) : (
+              <EmptyActivity section={section} hasMore={Boolean(page.nextCursor)} />
+            )}
+            <Pagination section={section} queryString={queryString} nextCursor={page.nextCursor} />
+          </>
         ) : null}
       </AgentStudioFrame>
     </AgentRecoveryBoundary>

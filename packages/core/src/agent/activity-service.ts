@@ -1,6 +1,6 @@
 import { npReadReleasedRunHistoryV1 } from "./released-run-history.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
-import { and, eq, desc, gt, lt, lte, gte, or, type SQL } from "drizzle-orm";
+import { and, eq, desc, exists, gt, lt, lte, gte, or, type SQL } from "drizzle-orm";
 import { npUsers } from "../db/schema/system.js";
 import { npResolveLiveAgentStaffAuthorizationV1 } from "./admin-admission.js";
 import { npRequireAgentRunLimitsCanonical } from "../agent-contract/canonical-bodies.js";
@@ -40,7 +40,11 @@ import { npResolveReleasedActionPrincipalV1 } from "./cancelled-changeset-histor
 import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
 import type { NpAgentChangeSetActorV1, NpAgentChangeSetServiceV1 } from "./changeset-service.js";
 import { getCollectionConfig, findDocuments } from "../collections/index.js";
-import { npAgentScopeStaffCapability, type NpAgentScope } from "../agent-contract/types.js";
+import {
+  npAgentScopeStaffCapability,
+  type NpAgentCapabilityId,
+  type NpAgentScope,
+} from "../agent-contract/types.js";
 import {
   npAnalyzeAgentActivityPrincipalsPageV1,
   npAnalyzeAgentActivityRunsPageV1,
@@ -553,14 +557,25 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
   async function runVisible(
     row: Run,
     visibility: Visibility,
-    allowedScopes?: readonly NpAgentScope[],
+    requirements: {
+      allowedScopes?: readonly NpAgentScope[];
+      capabilityId?: NpAgentCapabilityId;
+    } = {},
   ) {
+    const { allowedScopes, capabilityId } = requirements;
+    let matchesCapability = !capabilityId;
     for await (const action of runActions(row)) {
       if (allowedScopes && action.requiredScopes.some((scope) => !allowedScopes.includes(scope)))
         return false;
       if (!(await actionVisible(action, visibility))) return false;
+      if (
+        action.capabilityId === capabilityId &&
+        action.runId === row.id &&
+        action.runFingerprint === row.admissionFingerprint
+      )
+        matchesCapability = true;
     }
-    return true;
+    return matchesCapability;
   }
   async function refreshRun(row: Run): Promise<Run> {
     if (
@@ -948,6 +963,25 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       if (kind === "runs") {
         if (query.origin) where.push(eq(npAgentRuns.origin, query.origin));
         if (query.principalId) where.push(eq(npAgentRuns.principalId, query.principalId));
+        if (query.agentId || query.triggerKind) where.push(eq(npAgentRuns.origin, "runtime"));
+        if (query.agentId) where.push(eq(npAgentRuns.agentId, query.agentId));
+        if (query.triggerKind)
+          where.push(
+            exists(
+              getDb()
+                .select({ id: npAgentTriggers.id })
+                .from(npAgentTriggers)
+                .where(
+                  and(
+                    eq(npAgentTriggers.siteId, npAgentRuns.siteId),
+                    eq(npAgentTriggers.id, npAgentRuns.triggerId),
+                    eq(npAgentTriggers.agentId, npAgentRuns.agentId),
+                    eq(npAgentTriggers.agentVersionId, npAgentRuns.agentVersionId),
+                    eq(npAgentTriggers.kind, query.triggerKind),
+                  ),
+                ),
+            ),
+          );
       }
       if (kind === "actions") {
         if (query.runId) where.push(eq(npAgentActions.runId, query.runId));
@@ -975,8 +1009,14 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         } else if (kind === "runs") {
           const row = raw as Run;
           const inv = await invocation(row.siteId, row.invocationId);
-          if (query.capabilityId && inv?.operationId !== query.capabilityId) continue;
-          if (!(await runVisible(row, visibility))) continue;
+          if (
+            row.origin === "gateway" &&
+            query.capabilityId &&
+            inv?.operationId !== query.capabilityId
+          )
+            continue;
+          const capabilityId = row.origin === "runtime" ? query.capabilityId : undefined;
+          if (!(await runVisible(row, visibility, { capabilityId }))) continue;
           try {
             items.push(runDetail(row, inv));
           } catch {
@@ -1092,9 +1132,11 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           },
           capabilities: live.authority.capabilities,
         };
-        if (!(await runVisible(row, visibility, authentication.scopes))) throw missing();
+        if (!(await runVisible(row, visibility, { allowedScopes: authentication.scopes })))
+          throw missing();
         row = await refreshRun(row);
-        if (!(await runVisible(row, visibility, authentication.scopes))) throw missing();
+        if (!(await runVisible(row, visibility, { allowedScopes: authentication.scopes })))
+          throw missing();
         await options.admission.project({ authentication });
         return runDetail(row, inv);
       } catch {
