@@ -484,6 +484,24 @@ function ActivityFilters({
                 ))}
               </select>
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-approval">Approval ID</Label>
+              <Input
+                id="activity-approval"
+                name="approvalId"
+                maxLength={36}
+                defaultValue={query.get("approvalId") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-changeset">ChangeSet ID</Label>
+              <Input
+                id="activity-changeset"
+                name="changeSetId"
+                maxLength={36}
+                defaultValue={query.get("changeSetId") ?? ""}
+              />
+            </div>
           </>
         ) : null}
         {section === "actions" ? (

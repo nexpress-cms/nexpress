@@ -43,6 +43,15 @@ describe("Activity closed contract", () => {
         .ok,
     ).toBe(false);
     expect(npAnalyzeAgentActivityQueryV1("actions", { agentId }).ok).toBe(false);
+    const changeSetId = "22222222-2222-4222-8222-222222222222";
+    expect(
+      npAnalyzeAgentActivityQueryV1("runs", { approvalId: agentId, changeSetId }),
+    ).toMatchObject({
+      ok: true,
+      value: { approvalId: agentId, changeSetId },
+    });
+    expect(npAnalyzeAgentActivityQueryV1("actions", { approvalId: agentId }).ok).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("runs", { changeSetId: "draft" }).ok).toBe(false);
     expect(npAnalyzeAgentActivityQueryV1("principals", { triggerKind: "manual" }).ok).toBe(false);
   });
   it("does not execute hostile query getters", () => {
@@ -83,7 +92,7 @@ describe("Activity closed contract", () => {
       createHash("sha256")
         .update(serializeAgentCanonicalJson(npAgentActivityContractV1))
         .digest("hex"),
-    ).toBe("a6958b2814352bca496a6b2a820a46d5f9db5d192885ac6aa3de19a65fba8933");
+    ).toBe("4ca9c85a8d1319e43cac40ee9f766435f748c90cf99bb79217e78da6d5274cb4");
   });
   it("locks only six read routes, leaving mutations in the shared admission registry", () => {
     expect(npAgentActivityReadRoutesV1.map(({ method, path }) => `${method} ${path}`)).toEqual([

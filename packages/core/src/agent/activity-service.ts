@@ -35,10 +35,15 @@ import {
   npRequireAgentVerificationChecksV1,
 } from "../agent-contract/changeset-execution-contract.js";
 import { npRuntimeRunAdmissionBodyV1 } from "./runtime-admission.js";
-import { npDigestChangeSetExecutionProjectionV1 } from "./changeset-execution-projection.js";
+import {
+  npDigestChangeSetExecutionProjectionV1,
+  npDigestRuntimeChangeSetCapabilityOutputV1,
+} from "./changeset-execution-projection.js";
 import { npResolveReleasedActionPrincipalV1 } from "./cancelled-changeset-history.js";
 import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
 import type { NpAgentChangeSetActorV1, NpAgentChangeSetServiceV1 } from "./changeset-service.js";
+import type { NpAgentApprovalServiceV1 } from "./approval-service.js";
+import type { NpAgentApprovalListItemV1 } from "../agent-contract/approval-contract.js";
 import { getCollectionConfig, findDocuments } from "../collections/index.js";
 import {
   npAgentScopeStaffCapability,
@@ -80,6 +85,8 @@ type Execution = typeof npAgentChangesetExecutions.$inferSelect;
 type ActionEvidence = Pick<NpAgentActivityActionDetailV1, "changeSetId" | "verificationResult"> & {
   approvalId?: string;
   includeDetail?: true;
+  includeRelated?: true;
+  relatedApprovalId?: string;
 };
 type Db = ReturnType<typeof getDb>;
 type Invocation = Pick<
@@ -102,7 +109,9 @@ export interface NpAgentActivityServiceOptionsV1 {
   operator?: Pick<NpAgentOperatorServiceV1, "projectActivity">;
   /** Explicit current-item authorization through the existing ChangeSet service. */
   changesets?: Pick<NpAgentChangeSetServiceV1, "get"> &
-    Partial<Pick<NpAgentChangeSetServiceV1, "refreshGatewayInvocation">>;
+    Partial<Pick<NpAgentChangeSetServiceV1, "approvals" | "refreshGatewayInvocation">>;
+  /** Current approval reader when the host installs approvals separately. */
+  approvals?: Pick<NpAgentApprovalServiceV1, "get">;
   now?: () => Date;
 }
 const missing = () =>
@@ -253,6 +262,79 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     }
     return true;
   }
+  async function boundChangeSetInvocation(row: Action) {
+    if (!row.invocationId || !row.runId) return;
+    const [inv] = await getDb()
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(eq(npAgentInvocations.siteId, row.siteId), eq(npAgentInvocations.id, row.invocationId)),
+      )
+      .limit(1);
+    const [run] = await getDb()
+      .select()
+      .from(npAgentRuns)
+      .where(and(eq(npAgentRuns.siteId, row.siteId), eq(npAgentRuns.id, row.runId)))
+      .limit(1);
+    if (
+      !inv ||
+      !run ||
+      inv.operationKind !== "capability" ||
+      inv.operationId !== row.capabilityId ||
+      inv.runId !== run.id ||
+      run.principalId !== inv.principalId ||
+      row.invocationFingerprint !== inv.requestHash ||
+      row.runFingerprint !== run.admissionFingerprint
+    )
+      return;
+    if (run.origin === "gateway") {
+      if (run.invocationId !== inv.id) return;
+    } else {
+      const context = npRequireAgentAuthorizationContextCanonical(inv.authorizationContextBody);
+      if (
+        inv.transport !== "runtime" ||
+        context.transport !== "runtime" ||
+        context.siteId !== row.siteId ||
+        context.actor.kind !== "principal" ||
+        context.actor.principalId !== run.principalId ||
+        context.authorityRef.kind !== "runtime-run" ||
+        context.authorityRef.principalId !== run.principalId ||
+        context.authorityRef.runId !== run.id ||
+        context.authorityRef.agentVersionId !== run.agentVersionId ||
+        context.authorityRef.deadlineAt !== run.deadlineAt.toISOString() ||
+        (await npDigestAgentAuthorizationContextCanonical(context)) !==
+          inv.authorizationContextFingerprint
+      )
+        return;
+    }
+    const hash = await npDigestAgentActionCanonical({
+      schemaVersion: "np.agent-action.v1",
+      siteId: row.siteId,
+      actionId: row.id,
+      invocationFingerprint: row.invocationFingerprint,
+      runFingerprint: row.runFingerprint,
+      sequence: row.sequence,
+      capabilityId: row.capabilityId,
+      capabilityContractVersion: row.capabilityContractVersion,
+      capabilityFingerprint: row.capabilityFingerprint,
+      effectProfile: { id: row.effectProfileId, contractVersion: row.effectContractVersion },
+      risk: row.risk,
+      requiredScopes: row.requiredScopes,
+      targetRefs: row.targetRefs,
+      targetVersionFacts: row.targetVersionFacts,
+      input: row.inputCanonical,
+    });
+    if (
+      hash !== row.inputHash ||
+      (await npDigestAgentInvocationRequestCanonical(inv.requestBody)) !== inv.requestHash ||
+      serializeAgentCanonicalJson(inv.requestBody.input) !==
+        serializeAgentCanonicalJson(row.inputCanonical) ||
+      serializeAgentCanonicalJson(inv.capabilityDefinitionBody) !==
+        serializeAgentCanonicalJson(row.capabilityDefinitionBody)
+    )
+      return;
+    return { inv, run };
+  }
   async function changeSetActionVisible(
     row: Action,
     visibility: Visibility,
@@ -266,79 +348,9 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           : row.capabilityId === "changeset.schedule"
             ? npRequireAgentChangeSetScheduleCapabilityInputV1(row.inputCanonical)
             : npRequireAgentChangeSetRollbackCapabilityInputV1(row.inputCanonical);
-      const [inv] = await getDb()
-        .select()
-        .from(npAgentInvocations)
-        .where(
-          and(
-            eq(npAgentInvocations.siteId, row.siteId),
-            eq(npAgentInvocations.id, row.invocationId),
-          ),
-        )
-        .limit(1);
-      const [run] = await getDb()
-        .select()
-        .from(npAgentRuns)
-        .where(and(eq(npAgentRuns.siteId, row.siteId), eq(npAgentRuns.id, row.runId)))
-        .limit(1);
-      if (
-        !inv ||
-        !run ||
-        inv.operationKind !== "capability" ||
-        inv.operationId !== row.capabilityId ||
-        inv.resultId !== input.changeSetId ||
-        inv.runId !== run.id ||
-        run.principalId !== inv.principalId ||
-        row.invocationFingerprint !== inv.requestHash ||
-        row.runFingerprint !== run.admissionFingerprint
-      )
-        return false;
-      if (run.origin === "gateway") {
-        if (run.invocationId !== inv.id) return false;
-      } else {
-        const context = npRequireAgentAuthorizationContextCanonical(inv.authorizationContextBody);
-        if (
-          inv.transport !== "runtime" ||
-          context.transport !== "runtime" ||
-          context.siteId !== row.siteId ||
-          context.actor.kind !== "principal" ||
-          context.actor.principalId !== run.principalId ||
-          context.authorityRef.kind !== "runtime-run" ||
-          context.authorityRef.principalId !== run.principalId ||
-          context.authorityRef.runId !== run.id ||
-          context.authorityRef.agentVersionId !== run.agentVersionId ||
-          context.authorityRef.deadlineAt !== run.deadlineAt.toISOString() ||
-          (await npDigestAgentAuthorizationContextCanonical(context)) !==
-            inv.authorizationContextFingerprint
-        )
-          return false;
-      }
-      const hash = await npDigestAgentActionCanonical({
-        schemaVersion: "np.agent-action.v1",
-        siteId: row.siteId,
-        actionId: row.id,
-        invocationFingerprint: row.invocationFingerprint,
-        runFingerprint: row.runFingerprint,
-        sequence: row.sequence,
-        capabilityId: row.capabilityId,
-        capabilityContractVersion: row.capabilityContractVersion,
-        capabilityFingerprint: row.capabilityFingerprint,
-        effectProfile: { id: row.effectProfileId, contractVersion: row.effectContractVersion },
-        risk: row.risk,
-        requiredScopes: row.requiredScopes,
-        targetRefs: row.targetRefs,
-        targetVersionFacts: row.targetVersionFacts,
-        input: row.inputCanonical,
-      });
-      if (
-        hash !== row.inputHash ||
-        (await npDigestAgentInvocationRequestCanonical(inv.requestBody)) !== inv.requestHash ||
-        serializeAgentCanonicalJson(inv.requestBody.input) !==
-          serializeAgentCanonicalJson(row.inputCanonical) ||
-        serializeAgentCanonicalJson(inv.capabilityDefinitionBody) !==
-          serializeAgentCanonicalJson(row.capabilityDefinitionBody)
-      )
-        return false;
+      const bound = await boundChangeSetInvocation(row);
+      if (!bound || bound.inv.resultId !== input.changeSetId) return false;
+      const { inv, run } = bound;
       const executions = await getDb()
         .select()
         .from(npAgentChangesetExecutions)
@@ -375,7 +387,12 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
             changeSet.operations.map((operation) => operation.canonicalResourceKey),
           ),
         ) === serializeAgentCanonicalJson(row.targetRefs);
-      if (visible && row.state === "approval_pending" && !row.approvalId) {
+      if (
+        visible &&
+        !row.approvalId &&
+        (row.state === "approval_pending" ||
+          (evidence?.includeRelated && row.outputRedacted?.state === "approval_required"))
+      ) {
         if (
           !row.outputRedacted ||
           row.outputHash !== npDigestChangeSetExecutionProjectionV1(row.outputRedacted)
@@ -412,7 +429,15 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           )
           .limit(1);
         if (!approval) return false;
-        if (evidence) evidence.approvalId = approval.id;
+        if (evidence) {
+          if (row.state === "approval_pending") evidence.approvalId = approval.id;
+          evidence.relatedApprovalId = approval.id;
+        }
+      }
+      if (visible && evidence?.includeRelated) {
+        evidence.changeSetId = changeSet.id;
+        if (executions[0]?.approvalId && executions[0].approvalId === row.approvalId)
+          evidence.relatedApprovalId = row.approvalId;
       }
       if (visible && evidence?.includeDetail) {
         evidence.changeSetId = changeSet.id;
@@ -422,6 +447,28 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         }
       }
       return visible;
+    } catch {
+      return false;
+    }
+  }
+  async function runtimeActionMatchesChangeSet(row: Action, visibility: Visibility, id: string) {
+    const capability = row.capabilityId;
+    if (
+      !options.changesets ||
+      (capability !== "changeset.create" &&
+        capability !== "changeset.validate" &&
+        capability !== "changeset.preview") ||
+      row.outputRedacted?.changeSetId !== id ||
+      row.state !== "succeeded"
+    )
+      return false;
+    try {
+      if (row.outputHash !== npDigestRuntimeChangeSetCapabilityOutputV1(row.outputRedacted))
+        return false;
+      const binding = await boundChangeSetInvocation(row);
+      if (binding?.run.origin !== "runtime" || binding.inv.resultId !== id) return false;
+      const current = await options.changesets.get({ actor: visibility.actor, id });
+      return current.id === id && current.siteId === row.siteId;
     } catch {
       return false;
     }
@@ -560,22 +607,49 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     requirements: {
       allowedScopes?: readonly NpAgentScope[];
       capabilityId?: NpAgentCapabilityId;
+      approval?: NpAgentApprovalListItemV1;
+      changeSetId?: string;
     } = {},
   ) {
-    const { allowedScopes, capabilityId } = requirements;
+    const { allowedScopes, capabilityId, approval, changeSetId } = requirements;
+    const approvalTarget = approval?.target;
     let matchesCapability = !capabilityId;
+    let matchesApproval = !approval;
+    let matchesChangeSet = !changeSetId;
     for await (const action of runActions(row)) {
       if (allowedScopes && action.requiredScopes.some((scope) => !allowedScopes.includes(scope)))
         return false;
-      if (!(await actionVisible(action, visibility))) return false;
+      const bound = action.runId === row.id && action.runFingerprint === row.admissionFingerprint;
+      const evidence: ActionEvidence | undefined =
+        bound && (!matchesChangeSet || (!matchesApproval && approvalTarget?.kind !== "action"))
+          ? { includeRelated: true }
+          : undefined;
+      if (!(await actionVisible(action, visibility, evidence))) return false;
+      if (!bound) continue;
+      if (action.capabilityId === capabilityId) matchesCapability = true;
+      if (!matchesChangeSet && changeSetId)
+        matchesChangeSet =
+          evidence?.changeSetId === changeSetId ||
+          (row.origin === "runtime" &&
+            (await runtimeActionMatchesChangeSet(action, visibility, changeSetId)));
       if (
-        action.capabilityId === capabilityId &&
-        action.runId === row.id &&
-        action.runFingerprint === row.admissionFingerprint
-      )
-        matchesCapability = true;
+        !matchesApproval &&
+        approval &&
+        approvalTarget &&
+        approval.capabilityId === action.capabilityId &&
+        approval.capabilityContractVersion === action.capabilityContractVersion &&
+        approval.capabilityFingerprint === action.capabilityFingerprint
+      ) {
+        matchesApproval =
+          approvalTarget.kind === "action"
+            ? approvalTarget.runId === row.id &&
+              approvalTarget.actionId === action.id &&
+              approvalTarget.proposalHash === action.inputHash
+            : evidence?.relatedApprovalId === approval.approval.id &&
+              evidence.changeSetId === approvalTarget.changeSetId;
+      }
     }
-    return matchesCapability;
+    return matchesCapability && matchesApproval && matchesChangeSet;
   }
   async function refreshRun(row: Run): Promise<Run> {
     if (
@@ -925,6 +999,21 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         throw invalidCursor();
       }
     }
+    let approval: NpAgentApprovalListItemV1 | undefined;
+    if (query.approvalId) {
+      const approvals = options.approvals ?? options.changesets?.approvals;
+      try {
+        approval = (
+          await approvals?.get({ siteId: input.siteId, actor: input.actor, id: query.approvalId })
+        )?.item;
+      } catch (error) {
+        if (!(error instanceof NpAgentGatewayError) || error.status !== 404) throw error;
+      }
+      if (approval?.approval.id !== query.approvalId) {
+        await assertSameStaff(input, auth);
+        return { schemaVersion: `np.agent-activity-${kind}.v1`, items: [], nextCursor: null };
+      }
+    }
     const limit = query.limit ?? 50;
     const items: unknown[] = [];
     let more = false;
@@ -1016,7 +1105,14 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           )
             continue;
           const capabilityId = row.origin === "runtime" ? query.capabilityId : undefined;
-          if (!(await runVisible(row, visibility, { capabilityId }))) continue;
+          if (
+            !(await runVisible(row, visibility, {
+              capabilityId,
+              approval,
+              changeSetId: query.changeSetId,
+            }))
+          )
+            continue;
           try {
             items.push(runDetail(row, inv));
           } catch {

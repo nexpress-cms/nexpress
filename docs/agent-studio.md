@@ -67,6 +67,11 @@ admission. **View activity** on an Agent opens that Agent's run history.
 **Capability** matches the initiating operation for Gateway runs and recorded,
 visible Actions for Runtime runs. Pagination preserves the filters.
 
+**View related runs** on an Approval or ChangeSet opens Activity with that
+exact record selected. Approval matches the recorded request, execution or
+target Action. ChangeSet matches linked proposal, validation, preview or
+execution evidence that you can currently read.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

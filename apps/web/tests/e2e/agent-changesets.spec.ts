@@ -129,6 +129,10 @@ test.describe("Agent ChangeSet review", () => {
     });
     await page.goto(`/admin/agents/changesets/${id}`);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "View related runs" })).toHaveAttribute(
+      "href",
+      `/admin/agents/activity?changeSetId=${id}`,
+    );
     expect(reads).toBe(1);
     await page.evaluate(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
