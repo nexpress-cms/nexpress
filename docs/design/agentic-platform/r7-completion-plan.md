@@ -218,9 +218,12 @@ work budget, serial retained-key exhaustion and atomic timeout recovery. The
 default collection page now reserves the largest completed receipt duration plus
 500 ms before starting another receipt, so growing historical proof work can
 commit smaller complete batches. This estimate is local to one collection call;
-unexpected stalls still trigger the original absolute timeout and full rollback. The
-automatic temporary-limit suite passes **21/21**, including independently isolated
-site/hour caps and retention after compensation and actual Incident closure.
+unexpected stalls still trigger the original absolute timeout and full rollback.
+When a Runtime collection timer expires, its nested waits and transaction
+checkpoints share the same expired state. A retained-key callback checks that
+state before it starts. The automatic temporary-limit suite passes **21/21**,
+including independently isolated site/hour caps and retention after compensation
+and actual Incident closure.
 Requests/HTTP have 750 ms work budgets; automatic authority transactions have a
 1000 ms budget. Their owning callbacks close saved query handles before rollback,
 so a late host result cannot mutate a reused pooled connection. Existing active
