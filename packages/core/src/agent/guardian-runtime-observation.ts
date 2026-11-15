@@ -73,6 +73,11 @@ import {
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import type { NpAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
 import { npCreateAgentGuardianTransactionScopeV1 } from "./guardian-transaction-scope.js";
+import {
+  CollectionTimeout,
+  collectionBudget,
+  type CollectionBudget,
+} from "./guardian-runtime-collection-budget.js";
 
 type Db = ReturnType<typeof getDb>;
 type Receipt = typeof npAgentRuntimeReceipts.$inferSelect;
@@ -115,51 +120,6 @@ class SourceFailure extends Error {
   constructor(readonly code: Failure) {
     super(code);
   }
-}
-class CollectionTimeout extends NpAgentGatewayError {
-  constructor() {
-    super("GUARDIAN_RUNTIME_SOURCE_TIMEOUT", 503, "Runtime observation collection is unavailable.");
-  }
-}
-interface CollectionBudget {
-  checkpoint(this: void): void;
-  remaining(this: void): number;
-  wait<T>(this: void, work: () => T | Promise<T>): Promise<T>;
-}
-function collectionBudget(): CollectionBudget {
-  const deadline = performance.now() + 5000;
-  const checkpoint = () => {
-    if (performance.now() >= deadline) throw new CollectionTimeout();
-  };
-  const remaining = () => {
-    checkpoint();
-    const milliseconds = Math.floor(deadline - performance.now());
-    if (milliseconds < 1) throw new CollectionTimeout();
-    return milliseconds;
-  };
-  return {
-    checkpoint,
-    remaining,
-    async wait(work) {
-      checkpoint();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const result = await Promise.race([
-          Promise.resolve().then(() => {
-            checkpoint();
-            return work();
-          }),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new CollectionTimeout()), remaining());
-          }),
-        ]);
-        checkpoint();
-        return result;
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
-      }
-    },
-  };
 }
 async function collectionCallback<T>(
   db: Db,
@@ -387,7 +347,11 @@ export function createAgentGuardianRuntimeObservationServiceV1(
     if (id === currentKeyId) return currentKey;
     let key: Uint8Array | null | undefined;
     try {
-      const read = () => npAwaitAgentGuardianHostReadV1(() => resolveRetainedKey?.(id));
+      const read = () =>
+        npAwaitAgentGuardianHostReadV1(() => {
+          budget?.checkpoint();
+          return resolveRetainedKey?.(id);
+        });
       key = budget ? await budget.wait(read) : await read();
     } catch (error) {
       if (error instanceof CollectionTimeout) throw error;
