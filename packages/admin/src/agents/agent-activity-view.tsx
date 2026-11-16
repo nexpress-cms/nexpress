@@ -502,6 +502,15 @@ function ActivityFilters({
                 defaultValue={query.get("changeSetId") ?? ""}
               />
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-incident">Incident ID</Label>
+              <Input
+                id="activity-incident"
+                name="incidentId"
+                maxLength={36}
+                defaultValue={query.get("incidentId") ?? ""}
+              />
+            </div>
           </>
         ) : null}
         {section === "actions" ? (

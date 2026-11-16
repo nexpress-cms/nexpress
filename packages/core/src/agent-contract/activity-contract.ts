@@ -51,6 +51,7 @@ export interface NpAgentActivityQueryV1 {
   agentId?: string;
   approvalId?: string;
   changeSetId?: string;
+  incidentId?: string;
   triggerKind?: NpAgentRecipeTriggerKind;
   origin?: "gateway" | "runtime";
   kind?: "external" | "runtime";
@@ -207,6 +208,7 @@ const keys = {
     "capabilityId",
     "approvalId",
     "changeSetId",
+    "incidentId",
     "from",
     "to",
   ],
@@ -233,7 +235,14 @@ export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value
               : npAgentActionStates,
         ),
       );
-    for (const key of ["principalId", "runId", "agentId", "approvalId", "changeSetId"] as const)
+    for (const key of [
+      "principalId",
+      "runId",
+      "agentId",
+      "approvalId",
+      "changeSetId",
+      "incidentId",
+    ] as const)
       if (r[key] !== undefined) q[key] = canonicalBodyUuid(r[key], key);
     for (const key of ["from", "to"] as const)
       if (r[key] !== undefined) q[key] = canonicalBodyUtc(r[key], key);

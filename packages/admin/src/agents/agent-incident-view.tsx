@@ -450,6 +450,12 @@ function IncidentDetail({ id }: { id: string }) {
               First observed: {detail.incident.firstObservedAt} · Last observed:{" "}
               {detail.incident.lastObservedAt}
             </p>
+            <Link
+              className="text-sm underline"
+              href={`/admin/agents/activity?incidentId=${encodeURIComponent(detail.incident.id)}`}
+            >
+              View related runs
+            </Link>
           </header>
           {isReadOnlyGuardianSource ||
           detail.guardianEvidence !== undefined ||

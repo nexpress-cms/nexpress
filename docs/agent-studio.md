@@ -72,6 +72,10 @@ exact record selected. Approval matches the recorded request, execution or
 target Action. ChangeSet matches linked proposal, validation, preview or
 execution evidence that you can currently read.
 
+**View related runs** on an Incident filters Activity by that Incident ID.
+Results come from verified assessment entries and containment Actions linked
+to Runs. Opening the list requires current access to the Incident and each Run.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

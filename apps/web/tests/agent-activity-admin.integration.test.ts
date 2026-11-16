@@ -184,6 +184,11 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
     );
     expect(runtime.status).toBe(200);
     expect(await runtime.json()).toMatchObject({ items: [], nextCursor: null });
+    const incident = await runs(
+      buildRequest(`${root}/activity?incidentId=${missingId}`, { session }),
+    );
+    expect(incident.status).toBe(200);
+    expect(await incident.json()).toMatchObject({ items: [], nextCursor: null });
     for (const query of [
       "limit=01",
       "limit=101",
@@ -197,6 +202,8 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       "triggerKind=webhook",
       "triggerKind=manual&triggerKind=event",
       "approvalId=pending",
+      "incidentId=latest",
+      `incidentId=${missingId}&incidentId=${missingId}`,
       `changeSetId=${missingId}&changeSetId=${missingId}`,
       "from=2026-02-30T00%3A00%3A00.000Z",
     ]) {

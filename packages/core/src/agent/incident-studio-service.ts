@@ -13,8 +13,6 @@ import { npReadAgentGuardianIncidentEvidenceV1 } from "./guardian-observation-se
 import type { NpAgentGuardianSecurityObservationServiceV1 } from "./guardian-security-observation.js";
 import type { NpAgentGuardianContentObservationServiceV1 } from "./guardian-content-observation.js";
 import type { NpAgentGuardianExternalObservationServiceV1 } from "./guardian-external-observation.js";
-import { npRequireAgentGuardianIncidentAssessmentEntryV1 } from "./guardian-incident-assessment-service.js";
-import type { NpAgentGuardianAssessmentV1 } from "../agent-contract/guardian-assessment-contract.js";
 import {
   npAgentGuardianContentDetectorIdsV1,
   type NpAgentGuardianContentEvidenceV1,
@@ -37,12 +35,7 @@ import {
   npRequireIncidentRuleSeverityEvidence,
 } from "./incident-severity-evidence.js";
 import type { NpAgentIncidentRuleSeverityChangeV1 } from "../agent-contract/incident-rule-severity-contract.js";
-import {
-  npRequireAgentIncidentAssessmentEntryV1,
-  npRequireAgentIncidentSegmentedAssessmentEntryV2,
-} from "./incident-assessment-service.js";
-import type { NpAgentModeratorSegmentedAssessmentV2 } from "../agent-contract/moderator-segmented-assessment-contract.js";
-import type { NpAgentModeratorAssessmentV1 } from "../agent-contract/moderator-assessment-contract.js";
+import { npRequireIncidentTimelineAssessmentV1 } from "./incident-timeline-assessment.js";
 import {
   type NpAgentIncidentSeverityChangeV1,
   type NpAgentIncidentSeverityInputV1,
@@ -113,6 +106,8 @@ export interface NpAgentIncidentStudioServiceV1 {
   get(
     input: Staff & { incidentId: string; cursor?: string | null; responseCursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1>;
+  /** Authorize the same Incident for Activity without loading its Studio projections. */
+  readIncidentForActivity?: NpAgentIncidentStaffReadServiceV1["get"];
   escalate(
     input: Staff & { incidentId: string; command: NpAgentIncidentSeverityInputV1 },
   ): Promise<{ resourceId: string; replayed: boolean }>;
@@ -318,13 +313,7 @@ export function createAgentIncidentStudioServiceV1(
             if (!entry) summary.assessmentAvailable = false;
             else {
               try {
-                if (entry.details.schemaVersion === "np.agent-guardian-assessment.v1")
-                  await npRequireAgentGuardianIncidentAssessmentEntryV1(db, entry);
-                else if (
-                  entry.details.schemaVersion === "np.agent-moderator-segmented-assessment.v2"
-                )
-                  await npRequireAgentIncidentSegmentedAssessmentEntryV2(db, entry);
-                else await npRequireAgentIncidentAssessmentEntryV1(db, entry);
+                await npRequireIncidentTimelineAssessmentV1(db, entry);
                 summary.assessmentAvailable = true;
               } catch {
                 /* Invalid/legacy assessment evidence stays unknown. */
@@ -511,25 +500,17 @@ export function createAgentIncidentStudioServiceV1(
           continue;
         }
       }
-      let assessment: NpAgentModeratorAssessmentV1 | undefined;
-      let segmentedAssessment: NpAgentModeratorSegmentedAssessmentV2 | undefined;
-      let guardianAssessment: NpAgentGuardianAssessmentV1 | undefined;
+      let assessment: Awaited<ReturnType<typeof npRequireIncidentTimelineAssessmentV1>> | undefined;
       if (row.kind === "agent_assessment") {
         try {
-          if (row.details.schemaVersion === "np.agent-guardian-assessment.v1")
-            guardianAssessment = await npRequireAgentGuardianIncidentAssessmentEntryV1(db, row);
-          else if (row.details.schemaVersion === "np.agent-moderator-segmented-assessment.v2")
-            segmentedAssessment = await npRequireAgentIncidentSegmentedAssessmentEntryV2(db, row);
-          else assessment = await npRequireAgentIncidentAssessmentEntryV1(db, row);
+          assessment = await npRequireIncidentTimelineAssessmentV1(db, row);
         } catch {
           // Raw model prose and unverified legacy entries never become a trusted projection.
           continue;
         }
       }
       timeline.push({
-        ...(assessment ? { assessment } : {}),
-        ...(segmentedAssessment ? { segmentedAssessment } : {}),
-        ...(guardianAssessment ? { guardianAssessment } : {}),
+        ...assessment,
         ...(containmentFailure ? { containmentFailure } : {}),
         ...(containmentFailure && options.notifications?.recoveryState
           ? {
@@ -810,6 +791,7 @@ export function createAgentIncidentStudioServiceV1(
     });
   }
   return {
+    readIncidentForActivity: (input, context) => options.reads.get(input, context),
     deliveries: (input) => {
       if (!options.notificationDelivery)
         throw new NpAgentGatewayError(

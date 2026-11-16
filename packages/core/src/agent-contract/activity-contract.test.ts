@@ -36,6 +36,7 @@ describe("Activity closed contract", () => {
       { capabilityId: "plugin.read" },
       { agentId: "observer" },
       { triggerKind: "webhook" },
+      { incidentId: "latest" },
     ])
       expect(npAnalyzeAgentActivityQueryV1("runs", q).ok).toBe(false);
     expect(
@@ -51,6 +52,11 @@ describe("Activity closed contract", () => {
       value: { approvalId: agentId, changeSetId },
     });
     expect(npAnalyzeAgentActivityQueryV1("actions", { approvalId: agentId }).ok).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("runs", { incidentId: agentId })).toMatchObject({
+      ok: true,
+      value: { incidentId: agentId },
+    });
+    expect(npAnalyzeAgentActivityQueryV1("actions", { incidentId: agentId }).ok).toBe(false);
     expect(npAnalyzeAgentActivityQueryV1("runs", { changeSetId: "draft" }).ok).toBe(false);
     expect(npAnalyzeAgentActivityQueryV1("principals", { triggerKind: "manual" }).ok).toBe(false);
   });
@@ -92,7 +98,7 @@ describe("Activity closed contract", () => {
       createHash("sha256")
         .update(serializeAgentCanonicalJson(npAgentActivityContractV1))
         .digest("hex"),
-    ).toBe("4ca9c85a8d1319e43cac40ee9f766435f748c90cf99bb79217e78da6d5274cb4");
+    ).toBe("a45e9c1a0d7e21dd629c7bcd70c19b758fca832047af18f01b644b4cbcb57e35");
   });
   it("locks only six read routes, leaving mutations in the shared admission registry", () => {
     expect(npAgentActivityReadRoutesV1.map(({ method, path }) => `${method} ${path}`)).toEqual([

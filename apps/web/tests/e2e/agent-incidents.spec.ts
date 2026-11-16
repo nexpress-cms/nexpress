@@ -671,6 +671,21 @@ test("incident feedback retries one identity and exposes only review links", asy
     label: "confirmed-spam",
     supersedesId: null,
   });
+  await page.route(/\/api\/admin\/agents\/activity\?/, (route) =>
+    route.fulfill({
+      json: { schemaVersion: "np.agent-activity-runs.v1", items: [], nextCursor: null },
+    }),
+  );
+  const activityRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/admin/agents/activity" && url.searchParams.get("incidentId") === id
+    );
+  });
+  await page.getByRole("link", { name: "View related runs", exact: true }).click();
+  await activityRequest;
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/activity\\?incidentId=${id}$`));
+  await expect(page.getByLabel("Incident ID", { exact: true })).toHaveValue(id);
 });
 
 test("incident feedback conflict discards stale evidence and access loss clears the refreshed view", async ({

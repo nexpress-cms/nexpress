@@ -1,6 +1,6 @@
 import { npReadReleasedRunHistoryV1 } from "./released-run-history.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
-import { and, eq, desc, exists, gt, lt, lte, gte, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, desc, exists, gt, isNull, lt, lte, gte, or, type SQL } from "drizzle-orm";
 import { npUsers } from "../db/schema/system.js";
 import { npResolveLiveAgentStaffAuthorizationV1 } from "./admin-admission.js";
 import { npRequireAgentRunLimitsCanonical } from "../agent-contract/canonical-bodies.js";
@@ -16,6 +16,8 @@ import {
   npAgentProviderCalls,
   npAgentTriggers,
   npAgentApprovals,
+  npAgentContainments,
+  npAgentIncidentTimeline,
 } from "../db/schema/agent.js";
 import {
   npRequireAgentChangeSetApplyCapabilityInputV1,
@@ -43,6 +45,9 @@ import { npResolveReleasedActionPrincipalV1 } from "./cancelled-changeset-histor
 import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
 import type { NpAgentChangeSetActorV1, NpAgentChangeSetServiceV1 } from "./changeset-service.js";
 import type { NpAgentApprovalServiceV1 } from "./approval-service.js";
+import type { NpAgentIncidentStaffReadServiceV1 } from "./incident-service.js";
+import { npRequireIncidentTimelineAssessmentV1 } from "./incident-timeline-assessment.js";
+import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import type { NpAgentApprovalListItemV1 } from "../agent-contract/approval-contract.js";
 import { getCollectionConfig, findDocuments } from "../collections/index.js";
 import {
@@ -81,6 +86,7 @@ import type { NpAgentOperatorServiceV1 } from "./operator-service.js";
 
 type Action = typeof npAgentActions.$inferSelect;
 type Run = typeof npAgentRuns.$inferSelect;
+type IncidentTimeline = typeof npAgentIncidentTimeline.$inferSelect;
 type Execution = typeof npAgentChangesetExecutions.$inferSelect;
 type ActionEvidence = Pick<NpAgentActivityActionDetailV1, "changeSetId" | "verificationResult"> & {
   approvalId?: string;
@@ -96,6 +102,39 @@ type Invocation = Pick<
 interface Staff {
   siteId: string;
   actor: NpAgentAdminActorV1;
+}
+type RunsQuery = Staff & {
+  query?: unknown;
+  readIncident?: NpAgentIncidentStaffReadServiceV1["get"];
+};
+
+const incidentActionJoin = and(
+  eq(npAgentActions.siteId, npAgentIncidentTimeline.siteId),
+  eq(npAgentActions.id, npAgentIncidentTimeline.actionId),
+);
+
+function incidentRunLinks(
+  incidentId: string,
+  runId: string | typeof npAgentRuns.id,
+  fingerprint: string | typeof npAgentRuns.admissionFingerprint,
+) {
+  return and(
+    eq(npAgentIncidentTimeline.incidentId, incidentId),
+    or(
+      and(
+        eq(npAgentIncidentTimeline.kind, "agent_assessment"),
+        eq(npAgentIncidentTimeline.runId, runId),
+      ),
+      and(
+        eq(npAgentIncidentTimeline.kind, "action"),
+        eq(npAgentIncidentTimeline.sourceKind, "system"),
+        or(isNull(npAgentIncidentTimeline.runId), eq(npAgentIncidentTimeline.runId, runId)),
+        eq(npAgentActions.runId, runId),
+        eq(npAgentActions.runFingerprint, fingerprint),
+        eq(npAgentIncidentTimeline.sourceFingerprint, npAgentActions.inputHash),
+      ),
+    ),
+  );
 }
 interface Visibility {
   user: NpAuthUser;
@@ -262,6 +301,25 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     }
     return true;
   }
+  function digestAction(row: Action) {
+    return npDigestAgentActionCanonical({
+      schemaVersion: "np.agent-action.v1",
+      siteId: row.siteId,
+      actionId: row.id,
+      invocationFingerprint: row.invocationFingerprint,
+      runFingerprint: row.runFingerprint,
+      sequence: row.sequence,
+      capabilityId: row.capabilityId,
+      capabilityContractVersion: row.capabilityContractVersion,
+      capabilityFingerprint: row.capabilityFingerprint,
+      effectProfile: { id: row.effectProfileId, contractVersion: row.effectContractVersion },
+      risk: row.risk,
+      requiredScopes: row.requiredScopes,
+      targetRefs: row.targetRefs,
+      targetVersionFacts: row.targetVersionFacts,
+      input: row.inputCanonical,
+    });
+  }
   async function boundChangeSetInvocation(row: Action) {
     if (!row.invocationId || !row.runId) return;
     const [inv] = await getDb()
@@ -307,23 +365,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       )
         return;
     }
-    const hash = await npDigestAgentActionCanonical({
-      schemaVersion: "np.agent-action.v1",
-      siteId: row.siteId,
-      actionId: row.id,
-      invocationFingerprint: row.invocationFingerprint,
-      runFingerprint: row.runFingerprint,
-      sequence: row.sequence,
-      capabilityId: row.capabilityId,
-      capabilityContractVersion: row.capabilityContractVersion,
-      capabilityFingerprint: row.capabilityFingerprint,
-      effectProfile: { id: row.effectProfileId, contractVersion: row.effectContractVersion },
-      risk: row.risk,
-      requiredScopes: row.requiredScopes,
-      targetRefs: row.targetRefs,
-      targetVersionFacts: row.targetVersionFacts,
-      input: row.inputCanonical,
-    });
+    const hash = await digestAction(row);
     if (
       hash !== row.inputHash ||
       (await npDigestAgentInvocationRequestCanonical(inv.requestBody)) !== inv.requestHash ||
@@ -651,6 +693,111 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     }
     return matchesCapability && matchesApproval && matchesChangeSet;
   }
+
+  async function incidentActionMatches(entry: IncidentTimeline, action: Action) {
+    if (!entry.auditEventId || !action.runId || (await digestAction(action)) !== action.inputHash)
+      return false;
+    const db = getDb();
+    if (entry.details.schemaVersion === "np.agent-incident-containment-failure-entry.v1") {
+      const proof = await npRequireIncidentContainmentFailure({
+        db,
+        siteId: entry.siteId,
+        incidentId: entry.incidentId,
+        actionId: action.id,
+        auditEventId: entry.auditEventId,
+      });
+      return (
+        entry.details.executionInvocationId === proof.execution.id &&
+        entry.details.phase === "failed" &&
+        entry.details.outcome === "rolled_back"
+      );
+    }
+    if (
+      entry.details.schemaVersion !== "np.agent-incident-containment-entry.v1" ||
+      !action.containmentId ||
+      entry.details.containmentId !== action.containmentId ||
+      !action.executionInvocationId ||
+      !action.executionInvocationFingerprint ||
+      !action.targetVersionDigest ||
+      entry.details.targetVersionDigest !== action.targetVersionDigest ||
+      action.verificationState !== "passed"
+    )
+      return false;
+    const phase = entry.details.phase;
+    const link =
+      phase === "quarantined" &&
+      action.capabilityId === "moderation.quarantine" &&
+      (action.state === "succeeded" || action.state === "compensated")
+        ? npAgentContainments.sourceActionId
+        : phase === "restored" &&
+            action.capabilityId === "moderation.restore" &&
+            action.state === "compensated"
+          ? npAgentContainments.restoreActionId
+          : null;
+    if (!link) return false;
+    const [proof] = await db
+      .select({ request: npAgentInvocations.requestBody, hash: npAgentInvocations.requestHash })
+      .from(npAgentContainments)
+      .innerJoin(
+        npAgentInvocations,
+        and(
+          eq(npAgentInvocations.siteId, npAgentContainments.siteId),
+          eq(npAgentInvocations.id, action.executionInvocationId),
+          eq(npAgentInvocations.runId, action.runId),
+          eq(npAgentInvocations.resultId, action.id),
+          eq(npAgentInvocations.state, "completed"),
+          eq(npAgentInvocations.requestHash, action.executionInvocationFingerprint),
+          eq(npAgentInvocations.auditEventId, entry.auditEventId),
+        ),
+      )
+      .where(
+        and(
+          eq(npAgentContainments.siteId, entry.siteId),
+          eq(npAgentContainments.incidentId, entry.incidentId),
+          eq(npAgentContainments.id, action.containmentId),
+          eq(link, action.id),
+        ),
+      )
+      .limit(1);
+    return (
+      !!proof &&
+      proof.request.input?.actionId === action.id &&
+      (await npDigestAgentInvocationRequestCanonical(proof.request)) === proof.hash
+    );
+  }
+
+  async function incidentRunMatches(run: Run, incidentId: string) {
+    const db = getDb();
+    let after = 0;
+    for (;;) {
+      const sources = await db
+        .select({ entry: npAgentIncidentTimeline, action: npAgentActions })
+        .from(npAgentIncidentTimeline)
+        .leftJoin(npAgentActions, incidentActionJoin)
+        .where(
+          and(
+            eq(npAgentIncidentTimeline.siteId, run.siteId),
+            incidentRunLinks(incidentId, run.id, run.admissionFingerprint),
+            gt(npAgentIncidentTimeline.sequence, after),
+          ),
+        )
+        .orderBy(asc(npAgentIncidentTimeline.sequence))
+        .limit(50);
+      for (const { entry, action } of sources) {
+        try {
+          if (entry.kind === "agent_assessment") {
+            await npRequireIncidentTimelineAssessmentV1(db, entry);
+            return true;
+          }
+          if (action && (await incidentActionMatches(entry, action))) return true;
+        } catch {
+          // A damaged source cannot establish an incident link.
+        }
+      }
+      if (sources.length < 50) return false;
+      after = sources[sources.length - 1].entry.sequence;
+    }
+  }
   async function refreshRun(row: Run): Promise<Run> {
     if (
       row.origin !== "gateway" ||
@@ -965,9 +1112,14 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     return detail;
   }
   type Position = { id: string; time: string };
-  async function list(kind: NpAgentActivityKindV1, input: Staff & { query?: unknown }) {
+  async function list(kind: NpAgentActivityKindV1, input: RunsQuery) {
     const { auth, visibility } = await staff(input);
     const query = npRequireAgentActivityQueryV1(kind, input.query ?? {});
+    const empty = () => ({
+      schemaVersion: `np.agent-activity-${kind}.v1`,
+      items: [],
+      nextCursor: null,
+    });
     const { cursor, ...filters } = query;
     const binding = mac(
       serializeAgentCanonicalJson({
@@ -999,6 +1151,23 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         throw invalidCursor();
       }
     }
+    const incidentId = query.incidentId;
+    const canReadIncident = async (id: string) => {
+      try {
+        const result = await input.readIncident?.(
+          { incidentId: id },
+          { siteId: input.siteId, actor: input.actor },
+        );
+        return result?.incident.id === id && result.incident.siteId === input.siteId;
+      } catch (error) {
+        if (error instanceof NpAgentGatewayError && [403, 404].includes(error.status)) return false;
+        throw error;
+      }
+    };
+    if (incidentId && !(await canReadIncident(incidentId))) {
+      await assertSameStaff(input, auth);
+      return empty();
+    }
     let approval: NpAgentApprovalListItemV1 | undefined;
     if (query.approvalId) {
       const approvals = options.approvals ?? options.changesets?.approvals;
@@ -1011,7 +1180,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       }
       if (approval?.approval.id !== query.approvalId) {
         await assertSameStaff(input, auth);
-        return { schemaVersion: `np.agent-activity-${kind}.v1`, items: [], nextCursor: null };
+        return empty();
       }
     }
     const limit = query.limit ?? 50;
@@ -1050,6 +1219,22 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         );
       if (kind === "principals" && query.kind) where.push(eq(npAgentPrincipals.kind, query.kind));
       if (kind === "runs") {
+        if (incidentId) {
+          where.push(
+            exists(
+              getDb()
+                .select({ id: npAgentIncidentTimeline.id })
+                .from(npAgentIncidentTimeline)
+                .leftJoin(npAgentActions, incidentActionJoin)
+                .where(
+                  and(
+                    eq(npAgentIncidentTimeline.siteId, npAgentRuns.siteId),
+                    incidentRunLinks(incidentId, npAgentRuns.id, npAgentRuns.admissionFingerprint),
+                  ),
+                ),
+            ),
+          );
+        }
         if (query.origin) where.push(eq(npAgentRuns.origin, query.origin));
         if (query.principalId) where.push(eq(npAgentRuns.principalId, query.principalId));
         if (query.agentId || query.triggerKind) where.push(eq(npAgentRuns.origin, "runtime"));
@@ -1113,6 +1298,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
             }))
           )
             continue;
+          if (incidentId && !(await incidentRunMatches(row, incidentId))) continue;
           try {
             items.push(runDetail(row, inv));
           } catch {
@@ -1138,7 +1324,9 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       }
       if (items.length === limit || !more) break;
     }
+    const incidentReadable = !incidentId || (await canReadIncident(incidentId));
     await assertSameStaff(input, auth);
+    if (!incidentReadable) return empty();
     const nextCursor = more
       ? cursorCodec.seal({ binding, expires: now().getTime() + 900_000, position })
       : null;
@@ -1156,7 +1344,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       npRequireAgentContractResult(
         npAnalyzeAgentActivityPrincipalsPageV1(await list("principals", input)),
       ),
-    listRuns: async (input: Staff & { query?: unknown }) =>
+    listRuns: async (input: RunsQuery) =>
       npRequireAgentContractResult(npAnalyzeAgentActivityRunsPageV1(await list("runs", input))),
     listActions: async (input: Staff & { query?: unknown }) =>
       npRequireAgentContractResult(
