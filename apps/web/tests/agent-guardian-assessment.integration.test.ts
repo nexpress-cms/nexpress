@@ -315,6 +315,24 @@ describe.skipIf(skipIfNoTestDb())(
       const related = { ...input, query, readIncident: studio.readIncidentForActivity };
       const page = await activity.listRuns(related);
       expect(page.items.map(({ run }) => run.id)).toEqual([f.runId]);
+      const runInput = { ...input, id: f.runId, readIncident: studio.readIncidentForActivity };
+      expect(await activity.getRun(runInput)).toMatchObject({
+        related: { incidentIds: [entry.incidentId], approvalIds: [], changeSetIds: [] },
+      });
+      expect(await activity.getRun({ ...runInput, readIncident: undefined })).not.toHaveProperty(
+        "related",
+      );
+      expect(
+        (
+          await activity.listRuns({
+            ...input,
+            query: { template: "guardian", q: f.runId.toUpperCase() },
+          })
+        ).items.map(({ run }) => run.id),
+      ).toEqual([f.runId]);
+      expect(
+        (await activity.listRuns({ ...input, query: { template: "moderator", q: f.runId } })).items,
+      ).toEqual([]);
       expect(page.nextCursor).toBeTruthy();
       await expect(
         activity.listRuns({
@@ -350,6 +368,7 @@ describe.skipIf(skipIfNoTestDb())(
         expect(hidden.timelinePageComplete).toBe(false);
         expect(hidden.timeline.some((row) => row.id === entry.id)).toBe(false);
         expect((await activity.listRuns(related)).items).toEqual([]);
+        expect(await activity.getRun(runInput)).not.toHaveProperty("related");
         expect(JSON.stringify(hidden)).not.toContain("Unverified hostile");
         await expect(
           operations.exportIncident({ ...input, expectedVersion: initial.incident.versionNumber }),

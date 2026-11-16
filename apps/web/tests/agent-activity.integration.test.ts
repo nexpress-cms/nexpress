@@ -338,10 +338,13 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity", () => {
         await f.activity.listRuns({
           siteId,
           actor: f.actor,
-          query: { capabilityId: "site.inspect" },
+          query: { capabilityId: "site.inspect", q: "site.inspect" },
         })
       ).items,
     ).toHaveLength(1);
+    expect(
+      (await f.activity.listRuns({ siteId, actor: f.actor, query: { q: "PRIVATE" } })).items,
+    ).toEqual([]);
     expect(
       (await f.activity.listRuns({ siteId, actor: f.actor, query: { origin: "runtime" } })).items,
     ).toEqual([]);

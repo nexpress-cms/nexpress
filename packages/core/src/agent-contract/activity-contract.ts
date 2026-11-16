@@ -25,10 +25,12 @@ import {
 } from "./canonical-runtime-primitives.js";
 import {
   npAgentCapabilityIds,
+  npAgentRecipeTemplates,
   npAgentRecipeTriggerKinds,
   npAgentRunStates,
   npAgentActionStates,
   type NpAgentCapabilityId,
+  type NpAgentRecipeTemplate,
   type NpAgentRecipeTriggerKind,
 } from "./types.js";
 import {
@@ -52,6 +54,8 @@ export interface NpAgentActivityQueryV1 {
   approvalId?: string;
   changeSetId?: string;
   incidentId?: string;
+  template?: NpAgentRecipeTemplate;
+  q?: string;
   triggerKind?: NpAgentRecipeTriggerKind;
   origin?: "gateway" | "runtime";
   kind?: "external" | "runtime";
@@ -82,8 +86,34 @@ export interface NpAgentActivityExpiredRunV1 {
 export type NpAgentActivityRunResourceV1 =
   | (NpAgentActivityRunDetailV1 & {
       runtimeDiagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
+      related?: NpAgentActivityRunLinksV1;
     })
   | NpAgentActivityExpiredRunV1;
+
+const relatedKeys = ["incidentIds", "approvalIds", "changeSetIds"] as const;
+export const npAgentActivityRunLinkLimitV1 = 10;
+export type NpAgentActivityRunLinksV1 = Record<(typeof relatedKeys)[number], string[]>;
+
+function parseRunLinks(value: unknown): NpAgentActivityRunLinksV1 {
+  const record = canonicalBodyRecord(value, "related", relatedKeys, relatedKeys, {
+    seen: new WeakSet(),
+  });
+  function parse(key: (typeof relatedKeys)[number]) {
+    const ids = record[key];
+    const path = `related.${key}`;
+    if (!Array.isArray(ids) || ids.length > npAgentActivityRunLinkLimitV1)
+      return failCanonicalBody("invalid-field", path, "must be a bounded ID list");
+    const parsed = ids.map((id) => canonicalBodyUuid(id, path));
+    if (new Set(parsed).size !== parsed.length)
+      return failCanonicalBody("invalid-field", path, "must not contain duplicate IDs");
+    return parsed;
+  }
+  return {
+    incidentIds: parse("incidentIds"),
+    approvalIds: parse("approvalIds"),
+    changeSetIds: parse("changeSetIds"),
+  };
+}
 
 export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
   return analyzeCanonicalBody("agent.activity.runResource", (): NpAgentActivityRunResourceV1 => {
@@ -98,6 +128,7 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
         "evidence",
         "auditEventIds",
         "runtimeDiagnostics",
+        "related",
         "runId",
         "siteId",
         "principalId",
@@ -110,14 +141,17 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
       { seen: new WeakSet() },
     );
     if (r.schemaVersion === "np.agent-activity-run.v1") {
-      const { runtimeDiagnostics, ...base } = r;
+      const { runtimeDiagnostics, related, ...base } = r;
       const detail = npRequireAgentActivityRunDetailV1(base);
-      return Object.hasOwn(r, "runtimeDiagnostics")
-        ? {
-            ...detail,
-            runtimeDiagnostics: parseActivityRuntimeDiagnosticsV1(runtimeDiagnostics, detail.run),
-          }
-        : detail;
+      return {
+        ...detail,
+        ...(Object.hasOwn(r, "runtimeDiagnostics")
+          ? {
+              runtimeDiagnostics: parseActivityRuntimeDiagnosticsV1(runtimeDiagnostics, detail.run),
+            }
+          : {}),
+        ...(Object.hasOwn(r, "related") ? { related: parseRunLinks(related) } : {}),
+      };
     }
     const keys = [
       "schemaVersion",
@@ -166,6 +200,41 @@ export function npRequireAgentActivityRunResourceV1(value: unknown) {
   return npRequireAgentContractResult(npAnalyzeAgentActivityRunResourceV1(value));
 }
 
+/** Explicit allowlist for user-initiated support sharing. Never encode the resource itself. */
+export function npBuildAgentActivityRunSupportBundleV1(detail: NpAgentActivityRunResourceV1) {
+  const schemaVersion = "np.agent-activity-run-support.v1" as const;
+  if (detail.schemaVersion === "np.agent-activity-run-expired.v1") {
+    const { siteId, runId, state, finishedAt, releasedAt, evidence } = detail;
+    return { schemaVersion, siteId, runId, state, finishedAt, releasedAt, evidence };
+  }
+  const {
+    siteId,
+    id: runId,
+    origin,
+    state,
+    queuedAt,
+    startedAt,
+    finishedAt,
+    attempt,
+    errorCode,
+  } = detail.run;
+  return {
+    schemaVersion,
+    siteId,
+    runId,
+    origin,
+    state,
+    queuedAt,
+    startedAt,
+    finishedAt,
+    attempt,
+    errorCode,
+    evidence: detail.evidence,
+    invocationId: detail.invocationId,
+    auditEventIds: detail.auditEventIds,
+  };
+}
+
 export interface NpAgentActivityActionDetailV1 {
   schemaVersion: "np.agent-activity-action.v1";
   action: NpAgentActionProjectionV1;
@@ -209,6 +278,8 @@ const keys = {
     "approvalId",
     "changeSetId",
     "incidentId",
+    "template",
+    "q",
     "from",
     "to",
   ],
@@ -252,6 +323,14 @@ export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value
       q.kind = canonicalBodyEnum(r.kind, "kind", new Set(["external", "runtime"]));
     if (r.origin !== undefined)
       q.origin = canonicalBodyEnum(r.origin, "origin", new Set(["gateway", "runtime"]));
+    if (r.template !== undefined)
+      q.template = canonicalBodyEnum(r.template, "template", new Set(npAgentRecipeTemplates));
+    if (r.q !== undefined) {
+      const term = canonicalRuntimeText(r.q, "q", 128, { requireTrimmed: true });
+      if (!/^[a-z0-9][a-z0-9._:-]*$/iu.test(term))
+        return failCanonicalBody("invalid-field", "q", "must be a run or operation identifier");
+      q.q = term;
+    }
     if (r.triggerKind !== undefined)
       q.triggerKind = canonicalBodyEnum(
         r.triggerKind,

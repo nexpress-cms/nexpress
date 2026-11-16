@@ -1,6 +1,20 @@
 import { npReadReleasedRunHistoryV1 } from "./released-run-history.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
-import { and, asc, eq, desc, exists, gt, isNull, lt, lte, gte, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  desc,
+  exists,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  gte,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import { npUsers } from "../db/schema/system.js";
 import { npResolveLiveAgentStaffAuthorizationV1 } from "./admin-admission.js";
 import { npRequireAgentRunLimitsCanonical } from "../agent-contract/canonical-bodies.js";
@@ -18,6 +32,7 @@ import {
   npAgentApprovals,
   npAgentContainments,
   npAgentIncidentTimeline,
+  npAgents,
 } from "../db/schema/agent.js";
 import {
   npRequireAgentChangeSetApplyCapabilityInputV1,
@@ -63,9 +78,11 @@ import {
   npRequireAgentActivityRunDetailV1,
   npRequireAgentActivityActionDetailV1,
   npAgentActivityProviderCallLimitV1,
+  npAgentActivityRunLinkLimitV1,
   type NpAgentActivityKindV1,
   type NpAgentActivityRunDetailV1,
   type NpAgentActivityRunResourceV1,
+  type NpAgentActivityRunLinksV1,
   type NpAgentActivityActionDetailV1,
 } from "../agent-contract/activity-contract.js";
 import { parseActivityRuntimeDiagnosticsV1 } from "../agent-contract/activity-runtime-diagnostics.js";
@@ -103,10 +120,11 @@ interface Staff {
   siteId: string;
   actor: NpAgentAdminActorV1;
 }
-type RunsQuery = Staff & {
-  query?: unknown;
-  readIncident?: NpAgentIncidentStaffReadServiceV1["get"];
-};
+type IncidentReader = { readIncident?: NpAgentIncidentStaffReadServiceV1["get"] };
+type RunsQuery = Staff &
+  IncidentReader & {
+    query?: unknown;
+  };
 
 const incidentActionJoin = and(
   eq(npAgentActions.siteId, npAgentIncidentTimeline.siteId),
@@ -114,12 +132,12 @@ const incidentActionJoin = and(
 );
 
 function incidentRunLinks(
-  incidentId: string,
   runId: string | typeof npAgentRuns.id,
   fingerprint: string | typeof npAgentRuns.admissionFingerprint,
+  incidentId?: string,
 ) {
   return and(
-    eq(npAgentIncidentTimeline.incidentId, incidentId),
+    incidentId ? eq(npAgentIncidentTimeline.incidentId, incidentId) : undefined,
     or(
       and(
         eq(npAgentIncidentTimeline.kind, "agent_assessment"),
@@ -643,6 +661,25 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       after = rows[rows.length - 1].id;
     }
   }
+  function approvalMatchesRunAction(
+    approval: NpAgentApprovalListItemV1,
+    action: Action,
+    evidence: ActionEvidence | undefined,
+  ) {
+    if (
+      approval.capabilityId !== action.capabilityId ||
+      approval.capabilityContractVersion !== action.capabilityContractVersion ||
+      approval.capabilityFingerprint !== action.capabilityFingerprint
+    )
+      return false;
+    const target = approval.target;
+    return target.kind === "action"
+      ? target.runId === action.runId &&
+          target.actionId === action.id &&
+          target.proposalHash === action.inputHash
+      : evidence?.relatedApprovalId === approval.approval.id &&
+          evidence.changeSetId === target.changeSetId;
+  }
   async function runVisible(
     row: Run,
     visibility: Visibility,
@@ -651,9 +688,10 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       capabilityId?: NpAgentCapabilityId;
       approval?: NpAgentApprovalListItemV1;
       changeSetId?: string;
+      actions?: Action[];
     } = {},
   ) {
-    const { allowedScopes, capabilityId, approval, changeSetId } = requirements;
+    const { allowedScopes, capabilityId, approval, changeSetId, actions } = requirements;
     const approvalTarget = approval?.target;
     let matchesCapability = !capabilityId;
     let matchesApproval = !approval;
@@ -668,30 +706,29 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           : undefined;
       if (!(await actionVisible(action, visibility, evidence))) return false;
       if (!bound) continue;
+      actions?.push(action);
       if (action.capabilityId === capabilityId) matchesCapability = true;
       if (!matchesChangeSet && changeSetId)
         matchesChangeSet =
           evidence?.changeSetId === changeSetId ||
           (row.origin === "runtime" &&
             (await runtimeActionMatchesChangeSet(action, visibility, changeSetId)));
-      if (
-        !matchesApproval &&
-        approval &&
-        approvalTarget &&
-        approval.capabilityId === action.capabilityId &&
-        approval.capabilityContractVersion === action.capabilityContractVersion &&
-        approval.capabilityFingerprint === action.capabilityFingerprint
-      ) {
-        matchesApproval =
-          approvalTarget.kind === "action"
-            ? approvalTarget.runId === row.id &&
-              approvalTarget.actionId === action.id &&
-              approvalTarget.proposalHash === action.inputHash
-            : evidence?.relatedApprovalId === approval.approval.id &&
-              evidence.changeSetId === approvalTarget.changeSetId;
-      }
+      if (!matchesApproval && approval)
+        matchesApproval = approvalMatchesRunAction(approval, action, evidence);
     }
     return matchesCapability && matchesApproval && matchesChangeSet;
+  }
+
+  async function verifiedIncidentLink(entry: IncidentTimeline, action: Action | null) {
+    try {
+      if (entry.kind === "agent_assessment") {
+        await npRequireIncidentTimelineAssessmentV1(getDb(), entry);
+        return true;
+      }
+      return !!action && (await incidentActionMatches(entry, action));
+    } catch {
+      return false;
+    }
   }
 
   async function incidentActionMatches(entry: IncidentTimeline, action: Action) {
@@ -777,26 +814,158 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         .where(
           and(
             eq(npAgentIncidentTimeline.siteId, run.siteId),
-            incidentRunLinks(incidentId, run.id, run.admissionFingerprint),
+            incidentRunLinks(run.id, run.admissionFingerprint, incidentId),
             gt(npAgentIncidentTimeline.sequence, after),
           ),
         )
         .orderBy(asc(npAgentIncidentTimeline.sequence))
         .limit(50);
-      for (const { entry, action } of sources) {
-        try {
-          if (entry.kind === "agent_assessment") {
-            await npRequireIncidentTimelineAssessmentV1(db, entry);
-            return true;
-          }
-          if (action && (await incidentActionMatches(entry, action))) return true;
-        } catch {
-          // A damaged source cannot establish an incident link.
-        }
-      }
+      for (const { entry, action } of sources)
+        if (await verifiedIncidentLink(entry, action)) return true;
       if (sources.length < 50) return false;
       after = sources[sources.length - 1].entry.sequence;
     }
+  }
+
+  async function canReadIncident(input: Staff & IncidentReader, id: string) {
+    try {
+      const result = await input.readIncident?.(
+        { incidentId: id },
+        { siteId: input.siteId, actor: input.actor },
+      );
+      return result?.incident.id === id && result.incident.siteId === input.siteId;
+    } catch (error) {
+      if (error instanceof NpAgentGatewayError && [403, 404].includes(error.status)) return false;
+      throw error;
+    }
+  }
+
+  async function relatedIncidentIds(input: Staff & IncidentReader, run: Run, actions: Action[]) {
+    if (!input.readIncident) return [];
+    const db = getDb();
+    const incidentIds = new Set<string>();
+    const restores = new Set<string>();
+    for (const action of actions) {
+      const incidentId = action.inputCanonical.incidentId;
+      if (
+        action.capabilityId === "moderation.quarantine" &&
+        typeof incidentId === "string" &&
+        uuid.test(incidentId)
+      )
+        incidentIds.add(incidentId);
+      if (action.capabilityId === "moderation.restore" && action.containmentId)
+        restores.add(action.containmentId);
+    }
+    if (restores.size) {
+      const rows = await db
+        .select({ incidentId: npAgentContainments.incidentId })
+        .from(npAgentContainments)
+        .where(
+          and(
+            eq(npAgentContainments.siteId, run.siteId),
+            inArray(npAgentContainments.id, [...restores]),
+          ),
+        );
+      for (const row of rows) if (row.incidentId) incidentIds.add(row.incidentId);
+    }
+    if (!run.agentId && !incidentIds.size) return [];
+
+    // Narrow the reverse lookup by the existing site/source and site/incident indexes.
+    // These are candidate selectors. The stored relationship and viewer still need proof.
+    const sources = await db
+      .select({ entry: npAgentIncidentTimeline, action: npAgentActions })
+      .from(npAgentIncidentTimeline)
+      .leftJoin(npAgentActions, incidentActionJoin)
+      .where(
+        and(
+          eq(npAgentIncidentTimeline.siteId, run.siteId),
+          incidentRunLinks(run.id, run.admissionFingerprint),
+          or(
+            run.agentId
+              ? and(
+                  eq(npAgentIncidentTimeline.kind, "agent_assessment"),
+                  eq(npAgentIncidentTimeline.sourceId, run.agentId),
+                )
+              : undefined,
+            incidentIds.size
+              ? and(
+                  eq(npAgentIncidentTimeline.kind, "action"),
+                  inArray(npAgentIncidentTimeline.incidentId, [...incidentIds]),
+                )
+              : undefined,
+          ),
+        ),
+      )
+      .orderBy(desc(npAgentIncidentTimeline.createdAt), desc(npAgentIncidentTimeline.id))
+      .limit(50);
+    const checked = new Set<string>();
+    const visible: string[] = [];
+    for (const { entry, action } of sources) {
+      const id = entry.incidentId;
+      if (checked.has(id) || !(await verifiedIncidentLink(entry, action))) continue;
+      checked.add(id);
+      if (await canReadIncident(input, id).catch(() => false)) visible.push(id);
+      if (visible.length === npAgentActivityRunLinkLimitV1) break;
+    }
+    return visible;
+  }
+
+  async function relatedRunRecords(
+    input: Staff & IncidentReader,
+    run: Run,
+    visibility: Visibility,
+    actions: Action[],
+  ): Promise<NpAgentActivityRunLinksV1 | undefined> {
+    const limit = npAgentActivityRunLinkLimitV1;
+    const candidates = actions.slice(0, 50);
+    const incidentIds = await relatedIncidentIds(input, run, candidates);
+    const approvalIds = new Set<string>();
+    const changeSetIds = new Set<string>();
+    const approvals = options.approvals ?? options.changesets?.approvals;
+    if (approvals || options.changesets) {
+      for (const action of candidates) {
+        const evidence: ActionEvidence = { includeRelated: true };
+        if (
+          action.capabilityId.startsWith("changeset.") &&
+          !(await actionVisible(action, visibility, evidence))
+        )
+          continue;
+        let changeSetId = evidence.changeSetId;
+        const outputId = action.outputRedacted?.changeSetId;
+        if (
+          !changeSetId &&
+          changeSetIds.size < limit &&
+          run.origin === "runtime" &&
+          typeof outputId === "string" &&
+          uuid.test(outputId) &&
+          (await runtimeActionMatchesChangeSet(action, visibility, outputId))
+        )
+          changeSetId = outputId;
+        if (changeSetId && changeSetIds.size < limit) changeSetIds.add(changeSetId);
+
+        const approvalId = evidence.relatedApprovalId ?? action.approvalId;
+        if (approvals && approvalId && !approvalIds.has(approvalId) && approvalIds.size < limit) {
+          try {
+            const { item } = await approvals.get({
+              siteId: input.siteId,
+              actor: input.actor,
+              id: approvalId,
+            });
+            if (
+              item.approval.id === approvalId &&
+              approvalMatchesRunAction(item, action, evidence) &&
+              (item.target.kind !== "action" || (await digestAction(action)) === action.inputHash)
+            )
+              approvalIds.add(approvalId);
+          } catch {
+            // A related record may no longer be available to the current viewer.
+          }
+        }
+        if (approvalIds.size === limit && changeSetIds.size === limit) break;
+      }
+    }
+    if (incidentIds.length || approvalIds.size || changeSetIds.size)
+      return { incidentIds, approvalIds: [...approvalIds], changeSetIds: [...changeSetIds] };
   }
   async function refreshRun(row: Run): Promise<Run> {
     if (
@@ -1059,7 +1228,9 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     await assertSameStaff(input, auth);
     return detail;
   }
-  async function getRun(input: Staff & { id: string }): Promise<NpAgentActivityRunResourceV1> {
+  async function getRun(
+    input: Staff & IncidentReader & { id: string },
+  ): Promise<NpAgentActivityRunResourceV1> {
     const { auth, visibility } = await staff(input);
     if (!uuid.test(input.id)) throw missing();
     const db = getDb();
@@ -1101,15 +1272,25 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         },
         { accessMode: "read only", isolationLevel: "repeatable read" },
       );
-      if (!(await runVisible(snapshot.current, visibility))) throw missing();
+      const actions: Action[] = [];
+      if (!(await runVisible(snapshot.current, visibility, { actions }))) throw missing();
+      const related =
+        snapshot.detail.evidence === "redacted"
+          ? await relatedRunRecords(input, snapshot.current, visibility, actions)
+          : undefined;
       await assertSameStaff(input, auth);
-      return snapshot.detail;
+      return { ...snapshot.detail, ...(related ? { related } : {}) };
     }
     const current = await refreshRun(row);
-    if (!(await runVisible(current, visibility))) throw missing();
+    const actions: Action[] = [];
+    if (!(await runVisible(current, visibility, { actions }))) throw missing();
     const detail = runDetail(current, await invocation(input.siteId, current.invocationId));
+    const related =
+      detail.evidence === "redacted"
+        ? await relatedRunRecords(input, current, visibility, actions)
+        : undefined;
     await assertSameStaff(input, auth);
-    return detail;
+    return { ...detail, ...(related ? { related } : {}) };
   }
   type Position = { id: string; time: string };
   async function list(kind: NpAgentActivityKindV1, input: RunsQuery) {
@@ -1152,19 +1333,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       }
     }
     const incidentId = query.incidentId;
-    const canReadIncident = async (id: string) => {
-      try {
-        const result = await input.readIncident?.(
-          { incidentId: id },
-          { siteId: input.siteId, actor: input.actor },
-        );
-        return result?.incident.id === id && result.incident.siteId === input.siteId;
-      } catch (error) {
-        if (error instanceof NpAgentGatewayError && [403, 404].includes(error.status)) return false;
-        throw error;
-      }
-    };
-    if (incidentId && !(await canReadIncident(incidentId))) {
+    if (incidentId && !(await canReadIncident(input, incidentId))) {
       await assertSameStaff(input, auth);
       return empty();
     }
@@ -1229,7 +1398,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
                 .where(
                   and(
                     eq(npAgentIncidentTimeline.siteId, npAgentRuns.siteId),
-                    incidentRunLinks(incidentId, npAgentRuns.id, npAgentRuns.admissionFingerprint),
+                    incidentRunLinks(npAgentRuns.id, npAgentRuns.admissionFingerprint, incidentId),
                   ),
                 ),
             ),
@@ -1237,8 +1406,56 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         }
         if (query.origin) where.push(eq(npAgentRuns.origin, query.origin));
         if (query.principalId) where.push(eq(npAgentRuns.principalId, query.principalId));
-        if (query.agentId || query.triggerKind) where.push(eq(npAgentRuns.origin, "runtime"));
+        if (query.agentId || query.triggerKind || query.template)
+          where.push(eq(npAgentRuns.origin, "runtime"));
         if (query.agentId) where.push(eq(npAgentRuns.agentId, query.agentId));
+        if (query.template)
+          where.push(
+            exists(
+              getDb()
+                .select({ id: npAgents.id })
+                .from(npAgents)
+                .where(
+                  and(
+                    eq(npAgents.siteId, npAgentRuns.siteId),
+                    eq(npAgents.id, npAgentRuns.agentId),
+                    eq(npAgents.principalId, npAgentRuns.principalId),
+                    eq(npAgents.template, query.template),
+                  ),
+                ),
+            ),
+          );
+        if (query.q) {
+          const term = query.q;
+          const id = term.toLowerCase();
+          where.push(
+            or(
+              ...(uuid.test(id)
+                ? [
+                    npAgentRuns.id,
+                    npAgentRuns.agentId,
+                    npAgentRuns.agentVersionId,
+                    npAgentRuns.principalId,
+                    npAgentRuns.invocationId,
+                    npAgentRuns.triggerId,
+                  ].map((column) => eq(column, id))
+                : []),
+              eq(npAgentRuns.recipeId, term),
+              exists(
+                getDb()
+                  .select({ id: npAgentInvocations.id })
+                  .from(npAgentInvocations)
+                  .where(
+                    and(
+                      eq(npAgentInvocations.siteId, npAgentRuns.siteId),
+                      eq(npAgentInvocations.id, npAgentRuns.invocationId),
+                      eq(npAgentInvocations.operationId, term),
+                    ),
+                  ),
+              ),
+            )!,
+          );
+        }
         if (query.triggerKind)
           where.push(
             exists(
@@ -1324,7 +1541,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       }
       if (items.length === limit || !more) break;
     }
-    const incidentReadable = !incidentId || (await canReadIncident(incidentId));
+    const incidentReadable = !incidentId || (await canReadIncident(input, incidentId));
     await assertSameStaff(input, auth);
     if (!incidentReadable) return empty();
     const nextCursor = more

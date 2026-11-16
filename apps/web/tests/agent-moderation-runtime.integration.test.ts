@@ -60,6 +60,7 @@ describe.skipIf(skipIfNoTestDb())("Human-approved Moderator Runtime continuation
     try {
       const activity = createAgentActivityServiceV1({
         cursorHmacKey: new Uint8Array(32).fill(61),
+        approvals: f.approvals,
         now: f.options.now,
       });
       let allowedIncidentReads = Infinity;
@@ -77,6 +78,10 @@ describe.skipIf(skipIfNoTestDb())("Human-approved Moderator Runtime continuation
       };
       const pending = await wait(f);
       expect((await activity.listRuns(related)).items).toEqual([]);
+      const detail = { ...related, id: pending.runId };
+      expect(await activity.getRun(detail)).toMatchObject({
+        related: { approvalIds: [pending.output.approvalId], incidentIds: [] },
+      });
 
       await f.decide(pending.output.approvalId);
       expect(
@@ -88,6 +93,35 @@ describe.skipIf(skipIfNoTestDb())("Human-approved Moderator Runtime continuation
       ).toEqual({ state: "succeeded" });
       const page = await activity.listRuns(related);
       expect(page.items.map(({ run }) => run.id)).toEqual([pending.runId]);
+      expect(await activity.getRun(detail)).toMatchObject({
+        related: { approvalIds: [pending.output.approvalId], incidentIds: [f.incident.id] },
+      });
+
+      const [containment] = await f.db.select().from(npAgentContainments);
+      const restore = await f.queue({
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: "moderation.restore",
+        arguments: {
+          idempotencyKey: randomUUID(),
+          input: {
+            mode: "propose",
+            proposal: {
+              containmentKind: "content_quarantine",
+              containmentId: containment.id,
+              expectedVersionDigest: containment.targetVersionDigest,
+            },
+          },
+        },
+      });
+      expect(await f.executor.process(restore)).toEqual({ state: "waiting_approval" });
+      const restorePending = await f.pending(restore.runId);
+      await f.decide(restorePending.output.approvalId);
+      expect(
+        await f.executor.resumeApproval({ ...restore, requestActionId: restorePending.action.id }),
+      ).toEqual({ state: "succeeded" });
+      expect(await activity.getRun({ ...detail, id: restore.runId })).toMatchObject({
+        related: { approvalIds: [restorePending.output.approvalId], incidentIds: [f.incident.id] },
+      });
       allowedIncidentReads = 1; // The Incident becomes unavailable before returning the page.
       expect(await activity.listRuns(related)).toMatchObject({ items: [], nextCursor: null });
     } finally {
