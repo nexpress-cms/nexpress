@@ -236,12 +236,16 @@ coverage runs on two independent runners, each with its own PostgreSQL 16 and
 Redis 7 containers. After the usual full build, `scripts/integration-partitions.mjs`
 uses Vitest's configured file discovery and splits Web files by descending
 historical duration, assigning each next file to the lighter group. The timing
-seed in `scripts/integration-durations.json` comes from the successful PostgreSQL
-jobs in [PR CI 40694818265](https://github.com/nexpress-cms/nexpress/actions/runs/40694818265)
-at `637b368c`, covering all 243 discovered files; it is a weight,
-not an allowlist or a wall-time prediction. New files use the median known weight,
-and removed files are ignored. Four opt-in Guardian/native-preview files were
-discovered but skipped in that run and retain zero measured weight; their enabled
+seed in `scripts/integration-durations.json` uses the median file duration across
+three successful partition pairs covering all 243 discovered files. Reassigning
+those same measurements reduced the difference between summed file times in each
+pair. Runner wall time also depends on build, DB setup and execution conditions.
+See [PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/43855261528),
+[main CI](https://github.com/nexpress-cms/nexpress/actions/runs/43858848258) and
+[Version PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/43859025269).
+New files use the median known weight, and removed files are ignored.
+Four opt-in Guardian/native-preview files were discovered but skipped in all
+three runs and retain zero measured weight; their enabled
 acceptance is separate. Core runs once in partition 1 and Redis once in
 partition 2. Each Web partition runs at most two forks, matching the complete
 local acceptance configuration. This bounds contention between CPU-heavy recipe
