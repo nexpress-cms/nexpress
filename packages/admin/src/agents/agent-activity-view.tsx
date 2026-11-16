@@ -7,11 +7,13 @@ import {
   npAgentActionStates,
   npAgentCapabilityIds,
   npAgentPrincipalStatusesV1,
+  npAgentRecipeTemplates,
   npAgentRecipeTriggerKinds,
   npAgentRunStates,
   npAnalyzeAgentActivityActionsPageV1,
   npAnalyzeAgentActivityPrincipalsPageV1,
   npAnalyzeAgentActivityRunsPageV1,
+  npBuildAgentActivityRunSupportBundleV1,
   npRequireAgentActivityActionDetailV1,
   npRequireAgentActivityRunResourceV1,
   npRequireAgentContractResult,
@@ -20,6 +22,8 @@ import {
   type NpAgentActivityKindV1,
   type NpAgentActivityPrincipalsPageV1,
   type NpAgentActivityRunsPageV1,
+  type NpAgentActivityRunLinksV1,
+  type NpAgentActivityRunResourceV1,
   type NpAgentActivityRuntimeDiagnosticsV1,
   type NpAgentOperatorReviewV1,
 } from "@nexpress/core/agent-contract";
@@ -459,6 +463,31 @@ function ActivityFilters({
         )}
         {section === "runs" ? (
           <>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-query">Search by ID, recipe, or operation</Label>
+              <Input
+                id="activity-query"
+                name="q"
+                maxLength={128}
+                defaultValue={query.get("q") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-template">Agent template</Label>
+              <select
+                id="activity-template"
+                name="template"
+                defaultValue={query.get("template") ?? ""}
+                className={selectClass}
+              >
+                <option value="">All templates</option>
+                {npAgentRecipeTemplates.map((template) => (
+                  <option key={template} value={template}>
+                    {template}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="grid gap-1.5">
               <Label htmlFor="activity-agent">Agent ID</Label>
               <Input
@@ -998,6 +1027,80 @@ function RunActions({ runId }: { runId: string }) {
   );
 }
 
+function RelatedRunRecords({ related }: { related: NpAgentActivityRunLinksV1 }) {
+  const groups = [
+    { name: "Incident", path: "incidents", ids: related.incidentIds },
+    { name: "Approval", path: "approvals", ids: related.approvalIds },
+    { name: "ChangeSet", path: "changesets", ids: related.changeSetIds },
+  ];
+  if (!groups.some(({ ids }) => ids.length)) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-[15px]">Related records</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2 break-all text-[13px]">
+          {groups.flatMap(({ name, path, ids }) =>
+            ids.map((id) => (
+              <li key={`${path}/${id}`}>
+                <Link
+                  className="underline"
+                  prefetch={false}
+                  href={`/admin/agents/${path}/${encodeURIComponent(id)}`}
+                >
+                  {name} {id}
+                </Link>
+              </li>
+            )),
+          )}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunSupportBundle({
+  detail,
+  disabled,
+}: {
+  detail: NpAgentActivityRunResourceV1;
+  disabled: boolean;
+}) {
+  const [status, setStatus] = React.useState<"idle" | "copied" | "failed">("idle");
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(npBuildAgentActivityRunSupportBundleV1(detail), null, 2),
+      );
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={disabled}
+        onClick={() => void copy()}
+      >
+        Copy support bundle
+      </Button>
+      <p role="status" className="text-[13px]">
+        {status === "copied"
+          ? "Support bundle copied."
+          : status === "failed"
+            ? "Could not copy. Try again."
+            : ""}
+      </p>
+    </div>
+  );
+}
+
 export function AgentActivityRunDetailView({ runId }: { runId: string }) {
   const resource = useActivity(
     `${apiPaths.runs}/${encodeURIComponent(runId)}`,
@@ -1036,6 +1139,9 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
           observedAt={resource.observedAt}
         />
         {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
+        {resource.value && !resource.error ? (
+          <RunSupportBundle detail={resource.value} disabled={resource.loading} />
+        ) : null}
         {expired ? (
           <Card>
             <CardHeader>
@@ -1120,6 +1226,7 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
                 </dl>
               </CardContent>
             </Card>
+            {detail.related ? <RelatedRunRecords related={detail.related} /> : null}
             {run.origin === "runtime" ? (
               <RunDiagnostics diagnostics={detail.runtimeDiagnostics} />
             ) : null}

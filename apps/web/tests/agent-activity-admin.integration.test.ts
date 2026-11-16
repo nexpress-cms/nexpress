@@ -176,7 +176,7 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
     ).toBe(200);
     const runtime = await runs(
       buildRequest(
-        `${root}/activity?origin=runtime&agentId=${missingId}&triggerKind=manual&approvalId=${missingId}&changeSetId=${missingId}`,
+        `${root}/activity?origin=runtime&agentId=${missingId}&triggerKind=manual&template=guardian&q=${missingId}&approvalId=${missingId}&changeSetId=${missingId}`,
         {
           session,
         },
@@ -203,6 +203,9 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       "triggerKind=manual&triggerKind=event",
       "approvalId=pending",
       "incidentId=latest",
+      "q=site.%25",
+      "q=site.inspect&q=content.query",
+      "template=default",
       `incidentId=${missingId}&incidentId=${missingId}`,
       `changeSetId=${missingId}&changeSetId=${missingId}`,
       "from=2026-02-30T00%3A00%3A00.000Z",

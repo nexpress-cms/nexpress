@@ -91,6 +91,21 @@ describe.skipIf(skipIfNoTestDb())("Gateway execution Activity item authority", (
     if (f.result.output.state !== "approval_required" || !f.result.output.approvalId)
       throw new Error("Expected approval request");
     const approvalId = f.result.output.approvalId;
+    expect(await f.activity.getRun({ ...f.read, id: f.action.runId! })).toMatchObject({
+      related: { approvalIds: [approvalId], changeSetIds: [f.plan.id], incidentIds: [] },
+    });
+    const withoutApprovalAccess = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(50),
+      changesets: f.service,
+      approvals: {
+        get: async () => {
+          throw new Error("Approval unavailable");
+        },
+      },
+    });
+    expect(await withoutApprovalAccess.getRun({ ...f.read, id: f.action.runId! })).toMatchObject({
+      related: { approvalIds: [], changeSetIds: [f.plan.id] },
+    });
     const list = (query: unknown) => f.activity.listRuns({ ...f.read, query });
     const first = await list({ approvalId, limit: 1 });
     expect(first.items.map(({ run }) => run.id)).toEqual([f.action.runId]);

@@ -64,8 +64,11 @@ time and hash when available. The request Action retains its original state.
 In **Activity → Runs**, the **Agent ID** and **Trigger kind** filters narrow the
 list to Runtime runs. Trigger kind uses the registered trigger recorded at
 admission. **View activity** on an Agent opens that Agent's run history.
-**Capability** matches the initiating operation for Gateway runs and recorded,
-visible Actions for Runtime runs. Pagination preserves the filters.
+**Agent template** also narrows the list to Runtime runs. **Search by ID, recipe,
+or operation** matches an exact Run, Agent, Agent version, principal, invocation
+or trigger ID, recipe ID, or initiating operation. **Capability** matches the
+initiating operation for Gateway runs and recorded, visible Actions for Runtime
+runs. Pagination preserves the filters.
 
 **View related runs** on an Approval or ChangeSet opens Activity with that
 exact record selected. Approval matches the recorded request, execution or
@@ -75,6 +78,11 @@ execution evidence that you can currently read.
 **View related runs** on an Incident filters Activity by that Incident ID.
 Results come from verified assessment entries and containment Actions linked
 to Runs. Opening the list requires current access to the Incident and each Run.
+
+Run detail shows a bounded set of **Related records** when verified Incident,
+Approval or ChangeSet evidence is currently visible. **Copy support bundle**
+copies a JSON summary with Run identity, status, timestamps and available
+invocation and audit references. Expired Runs use the retained history receipt.
 
 ## Understand what the displayed times mean
 

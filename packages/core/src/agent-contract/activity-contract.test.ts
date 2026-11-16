@@ -5,6 +5,8 @@ import {
   npAnalyzeAgentActivityRunResourceV1,
   npAnalyzeAgentActivityRunsPageV1,
   npAnalyzeAgentActivityRunDetailV1,
+  npBuildAgentActivityRunSupportBundleV1,
+  npRequireAgentActivityRunResourceV1,
   npAgentActivityContractV1,
   npAgentActivityReadRoutesV1,
 } from "./activity-contract.js";
@@ -37,6 +39,9 @@ describe("Activity closed contract", () => {
       { agentId: "observer" },
       { triggerKind: "webhook" },
       { incidentId: "latest" },
+      { template: "default" },
+      { q: "private query" },
+      { q: "site.%" },
     ])
       expect(npAnalyzeAgentActivityQueryV1("runs", q).ok).toBe(false);
     expect(
@@ -57,6 +62,13 @@ describe("Activity closed contract", () => {
       value: { incidentId: agentId },
     });
     expect(npAnalyzeAgentActivityQueryV1("actions", { incidentId: agentId }).ok).toBe(false);
+    expect(
+      npAnalyzeAgentActivityQueryV1("runs", { template: "guardian", q: "site.inspect" }),
+    ).toMatchObject({
+      ok: true,
+      value: { template: "guardian", q: "site.inspect" },
+    });
+    expect(npAnalyzeAgentActivityQueryV1("actions", { q: "site.inspect" }).ok).toBe(false);
     expect(npAnalyzeAgentActivityQueryV1("runs", { changeSetId: "draft" }).ok).toBe(false);
     expect(npAnalyzeAgentActivityQueryV1("principals", { triggerKind: "manual" }).ok).toBe(false);
   });
@@ -98,7 +110,7 @@ describe("Activity closed contract", () => {
       createHash("sha256")
         .update(serializeAgentCanonicalJson(npAgentActivityContractV1))
         .digest("hex"),
-    ).toBe("a45e9c1a0d7e21dd629c7bcd70c19b758fca832047af18f01b644b4cbcb57e35");
+    ).toBe("8db25a25d46ea7097b24c3a88e7381575ef07e0ddbdb89c12bccf963557d64a6");
   });
   it("locks only six read routes, leaving mutations in the shared admission registry", () => {
     expect(npAgentActivityReadRoutesV1.map(({ method, path }) => `${method} ${path}`)).toEqual([
@@ -129,6 +141,17 @@ const expiredRun = {
 describe("expired Run detail resource", () => {
   it("accepts retained facts only and leaves live list items unchanged", () => {
     expect(npAnalyzeAgentActivityRunResourceV1(expiredRun).ok).toBe(true);
+    expect(
+      npBuildAgentActivityRunSupportBundleV1(npRequireAgentActivityRunResourceV1(expiredRun)),
+    ).toEqual({
+      schemaVersion: "np.agent-activity-run-support.v1",
+      runId: expiredRun.runId,
+      siteId: expiredRun.siteId,
+      state: expiredRun.state,
+      finishedAt: expiredRun.finishedAt,
+      releasedAt: expiredRun.releasedAt,
+      evidence: expiredRun.evidence,
+    });
     expect(npAnalyzeAgentActivityRunDetailV1(expiredRun).ok).toBe(false);
     expect(
       npAnalyzeAgentActivityRunsPageV1({
@@ -145,6 +168,7 @@ describe("expired Run detail resource", () => {
     { usage: { inputTokens: 0 } },
     { runLimitsHash: "private" },
     { goal: "source" },
+    { related: { incidentIds: [expiredRun.runId], approvalIds: [], changeSetIds: [] } },
     { releasedAt: "2026-08-01T00:00:00.000Z" },
   ])("rejects unsupported historical facts %j", (extra) => {
     expect(npAnalyzeAgentActivityRunResourceV1({ ...expiredRun, ...extra }).ok).toBe(false);
