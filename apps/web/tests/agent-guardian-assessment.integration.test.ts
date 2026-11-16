@@ -14,6 +14,8 @@ import {
 import { npRequireAgentGuardianIncidentAssessmentEntryV1 } from "../../../packages/core/src/agent/guardian-incident-assessment-service.js";
 import { npDigestAgentGuardianAssessmentSourcesV1 } from "../../../packages/core/src/agent/guardian-assessment-proof.js";
 import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
+import { NpAgentGatewayError } from "../../../packages/core/src/agent/admin-admission.js";
 import { createAgentGuardianOperationsServiceV1 } from "../../../packages/core/src/agent/guardian-operations-service.js";
 import type { NpAgentJsonObject } from "../../../packages/core/src/agent-contract/types.js";
 import { guardianAssessmentFixture } from "./agent-guardian-assessment-fixture.js";
@@ -305,6 +307,31 @@ describe.skipIf(skipIfNoTestDb())(
       });
       const input = { siteId, actor: f.actor.actor, incidentId: entry.incidentId };
       const initial = await studio.get(input);
+      const activity = createAgentActivityServiceV1({
+        cursorHmacKey: new Uint8Array(32).fill(88),
+        now: f.options.now,
+      });
+      const query = { incidentId: entry.incidentId, limit: 1 };
+      const related = { ...input, query, readIncident: studio.readIncidentForActivity };
+      const page = await activity.listRuns(related);
+      expect(page.items.map(({ run }) => run.id)).toEqual([f.runId]);
+      expect(page.nextCursor).toBeTruthy();
+      await expect(
+        activity.listRuns({
+          ...related,
+          query: { ...query, incidentId: randomUUID(), cursor: page.nextCursor },
+        }),
+      ).rejects.toMatchObject({ code: "ACTIVITY_CURSOR_INVALID" });
+      expect(
+        (
+          await activity.listRuns({
+            ...related,
+            readIncident: async () => {
+              throw new NpAgentGatewayError("INCIDENT_NOT_FOUND", 404, "Incident is unavailable.");
+            },
+          })
+        ).items,
+      ).toEqual([]);
       expect(initial.timelinePageComplete).toBe(true);
       expect(
         (
@@ -322,6 +349,7 @@ describe.skipIf(skipIfNoTestDb())(
         const hidden = await studio.get(input);
         expect(hidden.timelinePageComplete).toBe(false);
         expect(hidden.timeline.some((row) => row.id === entry.id)).toBe(false);
+        expect((await activity.listRuns(related)).items).toEqual([]);
         expect(JSON.stringify(hidden)).not.toContain("Unverified hostile");
         await expect(
           operations.exportIncident({ ...input, expectedVersion: initial.incident.versionNumber }),
