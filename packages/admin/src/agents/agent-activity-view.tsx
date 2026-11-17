@@ -25,6 +25,7 @@ import {
   type NpAgentActivityRunLinksV1,
   type NpAgentActivityRunResourceV1,
   type NpAgentActivityRuntimeDiagnosticsV1,
+  type NpAgentActivityRuntimeOperationV1,
   type NpAgentOperatorReviewV1,
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
@@ -1027,6 +1028,67 @@ function RunActions({ runId }: { runId: string }) {
   );
 }
 
+function RuntimeOperationActivity({
+  operations,
+}: {
+  operations: NpAgentActivityRuntimeOperationV1[];
+}) {
+  if (!operations.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-[15px]">Runtime operation requests</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-3 text-[13px]">
+          {operations.map((item) => {
+            const retry = item.operation === "agent.run.retry";
+            if (item.state !== "succeeded")
+              return (
+                <li key={item.approvalId} className="space-y-1">
+                  <p>
+                    {item.state === "pending" ? "Awaiting human approval" : "Approval recorded"} ·
+                    Expires <ActivityTime value={item.expiresAt} />
+                  </p>
+                  <Link
+                    className="underline"
+                    prefetch={false}
+                    href={`/admin/agents/approvals/${encodeURIComponent(item.approvalId)}`}
+                  >
+                    {retry ? "Review retry request" : "Review cancellation request"}
+                  </Link>
+                </li>
+              );
+            return (
+              <li key={item.actionId} className="space-y-1">
+                <p>{retry ? "Retry Run created" : "Cancellation confirmed"}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {item.operation === "agent.run.retry" ? (
+                    <Link
+                      className="underline"
+                      prefetch={false}
+                      href={`/admin/agents/activity/${encodeURIComponent(item.resultRunId)}`}
+                    >
+                      Open retry Run
+                    </Link>
+                  ) : null}
+                  <Link
+                    className="underline"
+                    prefetch={false}
+                    href={`/admin/agents/activity/actions/${encodeURIComponent(item.actionId)}`}
+                  >
+                    {retry ? "Review retry execution" : "Review cancellation execution"}
+                  </Link>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 function RelatedRunRecords({ related }: { related: NpAgentActivityRunLinksV1 }) {
   const groups = [
     { name: "Incident", path: "incidents", ids: related.incidentIds },
@@ -1227,6 +1289,9 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
               </CardContent>
             </Card>
             {detail.related ? <RelatedRunRecords related={detail.related} /> : null}
+            {detail.runtimeOperations ? (
+              <RuntimeOperationActivity operations={detail.runtimeOperations} />
+            ) : null}
             {run.origin === "runtime" ? (
               <RunDiagnostics diagnostics={detail.runtimeDiagnostics} />
             ) : null}

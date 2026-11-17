@@ -84,6 +84,12 @@ Approval or ChangeSet evidence is currently visible. **Copy support bundle**
 copies a JSON summary with Run identity, status, timestamps and available
 invocation and audit references. Expired Runs use the retained history receipt.
 
+When the host installs Operator review, Runtime Run detail can open a current
+cancel or retry request prepared by Operator. The approval page records the
+human decision. Operator dispatches the approved operation through its existing
+execution checks. Activity links to a verified cancellation result or to the
+new Run after a successful retry, subject to current item access.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

@@ -3,6 +3,11 @@ import {
   parseActivityRuntimeDiagnosticsV1,
   type NpAgentActivityRuntimeDiagnosticsV1,
 } from "./activity-runtime-diagnostics.js";
+import {
+  parseActivityRuntimeOperationsV1,
+  type NpAgentActivityRuntimeOperationV1,
+} from "./activity-runtime-operations.js";
+export type { NpAgentActivityRuntimeOperationV1 } from "./activity-runtime-operations.js";
 export { npAgentActivityProviderCallLimitV1 } from "./activity-runtime-diagnostics.js";
 export type { NpAgentActivityRuntimeDiagnosticsV1 } from "./activity-runtime-diagnostics.js";
 import {
@@ -86,6 +91,7 @@ export interface NpAgentActivityExpiredRunV1 {
 export type NpAgentActivityRunResourceV1 =
   | (NpAgentActivityRunDetailV1 & {
       runtimeDiagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
+      runtimeOperations?: NpAgentActivityRuntimeOperationV1[];
       related?: NpAgentActivityRunLinksV1;
     })
   | NpAgentActivityExpiredRunV1;
@@ -128,6 +134,7 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
         "evidence",
         "auditEventIds",
         "runtimeDiagnostics",
+        "runtimeOperations",
         "related",
         "runId",
         "siteId",
@@ -141,7 +148,7 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
       { seen: new WeakSet() },
     );
     if (r.schemaVersion === "np.agent-activity-run.v1") {
-      const { runtimeDiagnostics, related, ...base } = r;
+      const { runtimeDiagnostics, runtimeOperations, related, ...base } = r;
       const detail = npRequireAgentActivityRunDetailV1(base);
       return {
         ...detail,
@@ -151,6 +158,9 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
             }
           : {}),
         ...(Object.hasOwn(r, "related") ? { related: parseRunLinks(related) } : {}),
+        ...(Object.hasOwn(r, "runtimeOperations")
+          ? { runtimeOperations: parseActivityRuntimeOperationsV1(runtimeOperations, detail.run) }
+          : {}),
       };
     }
     const keys = [
