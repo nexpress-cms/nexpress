@@ -15,7 +15,7 @@ import type {
 import { NpAgentGatewayError } from "./admin-admission.js";
 import { npRequireAgentGuardianAssessmentRetryV1 } from "./guardian-assessment-context.js";
 
-const contractId = "runtime.operator-controls.v1";
+export const npRuntimeOperatorContractIdV1 = "runtime.operator-controls.v1";
 function unavailable(): never {
   throw new NpAgentGatewayError(
     "OPERATOR_RUN_CONFLICT",
@@ -27,59 +27,67 @@ function runInput(input: NpAgentExecutableOpsPlanInputV1) {
   if (input.action === "cache.revalidate") unavailable();
   return input;
 }
+export async function npReadAgentRuntimeOperatorPlanV1(
+  admission: NpAgentRuntimeAdmissionV1,
+  request: {
+    db?: Parameters<NpAgentRuntimeAdmissionV1["withRunAuthority"]>[0]["db"];
+    siteId: string;
+    input: ReturnType<typeof runInput>;
+    executionId?: string;
+  },
+) {
+  const { input } = request;
+  return admission.withRunAuthority(
+    {
+      db: request.db,
+      siteId: request.siteId,
+      runId: input.target.runId,
+      allowTerminal: input.action === "agent.run.retry",
+    },
+    async (context) => {
+      const { db, run } = context;
+      if (input.action === "agent.run.retry") {
+        if (run.state !== "failed" || !run.finishedAt) unavailable();
+        await npRequireAgentGuardianAssessmentRetryV1(context);
+      } else {
+        await npRequireAgentRuntimePreCommitV1({
+          db,
+          siteId: run.siteId,
+          runId: run.id,
+          executionId: request.executionId,
+        });
+      }
+      return {
+        schemaVersion: "np.agent-runtime-operator-plan.v1",
+        siteId: run.siteId,
+        action: input.action,
+        runId: run.id,
+        admissionFingerprint: run.admissionFingerprint,
+      };
+    },
+  );
+}
+
 /** Explicitly installed Runtime owner only. Gateway jobs and raw queue operations stay unavailable. */
 export function npCreateAgentRuntimeOperatorControlsV1(options: {
   admission: NpAgentRuntimeAdmissionV1;
   store: NpAgentRuntimeExecutionStoreV1;
 }) {
-  async function evidence(request: Parameters<NonNullable<NpAgentOperatorHostV1["execute"]>>[0]) {
-    const input = runInput(request.input);
-    return options.admission.withRunAuthority(
-      {
-        db: request.db,
-        siteId: request.siteId,
-        runId: input.target.runId,
-        allowTerminal: input.action === "agent.run.retry",
-      },
-      async (context) => {
-        const { db, run } = context;
-        if (input.action === "agent.run.retry") {
-          if (run.state !== "failed" || !run.finishedAt) unavailable();
-          await npRequireAgentGuardianAssessmentRetryV1(context);
-        } else {
-          await npRequireAgentRuntimePreCommitV1({
-            db,
-            siteId: run.siteId,
-            runId: run.id,
-            executionId: request.executionId,
-          });
-        }
-        return {
-          schemaVersion: "np.agent-runtime-operator-plan.v1",
-          siteId: run.siteId,
-          action: input.action,
-          runId: run.id,
-          admissionFingerprint: run.admissionFingerprint,
-        };
-      },
-    );
-  }
   return {
     async plan(
       request: Parameters<NonNullable<NpAgentOperatorHostV1["plan"]>>[0],
     ): Promise<NpAgentOperatorPlanArtifactV1> {
       if (request.input.action !== "agent.run.retry" && request.input.action !== "agent.run.cancel")
         unavailable();
-      const artifact = await evidence({
-        ...request,
+      const artifact = await npReadAgentRuntimeOperatorPlanV1(options.admission, {
+        db: request.db,
+        siteId: request.siteId,
         input: request.input,
         executionId: request.planId,
-        artifact: {},
-        contractId,
       });
       return {
         artifact,
-        contractId,
+        contractId: npRuntimeOperatorContractIdV1,
         projectCommand: "",
         checks: [
           { id: "runtime.current-authority", status: "pass" },
@@ -95,9 +103,14 @@ export function npCreateAgentRuntimeOperatorControlsV1(options: {
         async (transaction): Promise<NpAgentOperatorExecutionResultV1> => {
           request = { ...request, db: transaction };
           const input = runInput(request.input);
-          const current = await evidence(request);
+          const current = await npReadAgentRuntimeOperatorPlanV1(options.admission, {
+            db: request.db,
+            siteId: request.siteId,
+            input,
+            executionId: request.executionId,
+          });
           if (
-            request.contractId !== contractId ||
+            request.contractId !== npRuntimeOperatorContractIdV1 ||
             serializeAgentCanonicalJson(current) !== serializeAgentCanonicalJson(request.artifact)
           )
             unavailable();

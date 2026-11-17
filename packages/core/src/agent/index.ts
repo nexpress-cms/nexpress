@@ -134,7 +134,7 @@ export * from "./incident-assignment-service.js";
 
 export * from "./incident-notifications-service.js";
 export * from "./operator-service.js";
-export * from "./runtime-operator-controls.js";
+export { npCreateAgentRuntimeOperatorControlsV1 } from "./runtime-operator-controls.js";
 export * from "./operator-capability.js";
 
 export * from "./evaluation.js";

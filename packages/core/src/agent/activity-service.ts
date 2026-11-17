@@ -163,7 +163,8 @@ export interface NpAgentActivityServiceOptionsV1 {
   cursorHmacKey: Uint8Array;
   admission?: NpAgentCapabilityAdmissionServiceV1;
   /** Explicit current-viewer/target-authorized Operator review owner. */
-  operator?: Pick<NpAgentOperatorServiceV1, "projectActivity">;
+  operator?: Pick<NpAgentOperatorServiceV1, "projectActivity"> &
+    Partial<Pick<NpAgentOperatorServiceV1, "projectRunActivity">>;
   /** Explicit current-item authorization through the existing ChangeSet service. */
   changesets?: Pick<NpAgentChangeSetServiceV1, "get"> &
     Partial<Pick<NpAgentChangeSetServiceV1, "approvals" | "refreshGatewayInvocation">>;
@@ -1228,6 +1229,44 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     await assertSameStaff(input, auth);
     return detail;
   }
+  async function runtimeOperationActivity(input: Staff, run: Run, visibility: Visibility) {
+    const records = await options.operator
+      ?.projectRunActivity?.({
+        siteId: run.siteId,
+        actor: input.actor,
+        runId: run.id,
+        state: run.state,
+        finished: run.finishedAt !== null,
+      })
+      .catch(() => []);
+    if (!records?.length) return;
+    const visible = [];
+    for (const record of records) {
+      if (record.state === "succeeded" && record.operation === "agent.run.retry") {
+        const [result] = await getDb()
+          .select()
+          .from(npAgentRuns)
+          .where(
+            and(
+              eq(npAgentRuns.siteId, run.siteId),
+              eq(npAgentRuns.id, record.resultRunId),
+              eq(npAgentRuns.origin, "runtime"),
+              eq(npAgentRuns.principalId, run.principalId),
+            ),
+          )
+          .limit(1);
+        if (
+          !result ||
+          result.agentId !== run.agentId ||
+          result.agentVersionId !== run.agentVersionId ||
+          !(await runVisible(result, visibility).catch(() => false))
+        )
+          continue;
+      }
+      visible.push(record);
+    }
+    return visible.length ? visible : undefined;
+  }
   async function getRun(
     input: Staff & IncidentReader & { id: string },
   ): Promise<NpAgentActivityRunResourceV1> {
@@ -1278,8 +1317,16 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         snapshot.detail.evidence === "redacted"
           ? await relatedRunRecords(input, snapshot.current, visibility, actions)
           : undefined;
+      const runtimeOperations =
+        snapshot.detail.evidence === "redacted"
+          ? await runtimeOperationActivity(input, snapshot.current, visibility)
+          : undefined;
       await assertSameStaff(input, auth);
-      return { ...snapshot.detail, ...(related ? { related } : {}) };
+      return {
+        ...snapshot.detail,
+        ...(related ? { related } : {}),
+        ...(runtimeOperations ? { runtimeOperations } : {}),
+      };
     }
     const current = await refreshRun(row);
     const actions: Action[] = [];

@@ -26,10 +26,12 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentRuntimeExecutionStoreV1 } from "../../../packages/core/src/agent/runtime-execution-store.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import { createAgentRuntimeEventServiceV1 } from "../../../packages/core/src/agent/runtime-event-service.js";
 import {
   npAgentActions,
   npAgentOperatorExecutions,
+  npAgentInvocations,
   npAgentRuns,
   npAgentTriggers,
   npAgentPrincipals,
@@ -213,12 +215,46 @@ describe.skipIf(skipIfNoTestDb())("Operator Runtime operation owners", () => {
     const source = await runtime.admission.admit(runtime.runInput);
     const store = await failedRun(runtime, source.runId);
     const owner = npCreateAgentRuntimeOperatorControlsV1({ admission: runtime.admission, store });
-    const f = await operatorExecutionFixture(owner, runtime);
+    let canReview = true;
+    const f = await operatorExecutionFixture(
+      {
+        ...owner,
+        assertReviewAccess: async () => {
+          if (!canReview) throw new Error("Operator review is unavailable");
+        },
+      },
+      runtime,
+      runtime.admission,
+    );
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(96),
+      operator: f.service,
+    });
+    const read = { siteId, actor: f.actor.actor, id: source.runId };
+    expect(await activity.getRun(read)).not.toHaveProperty("runtimeOperations");
     const planned = await f.plan({
       action: "agent.run.retry",
       target: { kind: "run", runId: source.runId },
     });
+    expect(await activity.getRun(read)).toMatchObject({
+      runtimeOperations: [
+        {
+          operation: "agent.run.retry",
+          state: "pending",
+          approvalId: planned.approvalId,
+        },
+      ],
+    });
     await f.decide(planned.approvalId);
+    expect(await activity.getRun(read)).toMatchObject({
+      runtimeOperations: [
+        {
+          operation: "agent.run.retry",
+          state: "approved",
+          approvalId: planned.approvalId,
+        },
+      ],
+    });
     const result = await f.invoke(planned.request);
     expect(result.output).toMatchObject({ action: "agent.run.retry", state: "succeeded" });
     const [journal] = await f.db
@@ -233,6 +269,28 @@ describe.skipIf(skipIfNoTestDb())("Operator Runtime operation owners", () => {
       .where(eq(npAgentRuns.id, journal!.resultRunId!));
     expect(retried!.state).toBe("queued");
     expect(retried!.idempotencyKey).toBe(`operator-retry-${journal!.id}`);
+    const [invocation] = await f.db
+      .select({ actionId: npAgentInvocations.resultId })
+      .from(npAgentInvocations)
+      .where(eq(npAgentInvocations.id, journal!.invocationId));
+    expect(await activity.getRun(read)).toMatchObject({
+      runtimeOperations: [
+        {
+          operation: "agent.run.retry",
+          state: "succeeded",
+          actionId: invocation!.actionId,
+          resultRunId: retried!.id,
+        },
+      ],
+    });
+    expect(await activity.getAction({ ...read, id: invocation!.actionId! })).toMatchObject({
+      operatorReview: { execution: { state: "succeeded" } },
+    });
+    expect(await activity.getRun({ ...read, id: retried!.id })).not.toHaveProperty(
+      "runtimeOperations",
+    );
+    canReview = false;
+    expect(await activity.getRun(read)).not.toHaveProperty("runtimeOperations");
     expect(await f.invoke(planned.request)).toEqual(result);
     expect(await f.db.select().from(npAgentRuns)).toHaveLength(2);
   });
@@ -245,10 +303,28 @@ describe.skipIf(skipIfNoTestDb())("Operator Runtime operation owners", () => {
       now: runtime.options.now,
     });
     const owner = npCreateAgentRuntimeOperatorControlsV1({ admission: runtime.admission, store });
-    const f = await operatorExecutionFixture(owner, runtime);
+    const f = await operatorExecutionFixture(
+      { ...owner, assertReviewAccess: async () => {} },
+      runtime,
+      runtime.admission,
+    );
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(97),
+      operator: f.service,
+    });
+    const read = { siteId, actor: f.actor.actor, id: source.runId };
     const planned = await f.plan({
       action: "agent.run.cancel",
       target: { kind: "run", runId: source.runId },
+    });
+    expect(await activity.getRun(read)).toMatchObject({
+      runtimeOperations: [
+        {
+          operation: "agent.run.cancel",
+          state: "pending",
+          approvalId: planned.approvalId,
+        },
+      ],
     });
     await f.decide(planned.approvalId);
     const result = await f.invoke(planned.request);
@@ -259,8 +335,33 @@ describe.skipIf(skipIfNoTestDb())("Operator Runtime operation owners", () => {
     });
     const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, source.runId));
     expect(run!.state).toBe("cancelled");
+    expect(await activity.getRun(read)).toMatchObject({
+      runtimeOperations: [
+        {
+          operation: "agent.run.cancel",
+          state: "succeeded",
+        },
+      ],
+    });
     expect(await f.invoke(planned.request)).toEqual(result);
     expect(await f.db.select().from(npAgentOperatorExecutions)).toHaveLength(1);
+
+    const stale = await runtime.admission.admit({
+      ...runtime.runInput,
+      idempotencyKey: randomUUID(),
+    });
+    const stalePlan = await f.plan({
+      action: "agent.run.cancel",
+      target: { kind: "run", runId: stale.runId },
+    });
+    await f.decide(stalePlan.approvalId);
+    await store.cancel({ siteId, runId: stale.runId });
+    expect(await activity.getRun({ ...read, id: stale.runId })).not.toHaveProperty(
+      "runtimeOperations",
+    );
+    await expect(f.invoke(stalePlan.request)).rejects.toMatchObject({ code: "CONFLICT" });
+    const [stopped] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, stale.runId));
+    expect(stopped!.state).toBe("cancelled");
   });
   it("rejects cancellation after the existing ChangeSet owner commits an approved Runtime action", async () => {
     const f = await runtimeApprovalResumeFixture();

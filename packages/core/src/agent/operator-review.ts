@@ -46,12 +46,25 @@ const fail = (): never => {
 const same = (a: unknown, b: unknown) =>
   serializeAgentCanonicalJson(a) === serializeAgentCanonicalJson(b);
 
+export function npDigestAgentOperatorPlanArtifactV1(input: {
+  operation: unknown;
+  contractId: string;
+  artifact: unknown;
+}) {
+  return digest("np.agent-operator-plan-artifact.v1", input);
+}
+
+export type NpAgentOperatorRuntimeResultSelectorV1 = { runId: string } & (
+  { operation: "agent.run.cancel" } | { operation: "agent.run.retry"; resultRunId: string }
+);
+
 /** Reads retained evidence only. The caller owns current staff/target authorization around this read. */
 export async function npReadAgentOperatorReviewV1(input: {
   db: Db;
   siteId: string;
   actionId: string;
   now: Date;
+  requireRuntimeResult?: NpAgentOperatorRuntimeResultSelectorV1;
   authorize: (selector: {
     capabilityId: NpAgentOperatorReviewV1["capabilityId"];
     input: unknown;
@@ -121,6 +134,7 @@ export async function npReadAgentOperatorReviewV1(input: {
   )
     return fail();
   const capabilityId = a.capabilityId as NpAgentOperatorReviewV1["capabilityId"];
+  if (input.requireRuntimeResult && capabilityId !== "ops.execute") return fail();
   const selector = {
     capabilityId,
     input:
@@ -174,6 +188,25 @@ export async function npReadAgentOperatorReviewV1(input: {
       }) !== out.resultDigest
     )
       return fail();
+    const expected = input.requireRuntimeResult;
+    if (expected) {
+      const evidence = execution.evidenceCanonical;
+      if (
+        execution.sourceRunId !== expected.runId ||
+        execution.state !== "succeeded" ||
+        out.state !== "succeeded" ||
+        out.action !== expected.operation ||
+        (expected.operation === "agent.run.retry"
+          ? execution.resultRunId !== expected.resultRunId ||
+            evidence?.sourceRunId !== expected.runId ||
+            evidence?.resultRunId !== expected.resultRunId ||
+            !out.verificationRefs.includes(`agent-run:${expected.resultRunId}`)
+          : evidence?.runId !== expected.runId ||
+            evidence?.state !== "cancelled" ||
+            !out.verificationRefs.includes(`agent-run:${expected.runId}`))
+      )
+        return fail();
+    }
     review.execution = { state: out.state, resultDigest: out.resultDigest };
   }
   if (capabilityId === "ops.plan") {
@@ -190,7 +223,7 @@ export async function npReadAgentOperatorReviewV1(input: {
       !same(plan.operation, out.operation) ||
       plan.artifactDigest !== out.planDigest ||
       plan.expiresAt.toISOString() !== out.expiresAt ||
-      digest("np.agent-operator-plan-artifact.v1", {
+      npDigestAgentOperatorPlanArtifactV1({
         operation: plan.operation,
         contractId: plan.contractId,
         artifact: plan.artifactCanonical,

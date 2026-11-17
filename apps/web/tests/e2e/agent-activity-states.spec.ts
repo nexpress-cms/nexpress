@@ -3,6 +3,8 @@ import {
   npRequireAgentContractResult,
   npAnalyzeAgentActivityRunsPageV1,
   npRequireAgentActivityActionDetailV1,
+  npRequireAgentActivityRunResourceV1,
+  type NpAgentActivityRuntimeOperationV1,
 } from "@nexpress/core/agent-contract";
 import { expect, test } from "@playwright/test";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -339,4 +341,70 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
   await expect(page.getByRole("heading", { name: "Action facts", exact: true })).toBeVisible();
   release();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+});
+
+test("Runtime Activity follows an Operator approval to the verified retry Run", async ({
+  page,
+}) => {
+  const runId = "33333333-3333-4333-8333-333333333333";
+  const resultRunId = "66666666-6666-4666-8666-666666666666";
+  const approvalId = "22222222-2222-4222-8222-222222222222";
+  const actionId = "77777777-7777-4777-8777-777777777777";
+  const source = makeRun(runId, "Failed source Run", "runtime");
+  const failed = {
+    ...source,
+    run: {
+      ...source.run,
+      state: "failed",
+      errorCode: "RUN_FAILED",
+      errorMessage: "Run did not complete successfully.",
+    },
+  };
+  const retry = makeRun(resultRunId, "Retried Runtime Run", "runtime");
+  const request = {
+    operation: "agent.run.retry",
+    state: "pending",
+    approvalId,
+    expiresAt: "2026-09-01T00:10:00.000Z",
+  } as const;
+  let runtimeOperations: NpAgentActivityRuntimeOperationV1[] = [request];
+  await page.route("**/api/admin/agents/activity**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith(`/${runId}`)) {
+      return route.fulfill({
+        json: npRequireAgentActivityRunResourceV1({ ...failed, runtimeOperations }),
+      });
+    }
+    if (path.endsWith(`/${resultRunId}`)) return route.fulfill({ json: retry });
+    return route.fulfill({
+      json: { schemaVersion: "np.agent-activity-actions.v1", items: [], nextCursor: null },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  const review = page.getByRole("link", { name: "Review retry request" });
+  await expect(review).toHaveAttribute("href", `/admin/agents/approvals/${approvalId}`);
+  await expect(page.getByText("Awaiting human approval", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
+
+  runtimeOperations = [{ ...request, state: "approved" }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Approval recorded", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
+
+  runtimeOperations = [];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(review).toHaveCount(0);
+
+  runtimeOperations = [{ operation: "agent.run.retry", state: "succeeded", actionId, resultRunId }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Review retry execution" })).toHaveAttribute(
+    "href",
+    `/admin/agents/activity/actions/${actionId}`,
+  );
+  const openRetry = page.getByRole("link", { name: "Open retry Run" });
+  await openRetry.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Retried Runtime Run" })).toBeVisible();
 });

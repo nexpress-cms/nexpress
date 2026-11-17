@@ -11,6 +11,7 @@ import {
   npAgentActivityReadRoutesV1,
 } from "./activity-contract.js";
 import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
+import { parseActivityRuntimeOperationsV1 } from "./activity-runtime-operations.js";
 describe("Activity closed contract", () => {
   it("allows canonical bounded filters and rejects kind-specific/foreign inventory", () => {
     const agentId = "11111111-1111-4111-8111-111111111111";
@@ -138,6 +139,36 @@ const expiredRun = {
   releasedAt: "2026-09-18T00:00:00.000Z",
   evidence: "expired",
 };
+
+it("requires an exact approval or result reference for a Runtime operation", () => {
+  const run = { id: expiredRun.runId, origin: "runtime" as const };
+  const approval = {
+    operation: "agent.run.cancel",
+    state: "approved",
+    approvalId: expiredRun.agent.id,
+    expiresAt: "2026-09-01T00:00:00.000Z",
+  };
+  expect(parseActivityRuntimeOperationsV1([approval], run)).toEqual([approval]);
+  expect(() =>
+    parseActivityRuntimeOperationsV1([approval], { ...run, origin: "gateway" }),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([{ ...approval, actionId: approval.approvalId }], run),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1(
+      [
+        {
+          operation: "agent.run.retry",
+          state: "succeeded",
+          actionId: expiredRun.agent.id,
+          resultRunId: run.id,
+        },
+      ],
+      run,
+    ),
+  ).toThrow();
+});
 describe("expired Run detail resource", () => {
   it("accepts retained facts only and leaves live list items unchanged", () => {
     expect(npAnalyzeAgentActivityRunResourceV1(expiredRun).ok).toBe(true);
