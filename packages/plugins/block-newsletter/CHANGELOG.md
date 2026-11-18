@@ -1,5 +1,12 @@
 # @nexpress/plugin-block-newsletter
 
+## 0.4.7
+
+### Patch Changes
+
+- @nexpress/blocks@0.4.7
+  - @nexpress/plugin-sdk@0.4.7
+
 ## 0.4.6
 
 ### Patch Changes
