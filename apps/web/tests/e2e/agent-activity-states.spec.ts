@@ -360,7 +360,10 @@ test("Runtime Activity follows an Operator approval to the verified retry Run", 
       errorMessage: "Run did not complete successfully.",
     },
   };
-  const retry = makeRun(resultRunId, "Retried Runtime Run", "runtime");
+  const retry = npRequireAgentActivityRunResourceV1({
+    ...makeRun(resultRunId, "Retried Runtime Run", "runtime"),
+    runtimeRetrySourceRunId: runId,
+  });
   const request = {
     operation: "agent.run.retry",
     state: "pending",
@@ -393,9 +396,16 @@ test("Runtime Activity follows an Operator approval to the verified retry Run", 
   await expect(page.getByText("Approval recorded", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
 
-  runtimeOperations = [];
+  runtimeOperations = [{ operation: "agent.run.retry", state: "unknown" }];
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Retry · Outcome unconfirmed")).toBeVisible();
   await expect(review).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Review retry execution" })).toHaveCount(0);
+
+  runtimeOperations = [{ operation: "agent.run.retry", state: "conflicted", actionId }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Retry · Execution conflict")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
 
   runtimeOperations = [{ operation: "agent.run.retry", state: "succeeded", actionId, resultRunId }];
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -407,4 +417,9 @@ test("Runtime Activity follows an Operator approval to the verified retry Run", 
   await openRetry.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Retried Runtime Run" })).toBeVisible();
+  const original = page.getByRole("link", { name: "Open original Run" });
+  await expect(original).toHaveAttribute("href", `/admin/agents/activity/${runId}`);
+  await original.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toBeVisible();
 });

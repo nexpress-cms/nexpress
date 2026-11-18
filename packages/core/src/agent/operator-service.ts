@@ -154,6 +154,7 @@ import type {
   NpAgentAuthorizationContextCanonicalV1,
   NpAgentScope,
 } from "../agent-contract/types.js";
+import { npAgentScopeStaffCapability } from "../agent-contract/types.js";
 import {
   npAgentMcpTaskLimitsV1,
   type NpAgentMcpTaskV1,
@@ -168,7 +169,10 @@ import {
   npReadAgentOperatorReviewV1,
   type NpAgentOperatorRuntimeResultSelectorV1,
 } from "./operator-review.js";
-import { npReadAgentOperatorRunActivityV1 } from "./operator-run-activity.js";
+import {
+  npReadAgentOperatorRetrySourceV1,
+  npReadAgentOperatorRunActivityV1,
+} from "./operator-run-activity.js";
 import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 
 type Db = ReturnType<typeof database>;
@@ -2383,7 +2387,14 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
         actionId: input.actionId,
         now: now(),
         requireRuntimeResult,
-        authorize: async (selector) => {
+        authorize: async ({ requiredScopes, ...selector }) => {
+          if (
+            requireRuntimeResult &&
+            !requiredScopes.every((scope) =>
+              auth.authority.capabilities.includes(npAgentScopeStaffCapability[scope]),
+            )
+          )
+            throw unavailable();
           await options.host.assertReviewAccess!({
             db,
             siteId: input.siteId,
@@ -2478,6 +2489,14 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
           ? (id) =>
               options.resolveApprovals!().get({ siteId: input.siteId, actor: input.actor, id })
           : undefined,
+      });
+    },
+    projectRunRetrySource(input: { siteId: string; actor: NpAgentAdminActorV1; runId: string }) {
+      if (!options.host.assertReviewAccess) return Promise.resolve(undefined);
+      return npReadAgentOperatorRetrySourceV1({
+        ...input,
+        db: database(),
+        review: (actionId, expected) => projectActivity({ ...input, actionId }, expected),
       });
     },
     async projectRuntimeAction(runtime: NpAgentRuntimeRunContextV1, actionId: string) {

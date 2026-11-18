@@ -164,7 +164,7 @@ export interface NpAgentActivityServiceOptionsV1 {
   admission?: NpAgentCapabilityAdmissionServiceV1;
   /** Explicit current-viewer/target-authorized Operator review owner. */
   operator?: Pick<NpAgentOperatorServiceV1, "projectActivity"> &
-    Partial<Pick<NpAgentOperatorServiceV1, "projectRunActivity">>;
+    Partial<Pick<NpAgentOperatorServiceV1, "projectRunActivity" | "projectRunRetrySource">>;
   /** Explicit current-item authorization through the existing ChangeSet service. */
   changesets?: Pick<NpAgentChangeSetServiceV1, "get"> &
     Partial<Pick<NpAgentChangeSetServiceV1, "approvals" | "refreshGatewayInvocation">>;
@@ -1229,6 +1229,27 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     await assertSameStaff(input, auth);
     return detail;
   }
+  async function visibleRetryRun(run: Run, id: string, visibility: Visibility) {
+    if (id === run.id) return false;
+    const [other] = await getDb()
+      .select()
+      .from(npAgentRuns)
+      .where(
+        and(
+          eq(npAgentRuns.siteId, run.siteId),
+          eq(npAgentRuns.id, id),
+          eq(npAgentRuns.origin, "runtime"),
+          eq(npAgentRuns.principalId, run.principalId),
+        ),
+      )
+      .limit(1);
+    return (
+      other &&
+      other.agentId === run.agentId &&
+      other.agentVersionId === run.agentVersionId &&
+      (await runVisible(other, visibility).catch(() => false))
+    );
+  }
   async function runtimeOperationActivity(input: Staff, run: Run, visibility: Visibility) {
     const records = await options.operator
       ?.projectRunActivity?.({
@@ -1242,30 +1263,21 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     if (!records?.length) return;
     const visible = [];
     for (const record of records) {
-      if (record.state === "succeeded" && record.operation === "agent.run.retry") {
-        const [result] = await getDb()
-          .select()
-          .from(npAgentRuns)
-          .where(
-            and(
-              eq(npAgentRuns.siteId, run.siteId),
-              eq(npAgentRuns.id, record.resultRunId),
-              eq(npAgentRuns.origin, "runtime"),
-              eq(npAgentRuns.principalId, run.principalId),
-            ),
-          )
-          .limit(1);
-        if (
-          !result ||
-          result.agentId !== run.agentId ||
-          result.agentVersionId !== run.agentVersionId ||
-          !(await runVisible(result, visibility).catch(() => false))
-        )
-          continue;
-      }
+      if (
+        record.state === "succeeded" &&
+        record.operation === "agent.run.retry" &&
+        !(await visibleRetryRun(run, record.resultRunId, visibility))
+      )
+        continue;
       visible.push(record);
     }
     return visible.length ? visible : undefined;
+  }
+  async function runtimeRetrySource(input: Staff, run: Run, visibility: Visibility) {
+    const id = await options.operator
+      ?.projectRunRetrySource?.({ siteId: run.siteId, actor: input.actor, runId: run.id })
+      .catch(() => undefined);
+    if (id && (await visibleRetryRun(run, id, visibility))) return id;
   }
   async function getRun(
     input: Staff & IncidentReader & { id: string },
@@ -1317,15 +1329,19 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         snapshot.detail.evidence === "redacted"
           ? await relatedRunRecords(input, snapshot.current, visibility, actions)
           : undefined;
-      const runtimeOperations =
+      const [runtimeOperations, runtimeRetrySourceRunId] =
         snapshot.detail.evidence === "redacted"
-          ? await runtimeOperationActivity(input, snapshot.current, visibility)
-          : undefined;
+          ? await Promise.all([
+              runtimeOperationActivity(input, snapshot.current, visibility),
+              runtimeRetrySource(input, snapshot.current, visibility),
+            ])
+          : [];
       await assertSameStaff(input, auth);
       return {
         ...snapshot.detail,
         ...(related ? { related } : {}),
         ...(runtimeOperations ? { runtimeOperations } : {}),
+        ...(runtimeRetrySourceRunId ? { runtimeRetrySourceRunId } : {}),
       };
     }
     const current = await refreshRun(row);

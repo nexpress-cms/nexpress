@@ -1043,7 +1043,7 @@ function RuntimeOperationActivity({
         <ul className="space-y-3 text-[13px]">
           {operations.map((item) => {
             const retry = item.operation === "agent.run.retry";
-            if (item.state !== "succeeded")
+            if ("approvalId" in item)
               return (
                 <li key={item.approvalId} className="space-y-1">
                   <p>
@@ -1059,11 +1059,33 @@ function RuntimeOperationActivity({
                   </Link>
                 </li>
               );
+            if (!("actionId" in item))
+              return (
+                <li key={`${item.operation}:${item.state}`} className="space-y-1">
+                  <p>
+                    {retry ? "Retry" : "Cancellation"} ·{" "}
+                    {item.state === "reserved"
+                      ? "Awaiting dispatch"
+                      : item.state === "dispatching"
+                        ? "Dispatch started"
+                        : "Outcome unconfirmed"}
+                  </p>
+                  {item.state !== "reserved" ? (
+                    <p>Check the recorded outcome before requesting another operation.</p>
+                  ) : null}
+                </li>
+              );
             return (
               <li key={item.actionId} className="space-y-1">
-                <p>{retry ? "Retry Run created" : "Cancellation confirmed"}</p>
+                <p>
+                  {item.state === "succeeded"
+                    ? retry
+                      ? "Retry Run created"
+                      : "Cancellation confirmed"
+                    : `${retry ? "Retry" : "Cancellation"} · ${item.state === "failed" ? "Execution failed" : "Execution conflict"}`}
+                </p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {item.operation === "agent.run.retry" ? (
+                  {"resultRunId" in item ? (
                     <Link
                       className="underline"
                       prefetch={false}
@@ -1282,6 +1304,17 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
                     </>
                   ) : null}
                   <Fact label="Parent run">{run.parentRunId ?? "None"}</Fact>
+                  {detail.runtimeRetrySourceRunId ? (
+                    <Fact label="Retry source">
+                      <Link
+                        className="underline"
+                        prefetch={false}
+                        href={`/admin/agents/activity/${encodeURIComponent(detail.runtimeRetrySourceRunId)}`}
+                      >
+                        Open original Run
+                      </Link>
+                    </Fact>
+                  ) : null}
                   <Fact label="Deadline">
                     <ActivityTime value={run.deadlineAt} />
                   </Fact>

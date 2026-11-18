@@ -27,6 +27,40 @@ const resultTable = npAgentOperatorExecutions;
 const planTable = npAgentOperatorPlans;
 const limit = npAgentActivityRuntimeOperationLimitV1;
 
+function runtimeExecutions(db: Db) {
+  return db
+    .select({
+      actionId: npAgentInvocations.resultId,
+      sourceRunId: resultTable.sourceRunId,
+      resultRunId: resultTable.resultRunId,
+      operation: sql<string>`${planTable.operation}->>'action'`,
+      state: resultTable.state,
+    })
+    .from(resultTable)
+    .innerJoin(
+      npAgentInvocations,
+      and(
+        eq(npAgentInvocations.siteId, resultTable.siteId),
+        eq(npAgentInvocations.id, resultTable.invocationId),
+        eq(npAgentInvocations.operationId, "ops.execute"),
+      ),
+    )
+    .innerJoin(
+      planTable,
+      and(
+        eq(planTable.siteId, resultTable.siteId),
+        eq(planTable.id, resultTable.planId),
+        eq(planTable.contractId, npRuntimeOperatorContractIdV1),
+        sql`${planTable.operation}->'target'->>'runId' = ${resultTable.sourceRunId}::text`,
+      ),
+    );
+}
+
+type Review = (
+  actionId: string,
+  expected?: NpAgentOperatorRuntimeResultSelectorV1,
+) => Promise<NpAgentOperatorReviewV1>;
+
 export async function npReadAgentOperatorRunActivityV1(input: {
   db: Db;
   siteId: string;
@@ -35,10 +69,7 @@ export async function npReadAgentOperatorRunActivityV1(input: {
   finished: boolean;
   now: Date;
   admission?: NpAgentRuntimeAdmissionV1;
-  review: (
-    actionId: string,
-    expected?: NpAgentOperatorRuntimeResultSelectorV1,
-  ) => Promise<NpAgentOperatorReviewV1>;
+  review: Review;
   readApproval?: (id: string) => Promise<NpAgentApprovalDetailV1>;
 }): Promise<NpAgentActivityRuntimeOperationV1[]> {
   const { db, siteId, runId, now } = input;
@@ -124,69 +155,76 @@ export async function npReadAgentOperatorRunActivityV1(input: {
     }
   }
 
-  const completedOperation: Operation | null =
-    input.state === "cancelled"
-      ? "agent.run.cancel"
-      : input.state === "failed"
-        ? "agent.run.retry"
-        : null;
-  if (!completedOperation) return activity;
-  const executions = await db
-    .select({
-      actionId: npAgentInvocations.resultId,
-      resultRunId: resultTable.resultRunId,
-    })
-    .from(resultTable)
-    .innerJoin(
-      npAgentInvocations,
-      and(
-        eq(npAgentInvocations.siteId, resultTable.siteId),
-        eq(npAgentInvocations.id, resultTable.invocationId),
-        eq(npAgentInvocations.operationId, "ops.execute"),
-      ),
-    )
-    .innerJoin(
-      planTable,
-      and(eq(planTable.siteId, resultTable.siteId), eq(planTable.id, resultTable.planId)),
-    )
-    .where(
-      and(
-        planTarget,
-        eq(resultTable.siteId, siteId),
-        eq(resultTable.sourceRunId, runId),
-        eq(resultTable.state, "succeeded"),
-        sql`${planTable.operation}->>'action' = ${completedOperation}`,
-      ),
-    )
-    .orderBy(desc(resultTable.finishedAt), desc(resultTable.id))
+  const executions = await runtimeExecutions(db)
+    .where(and(eq(resultTable.siteId, siteId), eq(resultTable.sourceRunId, runId)))
+    .orderBy(desc(resultTable.reservedAt), desc(resultTable.id))
     .limit(limit - activity.length);
 
-  for (const candidate of executions) {
-    if (!candidate.actionId) continue;
+  for (const { actionId, operation, state, resultRunId } of executions) {
+    if (!actionId || !isRuntimeOperation(operation)) continue;
     try {
-      if (completedOperation === "agent.run.cancel") {
-        await input.review(candidate.actionId, { runId, operation: completedOperation });
-        activity.push({
-          operation: completedOperation,
-          state: "succeeded",
-          actionId: candidate.actionId,
-        });
-      } else if (candidate.resultRunId && candidate.resultRunId !== runId) {
-        await input.review(candidate.actionId, {
-          runId,
-          operation: completedOperation,
-          resultRunId: candidate.resultRunId,
-        });
-        activity.push({
-          operation: completedOperation,
-          state: "succeeded",
-          actionId: candidate.actionId,
-          resultRunId: candidate.resultRunId,
-        });
+      if (state === "succeeded") {
+        if (operation === "agent.run.cancel" && input.state === "cancelled") {
+          await input.review(actionId, { runId, operation, state });
+          activity.push({ operation, state, actionId });
+        } else if (
+          operation === "agent.run.retry" &&
+          input.state === "failed" &&
+          resultRunId &&
+          resultRunId !== runId
+        ) {
+          await input.review(actionId, { runId, operation, state, resultRunId });
+          activity.push({ operation, state, actionId, resultRunId });
+        }
+      } else if (state === "failed" || state === "conflicted") {
+        await input.review(actionId, { runId, operation, state });
+        activity.push({ operation, state, actionId });
+      } else if (state === "reserved" || state === "dispatching" || state === "unknown") {
+        if (activity.some((item) => item.operation === operation && item.state === state)) continue;
+        await input.review(actionId, { runId, operation, state });
+        activity.push({ operation, state });
       }
     } catch {
       // Visibility and integrity of the retained result are required for a link.
     }
   }
   return activity;
+}
+
+function isRuntimeOperation(value: string): value is Operation {
+  return value === "agent.run.cancel" || value === "agent.run.retry";
+}
+
+export async function npReadAgentOperatorRetrySourceV1(input: {
+  db: Db;
+  siteId: string;
+  runId: string;
+  review: Review;
+}): Promise<string | undefined> {
+  const { db, siteId, runId } = input;
+  const candidates = await runtimeExecutions(db)
+    .where(
+      and(
+        eq(resultTable.siteId, siteId),
+        eq(resultTable.resultRunId, runId),
+        eq(resultTable.state, "succeeded"),
+        sql`${planTable.operation}->>'action' = 'agent.run.retry'`,
+      ),
+    )
+    .orderBy(desc(resultTable.finishedAt), desc(resultTable.id))
+    .limit(limit);
+  for (const { actionId, sourceRunId } of candidates) {
+    if (!actionId || !sourceRunId || sourceRunId === runId) continue;
+    try {
+      await input.review(actionId, {
+        runId: sourceRunId,
+        operation: "agent.run.retry",
+        state: "succeeded",
+        resultRunId: runId,
+      });
+      return sourceRunId;
+    } catch {
+      // Only a verified, currently visible execution can establish the retry relationship.
+    }
+  }
 }

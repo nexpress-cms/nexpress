@@ -89,6 +89,10 @@ cancel or retry request prepared by Operator. The approval page records the
 human decision. Operator dispatches the approved operation through its existing
 execution checks. Activity links to a verified cancellation result or to the
 new Run after a successful retry, subject to current item access.
+After dispatch begins, the request shows the last recorded execution state.
+An unconfirmed outcome calls for checking the operation before requesting it
+again. Failed or conflicted results link to their execution record. A verified
+retry Run links back to the original Run when you can view both.
 
 ## Understand what the displayed times mean
 

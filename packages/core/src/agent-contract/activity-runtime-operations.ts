@@ -8,7 +8,17 @@ import {
 import type { NpAgentRunV1 } from "./wire-contract.js";
 
 const operations = ["agent.run.cancel", "agent.run.retry"] as const;
-const states = ["pending", "approved", "succeeded"] as const;
+const states = [
+  "pending",
+  "approved",
+  "reserved",
+  "dispatching",
+  "unknown",
+  "failed",
+  "conflicted",
+  "succeeded",
+] as const;
+export type NpAgentActivityUnresolvedRuntimeExecutionV1 = "reserved" | "dispatching" | "unknown";
 export type NpAgentActivityRuntimeOperationV1 =
   | {
       operation: (typeof operations)[number];
@@ -16,6 +26,11 @@ export type NpAgentActivityRuntimeOperationV1 =
       approvalId: string;
       expiresAt: string;
     }
+  | {
+      operation: (typeof operations)[number];
+      state: NpAgentActivityUnresolvedRuntimeExecutionV1;
+    }
+  | { operation: (typeof operations)[number]; state: "failed" | "conflicted"; actionId: string }
   | { operation: "agent.run.cancel"; state: "succeeded"; actionId: string }
   | { operation: "agent.run.retry"; state: "succeeded"; actionId: string; resultRunId: string };
 
@@ -48,19 +63,26 @@ export function parseActivityRuntimeOperationsV1(
       new Set(operations),
     );
     const state = canonicalBodyEnum<(typeof states)[number]>(row.state, path, new Set(states));
-    const keys =
-      state !== "succeeded"
-        ? ["operation", "state", "approvalId", "expiresAt"]
-        : operation === "agent.run.retry"
+    const approval = state === "pending" || state === "approved";
+    const unresolved = state === "reserved" || state === "dispatching" || state === "unknown";
+    const keys = approval
+      ? ["operation", "state", "approvalId", "expiresAt"]
+      : unresolved
+        ? ["operation", "state"]
+        : state === "succeeded" && operation === "agent.run.retry"
           ? ["operation", "state", "actionId", "resultRunId"]
           : ["operation", "state", "actionId"];
     canonicalBodyRecord(entry, path, keys, keys, { seen: new WeakSet() });
-    const id = canonicalBodyUuid(state === "succeeded" ? row.actionId : row.approvalId, path);
+    const id = unresolved
+      ? `${operation}:${state}`
+      : canonicalBodyUuid(approval ? row.approvalId : row.actionId, path);
     if (identities.has(id))
       return failCanonicalBody("invalid-field", path, "contains a duplicate reference");
     identities.add(id);
-    if (state !== "succeeded")
+    if (approval)
       return { operation, state, approvalId: id, expiresAt: canonicalBodyUtc(row.expiresAt, path) };
+    if (unresolved) return { operation, state };
+    if (state !== "succeeded") return { operation, state, actionId: id };
     if (operation === "agent.run.cancel") return { operation, state, actionId: id };
     const resultRunId = canonicalBodyUuid(row.resultRunId, path);
     if (resultRunId === run.id)
