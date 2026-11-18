@@ -92,6 +92,7 @@ export type NpAgentActivityRunResourceV1 =
   | (NpAgentActivityRunDetailV1 & {
       runtimeDiagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
       runtimeOperations?: NpAgentActivityRuntimeOperationV1[];
+      runtimeRetrySourceRunId?: string;
       related?: NpAgentActivityRunLinksV1;
     })
   | NpAgentActivityExpiredRunV1;
@@ -135,6 +136,7 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
         "auditEventIds",
         "runtimeDiagnostics",
         "runtimeOperations",
+        "runtimeRetrySourceRunId",
         "related",
         "runId",
         "siteId",
@@ -148,8 +150,23 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
       { seen: new WeakSet() },
     );
     if (r.schemaVersion === "np.agent-activity-run.v1") {
-      const { runtimeDiagnostics, runtimeOperations, related, ...base } = r;
+      const { runtimeDiagnostics, runtimeOperations, runtimeRetrySourceRunId, related, ...base } =
+        r;
       const detail = npRequireAgentActivityRunDetailV1(base);
+      const retrySource = Object.hasOwn(r, "runtimeRetrySourceRunId")
+        ? canonicalBodyUuid(runtimeRetrySourceRunId, "runtimeRetrySourceRunId")
+        : undefined;
+      if (
+        retrySource &&
+        (detail.run.origin !== "runtime" ||
+          detail.evidence !== "redacted" ||
+          retrySource === detail.run.id)
+      )
+        failCanonicalBody(
+          "invalid-field",
+          "runtimeRetrySourceRunId",
+          "must identify a different Runtime Run",
+        );
       return {
         ...detail,
         ...(Object.hasOwn(r, "runtimeDiagnostics")
@@ -161,6 +178,7 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
         ...(Object.hasOwn(r, "runtimeOperations")
           ? { runtimeOperations: parseActivityRuntimeOperationsV1(runtimeOperations, detail.run) }
           : {}),
+        ...(retrySource ? { runtimeRetrySourceRunId: retrySource } : {}),
       };
     }
     const keys = [

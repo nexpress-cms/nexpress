@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgentActions,
+  npAgentApprovals,
   npAgentInvocations,
   npAgentOperatorPlans,
   npAgentOperatorExecutions,
@@ -23,6 +24,7 @@ import {
   npRequireAgentAuditRunOutputV1,
   npRequireAgentOpsExecuteOutputV1,
   npRequireAgentOpsStatusInputV1,
+  npRequireAgentOpsExecuteInputV1,
   npRequireAgentOperatorCapabilityInputV1,
 } from "../agent-contract/operator-capability-contract.js";
 import { npRequireAgentOperatorMonitorSnapshotV1 } from "../agent-contract/operator-monitor-contract.js";
@@ -33,6 +35,9 @@ import {
 import { NpAgentGatewayError } from "./admin-admission.js";
 import { npRequireAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
 import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
+import type { NpAgentScope } from "../agent-contract/types.js";
+import type { NpAgentActivityUnresolvedRuntimeExecutionV1 } from "../agent-contract/activity-runtime-operations.js";
+import { npRuntimeOperatorContractIdV1 } from "./runtime-operator-controls.js";
 
 type Db = ReturnType<typeof getDb>;
 const digest = (domain: string, value: unknown) =>
@@ -55,7 +60,12 @@ export function npDigestAgentOperatorPlanArtifactV1(input: {
 }
 
 export type NpAgentOperatorRuntimeResultSelectorV1 = { runId: string } & (
-  { operation: "agent.run.cancel" } | { operation: "agent.run.retry"; resultRunId: string }
+  | {
+      operation: "agent.run.cancel" | "agent.run.retry";
+      state: NpAgentActivityUnresolvedRuntimeExecutionV1 | "failed" | "conflicted";
+    }
+  | { operation: "agent.run.cancel"; state: "succeeded" }
+  | { operation: "agent.run.retry"; state: "succeeded"; resultRunId: string }
 );
 
 /** Reads retained evidence only. The caller owns current staff/target authorization around this read. */
@@ -68,6 +78,7 @@ export async function npReadAgentOperatorReviewV1(input: {
   authorize: (selector: {
     capabilityId: NpAgentOperatorReviewV1["capabilityId"];
     input: unknown;
+    requiredScopes: NpAgentScope[];
   }) => Promise<void>;
 }): Promise<NpAgentOperatorReviewV1> {
   const { db, siteId } = input;
@@ -86,27 +97,46 @@ export async function npReadAgentOperatorReviewV1(input: {
     .from(npAgentInvocations)
     .where(and(eq(npAgentInvocations.siteId, siteId), eq(npAgentInvocations.id, a.invocationId)))
     .limit(1);
-  if (
-    !i ||
-    i.resultId !== a.id ||
-    i.operationId !== a.capabilityId ||
+  const expected = input.requireRuntimeResult;
+  const unresolved =
+    expected?.state === "reserved" ||
+    expected?.state === "dispatching" ||
+    expected?.state === "unknown";
+  if (!i || (expected && a.capabilityId !== "ops.execute")) return fail();
+  if (unresolved) {
+    if (
+      i.state !== "accepted" ||
+      a.state !== "executing" ||
+      i.outputRedacted !== null ||
+      a.outputRedacted !== null ||
+      i.outputHash !== null ||
+      a.outputHash !== null
+    )
+      return fail();
+  } else if (
     i.state !== "completed" ||
     ![
       "succeeded",
       "compensated",
       ...(a.capabilityId === "ops.plan" ? ["approval_pending", "approved"] : []),
+      ...(a.capabilityId === "ops.execute" ? ["failed"] : []),
     ].includes(a.state) ||
     !a.outputRedacted ||
     !same(i.outputRedacted, a.outputRedacted) ||
     i.outputHash !== a.outputHash ||
+    digest("np.agent-capability-output.v1", a.outputRedacted) !== a.outputHash
+  )
+    return fail();
+  if (
+    i.resultId !== a.id ||
+    i.operationId !== a.capabilityId ||
     i.requestHash !== a.invocationFingerprint ||
     i.contractFingerprint !== a.capabilityFingerprint ||
     !same(i.capabilityDefinitionBody, a.capabilityDefinitionBody) ||
     !same(i.requestBody.input, a.inputCanonical) ||
     (await npDigestAgentInvocationRequestCanonical(
       npRequireAgentInvocationRequestCanonical(i.requestBody),
-    )) !== i.requestHash ||
-    digest("np.agent-capability-output.v1", a.outputRedacted) !== a.outputHash
+    )) !== i.requestHash
   )
     return fail();
   const canonical = npRequireAgentActionCanonical({
@@ -134,9 +164,9 @@ export async function npReadAgentOperatorReviewV1(input: {
   )
     return fail();
   const capabilityId = a.capabilityId as NpAgentOperatorReviewV1["capabilityId"];
-  if (input.requireRuntimeResult && capabilityId !== "ops.execute") return fail();
   const selector = {
     capabilityId,
+    requiredScopes: a.requiredScopes,
     input:
       capabilityId === "ops.status"
         ? npRequireAgentOpsStatusInputV1(a.inputCanonical)
@@ -163,7 +193,6 @@ export async function npReadAgentOperatorReviewV1(input: {
     review.checks = report.checks.map((c) => ({ id: c.id, state: c.status }));
   }
   if (capabilityId === "ops.execute") {
-    const out = npRequireAgentOpsExecuteOutputV1(a.outputRedacted);
     const [execution] = await db
       .select()
       .from(npAgentOperatorExecutions)
@@ -174,9 +203,81 @@ export async function npReadAgentOperatorReviewV1(input: {
         ),
       )
       .limit(1);
+    if (!execution) return fail();
+    const request = npRequireAgentOpsExecuteInputV1(selector.input);
+    if (expected) {
+      const requestRunId =
+        request.action === "agent.run.retry"
+          ? request.failedRunId
+          : request.action === "agent.run.cancel"
+            ? request.runId
+            : null;
+      if (
+        request.action !== expected.operation ||
+        requestRunId !== expected.runId ||
+        execution.sourceRunId !== expected.runId ||
+        execution.planId !== request.planId ||
+        execution.state !== expected.state
+      )
+        return fail();
+      const [plan] = await db
+        .select({
+          operation: npAgentOperatorPlans.operation,
+          artifact: npAgentOperatorPlans.artifactCanonical,
+          digest: npAgentOperatorPlans.artifactDigest,
+        })
+        .from(npAgentOperatorPlans)
+        .innerJoin(
+          npAgentApprovals,
+          and(
+            eq(npAgentApprovals.siteId, siteId),
+            eq(npAgentApprovals.id, request.approvalId),
+            eq(npAgentApprovals.targetActionId, execution.actionId),
+            eq(npAgentApprovals.state, "consumed"),
+          ),
+        )
+        .where(
+          and(
+            eq(npAgentOperatorPlans.siteId, siteId),
+            eq(npAgentOperatorPlans.id, execution.planId),
+            eq(npAgentOperatorPlans.approvalActionId, execution.actionId),
+            eq(npAgentOperatorPlans.contractId, npRuntimeOperatorContractIdV1),
+          ),
+        )
+        .limit(1);
+      if (
+        !plan ||
+        !same(plan.operation, {
+          action: expected.operation,
+          target: { kind: "run", runId: expected.runId },
+        }) ||
+        plan.digest !== request.planDigest ||
+        npDigestAgentOperatorPlanArtifactV1({
+          operation: plan.operation,
+          contractId: npRuntimeOperatorContractIdV1,
+          artifact: plan.artifact,
+        }) !== request.planDigest
+      )
+        return fail();
+    }
+    if (unresolved) {
+      if (
+        execution.resultCanonical !== null ||
+        execution.evidenceCanonical !== null ||
+        execution.resultDigest !== null ||
+        execution.finishedAt !== null ||
+        (execution.dispatchedAt === null) !== (expected.state === "reserved")
+      )
+        return fail();
+      return npRequireAgentOperatorReviewV1(review);
+    }
+    const out = npRequireAgentOpsExecuteOutputV1(a.outputRedacted);
     if (
-      !execution ||
       execution.planId !== out.planId ||
+      request.planId !== out.planId ||
+      request.action !== out.action ||
+      execution.state !== out.state ||
+      (a.state === "failed") !== (out.state !== "succeeded") ||
       !same(execution.resultCanonical, out) ||
       execution.resultDigest !== out.resultDigest ||
       digest("np.agent-operator-execution-result.v1", {
@@ -188,22 +289,17 @@ export async function npReadAgentOperatorReviewV1(input: {
       }) !== out.resultDigest
     )
       return fail();
-    const expected = input.requireRuntimeResult;
-    if (expected) {
+    if (expected?.state === "succeeded") {
       const evidence = execution.evidenceCanonical;
       if (
-        execution.sourceRunId !== expected.runId ||
-        execution.state !== "succeeded" ||
-        out.state !== "succeeded" ||
-        out.action !== expected.operation ||
-        (expected.operation === "agent.run.retry"
+        expected.operation === "agent.run.retry"
           ? execution.resultRunId !== expected.resultRunId ||
             evidence?.sourceRunId !== expected.runId ||
             evidence?.resultRunId !== expected.resultRunId ||
             !out.verificationRefs.includes(`agent-run:${expected.resultRunId}`)
           : evidence?.runId !== expected.runId ||
             evidence?.state !== "cancelled" ||
-            !out.verificationRefs.includes(`agent-run:${expected.runId}`))
+            !out.verificationRefs.includes(`agent-run:${expected.runId}`)
       )
         return fail();
     }

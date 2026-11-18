@@ -149,6 +149,16 @@ it("requires an exact approval or result reference for a Runtime operation", () 
     expiresAt: "2026-09-01T00:00:00.000Z",
   };
   expect(parseActivityRuntimeOperationsV1([approval], run)).toEqual([approval]);
+  const unknown = { operation: "agent.run.cancel", state: "unknown" };
+  const failed = { operation: "agent.run.retry", state: "failed", actionId: expiredRun.agent.id };
+  expect(parseActivityRuntimeOperationsV1([unknown, failed], run)).toEqual([unknown, failed]);
+  expect(() => parseActivityRuntimeOperationsV1([unknown, unknown], run)).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([{ ...unknown, actionId: failed.actionId }], run),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([{ ...failed, resultRunId: expiredRun.agent.versionId }], run),
+  ).toThrow();
   expect(() =>
     parseActivityRuntimeOperationsV1([approval], { ...run, origin: "gateway" }),
   ).toThrow();
