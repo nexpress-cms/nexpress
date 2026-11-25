@@ -165,7 +165,7 @@ jobs:
 
     services:
       redis:
-        image: redis:7-alpine
+        image: ${{ matrix.partition == 2 && 'redis:7-alpine' || '' }}
         ports:
           - 6379:6379
         options: >-
@@ -190,7 +190,7 @@ jobs:
     env:
       DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
       TEST_DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
-      # Same `next build` project-config validation as the checks job.
+      # Vitest loads the reference project config.
       NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
       SITE_URL: http://localhost:3000
 
@@ -210,12 +210,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Build integration test dependencies
+        run: pnpm build --filter '@nexpress/web^...' --filter @nexpress/core
 
       - name: Run assigned integration tests
         env:
-          TEST_REDIS_URL: redis://127.0.0.1:6379
+          TEST_REDIS_URL: ${{ matrix.partition == 2 && 'redis://127.0.0.1:6379' || '' }}
         run: node scripts/integration-partitions.mjs ${{ matrix.partition }} --output "$RUNNER_TEMP/np-integration"
 
       - name: Upload successful coverage inventory
