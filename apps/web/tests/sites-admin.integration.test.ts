@@ -24,14 +24,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
   });
-  beforeEach(async () => {
-    await truncateAll();
-    const { listSites, deleteSite } = await import("@nexpress/core");
-    const sites = await listSites();
-    for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
-    }
-  });
+  beforeEach(truncateAll);
   afterEach(async () => {
     const { listSites, deleteSite } = await import("@nexpress/core");
     const sites = await listSites();
@@ -96,32 +89,23 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     }
   });
 
-  it("POST forbids non-admin roles", async () => {
-    const editor = await seedUser({ role: "editor" });
+  it("POST forbids editors and global admins without super-admin", async () => {
     const { POST } = await import("@/app/api/admin/sites/route");
-    const req = buildRequest("/api/admin/sites", {
-      session: editor,
-      method: "POST",
-      body: { id: "blocked", name: "Blocked" },
-    });
-    const res = await POST(req);
-    const { status } = await readJson(res);
-    expect(status).toBe(403);
-  });
-
-  it("Issue #216 — POST forbids global admin without super-admin", async () => {
-    // Intentionally NOT a super-admin: a plain global admin
-    // shouldn't be able to create a new site.
-    const admin = await seedUser({ role: "admin" });
-    const { POST } = await import("@/app/api/admin/sites/route");
-    const req = buildRequest("/api/admin/sites", {
-      session: admin,
-      method: "POST",
-      body: { id: "blocked-by-issue-216", name: "Blocked" },
-    });
-    const res = await POST(req);
-    const { status } = await readJson(res);
-    expect(status).toBe(403);
+    const { getSiteById } = await import("@nexpress/core");
+    for (const role of ["editor", "admin"] as const) {
+      const session = await seedUser({ role });
+      const id = `blocked-${role}`;
+      const res = await POST(
+        buildRequest("/api/admin/sites", {
+          session,
+          method: "POST",
+          body: { id, name: "Blocked" },
+        }),
+      );
+      const { status } = await readJson(res);
+      expect.soft(status, `site creation by ${role}`).toBe(403);
+      expect.soft(await getSiteById(id), `site persisted by ${role}`).toBeNull();
+    }
   });
 
   it("PATCH /api/admin/sites/[id] updates name + hostname (super-admin)", async () => {
