@@ -23,8 +23,8 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { Writable } from "node:stream";
 import {
-  npBuildAgentEvaluationReportV1,
-  npReadAgentEvaluationReportInputV1,
+  npBuildAgentEvaluationReport,
+  npReadAgentEvaluationReportInput,
   npAssertAgentEvaluationReportOutputV1,
   runAgentModeratorEvaluationV1,
   runAgentModeratorEvaluationV2,
@@ -50,8 +50,8 @@ import {
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
-  npFormatAgentEvaluationReportV1,
-  type NpAgentEvaluationReportCommandResultV1,
+  npFormatAgentEvaluationReport,
+  type NpAgentEvaluationReportCommandResult,
   npFormatAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationReviewCommandResult,
@@ -104,8 +104,9 @@ nexpress agent evaluate --report <manifest.json> [--out <report.json>] [--json]
 
 Review labels are self-reported offline evaluation data, never live approvals.
 Without --reviews, review mode emits evidence/proposals and binding fields with no labels.
-Report inputs resolve relative to the manifest. Exit zero means a report was generated,
-including missing or failed evidence; it does not establish model usefulness or full R6 acceptance.
+Report inputs resolve relative to the manifest. A V2 manifest supports multiple datasets per recipe.
+Exit zero means a report was generated, including missing or failed evidence; it does not establish
+model usefulness or full R6 acceptance.
 
 moderator.v1 preserves the original observed-content detector fixtures.
 moderator.v2 adds unverified report and mixed facts to actual detector replay; report claims establish no spam verdict or approval authority.
@@ -693,10 +694,10 @@ async function runReport(
   input: NpAgentEvaluateCliInputV1,
   output: Pick<Writable, "write">,
 ): Promise<number> {
-  let result: NpAgentEvaluationReportCommandResultV1;
+  let result: NpAgentEvaluationReportCommandResult;
   try {
-    const loaded = await npReadAgentEvaluationReportInputV1(input.reportPath!);
-    const artifact = await npBuildAgentEvaluationReportV1(loaded.input);
+    const loaded = await npReadAgentEvaluationReportInput(input.reportPath!);
+    const artifact = await npBuildAgentEvaluationReport(loaded.input);
     result = { schemaVersion: "np.agent-eval-report-command.v1", artifact, errorCode: null };
     if (input.outPath) {
       try {
@@ -718,7 +719,7 @@ async function runReport(
     };
   }
   output.write(
-    `${input.json ? JSON.stringify(result) : result.artifact ? npFormatAgentEvaluationReportV1(result.artifact) : `Evaluation report unavailable (${result.errorCode}).`}\n`,
+    `${input.json ? JSON.stringify(result) : result.artifact ? npFormatAgentEvaluationReport(result.artifact) : `Evaluation report unavailable (${result.errorCode}).`}\n`,
   );
   return result.errorCode ? 1 : 0;
 }

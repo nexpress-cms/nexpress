@@ -1,12 +1,19 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   npBuildAgentEvaluationReportV1,
+  npBuildAgentEvaluationReportV2,
   npRequireAgentEvaluationReportV1,
+  npRequireAgentEvaluationReportV2,
 } from "./evaluation-report.js";
 import {
+  npAgentEvaluationReportMaxEntriesV2,
+  npFormatAgentEvaluationReport,
   npFormatAgentEvaluationReportV1,
+  npRequireAgentEvaluationReportManifest,
   npRequireAgentEvaluationReportManifestV1,
   type NpAgentEvaluationReportInputV1,
+  type NpAgentEvaluationReportInputV2,
+  type NpAgentEvaluationReportRecipeV1,
 } from "../agent-contract/evaluation-report-contract.js";
 import { runAgentEvaluationV1 } from "./evaluation.js";
 import {
@@ -25,6 +32,10 @@ import { npBuildAgentOperatorPlanEvaluationReviewArtifactV1 } from "../agent-con
 import { npBuildAgentEvaluationReviewArtifactV1 } from "../agent-contract/evaluation-review-contract.js";
 import { npCreateAgentModeratorProposalEvaluationSuiteV1 } from "./moderator-proposal-evaluation-fixtures.js";
 import { npBuildAgentModeratorProposalEvaluationReviewArtifactV1 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
+import { npBuildAgentProfileEvaluationReviewArtifactV1 } from "../agent-contract/profile-evaluation-review-contract.js";
+import { npCreateAgentMemberReportEvaluationSuiteV1 } from "./member-report-evaluation-fixtures.js";
+import { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
+import { npCreateAgentModeratorSegmentedEvaluationSuiteV2 } from "./moderator-segmented-evaluation-fixtures.js";
 
 const budget = {
   maxCalls: 100,
@@ -42,11 +53,17 @@ const input = (
   entries: JSON.parse(JSON.stringify(entries)),
 });
 const entry = (
-  recipe: "operator" | "publisher" | "moderator" | "moderator-proposal",
+  recipe: NpAgentEvaluationReportRecipeV1,
   evaluation: unknown,
   review: unknown = null,
   baseline: NpAgentEvaluationReportInputV1["entries"][number]["baseline"] = null,
 ) => ({ recipe, current: { evaluation, review }, baseline });
+const inputV2 = (
+  entries: NpAgentEvaluationReportInputV2["entries"],
+): NpAgentEvaluationReportInputV2 => ({
+  ...input(entries),
+  schemaVersion: "np.agent-eval-report-input.v2",
+});
 const rebuild = (
   a: NpAgentEvaluationArtifactV1,
   overrides: Partial<NpAgentEvaluationArtifactV1> = {},
@@ -370,5 +387,140 @@ describe("unified offline evaluation evidence", () => {
       { ...manifest, entries: [{ recipe: "operator", evaluation: "a.json" }] },
     ])
       expect(() => npRequireAgentEvaluationReportManifestV1(invalid)).toThrow();
+    const multiple = {
+      schemaVersion: "np.agent-eval-report-manifest.v2",
+      entries: [
+        manifest.entries[0],
+        { ...structuredClone(manifest.entries[0]), evaluation: "other.json" },
+      ],
+    };
+    expect(npRequireAgentEvaluationReportManifest(multiple)).toEqual(multiple);
+    expect(() => npRequireAgentEvaluationReportManifestV1(multiple)).toThrow();
+    expect(() =>
+      npRequireAgentEvaluationReportManifest({
+        ...multiple,
+        entries: Array.from({ length: npAgentEvaluationReportMaxEntriesV2 + 1 }, () =>
+          structuredClone(manifest.entries[0]),
+        ),
+      }),
+    ).toThrow();
   });
+
+  it("projects three Moderator datasets with independent reviews and baseline compatibility", async () => {
+    const [semantic, segmented, member] = await Promise.all(
+      [
+        npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+        npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+        npCreateAgentMemberReportEvaluationSuiteV1,
+      ].map(async (suite) =>
+        runAgentEvaluationV1({
+          suite: await suite(),
+          mode: "fake",
+          providerId: "fake",
+          model: "deterministic-v1",
+          budget,
+        }),
+      ),
+    );
+    const memberTemplate = await npBuildAgentProfileEvaluationReviewArtifactV1(member);
+    const { caseId, caseHash, predictionHash, sourceHash } = memberTemplate.entries[0];
+    const memberReview = await npBuildAgentProfileEvaluationReviewArtifactV1(member, [
+      {
+        caseId,
+        caseHash,
+        predictionHash,
+        sourceHash,
+        outcome: "accept",
+        reviewer: "synthetic-test",
+        reviewedAt: "2026-11-26T00:00:00.000Z",
+        notes: "",
+        editedProposal: null,
+      },
+    ]);
+    const segmentedReview = await npBuildAgentProfileEvaluationReviewArtifactV1(segmented);
+    const entries = [
+      entry("moderator-assessment", semantic),
+      entry("moderator-assessment", segmented, segmentedReview, {
+        evaluation: member,
+        review: memberReview,
+      }),
+      entry("moderator-assessment", member, memberReview, {
+        evaluation: member,
+        review: memberReview,
+      }),
+    ];
+    const report = await npBuildAgentEvaluationReportV2(inputV2(entries));
+    const assessments = report.rows.filter((row) => row.recipe === "moderator-assessment");
+    expect(
+      assessments.map((row) => [row.dataset, row.cases, row.review.summary?.reviewed]),
+    ).toEqual([
+      [{ id: "moderator-member-report", version: 1 }, member.caseResults.length, 1],
+      [{ id: "moderator-segmented-assessment", version: 2 }, segmented.caseResults.length, 0],
+      [{ id: "moderator-semantic-assessment", version: 1 }, semantic.caseResults.length, 0],
+    ]);
+    expect(assessments[0].evaluationComparison.result).toMatchObject({ comparable: true });
+    expect(assessments[0].reviewComparison.result).toMatchObject({
+      comparable: true,
+      matchedCaseKeys: [`${caseId}@${memberTemplate.entries[0].caseVersion}`],
+      acceptBasisPointsDelta: 0,
+    });
+    expect(assessments[1].evaluationComparison.result).toEqual({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+    expect(assessments[1].reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+      matchedCaseKeys: [],
+      acceptBasisPointsDelta: null,
+    });
+    expect(assessments[2].evaluationComparison.status).toBe("missing-baseline");
+    expect(report.rows.find((row) => row.recipe === "operator")).toMatchObject({
+      dataset: null,
+      status: "missing",
+    });
+    expect(report.fullR6).toBe("not-established");
+    expect(npFormatAgentEvaluationReport(report)).toContain(
+      "moderator-assessment [moderator-segmented-assessment, version 2]: present",
+    );
+    expect(await npBuildAgentEvaluationReportV2(inputV2([...entries].reverse()))).toEqual(report);
+    expect(await npRequireAgentEvaluationReportV2(report)).toEqual(report);
+    await expect(
+      npBuildAgentEvaluationReportV2(
+        inputV2([entry("moderator-assessment", segmented, memberReview)]),
+      ),
+    ).rejects.toThrow();
+  }, 20_000);
+
+  it("checks suite identity, including version, and rejects a rehashed dataset claim", async () => {
+    const suite = { ...publisher.suite, version: publisher.suite.version + 1 };
+    const next = await rebuild(publisher, { suite });
+    const original = entry("publisher", publisher);
+    const newer = entry("publisher", next, null, { evaluation: publisher, review: null });
+    const report = await npBuildAgentEvaluationReportV2(inputV2([newer, original]));
+    expect(
+      report.rows.filter((row) => row.recipe === "publisher").map((row) => row.dataset),
+    ).toEqual([
+      { id: suite.id, version: publisher.suite.version },
+      { id: suite.id, version: suite.version },
+    ]);
+    expect(report.rows.at(-1)?.evaluationComparison.result).toEqual({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+    const drifted = await rebuild(publisher, {
+      suite: { ...publisher.suite, cases: publisher.suite.cases.slice(1) },
+      caseResults: publisher.caseResults.slice(1),
+    });
+    expect(drifted.suiteHash).not.toBe(publisher.suiteHash);
+    await expect(
+      npBuildAgentEvaluationReportV2(inputV2([original, entry("publisher", drifted)])),
+    ).rejects.toThrow();
+
+    const { artifactHash: originalHash, ...body } = report;
+    body.rows.at(-1)!.dataset!.id = "unbound";
+    const artifactHash = await npDigestAgentEvaluationValueV1(body);
+    expect(artifactHash).not.toBe(originalHash);
+    await expect(npRequireAgentEvaluationReportV2({ ...body, artifactHash })).rejects.toThrow();
+  }, 20_000);
 });

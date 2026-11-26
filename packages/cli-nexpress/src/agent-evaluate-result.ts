@@ -3,7 +3,7 @@ import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
-  npFormatAgentEvaluationReportV1,
+  npFormatAgentEvaluationReport,
   npFormatAgentGuardianEvaluationArtifactV1,
   npRequireAgentGuardianEvaluationArtifactV1,
   npCompareAgentGuardianEvaluationArtifactsV1,
@@ -13,7 +13,7 @@ import {
   type NpAgentGuardianEvaluationArtifactV1,
   type NpAgentGuardianEvaluationReviewArtifactV1,
   type NpAgentGuardianEvaluationReviewComparisonV1,
-  type NpAgentEvaluationReportCommandResultV1,
+  type NpAgentEvaluationReportCommandResult,
   npFormatAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationReviewCommandResult,
@@ -79,7 +79,7 @@ type GuardianResult =
     };
 export type EvaluationResult =
   | GuardianResult
-  | NpAgentEvaluationReportCommandResultV1
+  | NpAgentEvaluationReportCommandResult
   | OperatorPlanReviewResult
   | ModeratorProposalReviewResult
   | NpAgentEvaluationCommandResultV1
@@ -131,7 +131,7 @@ export function formatEvaluationResult(result: EvaluationResult): string {
   }
   if (result.schemaVersion === "np.agent-eval-report-command.v1")
     return result.artifact
-      ? npFormatAgentEvaluationReportV1(result.artifact)
+      ? npFormatAgentEvaluationReport(result.artifact)
       : `Evaluation report unavailable (${result.errorCode}).`;
   if (
     result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
@@ -207,21 +207,21 @@ export async function prepareEvaluationResultVerifier(
 ): Promise<(value: unknown) => Promise<EvaluationResult>> {
   if (input.reportPath) {
     const {
-      npReadAgentEvaluationReportInputV1,
-      npBuildAgentEvaluationReportV1,
+      npReadAgentEvaluationReportInput,
+      npBuildAgentEvaluationReport,
       npAssertAgentEvaluationReportOutputV1,
     } = await import("@nexpress/core/agents");
-    const loaded = await npReadAgentEvaluationReportInputV1(input.reportPath, cwd);
+    const loaded = await npReadAgentEvaluationReportInput(input.reportPath, cwd);
     if (input.outPath)
       await npAssertAgentEvaluationReportOutputV1(input.outPath, loaded.sourcePaths, cwd);
-    const expected: NpAgentEvaluationReportCommandResultV1 = {
+    const expected: NpAgentEvaluationReportCommandResult = {
       schemaVersion: "np.agent-eval-report-command.v1",
-      artifact: await npBuildAgentEvaluationReportV1(loaded.input),
+      artifact: await npBuildAgentEvaluationReport(loaded.input),
       errorCode: null,
     };
     return (value) => {
       for (const errorCode of ["ARTIFACT_INVALID", "ARTIFACT_UNAVAILABLE"] as const) {
-        const failure: NpAgentEvaluationReportCommandResultV1 = {
+        const failure: NpAgentEvaluationReportCommandResult = {
           schemaVersion: expected.schemaVersion,
           artifact: null,
           errorCode,
