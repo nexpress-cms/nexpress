@@ -18,9 +18,7 @@ export function agentActivitySearchString(
   return query.toString();
 }
 
-async function requireAgentPageAccess(
-  capability?: "admin.manage" | "content.author",
-): Promise<void> {
+async function requireAgentPageAccess(capability?: "admin.manage" | "content.author") {
   await ensureFor("read");
   const token = (await cookies()).get("np-session")?.value;
   const user = token
@@ -28,15 +26,16 @@ async function requireAgentPageAccess(
     : null;
   const siteUser = user ? await resolveSiteAuthUser(user) : null;
   if (!siteUser || (capability && !can(siteUser, capability))) notFound();
+  return { canViewActivity: can(siteUser, "admin.manage") };
 }
 
-export function requireAgentStudioPageAccess(): Promise<void> {
+export function requireAgentStudioPageAccess() {
   return requireAgentPageAccess("admin.manage");
 }
-export function requireAgentChangeSetPageAccess(): Promise<void> {
+export function requireAgentChangeSetPageAccess() {
   return requireAgentPageAccess("content.author");
 }
 /** Item-level approval authority belongs to the injected approval service. */
-export function requireAgentApprovalPageAccess(): Promise<void> {
+export function requireAgentApprovalPageAccess() {
   return requireAgentPageAccess();
 }

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     });
     return npSuccessResponse(npRequireAgentConnectionV1(result.output), { status: 201 });
   } catch (error) {
-    return agentStudioErrorResponse(error, "mutation");
+    return agentStudioErrorResponse(error, "mutation", undefined, request);
   }
 }
 

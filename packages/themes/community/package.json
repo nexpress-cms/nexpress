@@ -59,7 +59,7 @@
     "@types/node": "^26.5.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "next": "^16.3.4",
+    "next": "^16.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tsup": "^8.5.0",
@@ -68,8 +68,8 @@
     "vitest": "^4.1.11"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
+    "build": "rm -rf dist && tsup",
+    "dev": "tsx watch --include src --include package.json --include tsup.config.ts --include tsconfig.json --include ../../../tsconfig.base.json --exclude dist --exclude \"**/tsup.config.bundled_*\" ../../../scripts/build-dev-package.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

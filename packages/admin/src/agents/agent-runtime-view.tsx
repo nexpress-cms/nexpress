@@ -24,6 +24,14 @@ import {
   type NpAgentTrigger,
   type NpAgentRuntimeStudioEffectiveV1,
 } from "@nexpress/core/agent-contract";
+import { publisherSetupAvailable, publisherSetupDefinition } from "./agent-publisher-setup.js";
+import { operatorSetupAvailable, operatorSetupDefinition } from "./agent-operator-setup.js";
+import {
+  moderatorSetupAvailable,
+  moderatorSetupDefinition,
+  moderatorAssessmentSetupAvailable,
+  moderatorAssessmentSetupDefinition,
+} from "./agent-moderator-setup.js";
 import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
@@ -34,7 +42,7 @@ import {
   runtimeErrorMessage,
   useRuntimeResource,
 } from "./agent-runtime-api.js";
-import { RuntimeBudgetFields, RuntimeSelect } from "./agent-runtime-fields.js";
+import { RuntimeBudgetFields, RuntimeFormError, RuntimeSelect } from "./agent-runtime-fields.js";
 import { RuntimeCapabilityModes } from "./agent-policy-fields.js";
 import { RuntimeEventTriggerFields } from "./agent-trigger-fields.js";
 import { RuntimeRecipeFields, runtimeRecipeDraft } from "./agent-recipe-fields.js";
@@ -54,12 +62,22 @@ export const runtimeCatalogPath = "/api/admin/agents/capabilities";
 
 export const parseRuntimeAck = npRequireAgentRuntimeStudioMutationResultV1;
 
-export function RuntimeNotice({ loading, error }: { loading: boolean; error: string | null }) {
+export function RuntimeNotice({
+  loading,
+  error,
+  alertRef,
+}: {
+  loading: boolean;
+  error: string | null;
+  alertRef?: React.Ref<HTMLParagraphElement>;
+}) {
   return (
     <>
       {loading ? <p role="status">Loading Runtime data…</p> : null}
       {error ? (
         <p
+          ref={alertRef}
+          tabIndex={alertRef ? -1 : undefined}
           role="alert"
           className="rounded-lg border border-red-200 p-3 text-sm text-red-700 dark:text-red-300"
         >
@@ -360,8 +378,83 @@ function RuntimeConfigurationEditor({
     );
   return (
     <AgentRecoveryBoundary error={failure}>
-      <form className="space-y-6" onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={busy || stale} className="space-y-6">
+      <form
+        className="min-w-0 space-y-6 [overflow-wrap:anywhere]"
+        onSubmit={(event) => void submit(event)}
+      >
+        <fieldset disabled={busy || stale} className="min-w-0 space-y-6">
+          {!current && publisherSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure a Publisher to review selected collections and prepare ChangeSet drafts
+                and previews. This replaces the draft’s recipe, permissions and budget. Choose
+                collections and a provider explicitly. Applying changes requires a separate review
+                and fresh human approval. Content and schema evidence also require the current
+                policy to permit sensitive-approved provider data; this setup does not change
+                policy.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(publisherSetupDefinition(catalog, definition.name))}
+              >
+                Use Publisher content review setup
+              </Button>
+            </div>
+          ) : null}
+          {!current && moderatorAssessmentSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure a Moderator to assess current Incident evidence and record a separately
+                labelled model judgment for staff review. This replaces the draft’s recipe,
+                permissions and budget. Choose collections and a provider explicitly; saving does
+                not activate the Agent. When the installed profile supports analysis in batches, the
+                configured call and token budgets still apply. A stopped or incomplete analysis does
+                not establish a verdict for the whole Incident.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(moderatorAssessmentSetupDefinition(catalog, definition.name))}
+              >
+                Use Moderator read-only assessment setup
+              </Button>
+            </div>
+          ) : null}
+          {!current && moderatorSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure a Moderator to review repeated-link spam evidence in selected collections
+                and propose quarantine for human approval. This replaces the draft’s recipe,
+                permissions and budget. Choose collections and a provider explicitly. Saving does
+                not activate the Agent; quarantine always requires human approval, and restoration
+                remains a separate staff review.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(moderatorSetupDefinition(catalog, definition.name))}
+              >
+                Use Moderator human approval setup
+              </Button>
+            </div>
+          ) : null}
+          {!current && operatorSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure an Operator to inspect operational evidence and propose a plan for review.
+                This replaces the draft’s recipe, permissions and budget. Provider selection remains
+                explicit; saving does not activate the Agent.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(operatorSetupDefinition(catalog, definition.name))}
+              >
+                Use Operator diagnostic setup
+              </Button>
+            </div>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="runtime-agent-name">Agent name</Label>
@@ -516,11 +609,22 @@ function RuntimeConfigurationEditor({
             Save writes only a draft. Review current readiness and policy hashes before the separate
             activation step. Trigger changes are reviewed and saved with activation.
           </p>
-          <Button type="submit" disabled={!selected.length}>
+          <Button
+            type="submit"
+            disabled={
+              !selected.length ||
+              definition.settings.some(
+                (setting) =>
+                  (setting.recipeId === "publisher.stale-content" ||
+                    setting.recipeId === "moderator.repeated-link-spam") &&
+                  !setting.collectionSlugs.length,
+              )
+            }
+          >
             {busy ? "Saving draft…" : "Save draft"}
           </Button>
         </fieldset>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? <RuntimeFormError message={error} /> : null}
       </form>
     </AgentRecoveryBoundary>
   );
@@ -542,6 +646,21 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
   const [failure, setFailure] = React.useState<unknown>(null);
   const retryBlocked = useAgentRetryBlocked(failure);
   const agent = state.value;
+  const summaryRef = React.useRef<HTMLParagraphElement>(null);
+  const stateAlertRef = React.useRef<HTMLParagraphElement>(null);
+  const reviewHeadingRef = React.useRef<HTMLHeadingElement>(null);
+  const stateReadback = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (state.loading) return;
+    const refocus = stateReadback.current === id;
+    stateReadback.current = null;
+    if (document.activeElement !== document.body) return;
+    if (state.error) stateAlertRef.current?.focus();
+    else if (refocus) summaryRef.current?.focus();
+  }, [agent, id, state.error, state.loading]);
+  React.useEffect(() => {
+    if (review?.rowVersion === agent?.rowVersion) reviewHeadingRef.current?.focus();
+  }, [review, agent?.rowVersion]);
   const refresh = () => {
     if (retryBlocked) return;
     setFailure(null);
@@ -578,7 +697,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
       <Link className="text-sm underline" href="/admin/agents/configurations">
         Back to Agents
       </Link>
-      <RuntimeNotice loading={false} error={state.error} />
+      <RuntimeNotice loading={false} error={state.error} alertRef={stateAlertRef} />
       {state.error ? <Button onClick={state.reload}>Reload Agent</Button> : null}
       {catalog.error ? (
         <>
@@ -594,7 +713,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
               Refresh
             </Button>
           </div>
-          <p>
+          <p ref={summaryRef} tabIndex={-1}>
             {agent.status} · {agent.definition.template} · version {agent.version} (
             {agent.versionStatus})
           </p>
@@ -617,7 +736,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
               </Button>
             ) : null}
             <Button asChild variant="outline">
-              <Link href={`/admin/agents/activity?origin=runtime&principalId=${agent.principalId}`}>
+              <Link href={`/admin/agents/activity?origin=runtime&agentId=${agent.id}`}>
                 View activity
               </Link>
             </Button>
@@ -647,7 +766,9 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
           {review && review.rowVersion === agent.rowVersion ? (
             <Card>
               <CardHeader>
-                <CardTitle>Effective configuration review</CardTitle>
+                <h3 ref={reviewHeadingRef} tabIndex={-1} className="text-sm font-semibold">
+                  Effective configuration review · version {agent.version}
+                </h3>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <p>
@@ -690,7 +811,10 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
                 )
                 .map((trigger) => trigger.definition) ?? []
             }
-            onChanged={refresh}
+            onChanged={() => {
+              stateReadback.current = id;
+              refresh();
+            }}
             onAccessLost={state.clear}
           />
           <Card>
@@ -755,6 +879,10 @@ function RuntimeAgentActions({
   const [key, setKey] = React.useState(() => crypto.randomUUID());
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const actionAlert = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    if (error && document.activeElement === document.body) actionAlert.current?.focus();
+  }, [error]);
   const [failure, setFailure] = React.useState<unknown>(null);
   const retryBlocked = useAgentRetryBlocked(failure);
   const [stale, setStale] = React.useState(false);
@@ -1011,7 +1139,11 @@ function RuntimeAgentActions({
                 </Button>
               </div>
             </fieldset>
-            {error ? <p role="alert">{error}</p> : null}
+            {error ? (
+              <p ref={actionAlert} tabIndex={-1} role="alert">
+                {error}
+              </p>
+            ) : null}
           </form>
         ) : null}
       </div>
@@ -1036,6 +1168,16 @@ function RuntimeTriggerPlan({
   const kinds = (["manual", "schedule", "event"] as const).filter((kind) =>
     recipes.some((recipe) => recipe.triggerKinds.includes(kind)),
   );
+  const hasModerator = recipes.some((recipe) => recipe.id === "moderator.repeated-link-spam");
+  const hasOperator = recipes.some((recipe) => recipe.id === "operator.worker-not-draining");
+  const hasPublisher = recipes.some((recipe) => recipe.id === "publisher.stale-content");
+  const scheduleCron = hasModerator
+    ? "*/10 * * * *"
+    : hasOperator
+      ? "*/5 * * * *"
+      : hasPublisher
+        ? "0 2 * * *"
+        : "0 * * * *";
   return (
     <fieldset className="space-y-3">
       <legend className="font-medium">Triggers for this activation</legend>
@@ -1043,6 +1185,12 @@ function RuntimeTriggerPlan({
         Trigger registration and enablement are saved atomically with activation. Editing an active
         trigger requires a replacement draft and fresh trigger identity.
       </p>
+      {kinds.some((kind) => kind !== "manual") && (
+        <p className="text-sm">
+          Event and scheduled runs use current evidence to prepare observations or proposals.
+          Content changes and operations execution still require their existing human approval.
+        </p>
+      )}
       {plan.map((entry, index) => (
         <div className="space-y-2 rounded border p-3" key={entry.definition.id}>
           <p>{entry.definition.type}</p>
@@ -1135,15 +1283,19 @@ function RuntimeTriggerPlan({
                         ? {
                             type: "schedule",
                             id: crypto.randomUUID(),
-                            cron: "0 * * * *",
+                            cron: scheduleCron,
                             catchUp: "skip",
                           }
                         : {
                             type: "event",
                             id: crypto.randomUUID(),
-                            eventKind: "agent.run.changed",
-                            filter: { op: "eq", field: "privacy", value: "internal" },
-                            coalesceSeconds: 0,
+                            eventKind: hasModerator
+                              ? "community.content.created"
+                              : "agent.run.changed",
+                            filter: hasModerator
+                              ? { op: "eq", field: "source.kind", value: "community" }
+                              : { op: "eq", field: "privacy", value: "internal" },
+                            coalesceSeconds: hasModerator ? 600 : 0,
                           },
                 },
               ])

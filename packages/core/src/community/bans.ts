@@ -1,12 +1,14 @@
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
 
 import { npRequireBanRow } from "../community-contract/contract.js";
 import type { BanKind, BanScope, NpBanRow } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npBans } from "../db/schema/community.js";
+import { npMembers } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 import { recordAuditEvent } from "./audit.js";
 import type { Principal } from "./principal.js";
@@ -37,7 +39,15 @@ export interface IssueBanInput {
   actor: Principal;
 }
 
-export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
+/** Explicit domain transaction seam. The caller owns mandatory audit/verification, if required.
+ * All issuers lock the Member before changing its restrictions, including legacy staff APIs. */
+export async function npIssueBanInTransactionV1(
+  input: IssueBanInput & {
+    db: ReturnType<typeof getDb>;
+    siteId: string;
+    now?: Date;
+  },
+): Promise<NpBanRow> {
   if (
     input.kind === "temporary" &&
     (!(input.expiresAt instanceof Date) || Number.isNaN(input.expiresAt.valueOf()))
@@ -72,7 +82,7 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
     ]);
   }
 
-  const db = getDb();
+  const db = input.db;
   const byUserId = input.actor.kind === "staff" ? input.actor.user.id : null;
   const byMemberId = input.actor.kind === "member" ? input.actor.memberId : null;
 
@@ -83,7 +93,15 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
   // #272 — write paths must NOT silently fall through to the
   // default site. A ban issued without site context would land
   // on tenant A's records when the staff member intended tenant B.
-  const siteId = await requireSiteId();
+  const siteId = input.siteId;
+  if (!npIsCanonicalSiteId(siteId)) throw new NpValidationError("Invalid ban site", []);
+  const [member] = await db
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.id, input.memberId))
+    .for("no key update")
+    .limit(1);
+  if (!member) throw new NpNotFoundError("member", input.memberId);
   const [row] = (await db
     .insert(npBans)
     .values({
@@ -96,10 +114,20 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
       byUserId,
       byMemberId,
       siteId,
+      ...(input.now ? { createdAt: input.now } : {}),
     })
     .returning()) as NpBanRow[];
   if (!row) throw new Error("Ban insert returned no row");
   const checkedRow = npRequireBanRow(row);
+
+  return checkedRow;
+}
+
+export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
+  const siteId = await requireSiteId();
+  const checkedRow = await getDb().transaction((db) =>
+    npIssueBanInTransactionV1({ ...input, db, siteId }),
+  );
 
   await recordAuditEvent({
     actor:
@@ -151,9 +179,94 @@ export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
   return rows.map(npRequireBanRow);
 }
 
+/**
+ * Bounded same-site snapshot for composing staff review. The caller supplies its
+ * existing DB/transaction and clock; no bootstrap, mutations or history inference.
+ * One extra row reports whether the active result is incomplete.
+ */
+export async function npReadActiveMemberBansBounded(input: {
+  db: ReturnType<typeof getDb>;
+  siteId: string;
+  memberId: string;
+  now: Date;
+  limit: number;
+}): Promise<{ rows: NpBanRow[]; hasMore: boolean }> {
+  if (
+    !npIsCanonicalSiteId(input.siteId) ||
+    !(input.now instanceof Date) ||
+    Number.isNaN(input.now.valueOf()) ||
+    !Number.isInteger(input.limit) ||
+    input.limit < 1 ||
+    input.limit > 100
+  )
+    throw new NpValidationError("Invalid bounded member restriction read", [
+      {
+        field: "memberRestrictions",
+        message: "Canonical site, clock and a 1..100 limit are required",
+      },
+    ]);
+  const rows = await input.db
+    .select()
+    .from(npBans)
+    .where(
+      and(
+        eq(npBans.memberId, input.memberId),
+        eq(npBans.siteId, input.siteId),
+        or(isNull(npBans.expiresAt), gt(npBans.expiresAt, input.now)),
+      ),
+    )
+    .orderBy(desc(npBans.createdAt), asc(npBans.id))
+    .limit(input.limit + 1);
+  return {
+    rows: rows.slice(0, input.limit).map(npRequireBanRow),
+    hasMore: rows.length > input.limit,
+  };
+}
+
 export interface RevokeBanInput {
   banId: string;
   actor: Principal;
+}
+
+/** Exact current-site removal in the caller's transaction. A supplied expected row is a CAS fact. */
+export async function npRevokeBanInTransactionV1(input: {
+  db: ReturnType<typeof getDb>;
+  siteId: string;
+  banId: string;
+  expected?: NpBanRow;
+}): Promise<NpBanRow> {
+  const { db, siteId } = input;
+  if (!npIsCanonicalSiteId(siteId)) throw new NpValidationError("Invalid ban site", []);
+  const [seed] = await db.select().from(npBans).where(eq(npBans.id, input.banId)).limit(1);
+  if (!seed) throw new NpNotFoundError("ban", input.banId);
+  if (seed.siteId !== siteId) throw new NpForbiddenError("ban", "cross-site");
+  await db
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.id, seed.memberId))
+    .for("no key update");
+  const [row] = await db
+    .select()
+    .from(npBans)
+    .where(and(eq(npBans.id, input.banId), eq(npBans.siteId, siteId)))
+    .for("update")
+    .limit(1);
+  if (!row) throw new NpNotFoundError("ban", input.banId);
+  const checked = npRequireBanRow(row);
+  if (input.expected && JSON.stringify(checked) !== JSON.stringify(npRequireBanRow(input.expected)))
+    throw new NpValidationError("The exact restriction changed", []);
+  const deleted = await db
+    .delete(npBans)
+    .where(
+      and(
+        eq(npBans.id, input.banId),
+        eq(npBans.siteId, siteId),
+        eq(npBans.memberId, checked.memberId),
+      ),
+    )
+    .returning({ id: npBans.id });
+  if (deleted.length !== 1) throw new NpNotFoundError("ban", input.banId);
+  return checked;
 }
 
 /**
@@ -166,20 +279,10 @@ export async function revokeBan(input: RevokeBanInput): Promise<void> {
   // request site, reject when the loaded row is in a different
   // tenant, and pin `siteId` in the delete predicate so the
   // read-check and the write cannot drift.
-  const db = getDb();
   const requestSiteId = await requireSiteId();
-  const [existing] = (await db
-    .select()
-    .from(npBans)
-    .where(eq(npBans.id, input.banId))
-    .limit(1)) as NpBanRow[];
-  if (!existing) throw new NpNotFoundError("ban", input.banId);
-  const checkedExisting = npRequireBanRow(existing);
-  if (checkedExisting.siteId !== requestSiteId) {
-    throw new NpForbiddenError("ban", "cross-site");
-  }
-
-  await db.delete(npBans).where(and(eq(npBans.id, input.banId), eq(npBans.siteId, requestSiteId)));
+  const checkedExisting = await getDb().transaction((db) =>
+    npRevokeBanInTransactionV1({ db, siteId: requestSiteId, banId: input.banId }),
+  );
 
   await recordAuditEvent({
     actor:

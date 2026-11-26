@@ -163,6 +163,9 @@ function main() {
   }
   console.log(JSON.stringify({ inventoryCount: inventory.length, partitions: groups }, null, 2));
   if (args.mode === "plan") return;
+  // Separate DB setup/reset/connection-close/drop costs from Vitest test time.
+  // The harness emits aggregates only, with no connection strings or row data.
+  process.env.NP_TEST_DB_TIMINGS = "1";
   const selected = groups[args.partition - 1].files;
   if (args.partition === 1) runCommand("pnpm", ["--filter", "@nexpress/core", "test:integration"]);
   runCommand("pnpm", [
@@ -171,6 +174,10 @@ function main() {
     "exec",
     "vitest",
     "run",
+    // Match the complete local acceptance run: CPU-heavy recipe journeys must
+    // not compete with every host CPU worth of DB/contract workers. Preserve
+    // each test deadline and the exact selected-file coverage below.
+    "--maxWorkers=2",
     ...selected.map((f) => path.join(webRoot, f)),
   ]);
   if (args.partition === 2)

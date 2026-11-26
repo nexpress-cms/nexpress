@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { listMutes, muteMember } from "@nexpress/core/community";
 import {
   npRequireMuteListWire,
@@ -24,7 +25,7 @@ import { npRequireCommunityRequest } from "../../../../lib/community-contract";
  * Member-only (no anonymous mutes), CSRF on writes.
  */
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const member = await requireMember(request);
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -51,3 +52,6 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("community", npGuardianPOST);

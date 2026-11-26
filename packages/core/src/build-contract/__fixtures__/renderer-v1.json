@@ -1,0 +1,18 @@
+{
+  "note": "Synthetic package/source inventories for canonical contracts; no installed-file or renderer provenance is claimed.",
+  "package": {
+    "canonical": "{\"files\":[{\"mode\":\"100644\",\"path\":\"dist/index.js\",\"sha256\":\"f761c91419d0a89422a0004ef1a92929dd4d2d5e5c16758654d8b0467d1998c6\"},{\"mode\":\"100644\",\"path\":\"package.json\",\"sha256\":\"6a1ffb1116a62c4db37bf790bf89265c01cbdc2a8fdc5131336130eb832c90b0\"}],\"name\":\"@nexpress/core\",\"schemaVersion\":\"np.installed-package-content.v1\",\"version\":\"0.4.6\"}",
+    "digest": "npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA"
+  },
+  "structured": [
+    {
+      "purpose": "np.build-direction-renderer.v1",
+      "canonical": "{\"implementation\":\"np.site-build.v1\",\"packages\":[{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/app\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/blocks\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/cli\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/core\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/theme\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"react\",\"version\":\"19.2.0\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"react-dom\",\"version\":\"19.2.0\"}],\"projectSources\":{\"files\":[],\"schemaVersion\":\"np.agent-build-source-tree.v1\"},\"schemaVersion\":\"np.agent-build-direction-renderer.v1\"}",
+      "digest": "nb1:sha256:JrOMxIpK1Sz8QBFuL7uyER3CGGb-kIppkqE5rRlVJUs"
+    }
+  ],
+  "catalog": {
+    "canonical": "{\"collections\":[],\"defaultLocale\":null,\"locales\":[],\"observation\":\"configured-declarations\",\"plugins\":[],\"schemaVersion\":\"np.agent-build-installed-catalog.v1\",\"sourceCapsule\":{\"implementation\":\"np.site-build.v1\",\"packages\":[{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/app\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/blocks\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/cli\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/core\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"@nexpress/theme\",\"version\":\"0.4.6\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"react\",\"version\":\"19.2.0\"},{\"contentDigest\":\"npkg1:sha256:nhk1aG67OJ5u7yr_ELqoPU9D3vGaCur4eI9to6XpazA\",\"name\":\"react-dom\",\"version\":\"19.2.0\"}],\"projectSources\":{\"files\":[],\"schemaVersion\":\"np.agent-build-source-tree.v1\"},\"schemaVersion\":\"np.agent-build-direction-renderer.v1\"},\"themes\":[{\"blocks\":[],\"id\":\"fixture\",\"navigationLocations\":[],\"package\":\"@nexpress/theme\",\"patterns\":[],\"templates\":[],\"tokens\":{},\"version\":\"0.4.6\"}]}",
+    "digest": "ndc1:sha256:YDxwZZYlR3OmyvpRNAsFMJe7beAbHabW6ZuwLyBQCzM"
+  }
+}

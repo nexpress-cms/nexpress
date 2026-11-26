@@ -1,0 +1,305 @@
+# R6 Admin evaluation review workspace
+
+This AP-606 slice connects the existing offline evaluation and review owners to
+`/admin/agents/evaluations`, linked from Agent Studio Overview. It adds no new
+top-level Studio tab and remains available independently of Runtime/provider
+installation. Both the server page and processing endpoint require current
+`admin.manage` staff access.
+
+## Import, review and export
+
+Choose Moderator detector, Moderator proposal, Operator plan or Publisher. Import
+an evaluation artifact and optionally its current review, a baseline evaluation
+and the baseline's review. The supported datasets are `moderator.v1`, `moderator.v2`, `moderator.v3`,
+`moderator-proposal.v1`, `moderator-proposal.v2`, `moderator-proposal.v3`,
+`operator-plan.v1` and `publisher.v1`. The older
+`operator.v1` diagnosis artifact is outside the existing recipe report/review
+contract and is rejected; it remains usable through its existing CLI.
+
+Validation independently recomputes each artifact using its current owner. It
+checks imported reviews against their exact source before applying any replacement
+labels, so a new label cannot hide an invalid imported review or baseline. The
+screen shows evidence, predictions, deterministic scores, review eligibility and
+the existing report's comparison and coverage explanations. Other recipe report
+rows remain explicitly missing when this workspace processes one recipe.
+
+The [report/mixed proposal fixtures](r6-moderator-proposal-evaluation-flow.md#report-and-mixed-source-fixtures)
+retain unverified target-count metadata in evidence, reviews and exports. They use
+the same Moderator proposal selection and abstention controls. A v1/v2 baseline
+remains explicitly incompatible (`SUITE_MISMATCH`); imported labels must bind the
+exact current source, rather than only a dataset name or case identifier.
+
+The [content proposal dataset](r6-moderator-content-proposal-evaluation-flow.md)
+adds exact document and comment selections with the same offline controls.
+Imports, labels and exports preserve its v2 facts envelope and v3 case/suite
+versions; cross-version baselines remain `SUITE_MISMATCH`.
+
+The [report/mixed detector replay](r6-moderator-evaluation-flow.md#report-and-mixed-detector-replay-moderatorv2)
+uses actual detector predictions with paired unknown report verdicts. Detector
+V1/V2 baselines remain incompatible (`INCOMPATIBLE_SUITE`); no cross-version
+cohort or regression delta is inferred.
+
+The [document/comment detector corpus](r6-moderator-content-evaluation-flow.md)
+adds exact v3 source/review import, labels and exports under the same Moderator
+detector controls. Its mixed facts retain both target kinds, unknown report
+verdicts and actual author independence; earlier corpora remain incompatible.
+
+Moderator detector cases use confirmed-spam/false-positive labels. The other
+three owners use accept/edit/reject, including parsed Moderator abstentions.
+Failed predictions are read only; a reviewable prediction whose fixture checks
+fail cannot be accepted. Edits must satisfy the original owner's grounding and
+meaningful-change rules. They never alter the source fixture gate.
+
+Applying a label retains every other exact case binding, including another
+version of the same case identifier. Baseline changes retain locally applied
+labels for the same current source; source/current-review/recipe changes clear
+previous review state. File imports and processing requests have independent
+generation checks; stale responses cannot replace current evidence. Invalid
+optional files must be replaced or explicitly cleared, rather than silently
+being treated as absent.
+
+Unapplied edits, invalid input and pending work block exports. Rejected edits
+retain previously validated labels for correction or explicit draft discard.
+Access loss clears imported files, results and review drafts. The page has no
+polling or persisted browser storage. Optional server-side history requires the explicit host installation described below. Download URLs
+are revoked after use and at unmount.
+
+Downloads are the existing owner's labels array, review artifact and unified
+report artifact. They remain compatible with the existing CLI, for example:
+
+```bash
+nexpress agent evaluate --review evaluation.json --reviews moderator-proposal-labels.json --out checked-review.json --json
+```
+
+The exported report embeds its independently validated source/review/baseline
+input and is verified with `npRequireAgentEvaluationReportV1`; it is not an input
+evaluation file for this workspace.
+
+## Ownership and processing limits
+
+The pure `evaluation-workbench-contract.ts` owns the exact browser-safe request
+and display envelope. Server `evaluation-workbench.ts` calls the existing
+evaluation/review/report builders and validators; it performs no filesystem,
+database, provider or capability operations. Serialized exports retain their
+existing schema versions, authority and exact hashes. Case labels and export
+labels must agree with their source/case/prediction bindings in the display
+envelope; exports cannot claim live approval or full R6 acceptance.
+
+Shared HTTP admission uses `ensureFor("read")`, current-site staff admission,
+the existing bounded UTF-8 JSON reader and safe Studio error response. The POST
+is stateless evidence processing, with no-store/no-referrer/nosniff responses.
+The existing Admin proxy still enforces CSRF and rate limits. Artifact failures
+produce a safe validation error without echoing uploaded evidence or labels.
+
+Each selected file and the combined serialized request must fit within 4 MiB,
+with at most 100 cases and the existing owners' smaller fact limits. The display
+response is bounded to 16 MiB because it includes source-derived case views and
+serialized exports. This Admin import boundary is deliberately narrower than
+the generic CLI's 8,000,000-byte evaluation artifact boundary. Inputs beyond it
+remain available through the CLI; they are never silently truncated.
+
+The Admin UI uses `npFetch` and pure display-contract validation. Shared App
+pages/API own framework wiring; reference and packed scaffold routes remain
+thin matching wrappers. No versions, changesets, lockfile or migrations change.
+
+## Build a multi-dataset report
+
+Open **Build a multi-dataset report** to collect evaluation artifacts in one
+V2 report. Add a dataset for each current evaluation and select its recipe.
+For example, use **Moderator semantic assessment** for the Member report,
+V1 semantic and V2 segmented evaluation artifacts. Each entry accepts its own
+current review, baseline evaluation and baseline review. A baseline review
+requires its baseline evaluation.
+
+After validating an individual evaluation, use **Add to V2 report** to copy
+its evaluation, applied review and baseline into the report. Apply or discard
+review drafts first. When the recipe, dataset ID and version already appear
+in the report, choose **Replace dataset** to update that entry or **Keep
+existing dataset** to keep its current inputs. Later case edits reach the report
+when you apply them, add the result again and confirm replacement.
+
+**Generate V2 report** submits the uploaded JSON to the same bounded
+staff-only endpoint. The server reuses the
+[V2 report builder](r6-evaluation-report-flow.md#include-multiple-datasets-for-one-recipe).
+It derives the dataset identity from each artifact and shows independent gates,
+review coverage and baseline comparisons. Duplicate identities and mismatched
+review bindings fail validation. Incompatible baselines appear with their
+comparison reason and no numeric deltas. **Download V2 report JSON** saves the
+same artifact schema as the CLI. Changing an input clears that export until the
+report is generated again.
+
+The report accepts up to 16 entries within the shared 4 MiB input bound. File
+contents are processed in memory. The single-dataset workspace continues to
+own case review and authenticated history operations.
+
+## Member report and response evaluation
+
+Run the deterministic reference evaluation from a NexPress project:
+
+```bash
+nexpress agent evaluate --dataset moderator-member-report.v1 --out member-report.json --json
+```
+
+The eighteen versioned synthetic cases cover current unverified claims,
+missing and stale evidence, site scope, host policy, member and incident
+state, duration limits, manual restrictions, and unchanged, expired or changed
+workflow-owned restrictions. Predictions contain a claim classification, a
+review disposition and a reason. Every case has an empty action list.
+
+Select **Moderator semantic assessment** in the existing Workbench and import
+the generated artifact. Accept or reject the exact prediction, then export the
+review or report through the usual controls. CLI review and comparison use the
+same source bindings. A content-assessment baseline is a different corpus.
+
+The reference scores synthetic facts at zero provider cost. Real restrictions
+and revocations require the existing Member response service and its human
+approval checks. Evaluation labels concern the synthetic prediction and carry
+no approval authority.
+
+## Large-Incident segmented assessment evaluation
+
+Run the V2 reference evaluation from a NexPress project:
+
+```bash
+nexpress agent evaluate --dataset moderator-assessment.v2 --out segmented-assessment.json --json
+```
+
+The thirteen synthetic cases exercise the existing V2 segment and aggregation
+rules. They cover 151 targets across sixteen agreeing segments, missing or
+misordered segments, duplicate targets, changed source commitments, and full
+coverage with conflicting or uncertain classifications. Invalid or missing
+segments withhold the aggregate. Truncated sources can produce an uncertain
+aggregate with incomplete coverage after all segments arrive.
+
+Select **Moderator semantic assessment** in Workbench and import the artifact.
+The case displays verified segment and target counts separately from its
+advisory classification. Reviews bind the exact prediction. CLI comparisons
+require compatible V2 artifacts and include coverage and classification changes.
+Case evidence is bounded to 256 KiB within the existing import limits.
+
+The evaluation replays synthetic evidence and classifications without provider
+calls. Production ACLs, persisted provider-call proofs, and continuation retain
+their verification in the [V2 Runtime flow](r6-moderator-automatic-segmented-flow.md#large-incident-semantic-assessment).
+
+## Acceptance boundary
+
+Imported and ordinary exported review attribution remains self-reported offline data. Fixture checks, human
+labels, model usefulness and production moderation precision remain separate.
+This screen grants no approval, activation or automatic action authority and
+does not close AP-606 or full R6 acceptance. Provider calls, new credentials,
+and workers remain outside this flow; optional durable history has its own explicit owner below.
+
+## Optional authenticated review history
+
+The stateless import/review/export flow remains usable with no Agent services
+installed. A host may explicitly pass
+`evaluationHistory: createAgentEvaluationHistoryServiceV1()` to
+`createAgentStudioServerRuntimeV1`. The reference host does not install this
+service automatically. The page shows storage as disabled when the owner is
+absent; `/api/admin/agents/evaluations/history` also refuses access without it.
+No Connection, provider, Runtime worker or credentials are required.
+
+An explicit **Save my decision** action persists the validated evaluation and
+only the selected case decision. It uses the current staff account and server
+time, ignoring the editable offline reviewer name. Imported labels never acquire
+authenticated original authorship. The separate history envelope says
+`authenticated-staff-review-no-approval`; compatible label/review/report exports
+keep their existing offline authority and full R6 remains unestablished.
+
+Sources bind the original owner's exact source hash; case revisions additionally
+bind case ID/version, case hash and prediction hash. The original recipe owner
+still checks eligibility, allowed outcomes and meaningful grounded edits.
+Replacements and clear operations append revisions rather than overwriting an
+older decision. Source-wide expected-version CAS prevents a stale reviewer from
+silently overwriting another save. The existing Admin admission owns idempotency,
+current site/staff authorization and immutable audit. Its request journal retains
+safe source/case hashes and a decision digest, rather than uploaded evidence or
+notes. Exact replay rechecks live authority. Reads also recheck authority before
+returning the bounded result, verify retained source/revision integrity and retain
+actor fingerprints when an account reference is removed.
+
+**Browse saved evaluations** loads a stored source for the existing validation
+flow. **Load current case history** retrieves the exact selected case, including
+clears and previous revisions; ten revisions per page and twenty-five sources
+per page keep responses bounded. Unknown save outcomes retain the same request
+and idempotency key for an explicit retry. Access loss clears source, history and
+review drafts. Offline labels and exports change only through their existing
+controls.
+
+Durable source JSON has a tighter limit of 2,000,000 characters inside the 4 MiB
+request bound; larger artifacts remain usable in the offline Workbench. Edited
+proposal JSON is bounded to 256 KiB. Storage permits at most 1,000 sources per site
+and 10,000 appended revisions per source. Hitting these limits does not authorize
+automatic deletion or evidence compaction. History is preserved by default and
+is removed in dependency order only by the existing explicit site-deletion owner.
+New source/review reference guards participate in existing retention fences and
+Doctor checks schema and relational provenance without projecting uploaded
+content. Exact source/revision hashes are checked by the history read owner.
+
+The focused persistence gate passed seven PostgreSQL journeys with no skips,
+including exact replay, competing CAS, clear revisions, grounded edit rejection,
+current authority loss and actual staff-account deletion after Gateway authority
+containment. A different authorized staff session can still inspect the retained
+fingerprint and immutable history; that reader's role loss denies the read.
+Corrupting the stored canonical request, authorization-context or output digest
+also denies authenticated history. Four HTTP cases and sixteen reference-migration
+cases passed against the complete Core producer. These checks required no Runtime
+or provider calls and cover this optional history slice only.
+
+## Original stateless workspace verification
+
+The local gate passed `pnpm verify --concurrency=2` (113 tasks) and `pnpm lint`
+(41 tasks). Core ran 2,290 unit tests, Admin 191, App 686 and CLI 153. Focused
+workbench checks covered five server-owner cases, eight Admin transport/state
+cases and four HTTP admission/error cases. The App checks and typecheck also
+passed after the final test-only import annotation correction.
+
+The initial PR CI run reached the default five-second limit in a composition
+test that replayed complete recipe datasets repeatedly. Workbench unit fixtures
+now select three existing representative cases per provider-style recipe,
+retaining proposals, abstentions, edits and exact baseline comparisons. The
+recipe owners still test their full datasets; no timeout or product limit was
+increased. Focused tests, the full Core unit suite, typecheck and affected lint
+were rerun for this test-only correction.
+
+PR #1523 subsequently passed all four checks on its exact head, including a
+single 118-journey Chromium run and the isolated native preview check. Later
+main and separate Version-PR CI runs again exceeded workbench test deadlines.
+The Release workflow failed its Version-PR CI bridge; it did not establish a
+publishing failure or authorize merging the Version PR.
+
+The companion [notification recording recovery bundle](r6-incident-notification-recovery-flow.md)
+removes seven more redundant workbench builds, shares immutable owner artifacts,
+checks replacement-label behavior once at the shared request seam and registers
+the four recipe round trips independently. An unsupported diagnosis binding uses
+one existing case; supported recipe round trips retain their representative cases
+and the full deterministic Moderator dataset. The test file has eight cases
+instead of five because the four existing recipe iterations now report separately.
+Timeouts and production behavior are unchanged. Focused checks, the full Core
+suite and the complete local workspace gate passed. Hosted CI for this companion
+bundle remains unestablished until it is pushed and checked.
+
+The production Chromium suite passed 117 existing journeys. Its new workspace
+journey initially failed an exact cache-header assertion because the proxy adds
+`must-revalidate`; after checking the required `private` and `no-store` directives,
+the new journey passed separately with no retries. This is 117 full-suite passes
+plus one corrected targeted pass, not a clean single-run 118-test result.
+The journey used the real endpoint and owner artifacts to verify staff/CSRF
+admission, imports, proposal and abstention reviews, retained labels, rejected
+edits, grounded edits, baseline coverage and independently validated downloads.
+It also checked native-file clear/reselection, source-change invalidation and
+the 320-pixel layout. The isolated database used PostgreSQL 18.3 with existing
+migrations; CI uses PostgreSQL 16.
+
+A fresh packed consumer installed 40 public packages and passed all 47 stages,
+including generated-app typecheck/production build and installed Core/CLI
+review/report round trips. Nine selected shipped workbench files matched the
+producer bytes, and reference/scaffold wrappers passed the snapshot check.
+Formatting, relative document links and `git diff --check` passed.
+
+Three opt-in Redis checks remained skipped because no live Redis fixture was
+available. Standalone PostgreSQL integration, theme integration and native
+preview gates were not rerun for this stateless UI slice. These results do not
+close the broader R6 gate. An initial production build stopped on disk exhaustion;
+after removing old build-cache archives and incomplete build output, the final
+local gate completed successfully.

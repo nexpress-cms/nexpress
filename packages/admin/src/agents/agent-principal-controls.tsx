@@ -43,7 +43,7 @@ export function AgentPrincipalControls({
   onDialogClosed: () => void;
   principal: NpAgentPrincipalV1;
   disabled: boolean;
-  onChanged: () => Promise<void>;
+  onChanged: (focusResult?: boolean) => Promise<void>;
   onAccessLost: (message: string, failure: AgentStudioApiError) => void;
 }) {
   const [request, setRequest] = React.useState<{
@@ -53,6 +53,7 @@ export function AgentPrincipalControls({
   } | null>(null);
   const headingRef = React.useRef<HTMLHeadingElement>(null);
   const invokerRef = React.useRef<HTMLButtonElement | null>(null);
+  const restoringAfterRead = React.useRef(false);
   const errorRef = React.useRef<HTMLParagraphElement>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -91,9 +92,10 @@ export function AgentPrincipalControls({
       );
       if (!response.ok) throw await responseError(response);
       npRequireAgentPrincipalV1(await response.json());
+      restoringAfterRead.current = true;
       setRequest(null);
       setReason("");
-      await onChanged();
+      await onChanged(true);
     } catch (caught) {
       setFailure(caught);
       if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)) {
@@ -151,6 +153,10 @@ export function AgentPrincipalControls({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
+            if (restoringAfterRead.current) {
+              restoringAfterRead.current = false;
+              return;
+            }
             if (invokerRef.current?.isConnected && !invokerRef.current.disabled)
               invokerRef.current.focus();
             else onDialogClosed();

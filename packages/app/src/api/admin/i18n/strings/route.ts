@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -57,7 +58,7 @@ import { ensureFor } from "../../../../lib/init-core";
  *
  * Editor-or-above can read; admin-only can write.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -143,7 +144,7 @@ function assertConfiguredLocale(locale: string): void {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -167,7 +168,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function npGuardianDELETE(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -212,3 +213,7 @@ function normalizeI18nError(error: unknown): Error {
   }
   return error instanceof Error ? error : new Error("Unknown error");
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("admin", npGuardianPUT);
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

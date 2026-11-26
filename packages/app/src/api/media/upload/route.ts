@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -23,7 +24,7 @@ function isAllowedMimeType(mimeType: string): boolean {
   );
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     const principal = { kind: "staff", user } as const;
@@ -114,3 +115,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("media-upload", npGuardianPOST);

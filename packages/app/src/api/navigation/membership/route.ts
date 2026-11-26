@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpValidationError,
@@ -37,7 +38,7 @@ interface MembershipRow {
  * we don't enumerate a fixed location list — we just return what
  * actually exists in the DB for this site.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await optionalAuth(request);
 
@@ -106,3 +107,5 @@ function walk(
     if (item.children) walk(item.children, location, pageId, collection, out);
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);

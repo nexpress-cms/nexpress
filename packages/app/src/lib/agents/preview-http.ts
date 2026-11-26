@@ -254,6 +254,7 @@ export async function handleAgentPreviewAdminRequest(
       {
         headers: { "cache-control": "private, no-store" },
       },
+      request,
     );
     if (
       error instanceof NpError &&

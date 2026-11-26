@@ -60,6 +60,140 @@ function detail(state: "pending" | "approved" = "pending", version = 1) {
   };
 }
 test.describe("Agent approval review", () => {
+  test("shows the exact restoration target and keeps human approval separate from execution", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 227 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    const actionItem = {
+      ...item(),
+      target: { kind: "action", actionId: id, runId: id, agentId: null, proposalHash: hash },
+      capabilityId: "moderation.restore",
+      intendedOperation: null,
+      risk: "sensitive",
+      reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+      requester: { kind: "principal", id },
+      requiredScopes: ["moderation:execute"],
+      approval: { ...item().approval, requiredHumanCapabilities: ["community.moderate"] },
+    };
+    const actionDetail = npRequireAgentApprovalDetailV1({
+      ...detail(),
+      item: actionItem,
+      actionReview: {
+        actionId: id,
+        proposalHash: hash,
+        capabilityId: "moderation.restore",
+        target: { kind: "comment", collection: "discussions", id },
+        expectedVersionDigest: hash,
+        containmentId: "31111111-1111-4111-8111-111111111111",
+        incidentId: null,
+        reasonCode: null,
+      },
+    });
+    await page.route(`**/api/admin/agents/approvals/${id}`, (route) =>
+      route.fulfill({ json: actionDetail }),
+    );
+    await page.goto(`/admin/agents/approvals/${id}`);
+    const facts = page.getByRole("region", { name: "Content moderation action" });
+    await expect(facts.getByRole("heading", { name: "Restore content" })).toBeVisible();
+    await expect(facts.getByText(`comment · discussions · ${id}`)).toBeVisible();
+    await expect(facts.getByText("Restoration handle", { exact: true })).toBeVisible();
+    await expect(facts.getByText("31111111-1111-4111-8111-111111111111")).toBeVisible();
+    await expect(page.getByText(/through a separate execution request/)).toBeVisible();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const closeNavigation = page.getByRole("button", { name: "Close navigation" }).last();
+      if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+        await closeNavigation.click();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`moderation-restore-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  });
+  test("shows exact Operator targets and keeps approval separate from execution", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 245 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    let operation: unknown = {
+      action: "cache.revalidate",
+      target: { kind: "document", collection: "posts", documentSlug: "operator-review" },
+    };
+    await page.route(`**/api/admin/agents/approvals/${id}`, (route) =>
+      route.fulfill({
+        json: npRequireAgentApprovalDetailV1({
+          ...detail(),
+          item: {
+            ...item(),
+            target: {
+              kind: "action",
+              actionId: id,
+              runId: null,
+              agentId: null,
+              proposalHash: hash,
+            },
+            capabilityId: "ops.execute",
+            intendedOperation: null,
+            risk: "sensitive",
+            reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+            requester: { kind: "principal", id },
+            requiredScopes: ["ops:execute"],
+            approval: { ...item().approval, requiredHumanCapabilities: ["admin.manage"] },
+          },
+          actionReview: {
+            actionId: id,
+            proposalHash: hash,
+            capabilityId: "ops.execute",
+            planId: id,
+            planDigest: hash,
+            operation,
+            expiresAt: "2026-09-30T01:00:00.000Z",
+            checks: [{ id: "target.current-authority", status: "pass" }],
+          },
+        }),
+      }),
+    );
+    await page.goto(`/admin/agents/approvals/${id}`);
+    const facts = page.getByRole("region", { name: "Operator action" });
+    await expect(facts.getByRole("heading", { name: "Revalidate cache" })).toBeVisible();
+    await expect(
+      facts.getByText("Document: posts / operator-review", { exact: true }),
+    ).toBeVisible();
+    await expect(facts.getByLabel("Plan checks")).toContainText("target.current-authority: pass");
+    await expect(page.getByText(/through a separate execution request/)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /execute|revalidate|retry run|cancel run/i }),
+    ).toHaveCount(0);
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const closeNavigation = page.getByRole("button", { name: "Close navigation" }).last();
+      if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+        await closeNavigation.click();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`operator-approval-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    operation = { action: "agent.run.retry", target: { kind: "run", runId: id } };
+    await page.reload();
+    await expect(facts.getByRole("heading", { name: "Retry failed Agent run" })).toBeVisible();
+    await expect(facts.getByText(`Agent run: ${id}`, { exact: true })).toBeVisible();
+    operation = { action: "agent.run.cancel", target: { kind: "run", runId: id } };
+    await page.reload();
+    await expect(
+      facts.getByRole("heading", { name: "Cancel Agent run before commit" }),
+    ).toBeVisible();
+    await expect(facts.getByText(/only before its commit boundary/)).toBeVisible();
+  });
   test("distinguishes unavailable runtime from an authorized empty queue", async ({
     page,
   }, testInfo) => {
@@ -105,6 +239,61 @@ test.describe("Agent approval review", () => {
     await expect(page.getByText(/Recorded preview state: No preview recorded/)).toBeVisible();
     await expect(page.getByText(/Recorded check count: Unavailable/)).toBeVisible();
     await expect(page.getByText("Rollback plan: unavailable.", { exact: true })).toBeVisible();
+  });
+  test("refreshes the current approval page on focus and stops automatic reads after a failure", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 219 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    const start = new Date();
+    await page.clock.install({ time: start });
+    await page.clock.pauseAt(new Date(start.getTime() + 1_000));
+    const queries: string[] = [];
+    await page.route(/\/api\/admin\/agents\/approvals\?/, (route) => {
+      queries.push(new URL(route.request().url()).search);
+      if (queries.length === 3)
+        return route.fulfill({ status: 429, headers: { "Retry-After": "30" }, json: {} });
+      if (queries.length === 5) return route.fulfill({ status: 403, json: {} });
+      return route.fulfill({
+        json: {
+          schemaVersion: "np.agent-approval-page.v1",
+          items: [item(queries.length === 1 ? "pending" : "approved")],
+          nextCursor: null,
+        },
+      });
+    });
+    const query = "?state=all&risk=reversible&cursor=opaque-page";
+    const approval = page.getByRole("article").filter({ hasText: "Approval request" });
+    const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+    await page.goto(`/admin/agents/approvals${query}`);
+    await expect(approval.getByText("pending", { exact: true })).toBeVisible();
+    await page.clock.fastForward(2_000);
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await page.clock.runFor(1);
+    await expect(approval.getByText("approved", { exact: true })).toBeVisible();
+    expect(queries).toEqual([query, query]);
+
+    await page.clock.fastForward(30_000);
+    await expect(refresh).toBeDisabled();
+    await expect(approval).toHaveCount(0);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.clock.fastForward(29_999);
+    expect(queries).toHaveLength(3);
+    await expect(refresh).toBeDisabled();
+    await page.clock.fastForward(1);
+    await expect(refresh).toBeEnabled();
+    expect(queries).toHaveLength(3);
+    await refresh.click();
+    await expect(approval.getByText("approved", { exact: true })).toBeVisible();
+    await page.clock.fastForward(30_000);
+    await expect(approval).toHaveCount(0);
+    await expect(page.getByText(/approvals are unavailable/i).last()).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.clock.fastForward(60_000);
+    expect(queries).toEqual(Array<string>(5).fill(query));
   });
   test("requires a typed challenge and renders only the returned decision state", async ({
     page,
@@ -179,7 +368,7 @@ test.describe("Agent approval review", () => {
     releaseRead();
     const approve = page.getByRole("button", { name: "Approve", exact: true });
     await expect(approve).toBeVisible();
-    await expect(page.getByText("Browser receipt time;", { exact: false })).toBeVisible();
+    await expect(page.getByText("Browser receipt time", { exact: false })).toBeVisible();
     readGate = new Promise<void>((resolve) => {
       releaseRead = resolve;
     });
@@ -244,6 +433,9 @@ test.describe("Agent approval review", () => {
     await tabTo(page, confirm);
     await page.keyboard.press("Enter");
     await expect(page.getByText("approved", { exact: true })).toBeVisible();
+    const returnedFacts = page.getByRole("heading", { name: "Server approval facts" });
+    await expect(returnedFacts).toBeFocused();
+    await expect(returnedFacts).toHaveAccessibleDescription(/approved/);
     expect(commands).toHaveLength(3);
     expect(commands[2]).toEqual(commands[1]);
     expect(commands[0]).toMatchObject({
@@ -478,6 +670,7 @@ test.describe("Agent approval review", () => {
     await page.getByRole("button", { name: "Confirm reject", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText(/Version 3/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Server approval facts" })).toBeFocused();
     expect(decisions).toBe(1);
     denied = true;
     await page.getByRole("button", { name: "Refresh", exact: true }).click();

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, lt } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
 import { npJobLogs } from "../db/schema/system.js";
@@ -118,7 +118,7 @@ export async function listJobLogs(
     .select()
     .from(npJobLogs)
     .where(eq(npJobLogs.jobId, canonicalId))
-    .orderBy(orderBy)
+    .orderBy(orderBy, options.order === "desc" ? desc(npJobLogs.id) : asc(npJobLogs.id))
     .limit(limit)
     .offset(offset)) as Array<{
     id: string;
@@ -181,10 +181,8 @@ export async function countJobLogs(jobId: string, sinceCreatedAt?: Date): Promis
   const where = sinceCreatedAt
     ? and(eq(npJobLogs.jobId, canonicalId), gte(npJobLogs.createdAt, sinceCreatedAt))
     : eq(npJobLogs.jobId, canonicalId);
-  const rows = (await db.select({ id: npJobLogs.id }).from(npJobLogs).where(where)) as Array<{
-    id: string;
-  }>;
-  return rows.length;
+  const [row] = await db.select({ total: count() }).from(npJobLogs).where(where);
+  return row?.total ?? 0;
 }
 
 function requireExactLogOptions(value: unknown): void {

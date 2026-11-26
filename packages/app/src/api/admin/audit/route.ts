@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -18,7 +19,7 @@ import { requireAuth } from "../../../lib/auth-helpers";
 import { ensureFor } from "../../../lib/init-core";
 import { npReadCommunityPage, npRequireCommunityRequest } from "../../../lib/community-contract";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -134,3 +135,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

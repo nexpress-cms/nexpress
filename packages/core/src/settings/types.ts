@@ -139,6 +139,7 @@ export type NpSettingContractKind =
   | "agents-gateway"
   | "agents-runtime"
   | "agents-runtime-control"
+  | "guardian-control"
   | "agents-runtime-jobs"
   | "agents-maintenance"
   | "seo"

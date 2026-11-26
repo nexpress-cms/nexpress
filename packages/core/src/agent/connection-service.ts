@@ -1,3 +1,5 @@
+import type { NpAgentNotificationConnectionSnapshotV1 } from "./notification-connection-snapshot.js";
+export type { NpAgentNotificationConnectionSnapshotV1 } from "./notification-connection-snapshot.js";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { and, asc, desc, eq, gt, inArray, lte, or } from "drizzle-orm";
@@ -5,6 +7,7 @@ import { and, asc, desc, eq, gt, inArray, lte, or } from "drizzle-orm";
 import {
   npDigestAgentConnectionOperationCanonical,
   npRequireAgentConnectionV1,
+  npAgentProviderDataClasses,
   type NpAgentConnectionKind,
   type NpAgentConnectionOperationKind,
   type NpAgentConnectionOperationRequestCanonicalV1,
@@ -12,6 +15,7 @@ import {
   type NpAgentJsonObject,
   type NpAgentProviderDataClass,
 } from "../agent-contract/index.js";
+import { canonicalBodyEnum } from "../agent-contract/canonical-body-validation.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import { getDb } from "../db/runtime.js";
@@ -54,6 +58,12 @@ import {
 } from "./vault-contract.js";
 import type { NpAgentVaultOperationProjectionV1, NpAgentVaultServiceV1 } from "./vault-service.js";
 
+import {
+  npGetGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveObserverV1,
+  type NpGuardianSensitiveActorV1,
+} from "./guardian-sensitive-observer.js";
+
 type NpAgentDb = ReturnType<typeof getDb>;
 type ConnectionRow = typeof npAgentConnections.$inferSelect;
 type ConfigRow = typeof npAgentConnectionConfigVersions.$inferSelect;
@@ -74,6 +84,26 @@ export interface NpAgentProviderStateHashKeyV1 {
 export interface NpAgentProviderStateHashKeyringV1 {
   active: NpAgentProviderStateHashKeyV1;
   previous?: Readonly<Record<string, Uint8Array>>;
+}
+
+/** Server-only safe admission binding; credentials and projection-key bytes never cross this seam. */
+
+export interface NpAgentNotificationConnectionDeliveryV1 {
+  prepare(input: {
+    siteId: string;
+    connectionId: string;
+    transaction?: NpAgentDb;
+  }): Promise<NpAgentNotificationConnectionSnapshotV1>;
+  assertCurrent(input: {
+    siteId: string;
+    snapshot: NpAgentNotificationConnectionSnapshotV1;
+    transaction?: NpAgentDb;
+  }): Promise<{
+    snapshot: NpAgentNotificationConnectionSnapshotV1;
+    connection: NpAgentParsedConnectionConfigV1;
+    secretVersionId: string;
+    dataProcessingCeiling: NpAgentProviderDataClass;
+  }>;
 }
 
 export interface NpAgentConnectionServiceOptionsV1 {
@@ -169,6 +199,12 @@ export interface NpAgentConnectionRevokeAdmissionInputV1 {
   expectedConfigVersion: number;
   db: NpAgentDb;
   admittedAt: Date;
+  /** Trusted outer-admission capture, never accepted from a wire command. */
+  guardianObservation?: {
+    observer: NpGuardianSensitiveObserverV1;
+    actor: NpGuardianSensitiveActorV1;
+    invocationId?: string;
+  };
 }
 
 export interface NpAgentConnectionRevokeAdmissionV1 {
@@ -424,6 +460,166 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
       snapshot: config,
     });
   }
+
+  async function readNotificationConnection(
+    db: NpAgentDb,
+    siteId: string,
+    connectionId: string,
+    expected?: NpAgentNotificationConnectionSnapshotV1,
+  ): Promise<{
+    snapshot: NpAgentNotificationConnectionSnapshotV1;
+    connection: NpAgentParsedConnectionConfigV1;
+    secretVersionId: string;
+    dataProcessingCeiling: NpAgentProviderDataClass;
+  }> {
+    requireIdentity(siteId, connectionId);
+    if (expected && (expected.siteId !== siteId || expected.connectionId !== connectionId))
+      fail("NOTIFICATION_CONNECTION_CHANGED", "The frozen notification connection changed.");
+    const [connection] = await db
+      .select()
+      .from(npAgentConnections)
+      .where(and(eq(npAgentConnections.siteId, siteId), eq(npAgentConnections.id, connectionId)))
+      .limit(1)
+      .for("update");
+    if (
+      !connection ||
+      connection.kind !== "notification" ||
+      connection.status !== "ready" ||
+      !connection.activeSecretVersionId ||
+      !connection.credentialVersion ||
+      connection.lastVerifiedConfigVersion !== connection.configVersion ||
+      connection.lastVerifiedCredentialVersion !== connection.credentialVersion ||
+      !connection.activeAccountSubjectKeyId ||
+      !connection.activeAccountSubjectDigest ||
+      !connection.activeDestinationKeyId ||
+      !connection.activeDestinationDescriptor ||
+      !connection.activeDestinationFingerprint
+    )
+      fail("NOTIFICATION_CONNECTION_UNAVAILABLE", "The notification connection is unavailable.");
+    const { config } = await loadConnectionConfig(db, siteId, connectionId);
+    const frozen = expected
+      ? (await loadConnectionConfig(db, siteId, connectionId, expected.configSnapshotId)).config
+      : config;
+    if (
+      config.state !== "active" ||
+      config.id !== connection.activeConfigSnapshotId ||
+      config.version !== connection.configVersion ||
+      config.configHash !== connection.configHash ||
+      config.dataProcessingCeiling !== connection.dataProcessingCeiling ||
+      config.pricingCatalogFingerprint !== connection.pricingCatalogFingerprint ||
+      !jsonEqual(config.config, connection.config) ||
+      frozen.id !== config.id ||
+      frozen.version !== config.version ||
+      frozen.configHash !== config.configHash
+    )
+      fail("NOTIFICATION_CONNECTION_CHANGED", "The notification connection config changed.");
+    const current = await parseStoredConfig(connection, config);
+    const retained = await parseStoredConfig(connection, frozen);
+    if (
+      !current.adapter.notification ||
+      !retained.adapter.notification ||
+      !jsonEqual(current.parsed, retained.parsed)
+    )
+      fail(
+        "NOTIFICATION_CONNECTION_UNAVAILABLE",
+        "The frozen notification adapter is unavailable.",
+      );
+    // The account key must still exist even though its one-way digest cannot expose the provider subject.
+    accountSubjectProjectionKey(connection.activeAccountSubjectKeyId);
+    const projected = await npProjectAgentConnectionDestinationV1({
+      adapter: retained.adapter,
+      siteId,
+      connectionKind: "notification",
+      parsedConfig: retained.parsed,
+      accountSubjectKeyId: connection.activeAccountSubjectKeyId,
+      accountSubjectDigest: connection.activeAccountSubjectDigest,
+      destinationKey: destinationProjectionKey(connection.activeDestinationKeyId),
+    });
+    if (
+      !projected.descriptor ||
+      !projected.fingerprint ||
+      projected.keyId !== connection.activeDestinationKeyId ||
+      projected.fingerprint !== connection.activeDestinationFingerprint ||
+      !jsonEqual(projected.descriptor, connection.activeDestinationDescriptor)
+    )
+      fail("NOTIFICATION_DESTINATION_CHANGED", "The notification destination binding changed.");
+    const snapshot: NpAgentNotificationConnectionSnapshotV1 = {
+      siteId,
+      connectionId,
+      configSnapshotId: config.id,
+      adapterId: config.adapterId,
+      adapterContractVersion: config.adapterContractVersion,
+      adapterFingerprint: config.adapterFingerprint,
+      configVersion: config.version,
+      configHash: config.configHash,
+      accountSubjectKeyId: connection.activeAccountSubjectKeyId,
+      accountSubjectDigest: connection.activeAccountSubjectDigest,
+      destinationKeyId: projected.keyId,
+      destinationDescriptor: projected.descriptor,
+      destinationFingerprint: projected.fingerprint,
+    };
+    if (expected && !jsonEqual(snapshot, expected))
+      fail("NOTIFICATION_CONNECTION_CHANGED", "The frozen notification connection changed.");
+    const [secret] = await db
+      .select()
+      .from(npAgentConnectionSecretVersions)
+      .where(
+        and(
+          eq(npAgentConnectionSecretVersions.siteId, siteId),
+          eq(npAgentConnectionSecretVersions.connectionId, connectionId),
+          eq(npAgentConnectionSecretVersions.id, connection.activeSecretVersionId),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    const at = now();
+    if (
+      !Number.isFinite(at.getTime()) ||
+      !secret ||
+      secret.status !== "active" ||
+      secret.purpose !== "connection-credential" ||
+      !secret.secretRef ||
+      secret.materialKind !== connection.authKind ||
+      secret.credentialEnvelopeVersion !== 1 ||
+      secret.version !== connection.credentialVersion ||
+      secret.accountSubjectKeyId !== snapshot.accountSubjectKeyId ||
+      secret.accountSubjectDigest !== snapshot.accountSubjectDigest ||
+      (secret.expiresAt !== null && secret.expiresAt <= at) ||
+      (secret.materialKind === "oauth" && (!secret.accessExpiresAt || secret.accessExpiresAt <= at))
+    )
+      fail(
+        "NOTIFICATION_CREDENTIAL_UNAVAILABLE",
+        "The current notification credential is unavailable.",
+      );
+    const dataProcessingCeiling = canonicalBodyEnum<NpAgentProviderDataClass>(
+      config.dataProcessingCeiling,
+      "notification.connection.dataProcessingCeiling",
+      new Set(npAgentProviderDataClasses),
+    );
+    return {
+      snapshot,
+      connection: current.parsed,
+      secretVersionId: secret.id,
+      dataProcessingCeiling,
+    };
+  }
+  const notificationDelivery: NpAgentNotificationConnectionDeliveryV1 = Object.freeze({
+    async prepare(input: Parameters<NpAgentNotificationConnectionDeliveryV1["prepare"]>[0]) {
+      const read = (db: NpAgentDb) =>
+        readNotificationConnection(db, input.siteId, input.connectionId);
+      const result = input.transaction
+        ? await read(input.transaction)
+        : await resolveDb().transaction((tx) => read(tx as NpAgentDb));
+      return result.snapshot;
+    },
+    assertCurrent(input: Parameters<NpAgentNotificationConnectionDeliveryV1["assertCurrent"]>[0]) {
+      const read = (db: NpAgentDb) =>
+        readNotificationConnection(db, input.siteId, input.snapshot.connectionId, input.snapshot);
+      return input.transaction
+        ? read(input.transaction)
+        : resolveDb().transaction((tx) => read(tx as NpAgentDb));
+    },
+  });
 
   async function resolveOAuthClientConfigDigest(
     siteId: string,
@@ -719,6 +915,8 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     probe: Extract<NpAgentProviderProbeResultV1, { status: "ready" }>;
     expectedAccountSubjectDigest?: string | null;
   }): Promise<NpAgentConnectionOperationProjectionV1> {
+    const observer = npGetGuardianSensitiveObserverV1();
+    const scope = { kind: "site" as const, siteId: input.operation.siteId };
     const account = npProjectAgentAccountSubjectV1(
       {
         siteId: input.connection.siteId,
@@ -771,6 +969,7 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     const db = resolveDb();
     const updated = await db.transaction(async (rawTx) => {
       const tx = rawTx as NpAgentDb;
+      if (observer) await observer.prepare({ db: tx, scope });
       const [current] = await tx
         .select()
         .from(npAgentConnections)
@@ -869,7 +1068,7 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
               : eq(npAgentConnections.status, current.status),
           ),
         )
-        .returning({ id: npAgentConnections.id });
+        .returning();
       if (connections.length !== 1)
         fail("CONNECTION_OPERATION_STALE", "The connection activation CAS was lost.");
       const [operation] = await tx
@@ -896,6 +1095,42 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
         .returning();
       if (!operation)
         fail("CONNECTION_OPERATION_STALE", "The connection operation completion CAS was lost.");
+      if (observer) {
+        const activatedConnection = connections[0];
+        const project = (row: ConnectionRow) =>
+          observer.projectState({
+            db: tx,
+            scope,
+            kind: "connection-credential",
+            targetId: row.id,
+            readState: () =>
+              Promise.resolve({
+                activeSecretVersionId: row.activeSecretVersionId,
+                credentialVersion: row.credentialVersion,
+              }),
+          });
+        await observer.recordCredential({
+          db: tx,
+          scope,
+          actor: { kind: "system", component: "agent.connection-activation" },
+          occurredAt: finishedAt,
+          invocationId: operation.invocationId,
+          transitionId: randomUuid(),
+          transition: {
+            kind: "connection-credential",
+            connectionId: current.id,
+            operation: "activated",
+            previous: {
+              credentialVersion: current.credentialVersion,
+              commitment: await project(current),
+            },
+            current: {
+              credentialVersion: activatedConnection.credentialVersion,
+              commitment: await project(activatedConnection),
+            },
+          },
+        });
+      }
       return { operation, priorSecretId: current.activeSecretVersionId };
     });
     if (updated.priorSecretId) {
@@ -2441,6 +2676,24 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     if (!(input.admittedAt instanceof Date) || !Number.isFinite(input.admittedAt.getTime())) {
       fail("CONNECTION_TIME_INVALID", "The connection admission timestamp is invalid.");
     }
+    const observer = input.guardianObservation?.observer ?? npGetGuardianSensitiveObserverV1();
+    const scope = { kind: "site" as const, siteId: input.siteId };
+    if (observer) {
+      await observer.prepare({ db: input.db, scope });
+      // Capture the actual selected credential under the same row lock used by
+      // activation. Admission callers prepare before their own authority locks.
+      await input.db
+        .select({ id: npAgentConnections.id })
+        .from(npAgentConnections)
+        .where(
+          and(
+            eq(npAgentConnections.siteId, input.siteId),
+            eq(npAgentConnections.id, input.connectionId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+    }
     const { connection, config } = await loadConnectionConfig(
       input.db,
       input.siteId,
@@ -2500,6 +2753,44 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     if (!updated) {
       fail("CONNECTION_VERSION_CONFLICT", "The connection changed before revoke.");
     }
+    if (observer && connection.credentialVersion !== null) {
+      const project = (row: ConnectionRow) =>
+        observer.projectState({
+          db: input.db,
+          scope,
+          kind: "connection-credential",
+          targetId: row.id,
+          readState: () =>
+            Promise.resolve({
+              activeSecretVersionId: row.activeSecretVersionId,
+              credentialVersion: row.credentialVersion,
+            }),
+        });
+      await observer.recordCredential({
+        db: input.db,
+        scope,
+        actor: input.guardianObservation?.actor ?? {
+          kind: "system",
+          component: "agent.connection-revoke",
+        },
+        invocationId: input.guardianObservation?.invocationId,
+        occurredAt: input.admittedAt,
+        transitionId: randomUuid(),
+        transition: {
+          kind: "connection-credential",
+          connectionId: connection.id,
+          operation: "revoked",
+          previous: {
+            credentialVersion: connection.credentialVersion,
+            commitment: await project(connection),
+          },
+          current: {
+            credentialVersion: updated.credentialVersion,
+            commitment: await project(updated),
+          },
+        },
+      });
+    }
     let dispatched = false;
     return {
       connection: connectionProjection(updated, config),
@@ -2523,6 +2814,7 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
   }
 
   return {
+    notificationDelivery,
     async admitCreateConnection(
       input: NpAgentConnectionCreateAdmissionInputV1,
     ): Promise<NpAgentConnectionCreateAdmissionV1> {

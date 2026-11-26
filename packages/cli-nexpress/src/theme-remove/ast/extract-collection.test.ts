@@ -25,7 +25,7 @@ describe("extractFromSourceFile", () => {
     expect(extractFromSourceFile(src)).toBeNull();
   });
 
-  it("extracts slug + leaf fields", () => {
+  it("extracts only the collection identity and ordered field names needed by the planner", () => {
     const src = parse(`
       import { defineCollection } from "@nexpress/core";
       export default defineCollection({
@@ -34,52 +34,16 @@ describe("extractFromSourceFile", () => {
         fields: [
           { name: "title", type: "text", required: true },
           { name: "featured", type: "checkbox" },
+          { name: "category", type: "relationship", relationTo: "categories" },
+          { name: "related", type: "relationship", relationTo: ["categories", "tags"] },
         ],
       });
     `);
     const result = extractFromSourceFile(src);
-    expect(result?.config.slug).toBe("posts");
-    expect(result?.config.fields).toHaveLength(2);
-    expect(result?.config.fields[0]).toMatchObject({
-      name: "title",
-      type: "text",
-    });
-    expect(result?.config.fields[1]).toMatchObject({
-      name: "featured",
-      type: "checkbox",
-    });
-  });
-
-  it("extracts relationship.relationTo as string", () => {
-    const src = parse(`
-      import { defineCollection } from "@nexpress/core";
-      export default defineCollection({
-        slug: "posts",
-        labels: { singular: "Post", plural: "Posts" },
-        fields: [{ name: "category", type: "relationship", relationTo: "categories" }],
-      });
-    `);
-    const result = extractFromSourceFile(src);
-    expect(result?.config.fields[0]).toMatchObject({
-      name: "category",
-      type: "relationship",
-      relationTo: "categories",
-    });
-  });
-
-  it("extracts relationship.relationTo as string array", () => {
-    const src = parse(`
-      import { defineCollection } from "@nexpress/core";
-      export default defineCollection({
-        slug: "posts",
-        labels: { singular: "Post", plural: "Posts" },
-        fields: [{ name: "rel", type: "relationship", relationTo: ["categories", "tags"] }],
-      });
-    `);
-    const result = extractFromSourceFile(src);
-    expect(result?.config.fields[0]).toMatchObject({
-      name: "rel",
-      relationTo: ["categories", "tags"],
+    expect(result).toEqual({
+      filePath: "/virtual/test.ts",
+      slug: "posts",
+      fieldNames: ["title", "featured", "category", "related"],
     });
   });
 
@@ -105,7 +69,7 @@ describe("extractFromSourceFile", () => {
       });
     `);
     const result = extractFromSourceFile(src);
-    const names = result?.config.fields.map((f) => (f as { name: string }).name);
+    const names = result?.fieldNames;
     expect(names).toEqual(["lhs", "buried"]);
   });
 
@@ -121,15 +85,20 @@ describe("extractFromSourceFile", () => {
             type: "group",
             fields: [{ name: "buried", type: "text" }],
           },
+          {
+            name: "items",
+            type: "array",
+            fields: [{ name: "nested", type: "text" }],
+          },
         ],
       });
     `);
     const result = extractFromSourceFile(src);
-    const names = result?.config.fields.map((f) => (f as { name: string }).name);
-    expect(names).toEqual(["meta"]);
+    const names = result?.fieldNames;
+    expect(names).toEqual(["meta", "items"]);
   });
 
-  it("skips fields with computed (non-literal) type", () => {
+  it("skips computed names/types and spread fields", () => {
     const src = parse(`
       import { defineCollection } from "@nexpress/core";
       const dynamicType = "text";
@@ -139,11 +108,12 @@ describe("extractFromSourceFile", () => {
         fields: [
           { name: "static", type: "text" },
           { name: "dynamic", type: dynamicType },
+          { name: dynamicName, type: "text" },
+          ...sharedFields,
         ],
       });
     `);
     const result = extractFromSourceFile(src);
-    expect(result?.config.fields).toHaveLength(1);
-    expect(result?.config.fields[0]).toMatchObject({ name: "static" });
+    expect(result?.fieldNames).toEqual(["static"]);
   });
 });

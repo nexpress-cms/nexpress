@@ -36,6 +36,7 @@ import type {
   StaffAuthRoutesOptions,
 } from "./staff-types.js";
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
+import { npWithAuthResponseObserver } from "./response-observer.js";
 
 const STATE_COOKIE = "np-oauth-state";
 const DEFAULTS = {
@@ -115,6 +116,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 
   // ─── login ──────────────────────────────────────────────────
   const login = async (request: NextRequest): Promise<NextResponse> => {
+    let rejectedIdentifier: string | null = null;
     try {
       // The pre-migration login route called `getDb()` directly
       // without `ensureFor` and relied on cold-start ordering
@@ -137,10 +139,14 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       // Anti-enumeration on the missing-user branch (mirrors member
       // login). Wrong password takes the explicit lockout branch
       // below since incrementing attempts is the correct behavior.
-      if (!user) throw new NpAuthError("Invalid email or password");
+      if (!user) {
+        rejectedIdentifier = email;
+        throw new NpAuthError("Invalid email or password");
+      }
 
       const now = new Date();
       if (user.lockUntil && user.lockUntil > now) {
+        rejectedIdentifier = email;
         throw new NpError("Too many login attempts", "TOO_MANY_REQUESTS", 429);
       }
 
@@ -162,6 +168,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
             user.id,
           ],
         );
+        rejectedIdentifier = email;
         throw new NpAuthError("Invalid email or password");
       }
 
@@ -207,9 +214,32 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       await runHook("auth:afterLogin", {
         user: { id: user.id, email: user.email, role: user.role },
       });
+      if (config.onLoginSuccess) {
+        try {
+          await config.onLoginSuccess({
+            request,
+            audience: "staff",
+            principalId: user.id,
+            sessionFamilyId: session.sessionId,
+          });
+        } catch {
+          // A contained source observation cannot change the completed auth result.
+        }
+      }
 
       return response;
     } catch (error) {
+      if (rejectedIdentifier !== null && config.onLoginFailure) {
+        try {
+          await config.onLoginFailure({
+            request,
+            audience: "staff",
+            loginIdentifier: rejectedIdentifier,
+          });
+        } catch {
+          // Observations cannot change the result or retry credential verification.
+        }
+      }
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
   };
@@ -522,6 +552,18 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       path: "/api/auth/oauth",
       maxAge: 0,
     });
+    if (config.onLoginSuccess) {
+      try {
+        await config.onLoginSuccess({
+          request,
+          audience: "staff",
+          principalId: resolved.user.id,
+          sessionFamilyId: session.sessionId,
+        });
+      } catch {
+        // A contained source observation cannot change the completed auth result.
+      }
+    }
     return response;
   };
 
@@ -545,15 +587,15 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   };
 
   return {
-    login,
-    logout,
-    refresh,
-    forgotPassword,
-    resetPassword,
-    changePassword,
-    oauthStart,
-    oauthCallback,
-    meGet,
+    login: npWithAuthResponseObserver(login, "staff", config.onResponse),
+    logout: npWithAuthResponseObserver(logout, "staff", config.onResponse),
+    refresh: npWithAuthResponseObserver(refresh, "staff", config.onResponse),
+    forgotPassword: npWithAuthResponseObserver(forgotPassword, "staff", config.onResponse),
+    resetPassword: npWithAuthResponseObserver(resetPassword, "staff", config.onResponse),
+    changePassword: npWithAuthResponseObserver(changePassword, "staff", config.onResponse),
+    oauthStart: npWithAuthResponseObserver(oauthStart, "staff", config.onResponse),
+    oauthCallback: npWithAuthResponseObserver(oauthCallback, "staff", config.onResponse),
+    meGet: npWithAuthResponseObserver(meGet, "staff", config.onResponse),
   };
 }
 

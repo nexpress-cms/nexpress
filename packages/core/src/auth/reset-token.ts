@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -13,6 +13,8 @@ import { NpValidationError } from "../errors.js";
 import { npSessions, npUsers } from "../db/schema/system.js";
 import { hashPassword } from "./password.js";
 import { sha256 } from "./session.js";
+import type { getDb } from "../db/runtime.js";
+import { npGetGuardianSensitiveObserverV1 } from "../agent/guardian-sensitive-observer.js";
 
 export type NpPasswordResetPurpose = "invite" | "reset";
 
@@ -192,6 +194,8 @@ export async function consumePasswordResetToken(
   }
 
   const newPasswordHash = await hashPassword(options.newPassword);
+  const observer = npGetGuardianSensitiveObserverV1(),
+    scope = { kind: "deployment" } as const;
 
   // We inline the tokenVersion bump + session delete instead of calling
   // invalidateAllSessions because we need them to land in the same
@@ -199,6 +203,24 @@ export async function consumePasswordResetToken(
   // two transactions could leave the user with a new password but still-
   // valid old JWTs if the second call failed.
   await db.transaction(async (tx) => {
+    const sourceDb = tx as unknown as ReturnType<typeof getDb>;
+    let previous: { tokenVersion: number; purpose: "invite" | "reset" | null } | undefined;
+    if (observer) {
+      await observer.prepare({ db: sourceDb, scope });
+      [previous] = await tx
+        .select({ tokenVersion: npUsers.tokenVersion, purpose: npUsers.passwordResetPurpose })
+        .from(npUsers)
+        .where(
+          and(
+            eq(npUsers.id, user.id),
+            eq(npUsers.passwordResetTokenHash, tokenHash),
+            isNotNull(npUsers.passwordResetExpiresAt),
+            gt(npUsers.passwordResetExpiresAt, new Date()),
+          ),
+        )
+        .for("update")
+        .limit(1);
+    }
     const consumedAt = new Date();
     const [updated] = await tx
       .update(npUsers)
@@ -220,7 +242,7 @@ export async function consumePasswordResetToken(
           gt(npUsers.passwordResetExpiresAt, consumedAt),
         ),
       )
-      .returning({ id: npUsers.id });
+      .returning({ id: npUsers.id, tokenVersion: npUsers.tokenVersion });
 
     if (!updated) {
       throw new NpValidationError("Invalid input", [
@@ -229,6 +251,25 @@ export async function consumePasswordResetToken(
     }
 
     await tx.delete(npSessions).where(eq(npSessions.userId, user.id));
+    if (observer) {
+      if (!previous) throw new Error("Credential transition source state is unavailable");
+      await observer.recordCredential({
+        db: sourceDb,
+        scope,
+        actor: { kind: "system", component: "auth.password-reset" },
+        transitionId: randomUUID(),
+        occurredAt: consumedAt,
+        transition: {
+          kind: "password-replaced",
+          audience: "staff",
+          principalId: user.id,
+          purpose: previous.purpose === "invite" ? "invite-accept" : "password-reset",
+          previous: { tokenVersion: previous.tokenVersion },
+          current: { tokenVersion: updated.tokenVersion },
+          memberResetActivation: null,
+        },
+      });
+    }
   });
 
   return {

@@ -18,6 +18,11 @@ import {
   setMemberAuthCookies,
 } from "./member-auth-helpers";
 import { resetTtlMs, verifyTtlMs } from "./token-ttl";
+import {
+  npObserveInstalledAgentGuardianLoginFailureV1,
+  npObserveInstalledAgentGuardianLoginSuccessV1,
+} from "./agents/guardian-request-observer";
+import { npObserveInstalledAgentGuardianHttpResponseV1 } from "./agents/guardian-http-observer";
 
 /**
  * Bootstrapped member-auth route handlers. Each
@@ -33,6 +38,10 @@ import { resetTtlMs, verifyTtlMs } from "./token-ttl";
 export const memberAuthRoutes = createMemberAuthRoutes({
   getDb,
   ensureFor,
+  onLoginFailure: npObserveInstalledAgentGuardianLoginFailureV1,
+  onLoginSuccess: npObserveInstalledAgentGuardianLoginSuccessV1,
+  onResponse: ({ request, status }) =>
+    npObserveInstalledAgentGuardianHttpResponseV1({ request, status, routeFamily: "member-auth" }),
   authHelpers: {
     setMemberAuthCookies,
     clearMemberAuthCookies,
@@ -60,6 +69,10 @@ export const memberAuthRoutes = createMemberAuthRoutes({
 export const staffAuthRoutes = createStaffAuthRoutes({
   getDb,
   ensureFor,
+  onLoginFailure: npObserveInstalledAgentGuardianLoginFailureV1,
+  onLoginSuccess: npObserveInstalledAgentGuardianLoginSuccessV1,
+  onResponse: ({ request, status }) =>
+    npObserveInstalledAgentGuardianHttpResponseV1({ request, status, routeFamily: "staff-auth" }),
   authHelpers: {
     setAuthCookies,
     clearAuthCookies,

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, listPendingMemberDocs, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -20,7 +21,7 @@ function parsePositiveInt(value: string | null, fallback: number, max: number): 
   return Math.min(parsed, max);
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -58,3 +59,5 @@ export async function GET(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

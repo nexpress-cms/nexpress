@@ -1,3 +1,4 @@
+import { getCurrentSiteId } from "../../../packages/core/src/sites/context.js";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -67,6 +68,28 @@ describe.skipIf(skipIfNoTestDb())("Runtime durable job recovery", () => {
     await f.jobs.reconcile();
     expect(f.enqueue).toHaveBeenLastCalledWith("agent:runExecute", { siteId, runId: run.runId });
     expect(f.enqueue).toHaveBeenCalledTimes(2);
+  });
+  it("visits an explicitly installed notification recovery owner with persisted site context and preserves other recovery after failure", async () => {
+    const f = await fixture();
+    const run = await f.admission.admit(f.runInput);
+    const recover = vi.fn(async (input: { siteId: string }) => {
+      expect(await getCurrentSiteId()).toBe(input.siteId);
+    });
+    const jobs = createAgentRuntimeJobsV1({
+      coordinationSiteId: siteId,
+      events: f.events,
+      executor: { process: f.execute },
+      incidentNotifications: { recover },
+      now: f.options.now,
+    });
+    expect(recover).not.toHaveBeenCalled();
+    recover.mockRejectedValueOnce(new Error("private recording details"));
+    await expect(jobs.reconcile()).rejects.toThrow("Agent runtime job is unavailable.");
+    expect(recover).toHaveBeenCalledWith({ siteId });
+    expect(f.enqueue).toHaveBeenCalledWith("agent:runExecute", { siteId, runId: run.runId });
+    await jobs.reconcile();
+    expect(recover.mock.calls.filter(([input]) => input.siteId === siteId)).toHaveLength(2);
+    expect(f.execute).not.toHaveBeenCalled();
   });
   it("persists an empty end-page reset so earlier Run ids cannot starve", async () => {
     const f = await fixture();

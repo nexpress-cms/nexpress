@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, hashPassword, npUsers, can } from "@nexpress/core";
 import { runHook } from "@nexpress/core/bootstrap";
 import {
@@ -35,7 +36,7 @@ function parsePositiveInt(value: string | null, fallback: number, max: number): 
   return parsed;
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -201,3 +202,6 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("users", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("users", npGuardianPOST);

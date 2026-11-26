@@ -387,6 +387,8 @@ function createError(error: unknown): string {
       return "Connection management is unavailable or you no longer have access. Sign in again if your session expired.";
     if (error.status === 409)
       return "The connection definition changed. Reload adapters and review your unsaved form before submitting again.";
+    if (error.status === 429)
+      return "Too many connection requests. Check the retry time and wait before submitting again.";
     return `Connection request failed. Safe code: ${error.code}. If the outcome is unknown, re-enter the same credential and retry the unchanged definition.`;
   }
   return "The connection request could not be completed or validated. Check the non-secret configuration. If the outcome is unknown, re-enter the same credential and retry the unchanged definition.";

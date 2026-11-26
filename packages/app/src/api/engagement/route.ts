@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import {
   npListContentEngagement,
   npRequireReadableCommunityDocument,
@@ -15,7 +16,7 @@ import { npRequireCommunityRequest } from "../../lib/community-contract";
 import { optionalMember } from "../../lib/member-auth-helpers";
 
 /** Current public engagement snapshot used after realtime invalidations. */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const member = await optionalMember(request);
@@ -40,3 +41,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);

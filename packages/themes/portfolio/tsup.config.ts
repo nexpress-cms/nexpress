@@ -1,3 +1,4 @@
+import { cp } from "node:fs/promises";
 import { defineConfig } from "tsup";
 
 export default defineConfig([
@@ -5,8 +6,19 @@ export default defineConfig([
     entry: ["src/index.ts"],
     format: ["esm"],
     dts: true,
-    clean: true,
+    // Clean once in the build script; per-entry cleanup can delete the
+    // parallel client entry's declaration files before packing.
+    clean: false,
     sourcemap: true,
+    onSuccess: async () => {
+      await cp(
+        new URL("./src/fonts/", import.meta.url),
+        new URL("./dist/fonts/", import.meta.url),
+        {
+          recursive: true,
+        },
+      );
+    },
     external: [
       "react",
       "react-dom",

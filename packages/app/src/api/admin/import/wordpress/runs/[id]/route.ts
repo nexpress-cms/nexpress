@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -8,7 +9,7 @@ import { getWordPressImportRun } from "../../../../../../lib/wp-import-admin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianGET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
@@ -29,3 +30,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -28,7 +29,7 @@ import { ensureFor } from "../../../../../../lib/init-core";
  * admin (translations write to the DB and bypass the
  * collection's normal create flow's slug validation).
  */
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   context: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -46,7 +47,7 @@ export async function GET(
   }
 }
 
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   context: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -75,3 +76,6 @@ export async function POST(
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

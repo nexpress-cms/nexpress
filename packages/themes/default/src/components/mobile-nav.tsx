@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { npOpenMobileNavDialog } from "@nexpress/theme/client";
 import Link from "next/link";
 import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 
@@ -11,7 +12,8 @@ import type { NpResolvedNavItem } from "@nexpress/core/navigation";
  * hamburger button + slide-in drawer take over.
  *
  * Why a client component: the drawer needs `useState` for
- * open/closed, focus-trap on Escape, and scroll-lock on the
+ * open/closed state; the native dialog owns focus containment, and the shared
+ * lifecycle handles Escape, focus restoration, and scroll-lock on the
  * body. The link list itself is passed in from the server-
  * rendered header so the markup stays SEO-visible even when
  * the drawer is closed.
@@ -34,49 +36,21 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
   const [open, setOpen] = useState(false);
   const unread = normalizeUnread(notificationUnread);
 
-  useEffect(() => {
-    const media = window.matchMedia(DESKTOP_NAV_QUERY);
-    const closeForDesktop = () => {
-      if (media.matches) setOpen(false);
-    };
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
-    closeForDesktop();
-    media.addEventListener("change", closeForDesktop);
-    return () => {
-      media.removeEventListener("change", closeForDesktop);
-    };
-  }, []);
-
-  // Close on Escape and lock body scroll while open. Both effects
-  // run only when the drawer is actually open so no listeners
-  // hang around in the closed state.
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    const root = document.documentElement;
-    const previousRootOverflowX = root.style.overflowX;
-    const previousRootMaxWidth = root.style.maxWidth;
-    const previousOverflow = document.body.style.overflow;
-    const previousBodyMaxWidth = document.body.style.maxWidth;
-    root.style.overflowX = "hidden";
-    root.style.maxWidth = "100vw";
-    document.body.style.overflow = "hidden";
-    document.body.style.maxWidth = "100vw";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      root.style.overflowX = previousRootOverflowX;
-      root.style.maxWidth = previousRootMaxWidth;
-      document.body.style.overflow = previousOverflow;
-      document.body.style.maxWidth = previousBodyMaxWidth;
-    };
+    if (!open || !dialogRef.current || !triggerRef.current) return;
+    return npOpenMobileNavDialog(dialogRef.current, triggerRef.current, {
+      desktopQuery: DESKTOP_NAV_QUERY,
+      onClose: () => setOpen(false),
+    });
   }, [open]);
 
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         className="np-mobile-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
@@ -86,14 +60,12 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
       >
         {open ? <CloseIcon /> : <MenuIcon />}
       </button>
-      {open ? (
-        <div className="np-mobile-nav-overlay" role="presentation" onClick={() => setOpen(false)} />
-      ) : null}
-      <aside
+      <dialog
+        ref={dialogRef}
         id="np-mobile-nav-drawer"
         className="np-mobile-nav-drawer"
         data-open={open ? "true" : "false"}
-        aria-hidden={open ? "false" : "true"}
+        aria-label={label}
       >
         <header className="np-mobile-nav-drawer-header">
           <span className="np-mobile-nav-drawer-label">{label}</span>
@@ -123,10 +95,14 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
         <div className="np-mobile-nav-account" aria-label="Member">
           {member ? (
             <>
-              <Link href={`/u/${member.handle}`} onClick={() => setOpen(false)}>
+              <Link href={`/u/${member.handle}`} prefetch={false} onClick={() => setOpen(false)}>
                 @{member.handle}
               </Link>
-              <Link href="/members/me/notifications" onClick={() => setOpen(false)}>
+              <Link
+                href="/members/me/notifications"
+                prefetch={false}
+                onClick={() => setOpen(false)}
+              >
                 <span>Notifications</span>
                 {unread > 0 ? (
                   <span className="np-mobile-nav-badge">{formatUnreadCount(unread)}</span>
@@ -135,10 +111,10 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
             </>
           ) : (
             <>
-              <Link href="/members/login" onClick={() => setOpen(false)}>
+              <Link href="/members/login" prefetch={false} onClick={() => setOpen(false)}>
                 Sign in
               </Link>
-              <Link href="/members/register" onClick={() => setOpen(false)}>
+              <Link href="/members/register" prefetch={false} onClick={() => setOpen(false)}>
                 Register
               </Link>
             </>
@@ -148,7 +124,7 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
           {items.map((item, index) => (
             <li key={`mobile-nav-${index.toString()}`}>
               {item.url ? (
-                <Link href={item.url} onClick={() => setOpen(false)}>
+                <Link href={item.url} prefetch={false} onClick={() => setOpen(false)}>
                   {item.label}
                 </Link>
               ) : (
@@ -159,7 +135,7 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
                   {item.children.map((child, childIndex) => (
                     <li key={`mobile-nav-${index.toString()}-${childIndex.toString()}`}>
                       {child.url ? (
-                        <Link href={child.url} onClick={() => setOpen(false)}>
+                        <Link href={child.url} prefetch={false} onClick={() => setOpen(false)}>
                           {child.label}
                         </Link>
                       ) : (
@@ -172,7 +148,7 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
             </li>
           ))}
         </ul>
-      </aside>
+      </dialog>
     </>
   );
 }

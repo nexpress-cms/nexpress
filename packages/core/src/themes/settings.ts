@@ -7,65 +7,30 @@ import { and, eq } from "drizzle-orm";
 import type { ZodTypeAny } from "zod";
 
 import type { NpThemeManifest } from "../config/types.js";
-import { getDb } from "../db/index.js";
+import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { getActiveTheme, getThemeById } from "./registry.js";
-import { introspectThemeSettingsSchema, type NpThemeSettingsField } from "./settings-schema.js";
+import { introspectThemeSettingsSchema } from "./settings-schema.js";
 import { npAssertSettingValue } from "../settings/contract.js";
+import { settingsDefaultsFromFields } from "../settings/defaults.js";
 
 const DEFAULT_SITE = "default";
-
-/**
- * Phase F.3 — per-theme operator settings.
- *
- * Stored at `np_settings.(site_id, key="theme.settings:<themeId>")`
- * with the value being the parsed `z.infer<typeof
- * settingsSchema>`. Reuses the existing `nx:theme:<siteId>`
- * cache tag (see design doc §5.3) — settings live on the same
- * read paths as tokens / active id, so a shared bust avoids
- * fragmenting the tag namespace.
- */
 
 function settingsKey(themeId: string): string {
   return `theme.settings:${themeId}`;
 }
 
 /**
- * v0.3 (D) — versioned envelope for persisted theme settings.
- *
- * Sentinel keys (`__npVersion`, `__npSettings`) avoid collision
- * with theme-owned setting fields (themes rarely choose names
- * starting with `__np`; a `version` / `value` heuristic was
- * considered but rejected because both names are plausible
- * theme-author choices for actual settings).
- *
+ * Persisted at `np_settings.(site_id, key="theme.settings:<themeId>")`.
+ * Sentinel keys avoid collision with theme-owned setting fields.
  * Persisted values must use this exact envelope. Bare values and
  * extra envelope fields fail before schema parsing.
  */
-/** Internal — exported for unit tests only. */
 export interface NpVersionedSettings {
   __npVersion: number;
   __npSettings: unknown;
-}
-
-/** Internal — exported for unit tests only. */
-export function isVersionedSettings(value: unknown): value is NpVersionedSettings {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const candidate = value as Partial<NpVersionedSettings>;
-  // Safe-integer validation rejects NaN / Infinity / fractions — a
-  // hand-crafted or corrupted DB value with `__npVersion: NaN`
-  // would otherwise pass typeof and trip the migration path's
-  // `>=` comparisons (NaN >= N always false).
-  return (
-    typeof candidate.__npVersion === "number" &&
-    Number.isSafeInteger(candidate.__npVersion) &&
-    candidate.__npVersion >= 1 &&
-    candidate.__npVersion <= 1_000_000 &&
-    Object.keys(candidate).length === 2 &&
-    "__npSettings" in candidate
-  );
 }
 
 /** Run the theme's `settingsMigrate` from `from` to current
@@ -84,23 +49,6 @@ export function applyMigration(
   if (typeof migrate !== "function") return rawValue;
   npAssertAgentPreviewEffectsAllowed();
   return migrate(rawValue, fromVersion);
-}
-
-function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const f of fields) {
-    if (f.default !== undefined) {
-      out[f.name] = f.default;
-      continue;
-    }
-    if (f.type === "object") {
-      out[f.name] = defaultsFrom(f.fields);
-    }
-    if (f.type === "array") {
-      out[f.name] = [];
-    }
-  }
-  return out;
 }
 
 /**
@@ -184,7 +132,7 @@ export async function getThemeSettingsWithStatus(
   }
 
   const fields = introspectThemeSettingsSchema(schema);
-  const defaults = defaultsFrom(fields);
+  const defaults = settingsDefaultsFromFields(fields);
 
   if (!row) {
     // No row stored yet — first access returns schema defaults.
@@ -275,10 +223,7 @@ export async function setThemeSettings(
     );
   }
 
-  // v0.3 (D) — wrap in the versioned envelope so future schema
-  // changes can detect what version produced this row. Themes
-  // that haven't declared `settingsVersion` get `1` (the v0.2
-  // baseline) for forward-compat with the migration pipeline.
+  // Retain the producing schema version for lazy migration on subsequent reads.
   const wrapped: NpVersionedSettings = {
     __npVersion: theme.manifest.settingsVersion ?? 1,
     __npSettings: parsed.data,

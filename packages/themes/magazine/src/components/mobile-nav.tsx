@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { npOpenMobileNavDialog } from "@nexpress/theme/client";
 import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 
 /**
@@ -18,31 +19,15 @@ const DESKTOP_NAV_QUERY = "(min-width: 761px)";
 export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    const media = window.matchMedia(DESKTOP_NAV_QUERY);
-    const closeForDesktop = () => {
-      if (media.matches) setOpen(false);
-    };
-
-    closeForDesktop();
-    media.addEventListener("change", closeForDesktop);
-    return () => {
-      media.removeEventListener("change", closeForDesktop);
-    };
-  }, []);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previousOverflow;
-    };
+    if (!open || !dialogRef.current || !triggerRef.current) return;
+    return npOpenMobileNavDialog(dialogRef.current, triggerRef.current, {
+      desktopQuery: DESKTOP_NAV_QUERY,
+      onClose: () => setOpen(false),
+    });
   }, [open]);
 
   if (items.length === 0) return null;
@@ -50,6 +35,7 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         className="np-magazine-mobile-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
@@ -59,19 +45,21 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
       >
         <span aria-hidden="true">{open ? "Close" : "Menu"}</span>
       </button>
-      {open ? (
-        <div
-          className="np-magazine-mobile-nav-overlay"
-          role="presentation"
-          onClick={() => setOpen(false)}
-        />
-      ) : null}
-      <aside
+      <dialog
+        ref={dialogRef}
         id="np-magazine-mobile-nav-drawer"
         className="np-magazine-mobile-nav-drawer"
         data-open={open ? "true" : "false"}
-        aria-hidden={open ? "false" : "true"}
+        aria-label="Menu"
       >
+        <button
+          type="button"
+          className="np-magazine-mobile-nav-close"
+          onClick={() => setOpen(false)}
+          aria-label="Close menu"
+        >
+          Close
+        </button>
         <ul className="np-magazine-mobile-nav-drawer-list">
           <li>
             <a href="/search" onClick={() => setOpen(false)}>
@@ -97,7 +85,7 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
             </li>
           ))}
         </ul>
-      </aside>
+      </dialog>
     </>
   );
 }

@@ -100,15 +100,6 @@ export function inspectLocalWorkspacePackage(
   return malformedCandidate ?? { kind: "missing" };
 }
 
-export function findLocalWorkspacePackageDir(
-  cwd: string,
-  packageName: string,
-  packageRoots: string[],
-): string | null {
-  const result = inspectLocalWorkspacePackage(cwd, packageName, packageRoots);
-  return result.kind === "found" ? result.dir : null;
-}
-
 function addDistEntrypoint(value: unknown, paths: Set<string>): void {
   if (typeof value !== "string") return;
   if (!value.startsWith("./dist/")) return;

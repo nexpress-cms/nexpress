@@ -297,6 +297,24 @@ describe.skipIf(skipIfNoTestDb())("Closed unexecuted approval source retention",
 
   it("releases creator and requester independently while freezing linked approval evidence after the first release", async () => {
     const f = await runtimeApprovalResumeFixture("apply", { separateRequester: true });
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(72),
+      changesets: f.service,
+      now: f.options.now,
+    });
+    const staff = { siteId, actor: f.actor.actor };
+    const byChangeSet = await activity.listRuns({
+      ...staff,
+      query: { changeSetId: f.required.changeSet.id },
+    });
+    expect(new Set(byChangeSet.items.map(({ run }) => run.id))).toEqual(
+      new Set([f.creatorInput.runId, f.input.runId]),
+    );
+    const byApproval = await activity.listRuns({
+      ...staff,
+      query: { approvalId: f.required.approvalId },
+    });
+    expect(byApproval.items.map(({ run }) => run.id)).toEqual([f.input.runId]);
     await reject(f);
     await f.store.cancel(f.input);
     await ageAndClean(f);

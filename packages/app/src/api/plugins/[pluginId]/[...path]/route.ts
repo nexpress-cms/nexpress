@@ -15,6 +15,7 @@ import { ensureFor } from "../../../../lib/init-core";
 import { optionalMember } from "../../../../lib/member-auth-helpers";
 import { npCreatePluginApiRouteResponse } from "../../plugin-route-response";
 import { npReadPluginApiRawBody } from "../../plugin-route-request";
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 
 export const dynamic = "force-dynamic";
 
@@ -117,9 +118,10 @@ async function handlePluginRoute(
   }
 }
 
-export const GET = handlePluginRoute;
-export const HEAD = handlePluginRoute;
-export const POST = handlePluginRoute;
-export const PUT = handlePluginRoute;
-export const PATCH = handlePluginRoute;
-export const DELETE = handlePluginRoute;
+const observed = npWithAgentGuardianHttpResponseV1("plugin-public", handlePluginRoute);
+export const GET = observed;
+export const HEAD = observed;
+export const POST = observed;
+export const PUT = observed;
+export const PATCH = observed;
+export const DELETE = observed;

@@ -57,6 +57,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
       "community",
       "collections",
       "agents.contract",
+      "guardian.signals",
       "secret",
     ]);
   });

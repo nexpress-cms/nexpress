@@ -1,3 +1,4 @@
+import { npMeasureAgentRuntimeRunUsageV1 } from "../../../packages/core/src/agent/runtime-usage-capacity.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -165,11 +166,22 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
     ).toEqual({});
     expect(await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId })).toMatchObject({
       run: { id: f.runId, origin: "runtime", usage: null, goal: "[redacted]" },
+      runtimeDiagnostics: {
+        trigger: null,
+        retryAt: null,
+        providerCalls: [
+          { sequence: 1, state: "reserved", dispatchState: "not-dispatched", usage: null },
+        ],
+        moreProviderCalls: false,
+      },
     });
-    expect(
-      (await activity.listRuns({ siteId, actor: f.actor.actor, query: { origin: "runtime" } }))
-        .items,
-    ).toMatchObject([{ run: { id: f.runId, origin: "runtime", usage: null } }]);
+    const page = await activity.listRuns({
+      siteId,
+      actor: f.actor.actor,
+      query: { origin: "runtime" },
+    });
+    expect(page.items).toMatchObject([{ run: { id: f.runId, origin: "runtime", usage: null } }]);
+    expect(page.items[0]).not.toHaveProperty("runtimeDiagnostics");
     expect(await measure(f)).toMatchObject({
       concurrentProviderCalls: 1,
       providerCallsRollingHour: 1,
@@ -293,6 +305,40 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       response,
     });
     expect(settled).toMatchObject({ state: "succeeded", reservationState: "reconciled" });
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(61),
+      now: f.options.now,
+    });
+    const detail = await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId });
+    expect(detail).toMatchObject({
+      runtimeDiagnostics: {
+        providerCalls: [
+          {
+            sequence: 1,
+            state: "succeeded",
+            dispatchState: "dispatched",
+            latencyMs: 10,
+            usage: {
+              inputTokens: 6,
+              cachedInputTokens: 2,
+              outputTokens: 3,
+              tokenSource: "provider",
+              costMicros: 11,
+              costSource: "adapter-estimate",
+            },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(detail)).not.toMatch(
+      /fixture-request|The worker is observable|secretVersionId|requestDigest/,
+    );
+    expect(await npMeasureAgentRuntimeRunUsageV1({ db: f.db, siteId, runId: f.runId })).toEqual({
+      turns: 1n,
+      input: 6n,
+      output: 3n,
+      cost: 11n,
+    });
     expect(
       await f.usage.reconcile({ siteId, providerCallId: request.providerCallId, response }),
     ).toEqual({ ...settled, replayed: true });
@@ -469,6 +515,32 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       providerCallId: request.providerCallId,
       response: await f.response(request, ambiguous(request)),
     });
+    const capacity = { db: f.db, siteId, runId: f.runId };
+    expect(await npMeasureAgentRuntimeRunUsageV1(capacity)).toEqual({
+      turns: 1n,
+      input: 10n,
+      output: 10n,
+      cost: 31n,
+    });
+    expect(
+      await npMeasureAgentRuntimeRunUsageV1({
+        ...capacity,
+        excludeProviderCallId: request.providerCallId,
+      }),
+    ).toEqual({
+      turns: 0n,
+      input: 0n,
+      output: 0n,
+      cost: 0n,
+    });
+    expect(
+      await npMeasureAgentRuntimeRunUsageV1({ ...capacity, excludeProviderCallId: randomUUID() }),
+    ).toEqual({
+      turns: 1n,
+      input: 10n,
+      output: 10n,
+      cost: 31n,
+    });
     const before = await f.call();
     expect(await f.usage.expire({ siteId })).toEqual({ examined: 0, released: 0, expired: 0 });
     await expect(
@@ -489,6 +561,12 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       inputTokensUtcDay: 10,
       outputTokensUtcDay: 10,
       costMicrosUtcDay: 31,
+    });
+    expect(await npMeasureAgentRuntimeRunUsageV1(capacity)).toEqual({
+      turns: 1n,
+      input: 10n,
+      output: 10n,
+      cost: 31n,
     });
     await f.controls.pause({ siteId, reason: "Contain unresolved spend" });
     const response = await f.response(request, success(request), decision);

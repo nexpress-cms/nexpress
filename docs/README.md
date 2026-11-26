@@ -1,8 +1,7 @@
 # docs/
 
-Two distinct kinds of documentation live here. The split is load-bearing:
-mistaking one for the other has bitten newcomers, which is what motivated
-issue #276.
+Live guides describe current behavior. Design and history records preserve
+decisions and evidence; their proposals are not automatically shipped features.
 
 ## Live guides — kept current
 
@@ -12,6 +11,7 @@ behavior they describe changes.
 | File                                                   | Topic                                                                   |
 | ------------------------------------------------------ | ----------------------------------------------------------------------- |
 | [agent-gateway.md](agent-gateway.md)                   | Port-free local MCP transport, host wiring, and credential boundary     |
+| [agent-studio.md](agent-studio.md)                     | Staff Runtime management, evidence, recovery and acceptance boundaries  |
 | [agent-integration.md](agent-integration.md)           | Agent / LLM integration surface                                         |
 | [agent-operated-ops.md](agent-operated-ops.md)         | Shipped agent-operated ops CLI, mutation, and admin API contracts       |
 | [api-error-codes.md](api-error-codes.md)               | Stable `code` strings on error responses                                |
@@ -89,30 +89,36 @@ backlog, but now documents the shipped `nexpress ops`, `nexpress release`,
 and `nexpress runbook` JSON contracts. Its issue sections are retained as
 implementation history and follow-up notes.
 
-## Design snapshots — frozen
+## Design plans and implementation evidence
 
-Files under [`design/`](design/) are **planning-time snapshots**. They are
-preserved for historical motivation but are not kept in sync with the code.
-Each one carries a banner at the top noting the last commit the high-level
-intent was verified against. Specifics (file paths, function signatures,
-schema names, code samples) will have drifted.
+Files under [`design/`](design/) include historical planning snapshots and the
+[Agentic Platform implementation set](design/agentic-platform/README.md).
+Historical records retain motivation and decisions. The original core and
+plugin designs are now concise summaries linked to the owning live guides;
+obsolete code sketches, command transcripts and schedules remain in Git
+history. Other snapshots may still contain dated paths or examples and are not
+live instructions.
 
-If you want to know how something works **right now**, read the code and the
-matching live guide above. If you want to know **why** a subsystem is
-shaped the way it is, the design snapshot may have the rationale.
+The Agentic Platform directory also contains maintained feature-flow records and
+acceptance decisions. Those records identify implemented scope, verification and
+remaining gates; a dated test result is evidence for that checkpoint, not a claim
+that it was rerun today. Proposed requirements in the same directory are not
+shipped merely because they appear in a design document.
 
-The current implementation design for the proposed agent-operable product
-track is indexed at
-[`design/agentic-platform/`](design/agentic-platform/README.md). It covers the
-Build Agent, external MCP gateway, durable Agent Runtime, ChangeSets,
-credentials, moderation/Guardian workflows, Admin UX, delivery order, and
-verification. None of those planned surfaces is shipped merely because it
-appears in that directory; implemented phases must add or update a focused live
-guide above.
+For current operator instructions, use the focused live guides above, including
+[Agent Studio](agent-studio.md). For the implementation/evidence boundary, consult
+[R5 acceptance](design/agentic-platform/r5-acceptance.md) and its linked feature
+records. Neither guide nor evidence record turns an unmet acceptance gate into a
+pass.
 
 The directory currently contains the agentic-platform implementation set plus
-the original core, community, plugin, WordPress-import, universal-content,
+core, community, plugin, WordPress-import, universal-content,
 theme-extension, member-surface, route, plugin-config, authoring-field-note,
-alias-removal, and Phase 23 planning snapshots, plus the original Korean
-product brief and summary. The directory listing is the authoritative
-inventory; none of these files supersedes a live guide above.
+alias-removal, and Phase 23 design records, plus the Korean product brief. The
+directory listing is the authoritative inventory; none of these files supersedes a live guide above.
+
+When consolidating documentation, keep one current contract per feature and
+link to it. Retain meaningful decisions, compatibility constraints, evidence
+and unresolved acceptance gates; remove duplicated implementation sketches and
+chronological logs. A dated proposal is not authority to change a live contract,
+and a cleanup must not turn an unmet gate into a pass.

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { collectDoctorChecks, collectDoctorReport } from "./doctor-core.js";
 import {
+  npFindDoctorCollectionRowIssues,
   npIsCanonicalCollectionMainTableName,
   npIsCollectionMainTableName,
 } from "./doctor-collection-contract.js";
@@ -15,6 +16,83 @@ import {
 } from "./doctor-community-grants.js";
 
 describe("doctor core", () => {
+  const systemRow = {
+    id: "00000000-0000-4000-8000-000000000003",
+    status: "published",
+    createdBy: null,
+    updatedBy: null,
+    visibility: "public",
+    siteId: "default",
+  };
+
+  it("checks community audience separately from the exact system envelope", () => {
+    expect(npFindDoctorCollectionRowIssues(systemRow, "np_c_pages[0]", false)).toEqual([]);
+    expect(
+      npFindDoctorCollectionRowIssues(
+        { ...systemRow, audience: "public" },
+        "np_c_forum-boards[0]",
+        true,
+      ),
+    ).toEqual([]);
+  });
+
+  it("still rejects malformed system values and invalid or unprojected audience", () => {
+    expect(
+      npFindDoctorCollectionRowIssues(
+        { ...systemRow, visibility: "members", audience: "everyone" },
+        "np_c_forum-posts[0]",
+        true,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "np_c_forum-posts[0].visibility" }),
+        expect.objectContaining({
+          path: "np_c_forum-posts[0].audience",
+          message: "must be public, members, or private.",
+        }),
+      ]),
+    );
+    expect(npFindDoctorCollectionRowIssues(systemRow, "np_c_forum-posts[0]", true)).toEqual([
+      {
+        path: "np_c_forum-posts[0].audience",
+        message: "must be public, members, or private.",
+      },
+    ]);
+    expect(
+      npFindDoctorCollectionRowIssues({ ...systemRow, audience: "public" }, "np_c_pages[0]", false),
+    ).toEqual([expect.objectContaining({ path: "np_c_pages[0].audience" })]);
+  });
+
+  it("observes an explicit environment input without substituting for the default .env check", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-environment-"));
+    const environmentFile = join(cwd, "private-environment.input");
+    const collect = (file?: string) =>
+      collectDoctorChecks({ cwd, env: {}, nodeVersion: "24.11.1", environmentFile: file });
+    try {
+      await writeFile(environmentFile, "SITE_URL=http://127.0.0.1:18080\n", { flag: "wx" });
+      expect((await collect(environmentFile)).find((check) => check.id === "env.file")).toEqual({
+        id: "env.file",
+        state: "ok",
+        label: "Explicit environment input file present",
+        detail: "custom environment input",
+      });
+      expect((await collect()).find((check) => check.id === "env.file")?.state).toBe("error");
+      await rm(environmentFile);
+      await writeFile(join(cwd, ".env"), "SITE_URL=http://localhost:3000\n", { flag: "wx" });
+      expect((await collect(environmentFile)).find((check) => check.id === "env.file")?.state).toBe(
+        "error",
+      );
+      expect((await collect(cwd)).find((check) => check.id === "env.file")?.state).toBe("error");
+      expect((await collect()).find((check) => check.id === "env.file")).toEqual({
+        id: "env.file",
+        state: "ok",
+        label: ".env file present",
+      });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("reports malformed, missing, and cross-site community role targets", () => {
     const categoryId = "e9fb7723-14fd-4c0c-8e9a-dd223279a5ed";
     const threadId = "4c70615b-7685-4817-9272-cea2bdd08d73";

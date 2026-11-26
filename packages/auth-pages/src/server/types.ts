@@ -20,6 +20,32 @@ export type EnsureForFn = (intent: "read" | "plugins" | "write") => Promise<void
  */
 export type GetDbFn = () => unknown;
 
+/** A rejected credentials attempt. The consumed request is supplied for trusted
+ * host/site metadata; the callback receives no password or auth result details. */
+export interface NpLoginFailureObservation {
+  request: NextRequest;
+  audience: "staff" | "member";
+  loginIdentifier: string;
+}
+export type NpLoginFailureObserver = (input: NpLoginFailureObservation) => void | Promise<void>;
+
+/** A newly persisted browser session. This callback never receives passwords or tokens. */
+export interface NpLoginSuccessObservation {
+  request: NextRequest;
+  audience: "staff" | "member";
+  principalId: string;
+  sessionFamilyId: string;
+}
+export type NpLoginSuccessObserver = (input: NpLoginSuccessObservation) => void | Promise<void>;
+
+/** Actual final status only. A response observation cannot alter authentication or its response. */
+export interface NpAuthResponseObservation {
+  request: NextRequest;
+  audience: "staff" | "member";
+  status: 401 | 403 | 404;
+}
+export type NpAuthResponseObserver = (input: NpAuthResponseObservation) => void | Promise<void>;
+
 /**
  * Subset of the per-app member-auth helpers the factory consumes.
  * The app already creates the full set via `createMemberAuthHelpers`
@@ -46,6 +72,11 @@ export interface MemberAuthRoutesConfig {
   getDb: GetDbFn;
   ensureFor: EnsureForFn;
   authHelpers: MemberAuthHelpersForRoutes;
+  /** Optional observation only. Failures never change the authentication outcome. */
+  onLoginFailure?: NpLoginFailureObserver;
+  /** Optional trusted session observation; failures never change authentication. */
+  onLoginSuccess?: NpLoginSuccessObserver;
+  onResponse?: NpAuthResponseObserver;
   /**
    * Site name and URL for emailed links. The framework can't
    * read these from `nexpressConfig` itself because the routes

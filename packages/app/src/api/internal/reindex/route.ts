@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NpAuthError,
   NpConflictError,
@@ -29,7 +30,7 @@ import { ensureFor } from "../../../lib/init-core";
  * Reuses NP_SCHEDULER_TOKEN — the same token guards all internal triggers.
  * Bundling under one secret avoids multiplying rotation surface.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const expected = process.env.NP_SCHEDULER_TOKEN;
     if (!expected) {
@@ -157,3 +158,5 @@ function safeFailureMessage(error: unknown): string {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("internal", npGuardianPOST);

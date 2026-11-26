@@ -56,6 +56,7 @@ const txMethods = {
 };
 const tx = txMethods as unknown as NpTransaction;
 const inspect = vi.fn();
+const readDocumentForUpdate = vi.fn();
 function input() {
   return { tx, siteId, changeSetId, user, now, operations: [entry] };
 }
@@ -64,6 +65,7 @@ describe("ChangeSet validation resource recipes", () => {
     vi.clearAllMocks();
     vi.mocked(createAgentChangeSetResourceServiceV1).mockReturnValue({
       inspectForValidation: inspect,
+      readDocumentForUpdate,
     } as unknown as ReturnType<typeof createAgentChangeSetResourceServiceV1>);
     inspect.mockImplementation((context) => ({
       operation: context.operation,
@@ -74,6 +76,68 @@ describe("ChangeSet validation resource recipes", () => {
     vi.mocked(npGetPersistedCollectionDocumentById).mockResolvedValue(null);
     vi.mocked(getCollectionConfig).mockReturnValue(config);
     vi.mocked(npAssertSiteDocumentCreateQuota).mockResolvedValue();
+  });
+  it("returns the same revision and semantic base without a fabricated snapshot or operation", async () => {
+    const original = {
+      id: documentId,
+      siteId,
+      status: "published",
+      visibility: "public",
+      createdAt: now,
+      updatedAt: now,
+      createdBy: null,
+      updatedBy: null,
+      title: "Original",
+    };
+    const versioned = { ...config, versions: true };
+    readDocumentForUpdate.mockResolvedValue({ config: versioned, document: original });
+    inspect.mockImplementation((context) => ({
+      operation: context.operation,
+      canonicalResourceKey: context.canonicalResourceKey,
+      requiredScopes: ["content:read"],
+      document: { config: versioned, original, candidate: original },
+    }));
+    txMethods.select.mockReturnValue({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({ limit: () => Promise.resolve([{ id: documentId, version: 7 }]) }),
+        }),
+      }),
+    });
+    const service = createAgentChangeSetValidationResourceServiceV1();
+    const current = await service.readDocumentBase({
+      tx,
+      siteId,
+      user,
+      collection: "articles",
+      documentId,
+    });
+    const snapshot = await service.readBase({
+      ...input(),
+      ordinal: 1,
+      canonicalResourceKey: entry.canonicalResourceKey,
+      operation: {
+        clientOperationId: "check",
+        reason: null,
+        kind: "document",
+        operation: "update",
+        resource: { collection: "articles", documentId },
+        base: current.base,
+        input: { patch: {}, targetStatus: null },
+      },
+    });
+    expect(current.base).toEqual(snapshot.base);
+    expect(current.base.version).toBe(`revision:${documentId}:7:${now.toISOString()}`);
+    readDocumentForUpdate.mockResolvedValue({
+      config: versioned,
+      document: { ...original, title: "Changed" },
+    });
+    expect(
+      (await service.readDocumentBase({ tx, siteId, user, collection: "articles", documentId }))
+        .base.digest,
+    ).not.toBe(current.base.digest);
+    expect(txMethods.insert).not.toHaveBeenCalled();
+    expect(txMethods.update).not.toHaveBeenCalled();
   });
   it("retains exact media owner value conflicts when the collection has no timestamps", async () => {
     vi.mocked(getCollectionConfig).mockReturnValue({ ...config, timestamps: false });

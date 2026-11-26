@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import {
   addReaction,
   countReactions,
@@ -38,7 +39,7 @@ function readTargetFromQuery(request: NextRequest) {
  * `{ counts: { like: 12 }, mine: ["like"] | [] }`. The `mine`
  * field is only populated when a member is authenticated.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const target = readTargetFromQuery(request);
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function npGuardianDELETE(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -88,3 +89,7 @@ export async function DELETE(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("community", npGuardianPOST);
+export const DELETE = npWithAgentGuardianHttpResponseV1("community", npGuardianDELETE);

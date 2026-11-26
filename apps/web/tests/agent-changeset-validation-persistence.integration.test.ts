@@ -111,9 +111,12 @@ async function fixture() {
   return { db, user, changeset, attempt };
 }
 describe.skipIf(skipIfNoTestDb())("ChangeSet validation attempt persistence", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     registerTestCollections();
   });
   afterEach(async () => {

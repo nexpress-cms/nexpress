@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -12,7 +13,7 @@ import {
 } from "../../../../scripts/deploy-targets";
 import type * as DoctorCore from "../../../../scripts/doctor-core";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireGlobalAuth(request);
@@ -73,3 +74,5 @@ function readBooleanParam(name: string, rawValue: string | null): boolean | null
     },
   ]);
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

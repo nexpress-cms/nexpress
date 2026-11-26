@@ -17,20 +17,26 @@ export async function GET(request: NextRequest) {
   try {
     await ensureFor("read");
     const { siteId, actor } = await requireAgentStudioAdmin(request);
-    const { activity } = requireAgentStudioActivityRuntimeV1();
+    const { activity, incidents } = requireAgentStudioActivityRuntimeV1();
     const value = await activity.listRuns({
       siteId,
       actor,
       query: readAgentActivityQuery(request, "runs"),
+      readIncident: incidents?.readIncidentForActivity,
     });
     return npSuccessResponse(
       npRequireAgentContractResult(npAnalyzeAgentActivityRunsPageV1(value)),
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    return agentStudioErrorResponse(error, "read", {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return agentStudioErrorResponse(
+      error,
+      "read",
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+      request,
+    );
   }
 }
 

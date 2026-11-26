@@ -18,7 +18,11 @@ The product promise is:
 > approval-aware, reversible operating contracts while the application and
 > data remain yours.
 
-This is a planning snapshot, not a live architecture entry point. Current
+The product and architecture plans retain their original baseline. Feature-flow
+and acceptance records also track implemented scope and dated verification.
+For current staff operation, use the [Agent Studio guide](../../agent-studio.md);
+for remaining release evidence, use [R5 acceptance](r5-acceptance.md). This
+directory is not a live architecture entry point. Current
 behavior remains documented by the root [`AGENTS.md`](../../../AGENTS.md) and
 the focused live guides under [`docs/`](../../).
 

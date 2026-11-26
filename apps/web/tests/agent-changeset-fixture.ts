@@ -112,7 +112,7 @@ export interface PrincipalFixtureControl {
   }) => NpAgentMcpTaskServiceV1;
 }
 export async function principalFixture(
-  f: Awaited<ReturnType<typeof fixture>>,
+  f: Pick<Awaited<ReturnType<typeof fixture>>, "db" | "actor">,
   writeOnly = false,
   options: Partial<NpAgentChangeSetServiceOptionsV1> = {},
   extraScopes: NpAgentScope[] = [],

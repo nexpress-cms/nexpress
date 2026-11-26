@@ -5,8 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { readCookie } from "./cookie.js";
+
 interface ForumPostActionsProps {
   basePath: string;
+  prefetchLinks?: boolean;
   collectionSlug: string;
   boardKey: string;
   postId: string;
@@ -30,15 +33,9 @@ interface ForumPostActionsProps {
   };
 }
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
-}
-
 export function ForumPostActions({
   basePath,
+  prefetchLinks,
   collectionSlug,
   boardKey,
   postId,
@@ -111,7 +108,11 @@ export function ForumPostActions({
 
   return (
     <div className="np-forum-post-actions np-forum-author-actions">
-      {canEdit ? <Link href={`${basePath}/${boardKey}/${postId}/edit`}>{labels.edit}</Link> : null}
+      {canEdit ? (
+        <Link href={`${basePath}/${boardKey}/${postId}/edit`} prefetch={prefetchLinks}>
+          {labels.edit}
+        </Link>
+      ) : null}
       {moderationActions.map((action) => (
         <button
           key={action}

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -28,7 +29,7 @@ export const dynamic = "force-dynamic";
  * Larger exports stay available through the project CLI, where request timeouts
  * and browser memory are not part of the execution envelope.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireAuth(request);
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
 /** Preview or apply one uploaded XLIFF/PO catalog. Apply reparses the upload and
  * repeats every live-source check; a previous preview is never treated as an
  * authorization token or stale execution plan. */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireAuth(request);
@@ -262,3 +263,6 @@ function safeFilename(value: string): string {
 function validation(field: string, message: string): NpValidationError {
   return new NpValidationError("Invalid input", [{ field, message }]);
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

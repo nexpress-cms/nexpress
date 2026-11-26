@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpValidationError, autosaveRevision } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -16,7 +17,7 @@ import { validateDocumentBlockContent } from "../../../../../lib/block-content-v
  * Falls back to 400 NpValidationError if the collection isn't opted in,
  * 404 if the doc id doesn't exist.
  */
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -47,3 +48,5 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("collections", npGuardianPOST);

@@ -2,28 +2,11 @@ import { isNpRichTextContent } from "@nexpress/core/fields";
 import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
-/**
- * G.2.1 — operator-tunable config via the framework's auto-form.
- *
- * Pre-G.1 the words-per-minute reading speed was hardcoded as a
- * module-level constant. Now: declared as a Zod schema on the
- * plugin definition, surfaced as a labeled number input on
- * `/admin/plugins/reading-time` (no per-plugin form code), and
- * read at hook / route dispatch time via `ctx.config`.
- *
- * Default 220 was picked over the legacy 200 to match the design
- * doc § 5.2 reference shape (and brings us in line with most blog
- * platforms — Medium 250, Substack 240, modern silent-reading
- * studies cluster around 220-250 wpm).
- */
+// The auto-form saves this config; hooks and routes read the current ctx.config.
 const configSchema = z.object({
   wordsPerMinute: z.number().int().min(50).max(800).default(220).describe("Words per minute"),
 });
 
-// Plugin-owned type — no `Np` prefix (the framework reserves that
-// for its own identifiers per CLAUDE.md "Naming convention"). Every
-// migrated configSchema plugin exports its own `<Plugin>Config` alias
-// instead of leaking a framework-owned type name into plugin code.
 export type ReadingTimeConfig = z.infer<typeof configSchema>;
 
 function extractText(node: unknown): string {

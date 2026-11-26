@@ -8,8 +8,9 @@ import {
   readExactOauthForm,
 } from "../../../lib/agents/oauth-http";
 import { ensureFor } from "../../../lib/init-core";
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 
-export async function POST(request: NextRequest) {
+async function post(request: NextRequest) {
   await ensureFor("read");
   const siteId = await requireSiteId();
   const surface = await getAgentOauthSurface(siteId);
@@ -27,5 +28,6 @@ export async function POST(request: NextRequest) {
   return oauthJson({});
 }
 
+export const POST = npWithAgentGuardianHttpResponseV1("agent-oauth", post);
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

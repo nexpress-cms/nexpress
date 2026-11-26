@@ -1,0 +1,36 @@
+import type * as entry0 from "@nexpress/core/agent-contract";
+export type Entry0 = keyof typeof entry0;
+import type * as entry1 from "@nexpress/core/api-contract";
+export type Entry1 = keyof typeof entry1;
+import type * as entry2 from "@nexpress/core/auth-contract";
+export type Entry2 = keyof typeof entry2;
+import type * as entry3 from "@nexpress/core/community-contract";
+export type Entry3 = keyof typeof entry3;
+import type * as entry4 from "@nexpress/core/content-transfer";
+export type Entry4 = keyof typeof entry4;
+import type * as entry5 from "@nexpress/core/discovery";
+export type Entry5 = keyof typeof entry5;
+import type * as entry6 from "@nexpress/core/collection-contract";
+export type Entry6 = keyof typeof entry6;
+import type * as entry7 from "@nexpress/core/fields";
+export type Entry7 = keyof typeof entry7;
+import type * as entry8 from "@nexpress/core/i18n-contract";
+export type Entry8 = keyof typeof entry8;
+import type * as entry9 from "@nexpress/core/jobs-contract";
+export type Entry9 = keyof typeof entry9;
+import type * as entry10 from "@nexpress/core/media-contract";
+export type Entry10 = keyof typeof entry10;
+import type * as entry11 from "@nexpress/core/navigation";
+export type Entry11 = keyof typeof entry11;
+import type * as entry12 from "@nexpress/core/routes";
+export type Entry12 = keyof typeof entry12;
+import type * as entry13 from "@nexpress/core/revisions";
+export type Entry13 = keyof typeof entry13;
+import type * as entry14 from "@nexpress/core/settings";
+export type Entry14 = keyof typeof entry14;
+import type * as entry15 from "@nexpress/core/theme";
+export type Entry15 = keyof typeof entry15;
+type Assert<T extends true> = T;
+export type BrowserHasNoNodeGlobals = Assert<
+  "process" extends keyof typeof globalThis ? false : true
+>;

@@ -129,15 +129,29 @@ test.describe("Agent ChangeSet review", () => {
     });
     await page.goto(`/admin/agents/changesets/${id}`);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "View related runs" })).toHaveAttribute(
+      "href",
+      `/admin/agents/activity?changeSetId=${id}`,
+    );
     expect(reads).toBe(1);
-    await page.clock.fastForward(2_000);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.clock.fastForward(30_000);
+    expect(reads).toBe(1);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.clock.runFor(1);
     await expect.poll(() => reads).toBe(2);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
     await expect(page.getByText("Loading ChangeSet…", { exact: true })).toHaveCount(0);
     await expect(
       page.getByRole("status").filter({ hasText: "Refreshing ChangeSet" }),
     ).toBeVisible();
-    await expect(page.getByText("Browser receipt time;", { exact: false })).toBeVisible();
+    await expect(page.getByText("Browser receipt time", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
     releaseSecond?.();
     await expect(page.getByText("Second poll completed", { exact: true })).toBeVisible();
@@ -685,8 +699,10 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
       expect(attempts[0]).toEqual(attempts[1]);
     }
     await expect(
-      page.getByRole("alert").filter({ hasText: "Rollback request could not be confirmed" }),
-    ).toBeVisible();
+      page
+        .getByRole("alert")
+        .filter({ hasText: "The rollback request conflicts with current server facts" }),
+    ).toBeFocused();
     await expect(page.getByRole("region", { name: "Rollback plan facts" })).toHaveCount(0);
     expect(posted).toEqual(
       action === "cancel"
@@ -1094,6 +1110,7 @@ test("rollback succeeds through preparation, human approval and verified compens
   expect(commands).toHaveLength(5);
   release();
   await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeVisible();
+  await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeFocused();
   await expect(facts.getByText("succeeded", { exact: true })).toBeVisible();
   await expect(facts.getByText("passed", { exact: true })).toBeVisible();
   await expect(page.getByText("rolled_back", { exact: true })).toBeVisible();
@@ -1104,13 +1121,25 @@ test("rollback succeeds through preparation, human approval and verified compens
     "Cancel rollback plan",
   ])
     await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Review rollback approval · consumed", exact: true }),
-  ).toBeVisible();
+  const consumedApproval = page.getByRole("link", {
+    name: "Review rollback approval · consumed",
+    exact: true,
+  });
+  await expect(consumedApproval).toBeVisible();
   await agentLifecycleCheckpoint(page, "rollback-verified");
   const screenshot = testInfo.outputPath("rollback-verified.png");
   await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
   await testInfo.attach("rollback-verified", { path: screenshot, contentType: "image/png" });
+  await consumedApproval.click();
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/approvals/${approvalId}$`));
+  await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeVisible();
+  await expect(facts.getByText(rollbackHash, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("This approval is closed. The record is available for reference."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^(Approve|Reject|Revoke|Execute approved rollback)$/ }),
+  ).toHaveCount(0);
   expect(unexpectedRequests).toEqual([]);
   expect(commands.map(({ path }) => path)).toEqual([
     `/api/admin/agents/changesets/${id}/rollback-plans`,

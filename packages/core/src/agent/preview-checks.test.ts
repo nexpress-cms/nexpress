@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { runAgentPreviewChecksV1, type NpAgentPreviewChecksInputV1 } from "./preview-checks.js";
+import {
+  runAgentPreviewChecksV1,
+  npInspectAgentRenderedAccessibilityV1,
+  type NpAgentPreviewChecksInputV1,
+} from "./preview-checks.js";
 import { npRequireAgentPreviewReportPartsV1 } from "../agent-contract/changeset-wire-contract.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { checkPreviewExternalLink } from "./preview-link-check.js";
@@ -31,6 +35,48 @@ function input(html = good): NpAgentPreviewChecksInputV1 {
 }
 beforeEach(() => vi.clearAllMocks());
 describe("framework preview checks", () => {
+  it("uses actual HTML for the fixed accessibility report without preview identity or network", () => {
+    const result = npInspectAgentRenderedAccessibilityV1(good);
+    expect(result.checks.map((check) => [check.id, check.status])).toEqual([
+      ["html.lang", "pass"],
+      ["image.alt", "pass"],
+      ["control.name", "pass"],
+      ["link.name", "pass"],
+      ["id.unique", "pass"],
+    ]);
+    expect(result.htmlDigest).toMatch(/^cj1:sha256:[A-Za-z0-9_-]{43}$/u);
+    expect(npInspectAgentRenderedAccessibilityV1(good)).toEqual(result);
+    expect(npInspectAgentRenderedAccessibilityV1(good + "<!-- changed -->").htmlDigest).not.toBe(
+      result.htmlDigest,
+    );
+    expect(checkPreviewExternalLink).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain("Example");
+  });
+  it("keeps static categories, original preview elements and issue order aligned", async () => {
+    const html =
+      '<html><head><title>Example</title><meta name="description" content="Example"></head><body><a href="/" id="duplicate"></a><input id="duplicate"><img><button></button></body></html>';
+    const report = npInspectAgentRenderedAccessibilityV1(html);
+    expect(report.checks.every((check) => check.status === "fail")).toBe(true);
+    const preview = await runAgentPreviewChecksV1(input(html));
+    const issues = preview
+      .flatMap((part) => part.issues)
+      .filter((issue) => issue.code === "ACCESSIBILITY_VIOLATION");
+    expect(issues).toHaveLength(6);
+    expect(issues.every((issue) => issue.target?.kind === "selector")).toBe(true);
+    expect(checkPreviewExternalLink).not.toHaveBeenCalled();
+  });
+  it("reuses native names, labels, hidden exclusion and parser bounds in static HTML inspection", () => {
+    const html = good.replace(
+      "</body>",
+      '<input type="submit"><input type="image" alt="Submit"><div hidden><button></button><img></div><!-- <img> --><script>"<img>"</script></body>',
+    );
+    expect(
+      npInspectAgentRenderedAccessibilityV1(html).checks.every((check) => check.status === "pass"),
+    ).toBe(true);
+    expect(() => npInspectAgentRenderedAccessibilityV1("a".repeat(5 * 1024 * 1024 + 1))).toThrow();
+    expect(() => npInspectAgentRenderedAccessibilityV1("<div>".repeat(260))).toThrow();
+    expect(checkPreviewExternalLink).not.toHaveBeenCalled();
+  });
   it("emits exact canonical sorted reports for all five checks", async () => {
     const reports = await runAgentPreviewChecksV1(input());
     expect(npRequireAgentPreviewReportPartsV1(reports)).toEqual(reports);

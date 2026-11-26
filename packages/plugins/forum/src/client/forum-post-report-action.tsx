@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
+import { readCookie } from "./cookie.js";
+
 interface ForumPostReportActionProps {
   collectionSlug: string;
   postId: string;
@@ -17,13 +19,6 @@ interface ForumPostReportActionProps {
     cancel: string;
     failed: string;
   };
-}
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
 }
 
 export function ForumPostReportAction({

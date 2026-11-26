@@ -1,28 +1,26 @@
 # Admin agent history
 
-Source: `packages/admin/AGENTS.md`, extracted 2026-09-14. Historical implementation checkpoints; consult only for the affected feature. Later checkpoints and current code may supersede earlier status statements.
+Decision summary of notes extracted from `packages/admin/AGENTS.md` on 2026-09-14.
+Use the [Admin reference](../reference/admin.md) for current component guidance.
+Git history retains the original dated checkpoints.
 
 # packages/admin — AGENTS.md
 
-**Current Runtime Studio slice:** AP-507 management and related AP-508 visibility
-reuse the existing Runtime services and fourteen Admin mutations through an
-explicitly installed `runtimeStudio` facade. Closed staff-only read contracts,
-authority-bound cursors, typed definition/policy/budget editors, current effective
-review and optional atomic activation trigger plans preserve existing admission,
-CSRF, reauthentication, idempotency and CAS. Manual admission accepts only the
-owned recipe/goal contract and an enabled same-version trigger. Unknown Runtime
-usage and unavailable operations remain explicitly unknown; Gateway counters
-stay exact. Reference and scaffold routes/pages are thin shared wrappers.
-Advanced policy simulation, broader retention and full R5 acceptance remain
-open. No migration, provider call, automatic service/worker, seed, default
-activation, package version or changeset is added. See the
-[Runtime Studio flow](../../design/agentic-platform/r5-runtime-studio-flow.md) for scope and verification.
+Admin is a tsup-built UI package, not a Next application. Agent surfaces reuse
+server-owned projections and actions:
 
-Gateway execution Activity reuses the existing safe run/action projections; never show raw canonical inputs or invented Runtime/provider facts. Active run and ChangeSet detail share bounded backoff polling, stop on terminal/access loss and cancel timers on navigation. All 62 production browser tests passed, including hostile approval HTML/Markdown, typed challenge enforcement and stable unknown-outcome keys across read errors. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
-lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; see the R4 Gateway execution flow.
+- Runtime Studio uses the explicitly installed facade, authority-bound cursors,
+  typed editors and existing mutation admission. Unknown usage and unavailable
+  operations stay visible as such. See the
+  [Studio flow](../../design/agentic-platform/r5-runtime-studio-flow.md).
+- Activity uses safe run/action projections, with no raw canonical inputs or
+  inferred provider facts. Bounded polling stops on terminal state, access loss
+  or navigation. See the [Gateway execution flow](../../design/agentic-platform/r4-gateway-execution-flow.md).
+- Rollback diffs include only currently declared editable fields. Controls require
+  fresh approval for the exact plan/version/hash, preserve unknown-outcome keys
+  and clear stale evidence on conflict or access loss. Cancellation reuses the
+  existing ChangeSet route. See the [rollback flow](../../design/agentic-platform/r4-rollback-flow.md).
 
-Rollback controls use existing review.rollbackDetail/rollbackActions and exact same-service contracts. Reuse current declared editable-field projection for restoration diffs; hide undeclared/hidden/read-only snapshot metadata. Request a fresh approval for the exact rollback plan/version/hash; execute only its signed approval. Non-executing cancellation uses the existing ChangeSet cancel route with the rollback-plan discriminator. Keep unknown-outcome keys stable and clear evidence on conflict/access loss. No optimistic success or new public verify route. The preceding rollback slice passed all 60 production browser tests; see the R4 rollback flow results.
-
-Admin UI package: shadcn-style primitives (Radix + Tailwind v4) + CMS views. Built with tsup, not Next.
-
-**Generated:** 2026-04-22 | **Commit:** 2e07135
+These decisions preserve CSRF, reauthentication, idempotency, CAS and redaction.
+Past browser-test totals are not current acceptance; use each flow's evidence and
+limits, including separate assistive-technology acceptance.
