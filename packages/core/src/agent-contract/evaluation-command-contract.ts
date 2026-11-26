@@ -8,6 +8,7 @@ export interface NpAgentEvaluationCommandArgsV1 {
     | "publisher.v1"
     | "publisher.v2"
     | "moderator-assessment.v1"
+    | "moderator-member-report.v1"
     | "publisher.v3"
     | "moderator.v1"
     | "moderator.v2"
@@ -98,6 +99,7 @@ export function npParseAgentEvaluationCommandArgsV1(
     dataset !== "publisher.v1" &&
     dataset !== "publisher.v2" &&
     dataset !== "moderator-assessment.v1" &&
+    dataset !== "moderator-member-report.v1" &&
     dataset !== "publisher.v3" &&
     dataset !== "moderator.v1" &&
     dataset !== "moderator.v2" &&
@@ -119,6 +121,7 @@ export function npParseAgentEvaluationCommandArgsV1(
     (dataset === "moderator.v1" ||
       dataset === "moderator.v2" ||
       dataset === "moderator.v3" ||
+      dataset === "moderator-member-report.v1" ||
       dataset === "guardian.v1") &&
     (network ||
       fields.has("--model") ||
@@ -159,6 +162,7 @@ export function npParseAgentEvaluationCommandArgsV1(
       | "publisher.v1"
       | "publisher.v2"
       | "moderator-assessment.v1"
+      | "moderator-member-report.v1"
       | "publisher.v3"
       | "moderator.v1"
       | "moderator.v2"

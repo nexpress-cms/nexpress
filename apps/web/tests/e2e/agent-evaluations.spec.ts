@@ -16,6 +16,7 @@ import {
   runAgentModeratorEvaluationV2,
   runAgentModeratorEvaluationV3,
   npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentMemberReportEvaluationSuiteV1,
   npCreateAgentPublisherSelectionEvaluationSuiteV1,
 } from "@nexpress/core/agents";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -454,18 +455,38 @@ test("evaluation workspace labels actual document/comment detector replay and ex
   expect(new Set(writes)).toEqual(new Set(["/api/admin/agents/evaluations"]));
 });
 
-for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
-  test(`${recipe} imports and reviews the explicit new profile without live execution`, async ({
+for (const [dataset, recipe, createSuite, editableField, bucket] of [
+  [
+    "moderator-assessment",
+    "moderator-assessment",
+    npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+    "moderatorAssessment",
+    210,
+  ],
+  [
+    "publisher-selection",
+    "publisher-selection",
+    npCreateAgentPublisherSelectionEvaluationSuiteV1,
+    "publisherSelectionResponse",
+    220,
+  ],
+  [
+    "moderator-member-report.v1",
+    "moderator-assessment",
+    npCreateAgentMemberReportEvaluationSuiteV1,
+    null,
+    156,
+  ],
+] as const) {
+  test(`${dataset} imports and reviews the explicit new profile without live execution`, async ({
     page,
   }, testInfo) => {
     await isolateE2ERateLimitBucket(
       page.context(),
-      210 + (recipe === "publisher-selection" ? 10 : 0) + testInfo.retry,
+      bucket + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
     );
     await signInAsE2EAdmin(page);
-    const suite = await (recipe === "moderator-assessment"
-      ? npCreateAgentModeratorAssessmentEvaluationSuiteV1()
-      : npCreateAgentPublisherSelectionEvaluationSuiteV1());
+    const suite = await createSuite();
     const source = await runAgentEvaluationV1({
       suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases: suite.cases.slice(0, 2) }),
       mode: "fake",
@@ -481,7 +502,7 @@ for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
     });
     await page.goto("/admin/agents/evaluations");
     await page.getByLabel("Recipe", { exact: true }).selectOption(recipe);
-    await importArtifact(page, "Evaluation artifact (required)", `${recipe}.json`, source);
+    await importArtifact(page, "Evaluation artifact (required)", `${dataset}.json`, source);
     const initial = await recompute(page, "Validate imports");
     expect(initial.recipe).toBe(recipe);
     expect(initial.fixtureGate).toBe("passed");
@@ -490,13 +511,22 @@ for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
     await page
       .getByLabel("Case", { exact: true })
       .selectOption(`${entry.caseId}@${entry.caseVersion}`);
-    await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
-    const edited = JSON.parse(
-      await page.getByLabel("Edited structured result JSON", { exact: true }).inputValue(),
-    ) as Record<string, unknown>;
-    expect(edited).toHaveProperty(
-      recipe === "moderator-assessment" ? "moderatorAssessment" : "publisherSelectionResponse",
-    );
+    if (editableField) {
+      await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
+      const edited = JSON.parse(
+        await page.getByLabel("Edited structured result JSON", { exact: true }).inputValue(),
+      ) as Record<string, unknown>;
+      expect(edited).toHaveProperty(editableField);
+    } else {
+      expect(entry.allowedOutcomes).toEqual(["accept", "reject"]);
+      expect(JSON.parse(entry.predictionJson)).toMatchObject({
+        actions: [],
+        memberReport: { classification: "unverified-claim", disposition: "human-review" },
+      });
+      await expect(
+        page.getByLabel("Outcome", { exact: true }).locator('option[value="edit"]'),
+      ).toHaveCount(0);
+    }
     await page.getByLabel("Outcome", { exact: true }).selectOption("accept");
     await page
       .getByLabel("Reviewer (self-reported)", { exact: true })
@@ -514,7 +544,7 @@ for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
         .toBe(true);
       await page.screenshot({
-        path: testInfo.outputPath(`${recipe}-${width}.png`),
+        path: testInfo.outputPath(`${dataset}-${width}.png`),
         fullPage: true,
         animations: "disabled",
       });
