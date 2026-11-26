@@ -10,6 +10,8 @@ import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import {
   npAgentEvaluationReportRecipesV1,
   type NpAgentEvaluationReportRecipeV1,
+  type NpAgentEvaluationReportV1,
+  type NpAgentEvaluationReportV2,
 } from "./evaluation-report-contract.js";
 
 export const npAgentEvaluationWorkbenchRequestMaxBytesV1 = 4 * 1024 * 1024;
@@ -61,6 +63,11 @@ export interface NpAgentEvaluationWorkbenchResultV1 {
   reviewArtifactJson: string | null;
   reportArtifactJson: string;
 }
+export interface NpAgentEvaluationWorkbenchReportV2 {
+  schemaVersion: "np.agent-eval-workbench-report.v2";
+  summaryText: string;
+  reportArtifactJson: string;
+}
 const path = "agent.evaluation.workbench";
 function fail(): never {
   throw new Error("Invalid bounded evaluation workbench data.");
@@ -84,6 +91,47 @@ const digest = (value: unknown) => canonicalBodySha256Digest(value, path);
 const enumValue = <T extends string>(value: unknown, values: readonly T[]): T =>
   canonicalBodyEnum<T>(value, path, new Set(values));
 const recipe = (value: unknown) => enumValue(value, npAgentEvaluationReportRecipesV1);
+
+function reportJson(
+  value: unknown,
+  schemaVersion: (NpAgentEvaluationReportV1 | NpAgentEvaluationReportV2)["schemaVersion"],
+): string {
+  const content = text(value, 8_000_000, 1);
+  const report: unknown = JSON.parse(content);
+  if (
+    typeof report !== "object" ||
+    report === null ||
+    !("schemaVersion" in report) ||
+    report.schemaVersion !== schemaVersion ||
+    !("authority" in report) ||
+    report.authority !== "offline-evidence-no-approval" ||
+    !("fullR6" in report) ||
+    report.fullR6 !== "not-established" ||
+    !("modelUsefulness" in report) ||
+    report.modelUsefulness !== "not-established" ||
+    !("artifactHash" in report)
+  )
+    fail();
+  digest(report.artifactHash);
+  return content;
+}
+
+export function npRequireAgentEvaluationWorkbenchReportV2(
+  value: unknown,
+): NpAgentEvaluationWorkbenchReportV2 {
+  const r = record(
+    cloneCanonicalRuntimeInput(value, path, npAgentEvaluationWorkbenchResultMaxBytesV1, {
+      maximumStringCharacters: 8_000_000,
+    }),
+    ["schemaVersion", "summaryText", "reportArtifactJson"],
+  );
+  if (r.schemaVersion !== "np.agent-eval-workbench-report.v2") return fail();
+  return {
+    schemaVersion: r.schemaVersion,
+    summaryText: text(r.summaryText, 100_000, 1),
+    reportArtifactJson: reportJson(r.reportArtifactJson, "np.agent-eval-report.v2"),
+  };
+}
 
 export function npRequireAgentEvaluationWorkbenchRequestV1(
   value: unknown,
@@ -274,23 +322,6 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
       fail();
     digest(artifact.artifactHash);
   } else if (cases.some((c) => c.labelJson !== null)) fail();
-  const reportArtifactJson = json(r.reportArtifactJson);
-  const report: unknown = JSON.parse(reportArtifactJson);
-  if (
-    typeof report !== "object" ||
-    report === null ||
-    !("schemaVersion" in report) ||
-    report.schemaVersion !== "np.agent-eval-report.v1" ||
-    !("authority" in report) ||
-    report.authority !== "offline-evidence-no-approval" ||
-    !("fullR6" in report) ||
-    report.fullR6 !== "not-established" ||
-    !("modelUsefulness" in report) ||
-    report.modelUsefulness !== "not-established" ||
-    !("artifactHash" in report)
-  )
-    fail();
-  digest(report.artifactHash);
   return {
     schemaVersion: r.schemaVersion,
     authority: r.authority,
@@ -302,6 +333,6 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
     summaryText: text(r.summaryText, 100_000, 1),
     labelsJson: r.labelsJson === null ? null : json(r.labelsJson),
     reviewArtifactJson: r.reviewArtifactJson === null ? null : json(r.reviewArtifactJson),
-    reportArtifactJson,
+    reportArtifactJson: reportJson(r.reportArtifactJson, "np.agent-eval-report.v1"),
   };
 }

@@ -102,6 +102,30 @@ The Admin UI uses `npFetch` and pure display-contract validation. Shared App
 pages/API own framework wiring; reference and packed scaffold routes remain
 thin matching wrappers. No versions, changesets, lockfile or migrations change.
 
+## Build a multi-dataset report
+
+Open **Build a multi-dataset report** to collect evaluation artifacts in one
+V2 report. Add a dataset for each current evaluation and select its recipe.
+For example, use **Moderator semantic assessment** for the Member report,
+V1 semantic and V2 segmented evaluation artifacts. Each entry accepts its own
+current review, baseline evaluation and baseline review. A baseline review
+requires its baseline evaluation. Download reviewed artifacts from the
+individual case workspace before adding them to the report.
+
+**Generate V2 report** submits the uploaded JSON to the same bounded
+staff-only endpoint. The server reuses the
+[V2 report builder](r6-evaluation-report-flow.md#include-multiple-datasets-for-one-recipe).
+It derives the dataset identity from each artifact and shows independent gates,
+review coverage and baseline comparisons. Duplicate identities and mismatched
+review bindings fail validation. Incompatible baselines appear with their
+comparison reason and no numeric deltas. **Download V2 report JSON** saves the
+same artifact schema as the CLI. Changing an input clears that export until the
+report is generated again.
+
+The report accepts up to 16 entries within the shared 4 MiB input bound. File
+contents are processed in memory. The single-dataset workspace continues to
+own case review and authenticated history operations.
+
 ## Member report and response evaluation
 
 Run the deterministic reference evaluation from a NexPress project:
