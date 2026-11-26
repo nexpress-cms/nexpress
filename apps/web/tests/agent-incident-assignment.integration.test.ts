@@ -58,6 +58,9 @@ describe.skipIf(skipIfNoTestDb())("Incident configured Agent assignment", () => 
         summary: "Observed backlog.",
         firstObservedAt: time,
         lastObservedAt: time,
+        // Keep the synthetic Incident on one clock; PostgreSQL may run in a VM.
+        createdAt: time,
+        updatedAt: time,
       })
       .returning();
     const reads = createAgentIncidentServiceV1({

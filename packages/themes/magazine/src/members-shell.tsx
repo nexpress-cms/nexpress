@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { MagazineFooter } from "./footer.js";
+import { magazineFontCss } from "./fonts.js";
 import { MagazineHeader } from "./header.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
@@ -26,12 +27,7 @@ export async function MagazineMembersShell({ children }: { children: ReactNode }
   }
   return (
     <>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..800;1,6..72,400..800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
-      />
+      <style>{magazineFontCss}</style>
       <style>{MAGAZINE_TOKEN_FALLBACKS}</style>
       <div
         className="np-magazine"

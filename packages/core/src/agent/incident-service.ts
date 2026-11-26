@@ -31,18 +31,29 @@ export interface NpAgentIncidentStaffContextV1 {
   actor: NpAgentAdminActorV1;
   transaction?: ReturnType<typeof getDb>;
 }
-type Context = NpAgentReadCapabilityContextV1 | NpAgentIncidentStaffContextV1;
+/** Read authority only: internal evidence reads do not manufacture a capability invocation. */
+export type NpAgentIncidentReadContextV1 = Pick<
+  NpAgentReadCapabilityContextV1,
+  | "siteId"
+  | "principal"
+  | "requestedAt"
+  | "staffUser"
+  | "runtimeResources"
+  | "abortSignal"
+  | "transaction"
+>;
+type Context = NpAgentIncidentReadContextV1 | NpAgentIncidentStaffContextV1;
 const isStaff = (context: Context): context is NpAgentIncidentStaffContextV1 => "actor" in context;
 const isRuntime = (context: Context) => !isStaff(context) && context.principal.kind === "runtime";
 type Incident = typeof npAgentIncidents.$inferSelect;
 export interface NpAgentIncidentServiceV1 {
   get(
     input: NpAgentIncidentGetInputV1,
-    context: NpAgentReadCapabilityContextV1,
+    context: NpAgentIncidentReadContextV1,
   ): Promise<NpAgentIncidentOutputV1>;
   list(
     input: NpAgentIncidentListInputV1,
-    context: NpAgentReadCapabilityContextV1,
+    context: NpAgentIncidentReadContextV1,
   ): Promise<NpAgentIncidentListOutputV1>;
 }
 export interface NpAgentIncidentStaffReadServiceV1 {
@@ -64,7 +75,7 @@ export interface NpAgentIncidentServiceOptionsV1 {
   canReadIncident(input: {
     incident: NpAgentIncidentV1;
     signals: readonly NpAgentSignalEvidenceCanonicalV1[];
-    context: NpAgentReadCapabilityContextV1;
+    context: NpAgentIncidentReadContextV1;
   }): boolean | Promise<boolean>;
   canReadStaffIncident?(input: {
     incident: NpAgentIncidentV1;

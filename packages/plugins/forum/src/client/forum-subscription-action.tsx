@@ -7,6 +7,8 @@ import {
   npRequireOkWire,
 } from "@nexpress/core/community-contract";
 
+import { readCookie } from "./cookie.js";
+
 export interface ForumSubscriptionActionProps {
   targetType: string;
   targetId: string;
@@ -138,11 +140,4 @@ export function ForumSubscriptionAction(props: ForumSubscriptionActionProps) {
       {error ? <span role="alert">{error}</span> : null}
     </span>
   );
-}
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
 }

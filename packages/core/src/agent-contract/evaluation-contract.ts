@@ -1,4 +1,56 @@
 import {
+  npAgentModeratorSegmentedEvaluationInstructionV2,
+  npAgentModeratorSegmentedEvaluationMaxBytesV2,
+  npAgentModeratorSegmentedEvaluationResultSchemaV2,
+  npEvaluateAgentModeratorSegmentsV2,
+  npRequireAgentModeratorSegmentedEvaluationFactsV2,
+  npRequireAgentModeratorSegmentedEvaluationResultV2,
+  type NpAgentModeratorSegmentedEvaluationResultV2,
+} from "./moderator-segmented-evaluation-contract.js";
+import {
+  npAgentMemberReportEvaluationInstructionV1,
+  npAgentMemberReportEvaluationResultSchemaV1,
+  npEvaluateAgentMemberReportFactsV1,
+  npRequireAgentMemberReportEvaluationFactsV1,
+  npRequireAgentMemberReportEvaluationResultV1,
+  type NpAgentMemberReportEvaluationResultV1,
+} from "./member-report-evaluation-contract.js";
+import {
+  npAgentPublisherSelectionEvaluationResponseSchemaV1,
+  npCreateAgentPublisherSelectionEvaluationProfileV1,
+  npRequireAgentPublisherSelectionEvaluationEvidenceV1,
+  npRequireAgentPublisherSelectionEvaluationResponseV1,
+  npRequireAgentPublisherSelectionEvaluationBindingsV1,
+  npCreateAgentPublisherSelectionEvaluationPredictionV1,
+  npEvaluateAgentPublisherSelectionV1,
+  type NpAgentPublisherSelectionEvaluationResponseV1,
+} from "./publisher-selection-evaluation-contract.js";
+import {
+  npCreateAgentModeratorAssessmentRecipeDefinitionV1,
+  npAgentModeratorAssessmentResponseSchemaV1,
+} from "./moderator-assessment-recipe-contract.js";
+import {
+  npAgentModeratorAssessmentEvaluationBenchmarkInstructionV1,
+  npRequireAgentModeratorAssessmentEvaluationEvidenceV1,
+  npRequireAgentModeratorAssessmentEvaluationResponseV1,
+  npRequireAgentModeratorAssessmentEvaluationBindingsV1,
+  npCreateAgentModeratorAssessmentEvaluationPredictionV1,
+  npEvaluateAgentModeratorAssessmentV1,
+  type NpAgentModeratorAssessmentEvaluationResponseV1,
+} from "./moderator-assessment-evaluation-contract.js";
+import {
+  npCreateAgentModeratorRecipeDefinitionV1,
+  npAgentModeratorRecipeResponseSchemaV1,
+} from "./moderator-recipe-contract.js";
+import {
+  npRequireAgentModeratorEvaluationResponseV1,
+  npRequireAgentModeratorProposalEvaluationEvidence,
+  npAgentModeratorProposalEvaluationBenchmarkInstructionV1,
+  npCreateAgentModeratorProposalEvaluationPrediction,
+  npEvaluateAgentModeratorProposal,
+  type NpAgentModeratorEvaluationResponseV1,
+} from "./moderator-proposal-evaluation-contract.js";
+import {
   npRequireAgentOperatorPlanEvaluationProposalV1,
   npRequireAgentOperatorPlanEvaluationEvidenceV1,
   npAgentOperatorPlanEvaluationProposalSchemaV1,
@@ -6,12 +58,11 @@ import {
   npEvaluateAgentOperatorPlanProposalV1,
   type NpAgentOperatorPlanEvaluationProposalV1,
 } from "./operator-plan-evaluation-contract.js";
-import { npCreateAgentPublisherRecipeDefinitionV1 } from "./publisher-recipe-contract.js";
 import {
   npRequireAgentPublisherEvaluationProposalV1,
   npRequireAgentPublisherEvaluationEvidenceV1,
   npAgentPublisherEvaluationProposalSchemaV1,
-  npAgentPublisherEvaluationBenchmarkInstructionV1,
+  npCreateAgentPublisherEvaluationProfileV1,
   npEvaluateAgentPublisherProposalV1,
   type NpAgentPublisherEvaluationProposalV1,
 } from "./publisher-evaluation-contract.js";
@@ -25,7 +76,32 @@ import {
   canonicalBodyUtc,
   canonicalBodySha256Digest,
 } from "./canonical-body-validation.js";
-import { npAgentCapabilityIds, type NpAgentCapabilityId, type NpAgentJsonSchema } from "./types.js";
+import type { NpAgentCapabilityId, NpAgentJsonSchema } from "./types.js";
+
+/** Frozen V1 model vocabulary. Staff-only actions and later capabilities require a new evaluation profile. */
+export const npAgentEvaluationCapabilityIdsV1 = [
+  "site.inspect",
+  "schema.get",
+  "content.query",
+  "changeset.create",
+  "changeset.validate",
+  "changeset.preview",
+  "changeset.schedule",
+  "changeset.apply",
+  "changeset.rollback",
+  "changeset.get",
+  "changeset.list",
+  "audit.run",
+  "ops.status",
+  "ops.plan",
+  "ops.execute",
+  "incident.get",
+  "incident.list",
+  "moderation.quarantine",
+  "moderation.restore",
+  "security.limitActor",
+  "security.revokeSessions",
+] as const satisfies readonly NpAgentCapabilityId[];
 
 export const npAgentEvaluationDecisionsV1 = [
   "ignore",
@@ -58,7 +134,7 @@ export const npAgentEvaluationPredictionSchemaV1: NpAgentJsonSchema = {
       type: "array",
       maxItems: 32,
       uniqueItems: true,
-      items: { type: "string", enum: [...npAgentCapabilityIds], maxLength: 96 },
+      items: { type: "string", enum: [...npAgentEvaluationCapabilityIdsV1], maxLength: 96 },
     },
     rationaleTags: {
       type: "array",
@@ -74,10 +150,48 @@ export const npAgentPublisherEvaluationRationaleTagsV1 = [
   "normal",
   "unknown",
 ] as const;
-export type NpAgentEvaluationCategoryV1 = "ops" | "publisher" | "ops-plan";
+const evaluationCategories = [
+  "ops",
+  "publisher",
+  "ops-plan",
+  "moderator-proposal",
+  "moderator-assessment",
+  "moderator-member-report",
+  "moderator-segmented-assessment",
+  "publisher-selection",
+] as const;
+export type NpAgentEvaluationCategoryV1 = (typeof evaluationCategories)[number];
+export function npIsAgentFixedEvaluationCategoryV1(category: NpAgentEvaluationCategoryV1): boolean {
+  return category === "moderator-member-report" || category === "moderator-segmented-assessment";
+}
 export function npAgentEvaluationResponseSchemaV1(
   category: NpAgentEvaluationCategoryV1,
 ): NpAgentJsonSchema {
+  if (category === "publisher-selection")
+    return npAgentPublisherSelectionEvaluationResponseSchemaV1();
+  if (category === "moderator-assessment") return npAgentModeratorAssessmentResponseSchemaV1();
+  if (npIsAgentFixedEvaluationCategoryV1(category)) {
+    const segmented = category === "moderator-segmented-assessment";
+    const key = segmented ? "segmentedAssessment" : "memberReport";
+    return {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        decision: {
+          type: "string",
+          enum: segmented ? ["observe", "advise", "ignore"] : ["observe", "advise"],
+        },
+        actions: { type: "array", maxItems: 0 },
+        rationaleTags: { type: "array", maxItems: 0 },
+        [key]: segmented
+          ? npAgentModeratorSegmentedEvaluationResultSchemaV2
+          : npAgentMemberReportEvaluationResultSchemaV1,
+      },
+      required: ["decision", "actions", "rationaleTags", key],
+    };
+  }
+  if (category === "moderator-proposal") return npAgentModeratorRecipeResponseSchemaV1();
   if (category === "ops") return npAgentEvaluationPredictionSchemaV1;
   if (category === "ops-plan") {
     const { $defs, ...planProposal } = npAgentOperatorPlanEvaluationProposalSchemaV1;
@@ -122,21 +236,46 @@ export interface NpAgentEvaluationPredictionV1 {
   actions: NpAgentCapabilityId[];
   rationaleTags: NpAgentEvaluationRationaleTagV1[];
   proposal?: NpAgentPublisherEvaluationProposalV1 | null;
+  moderatorResponse?: NpAgentModeratorEvaluationResponseV1;
+  moderatorAssessment?: NpAgentModeratorAssessmentEvaluationResponseV1;
+  memberReport?: NpAgentMemberReportEvaluationResultV1;
+  segmentedAssessment?: NpAgentModeratorSegmentedEvaluationResultV2;
+  publisherSelectionResponse?: NpAgentPublisherSelectionEvaluationResponseV1;
   planProposal?: NpAgentOperatorPlanEvaluationProposalV1 | null;
 }
 export interface NpAgentEvaluationEvidenceV1 {
   id: string;
-  kind: "ops-check" | "content";
+  kind:
+    | "ops-check"
+    | "content"
+    | "moderator-candidates"
+    | "moderator-assessment"
+    | "member-report"
+    | "moderator-segments";
   observedAt: string;
   digest: string;
   text: string;
 }
+const evidenceKinds: Record<NpAgentEvaluationCategoryV1, NpAgentEvaluationEvidenceV1["kind"]> = {
+  ops: "ops-check",
+  "ops-plan": "ops-check",
+  publisher: "content",
+  "publisher-selection": "content",
+  "moderator-proposal": "moderator-candidates",
+  "moderator-assessment": "moderator-assessment",
+  "moderator-member-report": "member-report",
+  "moderator-segmented-assessment": "moderator-segments",
+};
 export interface NpAgentEvaluationCaseV1 {
   schemaVersion: "np.agent-eval-case.v1";
   id: string;
   caseVersion: number;
   locale: "en" | "ko";
   category: NpAgentEvaluationCategoryV1;
+  /** Offline label, excluded from every provider request. */
+  expectedClassification?: "spam" | "abuse" | "benign" | "uncertain";
+  expectedMemberReport?: NpAgentMemberReportEvaluationResultV1;
+  expectedSegmentedAssessment?: NpAgentModeratorSegmentedEvaluationResultV2;
   evidence: NpAgentEvaluationEvidenceV1[];
   expectedSignals: [];
   allowedActions: NpAgentCapabilityId[];
@@ -278,6 +417,34 @@ const sorted = <T extends string>(value: unknown, allowed: readonly T[]): T[] =>
 const digest = (value: unknown) => canonicalBodySha256Digest(value, path);
 export const npDigestAgentEvaluationValueV1 = (value: unknown): Promise<`cj1:sha256:${string}`> =>
   digestAgentCanonicalSha256(new TextEncoder().encode(serializeAgentCanonicalJson(value)));
+export function npCreateAgentMemberReportEvaluationPredictionV1(
+  evidence: NpAgentEvaluationEvidenceV1[],
+): NpAgentEvaluationPredictionV1 {
+  const memberReport = npEvaluateAgentMemberReportFactsV1(evidence);
+  return {
+    decision: memberReport.disposition === "human-review" ? "advise" : "observe",
+    actions: [],
+    rationaleTags: [],
+    memberReport,
+  };
+}
+function segmentedDecision(
+  result: NpAgentModeratorSegmentedEvaluationResultV2,
+): NpAgentEvaluationDecision {
+  if (result.label === "benign") return "ignore";
+  return result.label === "spam" || result.label === "abuse" ? "advise" : "observe";
+}
+export async function npCreateAgentSegmentedEvaluationPredictionV2(
+  evidence: readonly NpAgentEvaluationEvidenceV1[],
+): Promise<NpAgentEvaluationPredictionV1> {
+  const segmentedAssessment = await npEvaluateAgentModeratorSegmentsV2(evidence);
+  return {
+    decision: segmentedDecision(segmentedAssessment),
+    actions: [],
+    rationaleTags: [],
+    segmentedAssessment,
+  };
+}
 export function npRequireAgentEvaluationPredictionV1(
   value: unknown,
   category: NpAgentEvaluationCategoryV1 = "ops",
@@ -288,16 +455,52 @@ export function npRequireAgentEvaluationPredictionV1(
     "rationaleTags",
     ...(category === "publisher" ? ["proposal"] : []),
     ...(category === "ops-plan" ? ["planProposal"] : []),
+    ...(category === "moderator-proposal" ? ["moderatorResponse"] : []),
+    ...(category === "moderator-assessment" ? ["moderatorAssessment"] : []),
+    ...(category === "moderator-member-report" ? ["memberReport"] : []),
+    ...(category === "moderator-segmented-assessment" ? ["segmentedAssessment"] : []),
+    ...(category === "publisher-selection" ? ["publisherSelectionResponse"] : []),
   ]);
+  if (category === "moderator-member-report") {
+    const memberReport = npRequireAgentMemberReportEvaluationResultV1(r.memberReport);
+    const decision = memberReport.disposition === "human-review" ? "advise" : "observe";
+    if (r.decision !== decision || list(r.actions).length || list(r.rationaleTags).length) fail();
+    return { decision, actions: [], rationaleTags: [], memberReport };
+  }
+  if (category === "moderator-segmented-assessment") {
+    const segmentedAssessment = npRequireAgentModeratorSegmentedEvaluationResultV2(
+      r.segmentedAssessment,
+    );
+    const decision = segmentedDecision(segmentedAssessment);
+    if (r.decision !== decision || list(r.actions).length || list(r.rationaleTags).length) fail();
+    return { decision, actions: [], rationaleTags: [], segmentedAssessment };
+  }
   return {
     decision: choices(r.decision, npAgentEvaluationDecisionsV1),
-    actions: sorted(r.actions, npAgentCapabilityIds),
+    actions: sorted(r.actions, npAgentEvaluationCapabilityIdsV1),
     rationaleTags: sorted<NpAgentEvaluationRationaleTagV1>(
       r.rationaleTags,
-      category === "publisher"
+      category === "publisher" || category === "publisher-selection"
         ? npAgentPublisherEvaluationRationaleTagsV1
         : npAgentEvaluationRationaleTagsV1,
     ),
+    ...(category === "publisher-selection"
+      ? {
+          publisherSelectionResponse: npRequireAgentPublisherSelectionEvaluationResponseV1(
+            r.publisherSelectionResponse,
+          ),
+        }
+      : {}),
+    ...(category === "moderator-assessment"
+      ? {
+          moderatorAssessment: npRequireAgentModeratorAssessmentEvaluationResponseV1(
+            r.moderatorAssessment,
+          ),
+        }
+      : {}),
+    ...(category === "moderator-proposal"
+      ? { moderatorResponse: npRequireAgentModeratorEvaluationResponseV1(r.moderatorResponse) }
+      : {}),
     ...(category === "ops-plan"
       ? {
           planProposal:
@@ -339,6 +542,10 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
   ]);
   if (r.schemaVersion !== "np.agent-eval-suite.v1") fail();
   const cases = list(r.cases, 1, 100).map((value): NpAgentEvaluationCaseV1 => {
+    const category = choices(
+      value && typeof value === "object" && "category" in value ? value.category : null,
+      evaluationCategories,
+    );
     const c = rec(value, [
       "schemaVersion",
       "id",
@@ -351,20 +558,25 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
       "forbiddenActions",
       "expectedDecision",
       "rationaleTags",
+      ...(category === "moderator-assessment" ? ["expectedClassification"] : []),
+      ...(category === "moderator-member-report" ? ["expectedMemberReport"] : []),
+      ...(category === "moderator-segmented-assessment" ? ["expectedSegmentedAssessment"] : []),
     ]);
-    if (
-      c.schemaVersion !== "np.agent-eval-case.v1" ||
-      !["ops", "publisher", "ops-plan"].includes(String(c.category)) ||
-      list(c.expectedSignals).length
-    )
-      fail();
+    if (c.schemaVersion !== "np.agent-eval-case.v1" || list(c.expectedSignals).length) fail();
+    const evidenceKind = evidenceKinds[category];
+    const evidenceLimit =
+      category === "moderator-segmented-assessment"
+        ? npAgentModeratorSegmentedEvaluationMaxBytesV2
+        : category === "moderator-assessment" || category === "publisher-selection"
+          ? 16000
+          : 4000;
     const evidence = list(c.evidence, 1, 16).map((value): NpAgentEvaluationEvidenceV1 => {
       const e = rec(value, ["id", "kind", "observedAt", "digest", "text"]);
       if (
-        e.kind !== (c.category === "publisher" ? "content" : "ops-check") ||
+        e.kind !== evidenceKind ||
         typeof e.text !== "string" ||
         e.text.length < 1 ||
-        e.text.length > 4000 ||
+        e.text.length > evidenceLimit ||
         Array.from(e.text).some((c) => {
           const n = c.charCodeAt(0);
           return (n < 32 && n !== 9 && n !== 10 && n !== 13) || n === 127;
@@ -373,36 +585,81 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
         fail();
       return {
         id: token(e.id),
-        kind: c.category === "publisher" ? "content" : "ops-check",
+        kind: evidenceKind,
         observedAt: canonicalBodyUtc(e.observedAt, path),
         digest: digest(e.digest),
         text: e.text as string,
       };
     });
+    if (
+      c.category === "moderator-proposal" &&
+      npRequireAgentModeratorProposalEvaluationEvidence(evidence).locale !== c.locale
+    )
+      fail();
     if (c.category === "publisher") npRequireAgentPublisherEvaluationEvidenceV1(evidence);
+    if (
+      (npIsAgentFixedEvaluationCategoryV1(category) &&
+        (list(c.allowedActions).length || list(c.rationaleTags).length)) ||
+      (category === "moderator-member-report" &&
+        npRequireAgentMemberReportEvaluationFactsV1(evidence).locale !== c.locale) ||
+      (category === "moderator-segmented-assessment" &&
+        npRequireAgentModeratorSegmentedEvaluationFactsV2(evidence).locale !== c.locale)
+    )
+      fail();
+    if (c.category === "publisher-selection")
+      npRequireAgentPublisherSelectionEvaluationEvidenceV1(evidence);
+    if (
+      c.category === "moderator-assessment" &&
+      npRequireAgentModeratorAssessmentEvaluationEvidenceV1(evidence).locale !== c.locale
+    )
+      fail();
     if (
       c.category === "ops-plan" &&
       npRequireAgentOperatorPlanEvaluationEvidenceV1(evidence).locale !== c.locale
     )
       fail();
     if (new Set(evidence.map((e) => e.id)).size !== evidence.length) fail();
-    const allowedActions = sorted(c.allowedActions, npAgentCapabilityIds),
-      forbiddenActions = sorted(c.forbiddenActions, npAgentCapabilityIds);
+    const allowedActions = sorted(c.allowedActions, npAgentEvaluationCapabilityIdsV1),
+      forbiddenActions = sorted(c.forbiddenActions, npAgentEvaluationCapabilityIdsV1);
     if (allowedActions.some((a) => forbiddenActions.includes(a))) fail();
     return {
       schemaVersion: "np.agent-eval-case.v1",
       id: token(c.id),
       caseVersion: num(c.caseVersion, 10000, 1),
       locale: choices(c.locale, ["en", "ko"]),
-      category: choices(c.category, ["ops", "publisher", "ops-plan"]),
+      category,
+      ...(c.category === "moderator-assessment"
+        ? {
+            expectedClassification: choices(c.expectedClassification, [
+              "spam",
+              "abuse",
+              "benign",
+              "uncertain",
+            ] as const),
+          }
+        : {}),
       evidence,
+      ...(category === "moderator-segmented-assessment"
+        ? {
+            expectedSegmentedAssessment: npRequireAgentModeratorSegmentedEvaluationResultV2(
+              c.expectedSegmentedAssessment,
+            ),
+          }
+        : {}),
+      ...(c.category === "moderator-member-report"
+        ? {
+            expectedMemberReport: npRequireAgentMemberReportEvaluationResultV1(
+              c.expectedMemberReport,
+            ),
+          }
+        : {}),
       expectedSignals: [],
       allowedActions,
       forbiddenActions,
       expectedDecision: choices(c.expectedDecision, npAgentEvaluationDecisionsV1),
       rationaleTags: sorted<NpAgentEvaluationRationaleTagV1>(
         c.rationaleTags,
-        c.category === "publisher"
+        c.category === "publisher" || c.category === "publisher-selection"
           ? npAgentPublisherEvaluationRationaleTagsV1
           : npAgentEvaluationRationaleTagsV1,
       ),
@@ -529,6 +786,11 @@ export async function npBuildAgentEvaluationArtifactV1(
   if (mode === "fake" ? provider !== "fake" || model !== "deterministic-v1" : provider === "fake")
     fail();
   const category = suite.cases[0].category;
+  if (
+    npIsAgentFixedEvaluationCategoryV1(category) &&
+    (mode !== "fake" || budget.maxCostMicros !== 0)
+  )
+    fail();
   const caseResults = list(r.caseResults, 1, 100).map((v) => parseResult(v, category));
   if (caseResults.length !== suite.cases.length) fail();
   const violations: NpAgentEvaluationViolationV1[] = [];
@@ -595,7 +857,74 @@ export async function npBuildAgentEvaluationArtifactV1(
           ? "BUDGET_EXCEEDED"
           : "STRUCTURED_OUTPUT_INVALID",
       );
+    if (c.category === "publisher-selection")
+      await npRequireAgentPublisherSelectionEvaluationBindingsV1(c.evidence);
+    if (c.category === "moderator-assessment")
+      await npRequireAgentModeratorAssessmentEvaluationBindingsV1(c.evidence);
     if (predicted) {
+      if (c.category === "moderator-segmented-assessment") {
+        if (!equal(await npCreateAgentSegmentedEvaluationPredictionV2(c.evidence), predicted))
+          add(c.id, "PROPOSAL_UNJUSTIFIED");
+        if (!equal(c.expectedSegmentedAssessment, predicted.segmentedAssessment ?? null))
+          add(c.id, "DECISION_MISMATCH");
+      }
+      if (c.category === "moderator-member-report") {
+        if (!equal(npCreateAgentMemberReportEvaluationPredictionV1(c.evidence), predicted))
+          add(c.id, "PROPOSAL_UNJUSTIFIED");
+        if (!equal(c.expectedMemberReport, predicted.memberReport ?? null))
+          add(c.id, "DECISION_MISMATCH");
+      }
+      if (c.category === "publisher-selection") {
+        for (const code of npEvaluateAgentPublisherSelectionV1(
+          c.evidence,
+          predicted.publisherSelectionResponse ?? null,
+        ))
+          add(c.id, code);
+        if (
+          !equal(
+            npCreateAgentPublisherSelectionEvaluationPredictionV1(
+              c.evidence,
+              predicted.publisherSelectionResponse,
+            ),
+            predicted,
+          )
+        )
+          add(c.id, "PROPOSAL_UNJUSTIFIED");
+      }
+      if (c.category === "moderator-assessment") {
+        for (const code of npEvaluateAgentModeratorAssessmentV1(
+          c.evidence,
+          predicted.moderatorAssessment ?? null,
+        ))
+          add(c.id, code);
+        if (
+          !predicted.moderatorAssessment ||
+          predicted.moderatorAssessment.decision.label !== c.expectedClassification
+        )
+          add(c.id, "DECISION_MISMATCH");
+        if (
+          !equal(
+            npCreateAgentModeratorAssessmentEvaluationPredictionV1(
+              c.evidence,
+              predicted.moderatorAssessment,
+            ),
+            predicted,
+          )
+        )
+          add(c.id, "PROPOSAL_UNJUSTIFIED");
+      }
+      if (c.category === "moderator-proposal") {
+        for (const code of npEvaluateAgentModeratorProposal(
+          c.evidence,
+          predicted.moderatorResponse ?? null,
+        ))
+          add(c.id, code);
+        const derived = npCreateAgentModeratorProposalEvaluationPrediction(
+          c.evidence,
+          predicted.moderatorResponse,
+        );
+        if (!equal(derived, predicted)) add(c.id, "PROPOSAL_UNJUSTIFIED");
+      }
       if (c.category === "ops-plan") {
         for (const code of npEvaluateAgentOperatorPlanProposalV1(
           c.evidence,
@@ -703,9 +1032,29 @@ export async function npBuildAgentEvaluationArtifactV1(
     p95LatencyMs: p95(caseResults.map((c) => c.latencyMs)),
   };
   if (Object.values(metrics).some((v) => v !== null && !Number.isSafeInteger(v))) fail();
-  const recipe = await (category === "publisher"
-    ? npCreateAgentPublisherRecipeDefinitionV1()
-    : npCreateAgentOperatorRecipeDefinitionV1());
+  const publisherProfile =
+    category === "publisher" ? await npCreateAgentPublisherEvaluationProfileV1(suite) : null;
+  const selectionProfile =
+    category === "publisher-selection"
+      ? await npCreateAgentPublisherSelectionEvaluationProfileV1()
+      : null;
+  const fixedBenchmark =
+    category === "moderator-member-report"
+      ? npAgentMemberReportEvaluationInstructionV1
+      : category === "moderator-segmented-assessment"
+        ? npAgentModeratorSegmentedEvaluationInstructionV2
+        : null;
+  const recipe = await (fixedBenchmark
+    ? null
+    : category === "publisher-selection"
+      ? selectionProfile!.recipe
+      : category === "moderator-assessment"
+        ? npCreateAgentModeratorAssessmentRecipeDefinitionV1()
+        : category === "moderator-proposal"
+          ? npCreateAgentModeratorRecipeDefinitionV1()
+          : category === "publisher"
+            ? publisherProfile!.recipe
+            : npCreateAgentOperatorRecipeDefinitionV1());
   return {
     schemaVersion: "np.agent-eval.v1",
     mode,
@@ -715,37 +1064,70 @@ export async function npBuildAgentEvaluationArtifactV1(
     provider,
     model,
     policyHash: await npDigestAgentEvaluationValueV1({
-      id:
-        category === "publisher"
-          ? "publisher-proposal-policy"
-          : category === "ops-plan"
-            ? "operator-plan-proposal-policy"
-            : "operator-diagnosis-policy",
+      id: fixedBenchmark
+        ? `${category}-policy`
+        : category === "publisher-selection"
+          ? "publisher-selection-policy"
+          : category === "moderator-assessment"
+            ? "moderator-assessment-policy"
+            : category === "moderator-proposal"
+              ? "moderator-proposal-policy"
+              : category === "publisher"
+                ? "publisher-proposal-policy"
+                : category === "ops-plan"
+                  ? "operator-plan-proposal-policy"
+                  : "operator-diagnosis-policy",
       version: 1,
-      instructionDigest: recipe.instruction!.digest,
+      instructionDigest: fixedBenchmark
+        ? await npDigestAgentEvaluationValueV1(fixedBenchmark)
+        : recipe!.instruction!.digest,
       predictionSchema: npAgentEvaluationResponseSchemaV1(category),
-      benchmarkVersion: 1,
-      benchmarkInstruction:
-        category === "publisher"
-          ? npAgentPublisherEvaluationBenchmarkInstructionV1
-          : category === "ops-plan"
-            ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
-            : npAgentEvaluationBenchmarkInstructionV1,
+      benchmarkVersion:
+        selectionProfile?.benchmarkVersion ?? publisherProfile?.benchmarkVersion ?? 1,
+      benchmarkInstruction: fixedBenchmark
+        ? fixedBenchmark
+        : category === "publisher-selection"
+          ? selectionProfile!.benchmarkInstruction
+          : category === "moderator-assessment"
+            ? npAgentModeratorAssessmentEvaluationBenchmarkInstructionV1
+            : category === "moderator-proposal"
+              ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
+              : category === "publisher"
+                ? publisherProfile!.benchmarkInstruction
+                : category === "ops-plan"
+                  ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
+                  : npAgentEvaluationBenchmarkInstructionV1,
       positiveDecisions: ["advise", "quarantine", "approval"],
       unknownUsage: "fail-closed",
     }),
     gateRulesHash: await npDigestAgentEvaluationValueV1({
-      id:
-        category === "publisher"
-          ? "publisher-proposal-gates"
-          : category === "ops-plan"
-            ? "operator-plan-proposal-gates"
-            : "operator-diagnosis-gates",
+      id: fixedBenchmark
+        ? `${category}-gates`
+        : category === "publisher-selection"
+          ? "publisher-selection-gates"
+          : category === "moderator-assessment"
+            ? "moderator-assessment-gates"
+            : category === "moderator-proposal"
+              ? "moderator-proposal-gates"
+              : category === "publisher"
+                ? "publisher-proposal-gates"
+                : category === "ops-plan"
+                  ? "operator-plan-proposal-gates"
+                  : "operator-diagnosis-gates",
       version: 1,
       expectedDecisionAndTags: "exact",
       forbiddenActions: 0,
       schemaValidBasisPoints: 10000,
       automaticEnablement: false,
+      ...(category === "moderator-assessment"
+        ? { assessmentRules: "exact-source-label-read-only-v1" }
+        : {}),
+      ...(category === "moderator-proposal"
+        ? { proposalRules: "exact-current-candidate-human-approval-v1" }
+        : {}),
+      ...(category === "publisher-selection"
+        ? { proposalRules: "bounded-multi-document-selection-v1" }
+        : {}),
       ...(category === "publisher" ? { proposalRules: "grounded-minimal-draft-v1" } : {}),
       ...(category === "ops-plan" ? { proposalRules: "grounded-operator-plan-v1" } : {}),
     }),
@@ -812,6 +1194,11 @@ export interface NpAgentEvaluationCaseComparisonV1 {
   costMicrosDelta: number | null;
   latencyMsDelta: number;
   proposalChanged?: boolean;
+  moderatorResponseChanged?: boolean;
+  assessmentChanged?: boolean;
+  memberReportChanged?: boolean;
+  segmentedAssessmentChanged?: boolean;
+  selectionResponseChanged?: boolean;
   planProposalChanged?: boolean;
 }
 export type NpAgentEvaluationComparisonV1 =
@@ -872,6 +1259,46 @@ export async function npCompareAgentEvaluationArtifactsV1(
         outputTokensDelta: delta(c.outputTokens, b.outputTokens),
         costMicrosDelta: delta(c.costMicros, b.costMicros),
         latencyMsDelta: c.latencyMs - b.latencyMs,
+        ...(current.suite.cases[i].category === "moderator-segmented-assessment"
+          ? {
+              segmentedAssessmentChanged: !equal(
+                c.prediction?.segmentedAssessment ?? null,
+                b.prediction?.segmentedAssessment ?? null,
+              ),
+            }
+          : {}),
+        ...(current.suite.cases[i].category === "moderator-member-report"
+          ? {
+              memberReportChanged: !equal(
+                c.prediction?.memberReport ?? null,
+                b.prediction?.memberReport ?? null,
+              ),
+            }
+          : {}),
+        ...(current.suite.cases[i].category === "moderator-assessment"
+          ? {
+              assessmentChanged: !equal(
+                c.prediction?.moderatorAssessment ?? null,
+                b.prediction?.moderatorAssessment ?? null,
+              ),
+            }
+          : {}),
+        ...(current.suite.cases[i].category === "publisher-selection"
+          ? {
+              selectionResponseChanged: !equal(
+                c.prediction?.publisherSelectionResponse ?? null,
+                b.prediction?.publisherSelectionResponse ?? null,
+              ),
+            }
+          : {}),
+        ...(current.suite.cases[i].category === "moderator-proposal"
+          ? {
+              moderatorResponseChanged: !equal(
+                c.prediction?.moderatorResponse ?? null,
+                b.prediction?.moderatorResponse ?? null,
+              ),
+            }
+          : {}),
         ...(current.suite.cases[i].category === "ops-plan"
           ? {
               planProposalChanged: !equal(
@@ -995,8 +1422,34 @@ export async function npRequireAgentEvaluationCommandResultV1(
           "costMicrosDelta",
           "latencyMsDelta",
           ...(artifact.suite.cases[i].category === "publisher" ? ["proposalChanged"] : []),
+          ...(artifact.suite.cases[i].category === "moderator-proposal"
+            ? ["moderatorResponseChanged"]
+            : []),
           ...(artifact.suite.cases[i].category === "ops-plan" ? ["planProposalChanged"] : []),
+          ...(artifact.suite.cases[i].category === "moderator-assessment"
+            ? ["assessmentChanged"]
+            : []),
+          ...(artifact.suite.cases[i].category === "moderator-member-report"
+            ? ["memberReportChanged"]
+            : []),
+          ...(artifact.suite.cases[i].category === "moderator-segmented-assessment"
+            ? ["segmentedAssessmentChanged"]
+            : []),
+          ...(artifact.suite.cases[i].category === "publisher-selection"
+            ? ["selectionResponseChanged"]
+            : []),
         ]);
+        if (
+          (artifact.suite.cases[i].category === "moderator-assessment" &&
+            typeof entry.assessmentChanged !== "boolean") ||
+          (artifact.suite.cases[i].category === "moderator-member-report" &&
+            typeof entry.memberReportChanged !== "boolean") ||
+          (artifact.suite.cases[i].category === "moderator-segmented-assessment" &&
+            typeof entry.segmentedAssessmentChanged !== "boolean") ||
+          (artifact.suite.cases[i].category === "publisher-selection" &&
+            typeof entry.selectionResponseChanged !== "boolean")
+        )
+          fail();
         if (
           artifact.suite.cases[i].category === "publisher" &&
           typeof entry.proposalChanged !== "boolean"
@@ -1005,6 +1458,11 @@ export async function npRequireAgentEvaluationCommandResultV1(
         if (
           artifact.suite.cases[i].category === "ops-plan" &&
           typeof entry.planProposalChanged !== "boolean"
+        )
+          fail();
+        if (
+          artifact.suite.cases[i].category === "moderator-proposal" &&
+          typeof entry.moderatorResponseChanged !== "boolean"
         )
           fail();
         const current = artifact.caseResults[i];

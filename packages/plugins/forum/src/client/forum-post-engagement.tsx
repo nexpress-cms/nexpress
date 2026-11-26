@@ -9,6 +9,8 @@ import {
 } from "@nexpress/core/community-contract";
 import { npCommunityDocumentEventsUrl, useCommunityRealtime } from "@nexpress/next/client";
 
+import { readCookie } from "./cookie.js";
+
 interface ForumPostEngagementProps {
   targetType: string;
   targetId: string;
@@ -24,13 +26,6 @@ interface ForumPostEngagementProps {
     recommended: string;
     failed: string;
   };
-}
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
 }
 
 function reactionTotal(counts: Record<string, number>): number {

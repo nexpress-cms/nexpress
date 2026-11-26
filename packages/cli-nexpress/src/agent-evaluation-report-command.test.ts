@@ -168,7 +168,12 @@ describe("installed unified evaluation report boundary", () => {
     await emit(cwd, result);
     expect(await runNexpressCli(command, { cwd })).toBe(0);
     expect(JSON.parse(output.read())).toEqual(result);
-    expect(artifact.rows.map((row) => row.status)).toEqual(["missing", "missing", "missing"]);
+    expect(artifact.rows.map((row) => [row.recipe, row.status])).toEqual([
+      ["moderator", "missing"],
+      ["moderator-proposal", "missing"],
+      ["operator", "missing"],
+      ["publisher", "missing"],
+    ]);
     expect(artifact.fullR6).toBe("not-established");
     expect(artifact.modelUsefulness).toBe("not-established");
     expect(output.read()).not.toContain("private-report-child-marker");

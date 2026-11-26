@@ -117,6 +117,25 @@ describe("bounded Agent evaluation command", () => {
       json: true,
     });
   });
+  it("runs and reviews the explicit Publisher V2 suite without resolving a provider", async () => {
+    const sourcePath = join(await directory(), "publisher-v2.json");
+    const result = await run(["--dataset", "publisher.v2", "--out", sourcePath, "--json"]);
+    expect(result.code).toBe(0);
+    expect(result.resolveProvider).not.toHaveBeenCalled();
+    const source = await npRequireAgentEvaluationArtifactV1(
+      JSON.parse(await readFile(sourcePath, "utf8")),
+    );
+    expect(source.suiteVersion).toBe("publisher-content-review:2");
+    expect(source.caseResults).toHaveLength(18);
+    const review = await run(["--review", sourcePath, "--json"]);
+    expect(review.code).toBe(0);
+    expect(JSON.parse(review.output).artifact.summary.reviewed).toBe(0);
+    const old = await run(["--dataset", "publisher.v1", "--compare", sourcePath, "--json"]);
+    expect(JSON.parse(old.output).comparison).toEqual({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+  });
   it("reviews Publisher proposals offline, saves exact labels and compares the matched cohort", async () => {
     const dir = await directory();
     const sourcePath = join(dir, "source.json"),

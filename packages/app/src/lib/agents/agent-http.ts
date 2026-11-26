@@ -15,6 +15,7 @@ import {
   npAgentPreviewNonce,
 } from "@nexpress/core/agents";
 import { ensureFor } from "../init-core";
+import { npWithAgentGuardianHttpResponseV1 } from "./guardian-http-observer";
 
 const errors = {
   400: ["VALIDATION_ERROR", "Invalid input"],
@@ -94,7 +95,7 @@ async function body(request: Request): Promise<unknown> {
   }
 }
 export type AgentHttpOperation = "capabilities" | "invocations" | "run" | "artifact";
-export async function handleAgentHttpRequest(
+async function handleRequest(
   request: Request,
   operation: AgentHttpOperation,
   ids: { runId?: string; previewId?: string; artifactId?: string } = {},
@@ -192,3 +193,4 @@ export async function handleAgentHttpRequest(
     return agentHttpErrorResponse(error);
   }
 }
+export const handleAgentHttpRequest = npWithAgentGuardianHttpResponseV1("mcp", handleRequest);

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -24,7 +25,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response
  *
  * Capability-gated on `admin.manage`.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
@@ -47,3 +48,5 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

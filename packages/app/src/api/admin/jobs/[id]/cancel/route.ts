@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, getOptionalJobQueue, can } from "@nexpress/core";
 import { npRequireCancelJobWire } from "@nexpress/core/jobs-contract";
 import { readJsonBody } from "@nexpress/next";
@@ -19,7 +20,7 @@ import {
  * preemption); already-terminal jobs return 404. Admin-only
  * + CSRF.
  */
-export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianPOST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -41,3 +42,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

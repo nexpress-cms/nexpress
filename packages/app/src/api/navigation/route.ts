@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpConflictError,
@@ -77,7 +78,7 @@ function isCanonicalIsoDateTime(value: unknown): value is string {
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await optionalAuth(request);
 
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
@@ -164,7 +165,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function npGuardianDELETE(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
@@ -203,7 +204,7 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
+async function npGuardianPATCH(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
@@ -283,3 +284,8 @@ export async function PATCH(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("cms", npGuardianPUT);
+export const DELETE = npWithAgentGuardianHttpResponseV1("cms", npGuardianDELETE);
+export const PATCH = npWithAgentGuardianHttpResponseV1("cms", npGuardianPATCH);

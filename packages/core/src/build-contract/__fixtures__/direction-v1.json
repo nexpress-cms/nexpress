@@ -1,0 +1,585 @@
+{
+  "note": "Synthetic shape/digest fixtures; no images were rendered or verified. Python hashlib and JSON serialization over ASCII property names supply independent canonical vectors.",
+  "brief": {
+    "assumptions": [],
+    "audience": [
+      {
+        "name": "Readers",
+        "needs": ["Find information"],
+        "priority": "primary"
+      }
+    ],
+    "constraints": [],
+    "content": [],
+    "design": {
+      "accessibility": "AA",
+      "adjectives": ["clear"],
+      "avoid": [],
+      "references": [
+        {
+          "label": "Inspiration",
+          "url": "https://example.com/"
+        }
+      ]
+    },
+    "features": [],
+    "locales": ["en", "ko"],
+    "operations": {
+      "agentOperation": false,
+      "expectedEditors": null,
+      "expectedMembers": 0,
+      "target": "local"
+    },
+    "pages": [
+      {
+        "name": "Home",
+        "priority": "required",
+        "purpose": "Introduce the project"
+      }
+    ],
+    "project": {
+      "name": "Demo",
+      "primaryGoal": "Publish articles",
+      "successSignals": ["Readers find articles"],
+      "summary": "Synthetic example"
+    },
+    "schemaVersion": "np.agent-site-brief.v1",
+    "unresolved": []
+  },
+  "draftSet": {
+    "schemaVersion": "np.agent-design-direction-draft-set.v1",
+    "briefHash": "nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI",
+    "comparisonInputs": {
+      "schemaVersion": "np.agent-design-comparison-inputs.v1",
+      "briefHash": "nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI",
+      "informationArchitecture": [
+        {
+          "pageId": "home",
+          "route": "/",
+          "purpose": "Read demo posts",
+          "audience": "public",
+          "locale": null,
+          "fixtureIds": ["home-sample"]
+        }
+      ],
+      "sampleContent": [
+        {
+          "id": "home-sample",
+          "pageId": "home",
+          "locale": null,
+          "label": "Demo community",
+          "data": {
+            "title": "한국어 커뮤니티"
+          }
+        }
+      ],
+      "previewPageIds": ["home"],
+      "projectionInputs": {
+        "discoveryFingerprint": "fixture:installed-catalog:v1",
+        "themeBaseIds": ["@nexpress/theme-default"],
+        "patternIds": [],
+        "templateIds": ["home"],
+        "blockDefinitionFingerprints": []
+      },
+      "viewports": {
+        "desktop": {
+          "width": 1440,
+          "height": 900,
+          "deviceScaleFactor": 1
+        },
+        "mobile": {
+          "width": 390,
+          "height": 844,
+          "deviceScaleFactor": 2
+        }
+      }
+    },
+    "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+    "discoveryFingerprint": "fixture:installed-catalog:v1",
+    "directions": [
+      {
+        "schemaVersion": "np.agent-design-direction-draft.v1",
+        "id": "direction-1",
+        "name": "Demo 1",
+        "rationale": "Synthetic contract fixture, not rendered evidence.",
+        "themeBase": "@nexpress/theme-default",
+        "tokens": {},
+        "typography": {
+          "heading": "Bundled Sans",
+          "body": "Bundled Sans",
+          "mono": null
+        },
+        "layout": {
+          "density": "compact",
+          "contentWidth": "72rem",
+          "navigation": "primary"
+        },
+        "pageBindings": [
+          {
+            "pageId": "home",
+            "source": "custom",
+            "patternId": null,
+            "overrides": null,
+            "templateId": "home",
+            "blocks": []
+          }
+        ],
+        "tradeoffs": ["Demo only"],
+        "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+        "discoveryFingerprint": "fixture:installed-catalog:v1"
+      },
+      {
+        "schemaVersion": "np.agent-design-direction-draft.v1",
+        "id": "direction-2",
+        "name": "Demo 2",
+        "rationale": "Synthetic contract fixture, not rendered evidence.",
+        "themeBase": "@nexpress/theme-default",
+        "tokens": {},
+        "typography": {
+          "heading": "Bundled Sans",
+          "body": "Bundled Sans",
+          "mono": null
+        },
+        "layout": {
+          "density": "comfortable",
+          "contentWidth": "72rem",
+          "navigation": "primary"
+        },
+        "pageBindings": [
+          {
+            "pageId": "home",
+            "source": "custom",
+            "patternId": null,
+            "overrides": null,
+            "templateId": "home",
+            "blocks": []
+          }
+        ],
+        "tradeoffs": ["Demo only"],
+        "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+        "discoveryFingerprint": "fixture:installed-catalog:v1"
+      },
+      {
+        "schemaVersion": "np.agent-design-direction-draft.v1",
+        "id": "direction-3",
+        "name": "Demo 3",
+        "rationale": "Synthetic contract fixture, not rendered evidence.",
+        "themeBase": "@nexpress/theme-default",
+        "tokens": {},
+        "typography": {
+          "heading": "Bundled Sans",
+          "body": "Bundled Sans",
+          "mono": null
+        },
+        "layout": {
+          "density": "spacious",
+          "contentWidth": "72rem",
+          "navigation": "primary"
+        },
+        "pageBindings": [
+          {
+            "pageId": "home",
+            "source": "custom",
+            "patternId": null,
+            "overrides": null,
+            "templateId": "home",
+            "blocks": []
+          }
+        ],
+        "tradeoffs": ["Demo only"],
+        "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+        "discoveryFingerprint": "fixture:installed-catalog:v1"
+      }
+    ]
+  },
+  "set": {
+    "schemaVersion": "np.agent-design-direction-set.v1",
+    "briefHash": "nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI",
+    "comparisonInputs": {
+      "schemaVersion": "np.agent-design-comparison-inputs.v1",
+      "briefHash": "nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI",
+      "informationArchitecture": [
+        {
+          "pageId": "home",
+          "route": "/",
+          "purpose": "Read demo posts",
+          "audience": "public",
+          "locale": null,
+          "fixtureIds": ["home-sample"]
+        }
+      ],
+      "sampleContent": [
+        {
+          "id": "home-sample",
+          "pageId": "home",
+          "locale": null,
+          "label": "Demo community",
+          "data": {
+            "title": "한국어 커뮤니티"
+          }
+        }
+      ],
+      "previewPageIds": ["home"],
+      "projectionInputs": {
+        "discoveryFingerprint": "fixture:installed-catalog:v1",
+        "themeBaseIds": ["@nexpress/theme-default"],
+        "patternIds": [],
+        "templateIds": ["home"],
+        "blockDefinitionFingerprints": []
+      },
+      "viewports": {
+        "desktop": {
+          "width": 1440,
+          "height": 900,
+          "deviceScaleFactor": 1
+        },
+        "mobile": {
+          "width": 390,
+          "height": 844,
+          "deviceScaleFactor": 2
+        }
+      }
+    },
+    "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+    "discoveryFingerprint": "fixture:installed-catalog:v1",
+    "directions": [
+      {
+        "schemaVersion": "np.agent-design-direction.v1",
+        "id": "direction-1",
+        "name": "Demo 1",
+        "rationale": "Synthetic contract fixture, not rendered evidence.",
+        "themeBase": "@nexpress/theme-default",
+        "tokens": {},
+        "typography": {
+          "heading": "Bundled Sans",
+          "body": "Bundled Sans",
+          "mono": null
+        },
+        "layout": {
+          "density": "compact",
+          "contentWidth": "72rem",
+          "navigation": "primary"
+        },
+        "pageBindings": [
+          {
+            "pageId": "home",
+            "source": "custom",
+            "patternId": null,
+            "overrides": null,
+            "templateId": "home",
+            "blocks": []
+          }
+        ],
+        "tradeoffs": ["Demo only"],
+        "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+        "discoveryFingerprint": "fixture:installed-catalog:v1",
+        "projectionDigest": "nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E",
+        "previewArtifact": {
+          "desktop": {
+            "id": "preview-1-desktop",
+            "relativePath": ".nexpress/site/review/directions/1-desktop.png",
+            "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+            "mime": "image/png",
+            "bytes": 1,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "directionId": "direction-1",
+            "pageIds": ["home"],
+            "directionProjectionDigest": "nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E",
+            "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "renderReceiptId": "receipt-1-desktop",
+            "renderReceiptDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+            "createdAt": "2026-10-23T00:00:00.000Z",
+            "expiresAt": null
+          },
+          "mobile": {
+            "id": "preview-1-mobile",
+            "relativePath": ".nexpress/site/review/directions/1-mobile.png",
+            "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+            "mime": "image/png",
+            "bytes": 1,
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "deviceScaleFactor": 2
+            },
+            "directionId": "direction-1",
+            "pageIds": ["home"],
+            "directionProjectionDigest": "nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E",
+            "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "renderReceiptId": "receipt-1-mobile",
+            "renderReceiptDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+            "createdAt": "2026-10-23T00:00:00.000Z",
+            "expiresAt": null
+          }
+        }
+      },
+      {
+        "schemaVersion": "np.agent-design-direction.v1",
+        "id": "direction-2",
+        "name": "Demo 2",
+        "rationale": "Synthetic contract fixture, not rendered evidence.",
+        "themeBase": "@nexpress/theme-default",
+        "tokens": {},
+        "typography": {
+          "heading": "Bundled Sans",
+          "body": "Bundled Sans",
+          "mono": null
+        },
+        "layout": {
+          "density": "comfortable",
+          "contentWidth": "72rem",
+          "navigation": "primary"
+        },
+        "pageBindings": [
+          {
+            "pageId": "home",
+            "source": "custom",
+            "patternId": null,
+            "overrides": null,
+            "templateId": "home",
+            "blocks": []
+          }
+        ],
+        "tradeoffs": ["Demo only"],
+        "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+        "discoveryFingerprint": "fixture:installed-catalog:v1",
+        "projectionDigest": "nb1:sha256:HINEHBWuG5NDxX9fbktwU7xlhvBKGFXB_7GpavKS07c",
+        "previewArtifact": {
+          "desktop": {
+            "id": "preview-2-desktop",
+            "relativePath": ".nexpress/site/review/directions/2-desktop.png",
+            "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+            "mime": "image/png",
+            "bytes": 1,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "directionId": "direction-2",
+            "pageIds": ["home"],
+            "directionProjectionDigest": "nb1:sha256:HINEHBWuG5NDxX9fbktwU7xlhvBKGFXB_7GpavKS07c",
+            "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "renderReceiptId": "receipt-2-desktop",
+            "renderReceiptDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+            "createdAt": "2026-10-23T00:00:00.000Z",
+            "expiresAt": null
+          },
+          "mobile": {
+            "id": "preview-2-mobile",
+            "relativePath": ".nexpress/site/review/directions/2-mobile.png",
+            "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+            "mime": "image/png",
+            "bytes": 1,
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "deviceScaleFactor": 2
+            },
+            "directionId": "direction-2",
+            "pageIds": ["home"],
+            "directionProjectionDigest": "nb1:sha256:HINEHBWuG5NDxX9fbktwU7xlhvBKGFXB_7GpavKS07c",
+            "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "renderReceiptId": "receipt-2-mobile",
+            "renderReceiptDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+            "createdAt": "2026-10-23T00:00:00.000Z",
+            "expiresAt": null
+          }
+        }
+      },
+      {
+        "schemaVersion": "np.agent-design-direction.v1",
+        "id": "direction-3",
+        "name": "Demo 3",
+        "rationale": "Synthetic contract fixture, not rendered evidence.",
+        "themeBase": "@nexpress/theme-default",
+        "tokens": {},
+        "typography": {
+          "heading": "Bundled Sans",
+          "body": "Bundled Sans",
+          "mono": null
+        },
+        "layout": {
+          "density": "spacious",
+          "contentWidth": "72rem",
+          "navigation": "primary"
+        },
+        "pageBindings": [
+          {
+            "pageId": "home",
+            "source": "custom",
+            "patternId": null,
+            "overrides": null,
+            "templateId": "home",
+            "blocks": []
+          }
+        ],
+        "tradeoffs": ["Demo only"],
+        "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+        "discoveryFingerprint": "fixture:installed-catalog:v1",
+        "projectionDigest": "nb1:sha256:_IR_CZkTGzl_-ALP0BxhKnhlLIUvdtkH-IysBwwpzoc",
+        "previewArtifact": {
+          "desktop": {
+            "id": "preview-3-desktop",
+            "relativePath": ".nexpress/site/review/directions/3-desktop.png",
+            "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+            "mime": "image/png",
+            "bytes": 1,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "directionId": "direction-3",
+            "pageIds": ["home"],
+            "directionProjectionDigest": "nb1:sha256:_IR_CZkTGzl_-ALP0BxhKnhlLIUvdtkH-IysBwwpzoc",
+            "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "renderReceiptId": "receipt-3-desktop",
+            "renderReceiptDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+            "createdAt": "2026-10-23T00:00:00.000Z",
+            "expiresAt": null
+          },
+          "mobile": {
+            "id": "preview-3-mobile",
+            "relativePath": ".nexpress/site/review/directions/3-mobile.png",
+            "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+            "mime": "image/png",
+            "bytes": 1,
+            "viewport": {
+              "width": 390,
+              "height": 844,
+              "deviceScaleFactor": 2
+            },
+            "directionId": "direction-3",
+            "pageIds": ["home"],
+            "directionProjectionDigest": "nb1:sha256:_IR_CZkTGzl_-ALP0BxhKnhlLIUvdtkH-IysBwwpzoc",
+            "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "renderReceiptId": "receipt-3-mobile",
+            "renderReceiptDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+            "createdAt": "2026-10-23T00:00:00.000Z",
+            "expiresAt": null
+          }
+        }
+      }
+    ]
+  },
+  "source": {
+    "schemaVersion": "np.agent-direction-render-source.v1",
+    "briefHash": "nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI",
+    "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+    "directionId": "direction-1",
+    "directionProjection": {
+      "schemaVersion": "np.agent-design-direction.v1",
+      "id": "direction-1",
+      "name": "Demo 1",
+      "rationale": "Synthetic contract fixture, not rendered evidence.",
+      "themeBase": "@nexpress/theme-default",
+      "tokens": {},
+      "typography": {
+        "heading": "Bundled Sans",
+        "body": "Bundled Sans",
+        "mono": null
+      },
+      "layout": {
+        "density": "compact",
+        "contentWidth": "72rem",
+        "navigation": "primary"
+      },
+      "pageBindings": [
+        {
+          "pageId": "home",
+          "source": "custom",
+          "patternId": null,
+          "overrides": null,
+          "templateId": "home",
+          "blocks": []
+        }
+      ],
+      "tradeoffs": ["Demo only"],
+      "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+      "discoveryFingerprint": "fixture:installed-catalog:v1"
+    },
+    "directionProjectionDigest": "nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E",
+    "viewportName": "desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    "orderedPageIds": ["home"],
+    "sourceTreeDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "renderEnvironmentFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  "record": {
+    "schemaVersion": "np.agent-direction-render-receipt-record.v1",
+    "id": "receipt-1-desktop",
+    "body": {
+      "comparisonInputsDigest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk",
+      "directionId": "direction-1",
+      "directionProjectionDigest": "nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E",
+      "viewportName": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "orderedPageIds": ["home"],
+      "sourceTreeDigest": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "rendererFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "renderEnvironmentFingerprint": "nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "schemaVersion": "np.agent-direction-render-receipt.v1",
+      "renderSourceDigest": "nb1:sha256:7_jwa5U3is_7XRqcAgP3U-MQUHPqv9YT0OQOX9wE8Ew",
+      "output": {
+        "relativePath": ".nexpress/site/review/directions/1-desktop.png",
+        "digest": "nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ",
+        "mime": "image/png",
+        "bytes": 1
+      }
+    },
+    "digest": "nb1:sha256:2Izy0MELvsOISKlIFB8m1bYQLOoJ4xtSqLr2PBm4w_I",
+    "observedAt": "2026-10-23T00:00:00.000Z"
+  },
+  "structured": [
+    {
+      "purpose": "np.build-design-comparison-inputs.v1",
+      "canonical": "{\"briefHash\":\"nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI\",\"informationArchitecture\":[{\"audience\":\"public\",\"fixtureIds\":[\"home-sample\"],\"locale\":null,\"pageId\":\"home\",\"purpose\":\"Read demo posts\",\"route\":\"/\"}],\"previewPageIds\":[\"home\"],\"projectionInputs\":{\"blockDefinitionFingerprints\":[],\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"patternIds\":[],\"templateIds\":[\"home\"],\"themeBaseIds\":[\"@nexpress/theme-default\"]},\"sampleContent\":[{\"data\":{\"title\":\"한국어 커뮤니티\"},\"id\":\"home-sample\",\"label\":\"Demo community\",\"locale\":null,\"pageId\":\"home\"}],\"schemaVersion\":\"np.agent-design-comparison-inputs.v1\",\"viewports\":{\"desktop\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440},\"mobile\":{\"deviceScaleFactor\":2,\"height\":844,\"width\":390}}}",
+      "digest": "nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk"
+    },
+    {
+      "purpose": "np.build-design-direction-projection.v1",
+      "canonical": "{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"id\":\"direction-1\",\"layout\":{\"contentWidth\":\"72rem\",\"density\":\"compact\",\"navigation\":\"primary\"},\"name\":\"Demo 1\",\"pageBindings\":[{\"blocks\":[],\"overrides\":null,\"pageId\":\"home\",\"patternId\":null,\"source\":\"custom\",\"templateId\":\"home\"}],\"rationale\":\"Synthetic contract fixture, not rendered evidence.\",\"schemaVersion\":\"np.agent-design-direction.v1\",\"themeBase\":\"@nexpress/theme-default\",\"tokens\":{},\"tradeoffs\":[\"Demo only\"],\"typography\":{\"body\":\"Bundled Sans\",\"heading\":\"Bundled Sans\",\"mono\":null}}",
+      "digest": "nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E"
+    },
+    {
+      "purpose": "np.build-design-direction.v1",
+      "canonical": "{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"id\":\"direction-1\",\"layout\":{\"contentWidth\":\"72rem\",\"density\":\"compact\",\"navigation\":\"primary\"},\"name\":\"Demo 1\",\"pageBindings\":[{\"blocks\":[],\"overrides\":null,\"pageId\":\"home\",\"patternId\":null,\"source\":\"custom\",\"templateId\":\"home\"}],\"previewArtifact\":{\"desktop\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-1\",\"directionProjectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"expiresAt\":null,\"id\":\"preview-1-desktop\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/1-desktop.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-1-desktop\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440}},\"mobile\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-1\",\"directionProjectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"expiresAt\":null,\"id\":\"preview-1-mobile\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/1-mobile.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-1-mobile\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":2,\"height\":844,\"width\":390}}},\"projectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"rationale\":\"Synthetic contract fixture, not rendered evidence.\",\"schemaVersion\":\"np.agent-design-direction.v1\",\"themeBase\":\"@nexpress/theme-default\",\"tokens\":{},\"tradeoffs\":[\"Demo only\"],\"typography\":{\"body\":\"Bundled Sans\",\"heading\":\"Bundled Sans\",\"mono\":null}}",
+      "digest": "nb1:sha256:TCsi4TMuV3v6QYruKOQv58D9avt_ecM-f3OymT_3OMQ"
+    },
+    {
+      "purpose": "np.build-design-direction-set.v1",
+      "canonical": "{\"briefHash\":\"nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI\",\"comparisonInputs\":{\"briefHash\":\"nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI\",\"informationArchitecture\":[{\"audience\":\"public\",\"fixtureIds\":[\"home-sample\"],\"locale\":null,\"pageId\":\"home\",\"purpose\":\"Read demo posts\",\"route\":\"/\"}],\"previewPageIds\":[\"home\"],\"projectionInputs\":{\"blockDefinitionFingerprints\":[],\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"patternIds\":[],\"templateIds\":[\"home\"],\"themeBaseIds\":[\"@nexpress/theme-default\"]},\"sampleContent\":[{\"data\":{\"title\":\"한국어 커뮤니티\"},\"id\":\"home-sample\",\"label\":\"Demo community\",\"locale\":null,\"pageId\":\"home\"}],\"schemaVersion\":\"np.agent-design-comparison-inputs.v1\",\"viewports\":{\"desktop\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440},\"mobile\":{\"deviceScaleFactor\":2,\"height\":844,\"width\":390}}},\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"directions\":[{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"id\":\"direction-1\",\"layout\":{\"contentWidth\":\"72rem\",\"density\":\"compact\",\"navigation\":\"primary\"},\"name\":\"Demo 1\",\"pageBindings\":[{\"blocks\":[],\"overrides\":null,\"pageId\":\"home\",\"patternId\":null,\"source\":\"custom\",\"templateId\":\"home\"}],\"previewArtifact\":{\"desktop\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-1\",\"directionProjectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"expiresAt\":null,\"id\":\"preview-1-desktop\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/1-desktop.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-1-desktop\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440}},\"mobile\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-1\",\"directionProjectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"expiresAt\":null,\"id\":\"preview-1-mobile\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/1-mobile.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-1-mobile\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":2,\"height\":844,\"width\":390}}},\"projectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"rationale\":\"Synthetic contract fixture, not rendered evidence.\",\"schemaVersion\":\"np.agent-design-direction.v1\",\"themeBase\":\"@nexpress/theme-default\",\"tokens\":{},\"tradeoffs\":[\"Demo only\"],\"typography\":{\"body\":\"Bundled Sans\",\"heading\":\"Bundled Sans\",\"mono\":null}},{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"id\":\"direction-2\",\"layout\":{\"contentWidth\":\"72rem\",\"density\":\"comfortable\",\"navigation\":\"primary\"},\"name\":\"Demo 2\",\"pageBindings\":[{\"blocks\":[],\"overrides\":null,\"pageId\":\"home\",\"patternId\":null,\"source\":\"custom\",\"templateId\":\"home\"}],\"previewArtifact\":{\"desktop\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-2\",\"directionProjectionDigest\":\"nb1:sha256:HINEHBWuG5NDxX9fbktwU7xlhvBKGFXB_7GpavKS07c\",\"expiresAt\":null,\"id\":\"preview-2-desktop\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/2-desktop.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-2-desktop\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440}},\"mobile\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-2\",\"directionProjectionDigest\":\"nb1:sha256:HINEHBWuG5NDxX9fbktwU7xlhvBKGFXB_7GpavKS07c\",\"expiresAt\":null,\"id\":\"preview-2-mobile\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/2-mobile.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-2-mobile\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":2,\"height\":844,\"width\":390}}},\"projectionDigest\":\"nb1:sha256:HINEHBWuG5NDxX9fbktwU7xlhvBKGFXB_7GpavKS07c\",\"rationale\":\"Synthetic contract fixture, not rendered evidence.\",\"schemaVersion\":\"np.agent-design-direction.v1\",\"themeBase\":\"@nexpress/theme-default\",\"tokens\":{},\"tradeoffs\":[\"Demo only\"],\"typography\":{\"body\":\"Bundled Sans\",\"heading\":\"Bundled Sans\",\"mono\":null}},{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"id\":\"direction-3\",\"layout\":{\"contentWidth\":\"72rem\",\"density\":\"spacious\",\"navigation\":\"primary\"},\"name\":\"Demo 3\",\"pageBindings\":[{\"blocks\":[],\"overrides\":null,\"pageId\":\"home\",\"patternId\":null,\"source\":\"custom\",\"templateId\":\"home\"}],\"previewArtifact\":{\"desktop\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-3\",\"directionProjectionDigest\":\"nb1:sha256:_IR_CZkTGzl_-ALP0BxhKnhlLIUvdtkH-IysBwwpzoc\",\"expiresAt\":null,\"id\":\"preview-3-desktop\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/3-desktop.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-3-desktop\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440}},\"mobile\":{\"bytes\":1,\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"createdAt\":\"2026-10-23T00:00:00.000Z\",\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"directionId\":\"direction-3\",\"directionProjectionDigest\":\"nb1:sha256:_IR_CZkTGzl_-ALP0BxhKnhlLIUvdtkH-IysBwwpzoc\",\"expiresAt\":null,\"id\":\"preview-3-mobile\",\"mime\":\"image/png\",\"pageIds\":[\"home\"],\"relativePath\":\".nexpress/site/review/directions/3-mobile.png\",\"renderReceiptDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderReceiptId\":\"receipt-3-mobile\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":2,\"height\":844,\"width\":390}}},\"projectionDigest\":\"nb1:sha256:_IR_CZkTGzl_-ALP0BxhKnhlLIUvdtkH-IysBwwpzoc\",\"rationale\":\"Synthetic contract fixture, not rendered evidence.\",\"schemaVersion\":\"np.agent-design-direction.v1\",\"themeBase\":\"@nexpress/theme-default\",\"tokens\":{},\"tradeoffs\":[\"Demo only\"],\"typography\":{\"body\":\"Bundled Sans\",\"heading\":\"Bundled Sans\",\"mono\":null}}],\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"schemaVersion\":\"np.agent-design-direction-set.v1\"}",
+      "digest": "nb1:sha256:ge3UcWMawhc1PUiyu_3l54vw20ruBc9iyDcua8qjbRg"
+    },
+    {
+      "purpose": "np.build-direction-render-source.v1",
+      "canonical": "{\"briefHash\":\"nb1:sha256:klP2mFJwBavO0FhvYpUT-zHIksYCuTQpk2ZeScRWxaI\",\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"directionId\":\"direction-1\",\"directionProjection\":{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"discoveryFingerprint\":\"fixture:installed-catalog:v1\",\"id\":\"direction-1\",\"layout\":{\"contentWidth\":\"72rem\",\"density\":\"compact\",\"navigation\":\"primary\"},\"name\":\"Demo 1\",\"pageBindings\":[{\"blocks\":[],\"overrides\":null,\"pageId\":\"home\",\"patternId\":null,\"source\":\"custom\",\"templateId\":\"home\"}],\"rationale\":\"Synthetic contract fixture, not rendered evidence.\",\"schemaVersion\":\"np.agent-design-direction.v1\",\"themeBase\":\"@nexpress/theme-default\",\"tokens\":{},\"tradeoffs\":[\"Demo only\"],\"typography\":{\"body\":\"Bundled Sans\",\"heading\":\"Bundled Sans\",\"mono\":null}},\"directionProjectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"orderedPageIds\":[\"home\"],\"renderEnvironmentFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"schemaVersion\":\"np.agent-direction-render-source.v1\",\"sourceTreeDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440},\"viewportName\":\"desktop\"}",
+      "digest": "nb1:sha256:7_jwa5U3is_7XRqcAgP3U-MQUHPqv9YT0OQOX9wE8Ew"
+    },
+    {
+      "purpose": "np.build-direction-render-receipt.v1",
+      "canonical": "{\"comparisonInputsDigest\":\"nb1:sha256:mvaIWyVF6op6bx_xrYpwZPJ8zQRdHyPy_3I6tONvrEk\",\"directionId\":\"direction-1\",\"directionProjectionDigest\":\"nb1:sha256:lQmxELuAahWTrdNOzHy6pF1Ng02UFX9dt0X7TXL6e5E\",\"orderedPageIds\":[\"home\"],\"output\":{\"bytes\":1,\"digest\":\"nb1:file-sha256:SFWUaVwfb-aU8CWowFlBJgGOAZB8b4E3Ke8CbGTsvhQ\",\"mime\":\"image/png\",\"relativePath\":\".nexpress/site/review/directions/1-desktop.png\"},\"renderEnvironmentFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"renderSourceDigest\":\"nb1:sha256:7_jwa5U3is_7XRqcAgP3U-MQUHPqv9YT0OQOX9wE8Ew\",\"rendererFingerprint\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"schemaVersion\":\"np.agent-direction-render-receipt.v1\",\"sourceTreeDigest\":\"nb1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"viewport\":{\"deviceScaleFactor\":1,\"height\":900,\"width\":1440},\"viewportName\":\"desktop\"}",
+      "digest": "nb1:sha256:2Izy0MELvsOISKlIFB8m1bYQLOoJ4xtSqLr2PBm4w_I"
+    }
+  ]
+}

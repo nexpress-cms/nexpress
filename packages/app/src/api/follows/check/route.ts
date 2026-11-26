@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { isFollowing } from "@nexpress/core/community";
 import { npRequireFollowingWire, npRequireFollowTarget } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
@@ -13,7 +14,7 @@ import { requireMember } from "../../../lib/member-auth-helpers";
  * the wrong shape for "is the viewer following this one profile?" —
  * a member who follows 200+ people would get truncated state otherwise.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const member = await requireMember(request);
@@ -32,3 +33,5 @@ export async function GET(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);

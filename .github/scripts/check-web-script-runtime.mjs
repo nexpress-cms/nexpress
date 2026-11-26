@@ -51,6 +51,7 @@ const CASES = [
     evaluationMode: "fake",
     env: { DATABASE_URL: "", TEST_DATABASE_URL: "", NP_SECRET: "" },
   },
+  { script: "agent-guardian.ts", args: ["--help"] },
   { script: "agent-runtime.ts", args: ["--help"] },
   {
     script: "agent-runtime.ts",

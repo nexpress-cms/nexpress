@@ -6,6 +6,11 @@ below are present in the working tree; this document does not mark pending
 validation as passed. The [R5 decision](r5-acceptance.md) owns the broader Runtime
 acceptance boundary.
 
+Later R6 adds Incident list/detail and Evaluation Workbench, bringing the current
+shared Studio inventory to 23 page routes. The 20-route evidence below retains
+its original baseline. Current Incident/evaluation behavior is tracked in the
+[R6 acceptance crosswalk](r6-acceptance.md); it is not an unimplemented R5 page.
+
 The purpose is to make existing operator workflows usable and honest during
 loading, refresh, failure and keyboard operation. It does not install providers,
 activate Agents, change authority, or add an incident-response product ahead of
@@ -98,9 +103,9 @@ requirements. Shared-owner coverage reduces duplicated tests; it does not prove 
   cross-site detail is unavailable, not a valid empty record. Budget configuration
   is not a valid empty state once the Runtime is enabled. No adapter/recipe being
   installed is a deliberate unavailable/setup state.
-- **Incidents:** no incident page route is shipped in this inventory. Incident
-  response acceptance applies when its product phase ships; a fabricated incident
-  fixture would not close an R5 implementation gap.
+- **Incidents:** this historical 20-route inventory predates Incident pages.
+  Current R6 owns their shipped review, evidence and approved response workflows;
+  their evidence does not imply a complete R5 assistive-technology pass.
 - **Authorizing review refresh:** explicit refresh in `useAgentReviewRead`
   deliberately invalidates the mounted approval/ChangeSet review. Retaining old
   authorizing controls after explicit invalidation would weaken its current

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -21,7 +22,7 @@ import { ensureFor } from "../../../../../lib/init-core";
  * memberships, string overrides. Admin-only because the
  * counts can hint at private content shape.
  */
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianGET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -47,3 +48,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

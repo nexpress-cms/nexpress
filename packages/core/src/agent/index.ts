@@ -7,7 +7,9 @@ export type {
   NpAgentPublisherCandidateV1,
   NpAgentPublisherFindingV1,
   NpAgentPublisherRouteInventoryV1,
+  NpAgentPublisherSelectionReceiptV1,
 } from "./publisher-content.js";
+export { npRequireAgentPublisherRouteInventoryV1 } from "./publisher-content.js";
 export * from "./connection-service.js";
 export * from "./connection-admin-service.js";
 export * from "./contract-diagnostics.js";
@@ -49,7 +51,18 @@ export * from "./changeset-capability.js";
 export * from "./approval-service.js";
 export * from "./approval-action-targets.js";
 
-export * from "./runtime-controls.js";
+export {
+  NpAgentRuntimeControlError,
+  npValidateAgentRuntimeControlStateV1,
+  npWithAgentRuntimeControlTransactionV1,
+  createAgentRuntimeControlsV1,
+} from "./runtime-controls.js";
+export type {
+  NpAgentRuntimeControlContextV1,
+  NpAgentRuntimeReadinessEvidenceV1,
+  NpAgentRuntimeControlsOptionsV1,
+  NpAgentRuntimeControlsV1,
+} from "./runtime-controls.js";
 export * from "./runtime-service.js";
 export * from "./runtime-admission.js";
 
@@ -64,9 +77,21 @@ export * from "./runtime-execution-store.js";
 export * from "./runtime-breakers.js";
 export * from "./runtime-executor.js";
 
-export * from "./runtime-event-service.js";
+export { createAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
+export type {
+  NpAgentRuntimeEventServiceOptionsV1,
+  NpAgentRuntimeEventServiceV1,
+} from "./runtime-event-service.js";
 export * from "./runtime-jobs.js";
+export * from "./operator-event-source.js";
+export * from "./operator-event-observation.js";
+export * from "./guardian-observation-service.js";
+export * from "./automatic-guardian-limit-service.js";
 export * from "./runtime-maintenance.js";
+export * from "./incident-retention.js";
+export * from "./moderator-assessment-source.js";
+export * from "./moderator-assessment-fixtures.js";
+export * from "./incident-assessment-service.js";
 export * from "./runtime-studio-service.js";
 
 // Reviewed migration / diagnostics primitives; do not install services or journals.
@@ -81,6 +106,12 @@ export { npCollectAgentWorkerHealthV1, npCollectAgentWorkerHealthV2 } from "./wo
 export { npCollectAgentRuntimeOutcomeV1 } from "./runtime-outcome-health.js";
 
 export * from "./incident-service.js";
+export {
+  createAgentModeratorRecipeSourceV1,
+  type NpAgentModeratorRecipeSourceV1,
+  type NpAgentModeratorRecipeEvidenceV1,
+  type NpAgentModeratorRecipeCandidateV1,
+} from "./moderator-recipe-source.js";
 export * from "./incident-write-service.js";
 export * from "./moderator-detector.js";
 export * from "./moderation-service.js";
@@ -103,7 +134,7 @@ export * from "./incident-assignment-service.js";
 
 export * from "./incident-notifications-service.js";
 export * from "./operator-service.js";
-export * from "./runtime-operator-controls.js";
+export { npCreateAgentRuntimeOperatorControlsV1 } from "./runtime-operator-controls.js";
 export * from "./operator-capability.js";
 
 export * from "./evaluation.js";
@@ -113,4 +144,105 @@ export * from "./moderator-evaluation.js";
 
 export * from "./operator-plan-evaluation-fixtures.js";
 export * from "./evaluation-report.js";
+export * from "./evaluation-workbench.js";
 export * from "./evaluation-report-files.js";
+export * from "./moderator-proposal-evaluation-fixtures.js";
+
+export {
+  createAgentModeratorCommentReportObserverV1,
+  createAgentModeratorCommentReportCollectorV1,
+  npResolveAgentModeratorCommentReportEvidenceV1,
+  type NpAgentModeratorCommentReportCollectorV1,
+} from "./moderator-report-source.js";
+
+export {
+  createAgentModeratorCombinedCommentCollectorV1,
+  createAgentModeratorCombinedContentCollectorV1,
+  type NpAgentModeratorCombinedCommentCollectorV1,
+  type NpAgentModeratorCombinedContentCollectorV1,
+} from "./moderator-combined-collector.js";
+export { npResolveAgentModeratorCombinedContentEvidenceV1 } from "./moderator-content-evidence.js";
+export { npResolveAgentModeratorCombinedCommentEvidenceV1 } from "./moderator-comment-evidence.js";
+
+export {
+  createAgentModeratorDocumentReportObserverV1,
+  createAgentModeratorDocumentReportCollectorV1,
+  npResolveAgentModeratorDocumentReportEvidenceV1,
+  type NpAgentModeratorDocumentReportCollectorV1,
+} from "./moderator-document-report-source.js";
+
+export * from "./moderator-member-report-source.js";
+export * from "./incident-member-report-evidence-service.js";
+
+export { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
+export { npCreateAgentModeratorSegmentedEvaluationSuiteV2 } from "./moderator-segmented-evaluation-fixtures.js";
+export { npCreateAgentMemberReportEvaluationSuiteV1 } from "./member-report-evaluation-fixtures.js";
+
+export * from "./publisher-selection-evaluation-fixtures.js";
+export {
+  createAgentAutomaticQuarantineAuthorityV1,
+  createAgentAutomaticQuarantineExpiryProcessorV1,
+  npIsAgentAutomaticQuarantineAuthorityV1,
+  type NpAgentAutomaticQuarantineAuthorityV1,
+} from "./automatic-quarantine-service.js";
+export { createAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
+export type {
+  NpAgentNotificationDeliveryServiceV1,
+  NpAgentNotificationDeliveryRoutingOptionsV1,
+  NpAgentNotificationDeliveryAuthorizationV1,
+  NpAgentNotificationRouteV1,
+} from "./notification-delivery-service.js";
+
+export * from "./evaluation-history-service.js";
+export { npAnalyzeAgentPublisherContentV1 } from "./publisher-content.js";
+export {
+  npInspectAgentRenderedAccessibilityV1,
+  type NpAgentRenderedAccessibilityReportV1,
+} from "./preview-checks.js";
+export {
+  createAgentSlackNotificationProviderAdapterV1,
+  createAgentResendNotificationProviderAdapterV1,
+} from "./provider-notification-reference.js";
+
+export * from "./member-response-service.js";
+
+export * from "./guardian-response-service.js";
+export * from "./guardian-restriction-adapter.js";
+export * from "./guardian-actor-projection.js";
+
+export * from "./guardian-session-service.js";
+export * from "./guardian-session-observation.js";
+export * from "./guardian-security-observation.js";
+export * from "./guardian-content-observation.js";
+export * from "./guardian-external-observation.js";
+export * from "./guardian-operations-service.js";
+export * from "./guardian-session-evidence.js";
+export * from "./guardian-sentry-adapter.js";
+export * from "./guardian-assessment-source.js";
+export * from "./guardian-incident-assessment-service.js";
+export { createAgentGuardianControlsV1, NpAgentGuardianControlError } from "./guardian-controls.js";
+export type {
+  NpAgentGuardianControlsV1,
+  NpAgentGuardianControlsOptionsV1,
+  NpAgentGuardianControlRegistrationV1,
+} from "./guardian-controls.js";
+export { npCollectAgentGuardianHealthV1 } from "./guardian-health.js";
+export type {
+  NpAgentGuardianHealthOptionsV1,
+  NpAgentGuardianHealthProofOwnerV1,
+} from "./guardian-health.js";
+export { runAgentGuardianEvaluationV1 } from "./guardian-evaluation.js";
+
+export { createAgentGuardianRetentionServiceV1 } from "./guardian-retention-service.js";
+export type {
+  NpAgentGuardianRetentionServiceV1,
+  NpAgentGuardianRetentionOptionsV1,
+  NpAgentGuardianRetentionPolicyV1,
+  NpAgentGuardianRetentionProofOwnerV1,
+  NpAgentGuardianRetentionResultV1,
+} from "./guardian-retention-service.js";
+export { npVerifyAgentGuardianRequestSignalV1 } from "./guardian-observation-service.js";
+export { npVerifyAgentGuardianSessionSignalV1 } from "./guardian-session-observation.js";
+
+export * from "./guardian-runtime-observation.js";
+export * from "./guardian-http-observation.js";

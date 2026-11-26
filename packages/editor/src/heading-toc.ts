@@ -1,5 +1,7 @@
 import type { NpRichTextContent } from "@nexpress/core/fields";
 
+import { richTextChildren, richTextNodeText, type RichTextNode } from "./rich-text-node.js";
+
 /**
  * Slugify a heading's plain text into a URL-safe id. Shared by
  * `renderRichText` (which writes the id onto h2/h3) and
@@ -42,6 +44,23 @@ export interface NpHeadingTocEntry {
   level: 2 | 3;
 }
 
+export function headingTocEntry(
+  node: RichTextNode,
+  seen: Map<string, number>,
+): NpHeadingTocEntry | null {
+  if (node.tag !== "h2" && node.tag !== "h3") return null;
+  const text = richTextNodeText(node).trim();
+  if (text.length === 0) return null;
+  const slug = slugifyHeading(text);
+  const prior = seen.get(slug) ?? 0;
+  seen.set(slug, prior + 1);
+  return {
+    id: prior === 0 ? slug : `${slug}-${(prior + 1).toString()}`,
+    text,
+    level: node.tag === "h2" ? 2 : 3,
+  };
+}
+
 /**
  * Walk a Lexical document and emit one TOC entry per h2/h3.
  *
@@ -62,31 +81,21 @@ export function extractHeadingToc(
 }
 
 function walk(nodes: unknown[], out: NpHeadingTocEntry[], seen: Map<string, number>): void {
-  for (const raw of nodes) {
-    if (!raw || typeof raw !== "object") continue;
-    const node = raw as { type?: unknown; tag?: unknown; children?: unknown };
-    if (node.type === "heading" && (node.tag === "h2" || node.tag === "h3")) {
-      const text = collectText(Array.isArray(node.children) ? node.children : []);
-      if (text.length > 0) {
-        const slug = slugifyHeading(text);
-        const prior = seen.get(slug) ?? 0;
-        seen.set(slug, prior + 1);
-        const id = prior === 0 ? slug : `${slug}-${(prior + 1).toString()}`;
-        out.push({ id, text, level: node.tag === "h2" ? 2 : 3 });
+  for (const node of richTextChildren(nodes)) {
+    switch (node.type) {
+      case "heading": {
+        const entry = headingTocEntry(node, seen);
+        if (entry) out.push(entry);
+        break;
       }
-      continue;
+      // These nodes do not render their children as rich-text elements.
+      case "text":
+      case "code":
+      case "image":
+      case "horizontalrule":
+      case "linebreak":
+        continue;
     }
     if (Array.isArray(node.children)) walk(node.children, out, seen);
   }
-}
-
-function collectText(nodes: unknown[]): string {
-  const parts: string[] = [];
-  for (const raw of nodes) {
-    if (!raw || typeof raw !== "object") continue;
-    const node = raw as { text?: unknown; children?: unknown };
-    if (typeof node.text === "string") parts.push(node.text);
-    else if (Array.isArray(node.children)) parts.push(collectText(node.children));
-  }
-  return parts.join("").trim();
 }

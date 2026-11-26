@@ -448,3 +448,30 @@ describe("provider schema compatibility with owner contracts", () => {
     ).toThrow();
   });
 });
+
+describe("closed wire object property count constraints", () => {
+  it("enforces minProperties exactly and rejects invalid bounds rather than ignoring them", () => {
+    const schema: NpAgentJsonSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: { first: { type: "string", maxLength: 8 }, second: { type: "boolean" } },
+      minProperties: 2,
+    };
+    expect(() =>
+      npRequireAgentProviderSchemaValueV1(schema, { first: "ok", second: true }),
+    ).not.toThrow();
+    expect(() => npRequireAgentProviderSchemaValueV1(schema, { first: "ok" })).toThrow();
+    expect(() => npRequireAgentProviderSchemaValueV1(schema, { second: true })).toThrow();
+    expect(() =>
+      npRequireAgentProviderSchemaValueV1(schema, { first: "ok", extra: true }),
+    ).toThrow();
+    for (const invalid of [-1, 0.5, "2", null])
+      expect(() =>
+        npRequireAgentProviderSchemaValueV1(
+          { ...schema, minProperties: invalid },
+          { first: "ok", second: true },
+        ),
+      ).toThrow();
+  });
+});

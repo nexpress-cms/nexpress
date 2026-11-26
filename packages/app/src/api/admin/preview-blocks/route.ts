@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can, getTheme } from "@nexpress/core";
 import {
   getRegisteredBlockMetadataForActiveSources,
@@ -49,7 +50,7 @@ import { ensureFor } from "../../../lib/init-core";
  * state because the preview pane never falls into a "blank iframe"
  * failure mode.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireAuth(request);
@@ -256,3 +257,5 @@ function buildErrorDocument(message: string): string {
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

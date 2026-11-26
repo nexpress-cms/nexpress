@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "np.portfolio-vendored-fonts.v1",
+  "sourceRepository": "https://github.com/google/fonts",
+  "modifications": "Font binaries are unchanged. License texts have trailing horizontal whitespace removed; all other text is unchanged.",
+  "files": [
+    {
+      "file": "instrument-serif-normal.ttf",
+      "upstreamPath": "ofl/instrumentserif/InstrumentSerif-Regular.ttf",
+      "upstreamCommit": "0b58fb370093f9a9f4ff785d94405710b79de67c"
+    },
+    {
+      "file": "instrument-serif-italic.ttf",
+      "upstreamPath": "ofl/instrumentserif/InstrumentSerif-Italic.ttf",
+      "upstreamCommit": "0b58fb370093f9a9f4ff785d94405710b79de67c"
+    },
+    {
+      "file": "OFL.instrument-serif.txt",
+      "upstreamPath": "ofl/instrumentserif/OFL.txt",
+      "upstreamCommit": "0b58fb370093f9a9f4ff785d94405710b79de67c"
+    },
+    {
+      "file": "hanken-grotesk-normal.ttf",
+      "upstreamPath": "ofl/hankengrotesk/HankenGrotesk[wght].ttf",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0"
+    },
+    {
+      "file": "OFL.hanken-grotesk.txt",
+      "upstreamPath": "ofl/hankengrotesk/OFL.txt",
+      "upstreamCommit": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0"
+    }
+  ]
+}

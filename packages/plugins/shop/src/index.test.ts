@@ -1030,14 +1030,15 @@ describe("shop factory", () => {
       },
     });
     expect(shop.runtime.carrierExchangeAdapter?.id).toBe("test-carrier");
-    expect(Object.keys(shop.plugin.actions ?? {})).toEqual(
-      expect.arrayContaining([
-        "bookExchangeCarrier",
-        "resumeExchangeCarrier",
-        "shipBookedExchange",
-        "cancelExchangeCarrier",
-      ]),
-    );
+    const actionIds = Object.keys(shop.plugin.actions ?? {});
+    const bookingIndex = actionIds.indexOf("bookExchangeCarrier");
+    expect(bookingIndex).toBeGreaterThanOrEqual(0);
+    expect(actionIds.slice(bookingIndex, bookingIndex + 4)).toEqual([
+      "bookExchangeCarrier",
+      "resumeExchangeCarrier",
+      "shipBookedExchange",
+      "cancelExchangeCarrier",
+    ]);
     expect(shop.plugin.manifest.provides.adminExtensions).toContain(
       "action:shop-exchange-carrier-booking",
     );

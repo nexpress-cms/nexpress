@@ -21,6 +21,14 @@ import {
   npEnsureAgentReferenceMigrationV8,
   npAgentReferenceMigrationSqlV9,
   npEnsureAgentReferenceMigrationV9,
+  npAgentReferenceMigrationSqlV10,
+  npEnsureAgentReferenceMigrationV10,
+  npAgentReferenceMigrationSqlV11,
+  npEnsureAgentReferenceMigrationV11,
+  npAgentReferenceMigrationSqlV12,
+  npEnsureAgentReferenceMigrationV12,
+  npAgentReferenceMigrationSqlV13,
+  npEnsureAgentReferenceMigrationV13,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -345,4 +353,136 @@ it("requires and preserves Operator execution reference fencing", async () => {
   expect(createCustomMigration).toHaveBeenCalledTimes(1);
   await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- tampered");
   await expect(npEnsureAgentReferenceMigrationV9(options)).rejects.toThrow("differs");
+});
+
+it("appends evaluation history guards without changing the historical V1 inventory", async () => {
+  const migrationsFolder = await folder();
+  const baseline = npAgentReferenceMigrationSqlV1();
+  expect(baseline).not.toContain('ON public."np_agent_evaluation_sources"');
+  expect(baseline).not.toContain('ON public."np_agent_evaluation_reviews"');
+  await writeFile(
+    join(migrationsFolder, "0000.sql"),
+    baseline +
+      '\nCREATE TABLE "np_agent_evaluation_sources" ();\nCREATE TABLE "np_agent_evaluation_reviews" ();',
+  );
+  const createCustomMigration = vi.fn(() =>
+    writeFile(join(migrationsFolder, "0001.sql"), "-- custom shell"),
+  );
+  await npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration });
+  expect(await readFile(join(migrationsFolder, "0001.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV10(),
+  );
+  await npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration });
+  expect(createCustomMigration).toHaveBeenCalledOnce();
+  await writeFile(
+    join(migrationsFolder, "0001.sql"),
+    npAgentReferenceMigrationSqlV10() + "-- tampered",
+  );
+  await expect(
+    npEnsureAgentReferenceMigrationV10({ migrationsFolder, createCustomMigration }),
+  ).rejects.toThrow("differs");
+});
+
+it("appends Guardian workflow/effect fences after both tables while preserving shipped migration generations", async () => {
+  const migrationsFolder = await folder();
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0003.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV11(options);
+  expect(createCustomMigration).not.toHaveBeenCalled();
+  await writeFile(
+    join(migrationsFolder, "0002.sql"),
+    'CREATE TABLE "np_agent_actor_restrictions" ();',
+  );
+  await expect(npEnsureAgentReferenceMigrationV11(options)).rejects.toThrow("incomplete");
+  await writeFile(
+    join(migrationsFolder, "0002.sql"),
+    'CREATE TABLE "np_agent_actor_restrictions" ();\nCREATE TABLE "np_agent_restriction_enforcements" ();',
+  );
+  await expect(npEnsureAgentReferenceMigrationV11(options)).rejects.toThrow("incomplete");
+  const baseline = npAgentReferenceMigrationSqlV1(),
+    evaluation = npAgentReferenceMigrationSqlV10();
+  await writeFile(join(migrationsFolder, "0000.sql"), baseline);
+  await writeFile(join(migrationsFolder, "0001.sql"), evaluation);
+  await npEnsureAgentReferenceMigrationV11(options);
+  const generated = await readFile(join(migrationsFolder, "0003.sql"), "utf8");
+  expect(generated).toBe(npAgentReferenceMigrationSqlV11());
+  for (const table of ["np_agent_actor_restrictions", "np_agent_restriction_enforcements"]) {
+    expect(baseline).not.toContain(`ON public."${table}"`);
+    expect(generated).toContain(`BEFORE INSERT OR UPDATE OR DELETE ON public."${table}"`);
+    expect(generated).toContain(
+      "FOR EACH STATEMENT EXECUTE FUNCTION public.np_agent_reference_statement_v1()",
+    );
+    expect(generated).toContain("FOR EACH ROW EXECUTE FUNCTION public.np_agent_reference_row_v1()");
+  }
+  expect(await readFile(join(migrationsFolder, "0000.sql"), "utf8")).toBe(baseline);
+  expect(await readFile(join(migrationsFolder, "0001.sql"), "utf8")).toBe(evaluation);
+  await npEnsureAgentReferenceMigrationV11(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(join(migrationsFolder, "0003.sql"), generated + "-- tampered");
+  await expect(npEnsureAgentReferenceMigrationV11(options)).rejects.toThrow("differs");
+});
+
+it("adds immutable Guardian audit ownership without rewriting the original fence SQL", async () => {
+  const migrationsFolder = await folder(),
+    original = npAgentReferenceMigrationSqlV1();
+  await writeFile(join(migrationsFolder, "0000.sql"), original);
+  await writeFile(
+    join(migrationsFolder, "0001.sql"),
+    "CREATE TABLE \"np_agent_content_receipts\" ();\n-- guardian source CHECK inventory: 'guardian-event'",
+  );
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0002.sql"), "-- generated custom shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV12(options);
+  const generated = await readFile(join(migrationsFolder, "0002.sql"), "utf8");
+  expect(generated).toBe(npAgentReferenceMigrationSqlV12());
+  expect(generated).toBe(
+    await readFile(
+      new URL(
+        "../../../../apps/web/drizzle/0077_agent-guardian-source-reference-lifecycle.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  expect(generated).toContain("guardian-closure-audit");
+  await npEnsureAgentReferenceMigrationV12(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  expect(await readFile(join(migrationsFolder, "0000.sql"), "utf8")).toBe(original);
+  await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- changed\n");
+  await expect(npEnsureAgentReferenceMigrationV12(options)).rejects.toThrow("differs");
+});
+it("adds ordinary Runtime receipt fences only after the real table and preserves historical SQL", async () => {
+  const migrationsFolder = await folder(),
+    original = npAgentReferenceMigrationSqlV1();
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0002.sql"), "-- generated custom shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV13(options);
+  expect(createCustomMigration).not.toHaveBeenCalled();
+  await writeFile(
+    join(migrationsFolder, "0001.sql"),
+    'CREATE TABLE "np_agent_runtime_receipts" ();',
+  );
+  await expect(npEnsureAgentReferenceMigrationV13(options)).rejects.toThrow("incomplete");
+  await writeFile(join(migrationsFolder, "0000.sql"), original);
+  await npEnsureAgentReferenceMigrationV13(options);
+  const generated = await readFile(join(migrationsFolder, "0002.sql"), "utf8");
+  expect(generated).toBe(npAgentReferenceMigrationSqlV13());
+  expect(generated).toContain('ON public."np_agent_runtime_receipts"');
+  expect(generated).toContain(
+    "FOR EACH STATEMENT EXECUTE FUNCTION public.np_agent_reference_statement_v1()",
+  );
+  expect(generated).toContain("FOR EACH ROW EXECUTE FUNCTION public.np_agent_reference_row_v1()");
+  expect(original).not.toContain('ON public."np_agent_runtime_receipts"');
+  expect(original).not.toContain('ON public."np_agent_content_receipts"');
+  await npEnsureAgentReferenceMigrationV13(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  expect(await readFile(join(migrationsFolder, "0000.sql"), "utf8")).toBe(original);
+  await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- changed\n");
+  await expect(npEnsureAgentReferenceMigrationV13(options)).rejects.toThrow("differs");
 });

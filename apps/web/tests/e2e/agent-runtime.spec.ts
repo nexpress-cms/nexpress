@@ -20,6 +20,9 @@ import {
   npRequireAgentRuntimeStudioMutationResultV1,
   npRequireAgentRuntimeStudioTriggerV1,
   npRequireAgentRuntimeAdminInputV1,
+  npRequireAgentActivityRunResourceV1,
+  npRequireAgentActivityActionDetailV1,
+  npRequireAgentApprovalDetailV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -83,6 +86,327 @@ test("Runtime management stays unavailable without a host and new writes retain 
   });
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ error: { code: "CSRF_INVALID" } });
+});
+
+test("Runtime Run diagnoses the last provider call and clears the evidence on access loss", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 216 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const runId = "55555555-5555-4555-8555-555555555555";
+  const triggerId = "44444444-4444-4444-8444-444444444444";
+  const retryAt = "2026-09-14T00:01:00.000Z";
+  const detail = npRequireAgentActivityRunResourceV1({
+    schemaVersion: "np.agent-activity-run.v1",
+    run: {
+      schemaVersion: "np.agent-run.v1",
+      id: runId,
+      siteId: "default",
+      origin: "runtime",
+      agent: { id, versionId },
+      principalId,
+      rootRunId: runId,
+      parentRunId: null,
+      causalDepth: 0,
+      state: "waiting_retry",
+      goal: "[redacted]",
+      runLimits: {
+        schemaVersion: "np.agent-run-limits.v1",
+        maxAttempts: 2,
+        maxProviderCalls: 2,
+        maxCapabilityCalls: 2,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxCostMicros: 500,
+        maxWallClockSeconds: 120,
+      },
+      usage: null,
+      attempt: 1,
+      errorCode: null,
+      errorMessage: null,
+      queuedAt: "2026-09-14T00:00:00.000Z",
+      startedAt: "2026-09-14T00:00:01.000Z",
+      deadlineAt: "2026-09-14T00:02:00.000Z",
+      finishedAt: null,
+    },
+    invocationId: null,
+    evidence: "redacted",
+    auditEventIds: [],
+    runtimeDiagnostics: {
+      trigger: {
+        id: triggerId,
+        kind: "schedule",
+        eventKind: null,
+        scheduledFor: "2026-09-14T00:00:00.000Z",
+      },
+      retryAt,
+      providerCalls: [
+        {
+          sequence: 1,
+          provider: "fake",
+          model: "fixture-model",
+          state: "failed",
+          dispatchState: "dispatched",
+          errorClass: "transient",
+          latencyMs: 752,
+          usage: {
+            inputTokens: 6,
+            cachedInputTokens: 2,
+            outputTokens: 3,
+            tokenSource: "provider",
+            costMicros: 11,
+            costSource: "adapter-estimate",
+          },
+          startedAt: "2026-09-14T00:00:02.000Z",
+          finishedAt: "2026-09-14T00:00:03.000Z",
+        },
+      ],
+      moreProviderCalls: false,
+    },
+  });
+  let denied = false;
+  await page.route(`**/api/admin/agents/activity/${runId}`, (route) =>
+    route.fulfill(denied ? { status: 403, json: {} } : { json: detail }),
+  );
+  await page.route("**/api/admin/agents/activity/actions?*", (route) =>
+    route.fulfill({
+      json: { schemaVersion: "np.agent-activity-actions.v1", items: [], nextCursor: null },
+    }),
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByText(`Scheduled · ${triggerId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Retry eligible at", { exact: true })).toBeVisible();
+  await expect(page.locator(`time[datetime="${retryAt}"]`)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Call 1 · fake / fixture-model" })).toBeVisible();
+  await expect(page.getByText(/Dispatched · transient/)).toBeVisible();
+  await expect(page.getByText("752 ms", { exact: true })).toBeVisible();
+  await expect(page.getByText("6 / 2 / 3 · Provider reported", { exact: true })).toBeVisible();
+  await expect(page.getByText("11 · Adapter estimate", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  denied = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).first().click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
+  ).toBeVisible();
+  await expect(page.getByText("Runtime diagnostics", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Retry eligible at", { exact: true })).toHaveCount(0);
+});
+
+test("Runtime activity connects admission policy evidence, a human approval and the verified execution", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 221 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const runId = "55111111-1111-4111-8111-111111111111";
+  const requestId = "55111111-1111-4111-8111-111111111112";
+  const executionId = "55111111-1111-4111-8111-111111111113";
+  const approvalId = "55111111-1111-4111-8111-111111111114";
+  const changeSetId = "55111111-1111-4111-8111-111111111115";
+  const startedAt = "2026-09-14T00:00:01.000Z";
+  const finishedAt = "2026-09-14T00:01:00.000Z";
+  let executed = false;
+  let denied = false;
+  const runDetail = () =>
+    npRequireAgentActivityRunResourceV1({
+      schemaVersion: "np.agent-activity-run.v1",
+      run: {
+        schemaVersion: "np.agent-run.v1",
+        id: runId,
+        siteId: "default",
+        origin: "runtime",
+        agent: { id, versionId },
+        principalId,
+        rootRunId: runId,
+        parentRunId: null,
+        causalDepth: 0,
+        state: executed ? "succeeded" : "waiting_approval",
+        goal: "[redacted]",
+        runLimits: {
+          schemaVersion: "np.agent-run-limits.v1",
+          maxAttempts: 2,
+          maxProviderCalls: 2,
+          maxCapabilityCalls: 2,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          maxCostMicros: 500,
+          maxWallClockSeconds: 120,
+        },
+        usage: null,
+        attempt: 1,
+        errorCode: null,
+        errorMessage: null,
+        queuedAt: "2026-09-14T00:00:00.000Z",
+        startedAt,
+        deadlineAt: "2026-09-14T00:02:00.000Z",
+        finishedAt: executed ? finishedAt : null,
+      },
+      invocationId: null,
+      evidence: "redacted",
+      auditEventIds: [],
+      runtimeDiagnostics: {
+        trigger: null,
+        retryAt: null,
+        providerCalls: [],
+        moreProviderCalls: false,
+        policyRefs: [{ kind: "site-policy", id: "editorial-policy", version: 3, digest }],
+      },
+    });
+  const action = (complete: boolean) =>
+    npRequireAgentActivityActionDetailV1({
+      schemaVersion: "np.agent-activity-action.v1",
+      principalId,
+      invocationId: null,
+      evidence: "redacted",
+      inputHash: digest,
+      outputHash: complete ? digest : null,
+      auditEventId: null,
+      action: {
+        schemaVersion: "np.agent-action-projection.v1",
+        id: complete ? executionId : requestId,
+        siteId: "default",
+        runId,
+        sequence: complete ? 2 : 1,
+        capabilityId: "changeset.apply",
+        capabilityContractVersion: 1,
+        capabilityFingerprint: digest,
+        effectProfile: { id: "changeset.apply", contractVersion: 1 },
+        risk: "reversible",
+        state: complete ? "succeeded" : "approval_pending",
+        approvalId,
+        proposalHash: digest,
+        requiredScopes: ["changeset:apply"],
+        targetRefs: [],
+        inputRedacted: {},
+        outputRedacted: complete ? {} : null,
+        verificationState: null,
+        errorCode: null,
+        createdAt: startedAt,
+        startedAt: complete ? startedAt : null,
+        finishedAt: complete ? finishedAt : null,
+      },
+    });
+  await page.route(`**/api/admin/agents/activity/${runId}`, (route) =>
+    route.fulfill({ json: runDetail() }),
+  );
+  await page.route("**/api/admin/agents/activity/actions?*", (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-actions.v1",
+        items: executed ? [action(true), action(false)] : [action(false)],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route(`**/api/admin/agents/activity/actions/${requestId}`, (route) =>
+    route.fulfill({ json: { ...action(false), changeSetId } }),
+  );
+  await page.route(`**/api/admin/agents/activity/actions/${executionId}`, (route) =>
+    route.fulfill(
+      denied
+        ? { status: 403, json: {} }
+        : {
+            json: {
+              ...action(true),
+              changeSetId,
+              verificationResult: { state: "passed", completedAt: finishedAt, digest },
+            },
+          },
+    ),
+  );
+  await page.route(`**/api/admin/agents/approvals/${approvalId}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentApprovalDetailV1({
+        schemaVersion: "np.agent-approval-detail.v1",
+        rollbackReview: null,
+        review: null,
+        item: {
+          schemaVersion: "np.agent-approval-list-item.v1",
+          approval: {
+            id: approvalId,
+            generation: 1,
+            state: executed ? "consumed" : "pending",
+            statementHash: digest,
+            requiredHumanCapabilities: ["content.author"],
+            requiredHumanPredicates: [],
+            requestedAt: startedAt,
+            expiresAt: "2026-09-14T00:02:00.000Z",
+            decidedAt: executed ? finishedAt : null,
+          },
+          version: executed ? 3 : 1,
+          target: { kind: "changeset", changeSetId, planHash: digest, scheduledFor: null },
+          intendedOperation: "apply",
+          scheduledFor: null,
+          statementHash: digest,
+          reauthentication: { mode: "none" },
+          allowedDecisions: [],
+          risk: "reversible",
+          capabilityId: "changeset.apply",
+          capabilityContractVersion: 1,
+          capabilityFingerprint: digest,
+          policyHashes: [],
+          requiresLivePreview: false,
+          reviewSummary: {
+            operationCount: 1,
+            targetCount: 1,
+            previewState: null,
+            checksRun: null,
+            rollbackPlan: "unavailable",
+          },
+          requiredScopes: ["changeset:apply"],
+          requester: { kind: "principal", id: principalId },
+        },
+      }),
+    }),
+  );
+  await page.route(/\/api\/admin\/agents\/activity\?/, (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const match = query.get("approvalId") === approvalId;
+    const { schemaVersion, run, invocationId, evidence, auditEventIds } = runDetail();
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-runs.v1",
+        items:
+          match && !query.has("cursor")
+            ? [{ schemaVersion, run, invocationId, evidence, auditEventIds }]
+            : [],
+        nextCursor: match && !query.has("cursor") ? "next-approval-page" : null,
+      },
+    });
+  });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByRole("region", { name: "Policies at admission" })).toContainText(
+    "Site policy · version 3",
+  );
+  await page.getByRole("link", { name: /changeset\.apply.*approval_pending/ }).click();
+  await expect(page.getByText("No result recorded", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Open approval" }).click();
+  await expect(page.getByRole("heading", { name: "Server approval facts" })).toBeVisible();
+  await expect(page.getByText("pending", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "View related runs" }).click();
+  await expect(page.getByLabel("Approval ID", { exact: true })).toHaveValue(approvalId);
+  await page.getByRole("link", { name: "Next page" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toBeVisible();
+  await expect(page.getByLabel("Approval ID", { exact: true })).toHaveValue(approvalId);
+  executed = true;
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await page.getByRole("link", { name: /changeset\.apply.*succeeded/ }).click();
+  await expect(page.getByText("passed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verification completed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open ChangeSet" })).toHaveAttribute(
+    "href",
+    `/admin/agents/changesets/${changeSetId}`,
+  );
+  await page.getByRole("link", { name: "Open approval" }).click();
+  await expect(page.getByText("consumed", { exact: true })).toBeVisible();
+  denied = true;
+  await page.goto(`/admin/agents/activity/actions/${executionId}`);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open approval" })).toHaveCount(0);
 });
 
 test("Runtime activation waits for acknowledgement and readback before showing active controls", async ({
@@ -225,6 +549,7 @@ test("Runtime activation waits for acknowledgement and readback before showing a
   await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toHaveCount(0);
   await readback!.fulfill({ json: active });
   await expect(activeStatus).toBeVisible();
+  await expect(activeStatus).toBeFocused();
   await expect(activate).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toBeEnabled();
@@ -232,7 +557,9 @@ test("Runtime activation waits for acknowledgement and readback before showing a
   await expect(page.getByRole("button", { name: "Archive Agent", exact: true })).toBeEnabled();
   await expect(page.getByText("manual · enabled", { exact: true })).toBeVisible();
   await expect(page.getByText(triggerId, { exact: true })).toBeVisible();
-  await expect(page.getByText("Effective configuration review", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /^Effective configuration review/ })).toHaveCount(
+    0,
+  );
   expect(detailReads).toBe(2);
   expect(writes).toHaveLength(1);
   expect(unexpected).toEqual([]);
@@ -259,7 +586,7 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
         ...catalog,
         recipes: catalog.recipes.map((recipe) => ({
           ...recipe,
-          triggerKinds: ["manual", "event"],
+          triggerKinds: ["event", "manual", "schedule"],
         })),
       },
     }),
@@ -315,6 +642,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await expect.poll(() => requests.some((query) => query.includes("name=Worker"))).toBe(true);
   await page.getByRole("link", { name: "Worker observer", exact: true }).click();
+  await expect(page.getByRole("link", { name: "View activity", exact: true })).toHaveAttribute(
+    "href",
+    `/admin/agents/activity?origin=runtime&agentId=${id}`,
+  );
   await expect(
     page.getByRole("button", { name: "Activate reviewed version", exact: true }),
   ).toBeDisabled();
@@ -333,6 +664,16 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await tabTo(page, enableTrigger);
   await page.keyboard.press("Space");
   await expect(enableTrigger).toBeChecked();
+  await page.getByRole("button", { name: "Add schedule trigger", exact: true }).click();
+  const cron = page.getByLabel("Five-field UTC cron", { exact: true });
+  await expect(cron).toHaveValue("*/5 * * * *");
+  await cron.fill("*/15 * * * *");
+  await page.getByRole("combobox", { name: "Missed schedule handling", exact: true }).click();
+  await page.getByRole("option", { name: "Catch up once", exact: true }).click();
+  await expect(
+    page.getByLabel("Enable after activation", { exact: true }).nth(1),
+  ).not.toBeChecked();
+  expect(writes).toHaveLength(0);
   await page.getByRole("button", { name: "Add event trigger", exact: true }).click();
   await page.getByRole("combobox", { name: "Registered event kind", exact: true }).click();
   await page.getByRole("option", { name: "security.edge.signal", exact: true }).click();
@@ -369,6 +710,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
     reviewedPolicyRefs: [],
     triggers: [
       { definition: { type: "manual" }, enabled: true },
+      {
+        definition: { type: "schedule", cron: "*/15 * * * *", catchUp: "once" },
+        enabled: false,
+      },
       {
         definition: {
           type: "event",

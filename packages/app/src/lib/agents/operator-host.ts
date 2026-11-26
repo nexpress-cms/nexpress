@@ -17,6 +17,7 @@ import type {
 } from "@nexpress/core/agents";
 import type {
   NpAgentAuditRunInputV1,
+  NpAgentAuditCheckFamily,
   NpAgentAuditCheckV1,
   NpAgentJsonObject,
   NpAgentOpsPlanInputV1,
@@ -34,7 +35,7 @@ import {
   checkObservabilityAdapters,
   checkSiteUrl,
   checkStorageAdapter,
-} from "../system-health";
+} from "../system-health-checks";
 
 import {
   collectOperatorObservation,
@@ -44,7 +45,33 @@ import {
   collectOperatorWorkerObservation,
   diagnoseOperatorWorkerObservation,
 } from "./operator-worker-observation";
+import {
+  collectOperatorProgressObservation,
+  unavailableOperatorProgressObservation,
+} from "./operator-progress-observation";
+import {
+  collectOperatorAuditObservation,
+  type NpAgentOperatorAuditObservationOwnersV1,
+  type NpAgentOperatorAuditObservationV1,
+} from "./operator-audit-observations";
+export {
+  npDigestAgentOperatorRenderedHtmlV1,
+  type NpAgentOperatorAuditObservationOwnersV1,
+  type NpAgentOperatorAuditObservationV1,
+  type NpAgentOperatorRenderedAccessibilityReportV1,
+  type NpAgentOperatorSecurityReportV1,
+} from "./operator-audit-observations";
 export type { NpAgentOperatorObservationOwnersV1 } from "./operator-observations";
+
+import { collectOperatorQueuePlanV1 } from "./operator-queue-plan";
+import {
+  npCollectAgentOperatorReportChecksV1,
+  type NpAgentOperatorReportSourcesV1,
+} from "./operator-report-sources";
+export {
+  npCollectAgentOperatorReportChecksV1,
+  type NpAgentOperatorReportSourcesV1,
+} from "./operator-report-sources";
 
 type Family = NpAgentOpsStatusInputV1["families"][number];
 type Check = NpOpsStatusV1["checks"][number];
@@ -64,10 +91,18 @@ export interface NpAgentOperatorScopedObservationV1 {
   targetCount?: number;
 }
 export interface NpAgentOperatorAppHostOptionsV1 {
+  /** Independent current staff target and deployment ACL for retained safe evidence. */
+  authorizeReview?: NonNullable<NpAgentOperatorHostV1["assertReviewAccess"]>;
   /** Concrete read-only owners. Absent sources remain unavailable. */
   observationOwners?: NpAgentOperatorObservationOwnersV1;
   /** Explicit deployment-wide Agent queue/worker observation; requires authorizeDeployment. */
   workerDiagnostics?: "pg-boss";
+  /** Explicit retained transition observations, separate from snapshots and worker liveness. */
+  progressDiagnostics?: "pg-boss";
+  /** Explicit read-only local worker runbook plans. No commands are executed. */
+  queuePlans?: "pg-boss";
+  /** Explicit retained Doctor/release files; current deployment authority is required around reads. */
+  reportSources?: NpAgentOperatorReportSourcesV1;
   /** Explicit deployment-owned route/tag resolver. Must return only the selected site's exact target. */
   cacheTargets?(
     request: NpAgentOperatorHostContextV1 & {
@@ -93,12 +128,14 @@ export interface NpAgentOperatorAppHostOptionsV1 {
   >;
   auditReaders?: Partial<
     Record<
-      "contracts" | "jobs" | "storage" | "plugins",
+      NpAgentAuditCheckFamily,
       (
         request: NpAgentOperatorHostContextV1 & { input: NpAgentAuditRunInputV1; auditId: string },
-      ) => Promise<NpAgentOperatorScopedObservationV1>
+      ) => Promise<NpAgentOperatorAuditObservationV1>
     >
   >;
+  /** Explicit bounded audit families and actual read/render/report owners; missing sources report unknown. */
+  auditObservations?: NpAgentOperatorAuditObservationOwnersV1;
   /** Install the existing Core schema.get executor, retaining its current collection ACL. */
   readSchema?: NpAgentReadCapabilityExecutorsV1["schema.get"];
   /** Host configuration only: never taken from a capability input. */
@@ -268,16 +305,10 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
         )
           unavailable();
         if (
-          family !== "contracts" &&
-          family !== "jobs" &&
-          family !== "storage" &&
-          family !== "plugins"
-        )
-          unavailable();
-        if (
           !options.auditReaders?.[family] &&
           !hasObservation(family) &&
-          !(family === "contracts" && options.readSchema)
+          !(family === "contracts" && options.readSchema) &&
+          !options.auditObservations?.families.includes(family)
         )
           unavailable();
       }
@@ -292,12 +323,21 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
   }
   const host: NpAgentOperatorHostV1 = {
     assertAccess,
+    async assertReviewAccess(request) {
+      if (!options.authorizeReview) unavailable();
+      await options.authorizeReview(request);
+    },
+    async preflightExecution(request) {
+      await assertAccess({ ...request, capabilityId: "ops.execute" });
+      if (process.env.NP_REMOTE_OPS_MUTATIONS !== "1") unavailable();
+    },
     async assertApprovalAccess(request) {
       if (!options.authorizeApproval) unavailable();
       await options.authorizeApproval(request);
     },
     async execute(request) {
       await assertAccess({ ...request, capabilityId: "ops.execute" });
+      if (process.env.NP_REMOTE_OPS_MUTATIONS !== "1") unavailable();
       if (request.input.action !== "cache.revalidate") {
         if (!options.runtimeOperations) unavailable();
         const result = await options.runtimeOperations.execute(request);
@@ -313,6 +353,7 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       await assertAccess({ ...request, capabilityId: "ops.execute" });
       if (request.abortSignal.aborted) unavailable();
       const invalidation = npNormalizeCacheInvalidationRequest(artifact.request);
+      if (process.env.NP_REMOTE_OPS_MUTATIONS !== "1") unavailable();
       const result = await npInvalidateCache(invalidation);
       await assertAccess({ ...request, capabilityId: "ops.execute" });
       return {
@@ -328,20 +369,10 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
     },
     async audit(request) {
       const authorization = { ...request, capabilityId: "audit.run" as const };
-      await options.authorize(authorization);
-      const supported = new Set(["contracts", "jobs", "storage", "plugins"]);
-      // Audit never upgrades a configuration-only check into a measured content or security audit.
-      if (request.input.families.some((family) => !supported.has(family))) unavailable();
+      await assertAccess(authorization);
       const checks: NpAgentAuditCheckV1[] = [];
       let targets = 0;
       for (const family of request.input.families) {
-        if (
-          family !== "contracts" &&
-          family !== "jobs" &&
-          family !== "storage" &&
-          family !== "plugins"
-        )
-          unavailable();
         if (family === "contracts" && !options.auditReaders?.contracts && options.readSchema) {
           if (
             request.input.collections.length === 0 ||
@@ -364,30 +395,58 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
         const reader = options.auditReaders?.[family];
         const remaining = request.input.maxTargets - targets;
         if (remaining < 1) unavailable();
-        let observation: NpAgentOperatorScopedObservationV1;
+        let observation: NpAgentOperatorAuditObservationV1;
+        let consumedTargets: number | undefined;
         if (reader) {
           observation = await reader({
             ...request,
             input: { ...request.input, maxTargets: remaining },
           });
-        } else if (family !== "contracts" && hasObservation(family)) {
+        } else if (
+          (family === "jobs" || family === "storage" || family === "plugins") &&
+          hasObservation(family)
+        ) {
           if (family === "plugins" && !(await options.authorizeDeployment?.(authorization)))
             unavailable();
-          observation = await collectOperatorObservation(
+          const observationBound =
+            family === "jobs" && options.progressDiagnostics === "pg-boss" && remaining > 1
+              ? Math.floor(remaining / 2)
+              : remaining;
+          const concrete = await collectOperatorObservation(
             options.observationOwners!,
             family,
             request,
-            remaining,
+            observationBound,
             request.input.collections,
           );
+          observation = concrete;
+          consumedTargets = concrete.consumedTargets;
           if (family === "plugins" && !(await options.authorizeDeployment?.(authorization)))
             unavailable();
+        } else if (options.auditObservations?.families.includes(family)) {
+          observation = await collectOperatorAuditObservation(
+            options.auditObservations,
+            family,
+            { ...request, input: { ...request.input, maxTargets: remaining } },
+            () => options.authorize(authorization),
+          );
+          consumedTargets = observation.consumedTargets;
         } else unavailable();
         const count = observation.targetCount ?? observation.evidenceRefs.length;
-        if (!Number.isSafeInteger(count) || count < 0) unavailable();
-        targets += count;
+        const consumed =
+          consumedTargets ??
+          observation.consumedTargets ??
+          (observation.state === "unknown" ? remaining : count);
         if (
-          !["ok", "warn", "error"].includes(observation.state) ||
+          !Number.isSafeInteger(count) ||
+          count < 0 ||
+          !Number.isSafeInteger(consumed) ||
+          consumed < count
+        )
+          unavailable();
+        targets += consumed;
+        if (
+          !["ok", "warn", "error", "unknown"].includes(observation.state) ||
           observation.evidenceRefs.length === 0 ||
           targets > request.input.maxTargets
         )
@@ -398,11 +457,42 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           status:
             observation.state === "ok"
               ? ("pass" as const)
-              : observation.state === "error"
-                ? ("fail" as const)
-                : ("warn" as const),
+              : observation.state === "unknown"
+                ? ("unknown" as const)
+                : observation.state === "error"
+                  ? ("fail" as const)
+                  : ("warn" as const),
           evidenceRefs: observation.evidenceRefs,
         });
+        if (family === "jobs" && !reader && options.progressDiagnostics === "pg-boss") {
+          const progressBound = request.input.maxTargets - targets;
+          const progress =
+            progressBound > 0
+              ? await collectOperatorProgressObservation({
+                  scope: { kind: "site", siteId: request.siteId },
+                  maxTargets: progressBound,
+                  abortSignal: request.abortSignal,
+                  authorize: () => options.authorize(authorization),
+                })
+              : unavailableOperatorProgressObservation({ kind: "site", siteId: request.siteId });
+          const progressConsumed = progress.consumedTargets ?? progress.targetCount;
+          if (
+            !Number.isSafeInteger(progress.targetCount) ||
+            progress.targetCount < 0 ||
+            !Number.isSafeInteger(progressConsumed) ||
+            progressConsumed < progress.targetCount ||
+            progressConsumed > progressBound
+          )
+            unavailable();
+          targets += progressConsumed;
+          if (targets > request.input.maxTargets) unavailable();
+          checks.push({
+            id: progress.check.id,
+            family: "jobs",
+            status: progress.check.state === "ok" ? "pass" : "unknown",
+            evidenceRefs: progress.evidenceRefs,
+          });
+        }
       }
       await assertAccess(authorization);
       return { checks };
@@ -438,6 +528,15 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
         await assertAccess({ ...request, capabilityId: "ops.plan" });
         return result;
       }
+      if (request.input.action === "queue.global.plan" && options.queuePlans === "pg-boss") {
+        if (!(await options.authorizeDeployment?.({ ...request, capabilityId: "ops.plan" })))
+          unavailable();
+        const result = await collectOperatorQueuePlanV1(request);
+        await assertAccess({ ...request, capabilityId: "ops.plan" });
+        if (!(await options.authorizeDeployment?.({ ...request, capabilityId: "ops.plan" })))
+          unavailable();
+        return result;
+      }
       if (request.input.action !== "restore.plan" || !options.backupEnv) unavailable();
       const manifestId = request.input.target.manifestId;
       // Never interpolate model-supplied shell syntax, paths, or the moving "latest" alias.
@@ -451,8 +550,8 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
         artifact: JSON.parse(JSON.stringify(artifact)) as NpAgentJsonObject,
         contractId: "ops.backup",
         projectCommand: `pnpm --silent run ops:backup -- restore-plan ${manifestId} --json`,
-        checks: artifact.checks.map((check, index) => ({
-          id: `backup.check.${index.toString()}`,
+        checks: artifact.checks.map((check) => ({
+          id: check.id,
           status: check.state === "ok" ? "pass" : check.state === "error" ? "fail" : "warn",
         })),
       };
@@ -467,6 +566,16 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       const request: Request = { ...context, capabilityId: "ops.status", input };
       await options.authorize(request);
       let checks = await Promise.all(input.families.map((family) => readFamily(family, request)));
+      let reportChecks: Check[] = [];
+      if (
+        options.reportSources &&
+        input.families.includes("readiness") &&
+        (await options.authorizeDeployment?.(request))
+      ) {
+        reportChecks = await npCollectAgentOperatorReportChecksV1(options.reportSources);
+        await options.authorize(request);
+        if (!(await options.authorizeDeployment?.(request))) reportChecks = [];
+      }
       const settings = context.runtimeRecipeSettings;
       const thresholds =
         settings?.recipeId === "operator.worker-not-draining"
@@ -476,6 +585,20 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
             }
           : { staleAfterSeconds: 300, minimumPendingJobs: 1 };
       let workerChecks: Check[] = [];
+      const progressChecks: Check[] = [];
+      if (
+        options.progressDiagnostics === "pg-boss" &&
+        options.observationOwners?.jobs === "pg-boss" &&
+        input.families.includes("jobs")
+      ) {
+        const progress = await collectOperatorProgressObservation({
+          scope: { kind: "site", siteId: request.siteId },
+          maxTargets: 1000,
+          abortSignal: context.abortSignal,
+          authorize: () => options.authorize(request),
+        });
+        progressChecks.push(progress.check);
+      }
       if (options.workerDiagnostics === "pg-boss" && input.families.includes("jobs")) {
         workerChecks = diagnoseOperatorWorkerObservation(thresholds, {
           paused: null,
@@ -492,6 +615,18 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
             },
           });
           workerChecks = result.checks;
+          if (options.progressDiagnostics === "pg-boss") {
+            const progress = await collectOperatorProgressObservation({
+              scope: { kind: "deployment" },
+              maxTargets: 1000,
+              abortSignal: context.abortSignal,
+              authorize: async () => {
+                await options.authorize(request);
+                if (!(await options.authorizeDeployment?.(request))) unavailable();
+              },
+            });
+            workerChecks.push(progress.check);
+          }
         }
       }
       await options.authorize(request);
@@ -511,7 +646,8 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           workers: null,
         }).checks;
       }
-      checks.push(...workerChecks);
+      if (reportChecks.length && !(await options.authorizeDeployment?.(request))) reportChecks = [];
+      checks.push(...progressChecks, ...workerChecks, ...reportChecks);
       const errors = checks.filter((check) => check.state === "error").length;
       const warnings = checks.filter((check) => check.state === "warn").length;
       const report: NpOpsStatusV1 = {

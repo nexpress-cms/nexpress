@@ -3,7 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
-  NP_AGENT_REFERENCE_FENCE_SQL_V5,
+  NP_AGENT_REFERENCE_FENCE_SQL_V6,
   npAgentReferenceFenceCoverageSqlV1,
   npAgentReferenceFenceTriggersSqlV1,
 } from "../../../packages/core/src/agent/reference-fence-sql.js";
@@ -33,7 +33,7 @@ const tables = [
  * fixture-only receipts prove the owning canonical evidence verifiers.
  */
 describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQL protocol", () => {
-  const database = `np_fence_${randomUUID().replaceAll("-", "")}`;
+  let database: string;
   let admin: pg.Client;
   let observer: pg.Client;
   let cleaner: pg.Client;
@@ -41,6 +41,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   let databaseUrl: string;
 
   beforeAll(async () => {
+    // The existing integration global teardown removes every database in this
+    // run namespace after all workers stop. Dropping this I/O-heavy protocol
+    // database mid-run can wait for a shared-cluster checkpoint beyond the
+    // ordinary hook budget, even when every producer/client is already closed.
+    const runId = process.env.NP_TEST_DB_RUN_ID;
+    if (!runId || !/^r[a-z0-9]+$/u.test(runId))
+      throw new Error("Reference fence tests require the integration database run namespace.");
+    database = `np_fence_${runId}_${randomUUID().replaceAll("-", "")}`;
+    if (database.length > 63)
+      throw new Error("Reference fence database identity exceeds the PostgreSQL name limit.");
     const url = new URL(process.env.TEST_DATABASE_URL!);
     url.pathname = "/postgres";
     admin = new pg.Client({ connectionString: url.href });
@@ -75,7 +85,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       CREATE TABLE np_agent_preview_artifact_uploads(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
       CREATE TABLE np_agent_preview_viewer_launches(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
       CREATE TABLE np_agent_preview_render_sessions(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
-      ${NP_AGENT_REFERENCE_FENCE_SQL_V5}
+      ${NP_AGENT_REFERENCE_FENCE_SQL_V6}
       ${tables.map(npAgentReferenceFenceTriggersSqlV1).join("\n")}
     `);
   });
@@ -90,11 +100,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   });
 
   afterAll(async () => {
-    for (const client of [writer, cleaner, observer]) await client?.end();
-    if (admin) {
-      await admin.query(`DROP DATABASE IF EXISTS ${database}`);
-      await admin.end();
-    }
+    const results = await Promise.allSettled(
+      [writer, cleaner, observer, admin].map((client) => client?.end()),
+    );
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length) throw new AggregateError(errors, "Reference fence client cleanup failed.");
   });
 
   async function waitForPid(pid: number): Promise<void> {
@@ -110,7 +122,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   }
 
   async function writerPid(): Promise<number> {
-    return (await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+    return (await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0].pid;
   }
 
   async function lockCleaner(): Promise<void> {
@@ -425,7 +437,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
         "INSERT INTO np_agent_source_releases(site_id,source_id) VALUES('site-a',$1) RETURNING id",
         [sourceId],
       );
-      const releaseId = rows[0]!.id;
+      const releaseId = rows[0].id;
       await cleaner.query(
         "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id,source_release_id,edge_code) VALUES('site-a','read-action',$1,$2,'action-run')",
         [actionId, releaseId],
@@ -755,11 +767,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       "CREATE OR REPLACE FUNCTION public.np_agent_reference_lock_v1() RETURNS void LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,public AS $$BEGIN RETURN; END$$",
     );
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V5);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V6);
     expect((await observer.query(query)).rows[0].missing_count).toBe("0");
     await observer.query("ALTER FUNCTION public.np_agent_reference_lock_v1() STABLE");
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V5);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V6);
   });
 
   it("guards direct old/new job partitions and fences partition attachment", async () => {

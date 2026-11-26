@@ -1,6 +1,9 @@
 "use client";
 
-import type { NpAgentRecipeSettingsV1 } from "@nexpress/core/agent-contract";
+import {
+  npAgentModeratorRecipeSetupV1,
+  type NpAgentRecipeSettingsV1,
+} from "@nexpress/core/agent-contract";
 import { RuntimeNumber } from "./agent-runtime-fields.js";
 import { RuntimeStringList } from "./agent-policy-fields.js";
 
@@ -19,15 +22,7 @@ export function runtimeRecipeDraft(
         batchSize: 1,
       };
     case "moderator.repeated-link-spam":
-      return {
-        recipeId: id,
-        recipeVersion: 1,
-        collectionSlugs: [],
-        windowSeconds: 3600,
-        minIndependentAccounts: 3,
-        minItems: 3,
-        automaticConfidenceBasisPoints: 10000,
-      };
+      return { ...npAgentModeratorRecipeSetupV1.settings, collectionSlugs: [] };
     case "operator.worker-not-draining":
       return {
         recipeId: id,
@@ -113,6 +108,13 @@ export function RuntimeRecipeFields({
           requires separate human approval.
         </p>
       ) : null}
+      {value.recipeId === "moderator.repeated-link-spam" ? (
+        <p className="text-sm text-neutral-500">
+          Choose at least one collection explicitly before saving. Reviews use a fixed 10-minute
+          observation window. Rule scores never authorize automatic quarantine: every proposal
+          requires human approval. Restoration remains a separate staff review.
+        </p>
+      ) : null}
       {"collectionSlugs" in value ? (
         <RuntimeStringList
           label="Collection slugs"
@@ -152,17 +154,33 @@ export function RuntimeRecipeFields({
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(value)
-          .filter(([key, entry]) => key !== "recipeVersion" && typeof entry === "number")
-          .map(([key, entry]) => (
-            <RuntimeNumber
-              key={key}
-              label={labels[key] ?? key}
-              value={Number(entry)}
-              min={bounds[key]?.[0] ?? 0}
-              max={bounds[key]?.[1] ?? Number.MAX_SAFE_INTEGER}
-              onChange={(next) => onChange({ ...value, [key]: next ?? bounds[key]?.[0] ?? 0 })}
-            />
-          ))}
+          .filter(
+            ([key, entry]) =>
+              key !== "recipeVersion" &&
+              typeof entry === "number" &&
+              !(
+                value.recipeId === "moderator.repeated-link-spam" &&
+                key === "automaticConfidenceBasisPoints"
+              ),
+          )
+          .map(([key, entry]) => {
+            const [min, max] =
+              value.recipeId === "moderator.repeated-link-spam"
+                ? key === "windowSeconds"
+                  ? [600, 600]
+                  : [2, 100]
+                : (bounds[key] ?? [0, Number.MAX_SAFE_INTEGER]);
+            return (
+              <RuntimeNumber
+                key={key}
+                label={labels[key] ?? key}
+                value={Number(entry)}
+                min={min}
+                max={max}
+                onChange={(next) => onChange({ ...value, [key]: next ?? min })}
+              />
+            );
+          })}
       </div>
     </fieldset>
   );

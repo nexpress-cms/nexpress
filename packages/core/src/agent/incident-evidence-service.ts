@@ -1,9 +1,10 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { npReadAgentEventRowsV1 } from "./event-evidence.js";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
-import { npAgentEvents, npAgentIncidentSignals, npAgentSignals } from "../db/schema/agent.js";
+import { type npAgentEvents, npAgentIncidentSignals, npAgentSignals } from "../db/schema/agent.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import {
-  npInspectCommunityCommentEvidenceV1,
+  npInspectCommunityCommentEvidenceBatchV1,
   type NpCommunityContentTargetV1,
 } from "../community/content-containment.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -33,6 +34,13 @@ import {
   npResolveAgentStaffSessionAuthorizationV1,
 } from "./admin-admission.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
+import { npInspectAgentModeratorCommentReportSourceV1 } from "./moderator-report-source.js";
+import { npInspectAgentModeratorDocumentReportSourceV1 } from "./moderator-document-report-source.js";
+import {
+  npCollectionDocumentStatuses,
+  npCollectionDocumentVisibilities,
+} from "../collection-contract/types.js";
+import { canonicalBodyEnum } from "../agent-contract/canonical-body-validation.js";
 
 type Db = ReturnType<typeof getDb>;
 type Facts = {
@@ -40,17 +48,34 @@ type Facts = {
   auth: Awaited<ReturnType<typeof npResolveAgentStaffSessionAuthorizationV1>>;
   incident: NpAgentIncidentV1;
   sources: (typeof npAgentEvents.$inferSelect)[];
+  comments: Map<
+    string,
+    Awaited<ReturnType<typeof npInspectCommunityCommentEvidenceBatchV1>>[number]
+  >;
 };
 type Input = Omit<NpAgentIncidentStaffContextV1, "transaction"> & { incidentId: string };
 type EventRef = Extract<NpAgentEvidenceRef, { kind: "event" }>;
 type Group = { eventId: string; signalIds: string[]; refs: EventRef[] };
+// The existing canonical Incident owns at most 100 Signals, each with at most
+// 100 evidence references. This is a whole-Incident authority bound, distinct
+// from the ten items returned on one UI page.
+const MAXIMUM_INCIDENT_EVENTS = 100 * 100;
+export interface NpAgentIncidentTargetPageV1 {
+  targets: NpCommunityContentTargetV1[];
+  nextCursor: string | null;
+}
 export interface NpAgentIncidentEvidenceServiceV1 {
   canReadStaffIncident: NonNullable<NpAgentIncidentServiceOptionsV1["canReadStaffIncident"]>;
   get(input: Input & { cursor?: string | null }): Promise<NpAgentIncidentEvidenceV1>;
-  /** Directly reusable as response.resolveTargets. Caller transaction and canonical Incident remain bound. */
+  /** Directly reusable as response.resolveTargets. Absent cursor preserves the legacy array up to 100 targets; larger results use the bounded first page. Caller transaction and canonical Incident remain bound. */
   resolveTargets(
-    input: Input & { db: Db; incident: NpAgentIncidentV1 },
-  ): Promise<NpCommunityContentTargetV1[]>;
+    input: Input & {
+      db: Db;
+      incident: NpAgentIncidentV1;
+      cursor?: string | null;
+      target?: NpCommunityContentTargetV1;
+    },
+  ): Promise<NpCommunityContentTargetV1[] | NpAgentIncidentTargetPageV1>;
 }
 const unavailable = () =>
   new NpAgentGatewayError(
@@ -75,6 +100,46 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     options.cursorHmacKey,
     "np.agent-incident-evidence.cursor",
   );
+  const sourceRows = npReadAgentEventRowsV1;
+  async function inspectComments(
+    db: Db,
+    input: Input,
+    user: Facts["user"],
+    sources: Facts["sources"],
+  ) {
+    const selected: { eventId: string; target: NpCommunityContentTargetV1 }[] = [];
+    for (const source of sources) {
+      try {
+        const checked = await npReadAgentModeratorCommentSourceV1(source);
+        if (checked)
+          selected.push({
+            eventId: source.id,
+            target: {
+              kind: "comment",
+              collection: checked.event.subject.collection,
+              id: checked.event.subject.commentId,
+            },
+          });
+      } catch {
+        // Projection remains responsible for rejecting invalid canonical sources.
+      }
+    }
+    const comments: Facts["comments"] = new Map();
+    for (let offset = 0; offset < selected.length; offset += 100) {
+      const page = selected.slice(offset, offset + 100);
+      const inspected = await npInspectCommunityCommentEvidenceBatchV1(
+        db as unknown as NpTransaction,
+        {
+          siteId: input.siteId,
+          user,
+          targets: page.map((item) => item.target),
+        },
+      );
+      for (const [index, item] of page.entries())
+        comments.set(item.eventId, inspected[index] ?? null);
+    }
+    return comments;
+  }
   async function snapshot(db: Db, input: Input) {
     canonicalBodyUuid(input.incidentId, "incidentId");
     const auth = await npResolveAgentStaffSessionAuthorizationV1(
@@ -124,7 +189,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
         if (ref.kind !== "event") continue;
         let group = byEvent.get(ref.eventId);
         if (!group) {
-          if (byEvent.size >= 100) throw unavailable();
+          if (byEvent.size >= MAXIMUM_INCIDENT_EVENTS) throw unavailable();
           group = { eventId: ref.eventId, signalIds: [], refs: [] };
           byEvent.set(ref.eventId, group);
         }
@@ -133,24 +198,15 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       }
     }
     const groups = [...byEvent.values()].sort((a, b) => a.eventId.localeCompare(b.eventId));
-    const sources = groups.length
-      ? await db
-          .select()
-          .from(npAgentEvents)
-          .where(
-            and(
-              eq(npAgentEvents.siteId, input.siteId),
-              inArray(
-                npAgentEvents.id,
-                groups.map((g) => g.eventId),
-              ),
-            ),
-          )
-          .orderBy(asc(npAgentEvents.id))
-      : [];
+    const sources = await sourceRows(
+      db,
+      input.siteId,
+      groups.map((g) => g.eventId),
+    );
+    const comments = await inspectComments(db, input, user, sources);
     const items: NpAgentIncidentEvidenceItemV1[] = [];
     for (const group of groups)
-      items.push(await project(db, input, { auth, incident, sources, user }, group));
+      items.push(await project(db, input, { auth, incident, sources, user, comments }, group));
     // The authenticated cursor carries only a binding MAC; no private source body leaves the server.
     const binding = codec.mac(
       JSON.stringify({
@@ -189,7 +245,152 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     } catch {
       return missing;
     }
-    if (!checked) return missing;
+    if (!checked && source.sourceComponent === "community.document-reports") {
+      let inspected;
+      try {
+        inspected = await npInspectAgentModeratorDocumentReportSourceV1(db, source, facts.user);
+      } catch (error) {
+        if (
+          error instanceof NpForbiddenError ||
+          error instanceof NpNotFoundError ||
+          error instanceof NpValidationError
+        )
+          return missing;
+        throw error;
+      }
+      if (!inspected) return missing;
+      const { event } = inspected.source;
+      const hexDigest = Buffer.from(
+        source.eventHash.slice("cj1:sha256:".length),
+        "base64url",
+      ).toString("hex");
+      if (
+        group.refs.some(
+          (ref) =>
+            ref.digest !== hexDigest ||
+            ref.eventKind !== event.kind ||
+            ref.observedAt !== event.occurredAt,
+        )
+      )
+        return missing;
+      const { document, config, report } = inspected;
+      const hiddenField = config.community?.moderation?.hiddenField;
+      const moderationHidden = hiddenField ? document[hiddenField] : undefined;
+      if (typeof moderationHidden !== "boolean") return missing;
+      const state = moderationHidden ? "hidden" : inspected.unchanged ? "unchanged" : "changed";
+      return {
+        eventId: group.eventId,
+        signalIds: group.signalIds,
+        availability: "available",
+        target: {
+          kind: "document",
+          collection: event.subject.collection,
+          id: event.subject.documentId,
+        },
+        observed: {
+          occurredAt: event.occurredAt,
+          retentionExpiresAt: source.expiresAt.toISOString(),
+          status: "published",
+          visibility: "public",
+          spamVerdict: "unknown",
+          profanityVerdict: "unknown",
+          reportFiled: true,
+        },
+        current: {
+          state,
+          status: canonicalBodyEnum(
+            document.status,
+            "evidence.document.status",
+            new Set(npCollectionDocumentStatuses),
+          ),
+          visibility: canonicalBodyEnum(
+            document.visibility,
+            "evidence.document.visibility",
+            new Set(npCollectionDocumentVisibilities),
+          ),
+          moderationHidden,
+          editedAt: document.updatedAt instanceof Date ? document.updatedAt.toISOString() : null,
+          versionDigest: inspected.versionDigest,
+          report: {
+            status: report.resolvedAt === null ? "unresolved" : "resolved",
+            resolvedAt: report.resolvedAt?.toISOString() ?? null,
+          },
+        },
+        responseEligible:
+          state === "unchanged" &&
+          inspected.eligible &&
+          report.resolvedAt === null &&
+          !["resolved", "dismissed"].includes(facts.incident.status),
+      };
+    }
+    if (!checked) {
+      let inspected;
+      try {
+        inspected = await npInspectAgentModeratorCommentReportSourceV1(db, source, facts.user);
+      } catch (error) {
+        if (
+          error instanceof NpForbiddenError ||
+          error instanceof NpNotFoundError ||
+          error instanceof NpValidationError
+        )
+          return missing;
+        throw error;
+      }
+      if (!inspected) return missing;
+      const { event } = inspected.source;
+      const hexDigest = Buffer.from(
+        source.eventHash.slice("cj1:sha256:".length),
+        "base64url",
+      ).toString("hex");
+      if (
+        group.refs.some(
+          (ref) =>
+            ref.digest !== hexDigest ||
+            ref.eventKind !== event.kind ||
+            ref.observedAt !== event.occurredAt,
+        )
+      )
+        return missing;
+      const { comment, report } = inspected;
+      const state =
+        comment.status === "hidden" || comment.status === "deleted"
+          ? comment.status
+          : inspected.unchanged
+            ? "unchanged"
+            : "changed";
+      return {
+        eventId: group.eventId,
+        signalIds: group.signalIds,
+        availability: "available",
+        target: {
+          kind: "comment",
+          collection: event.subject.collection,
+          id: event.subject.commentId,
+        },
+        observed: {
+          occurredAt: event.occurredAt,
+          retentionExpiresAt: source.expiresAt.toISOString(),
+          status: event.payload.status,
+          spamVerdict: "unknown",
+          profanityVerdict: "unknown",
+          reportFiled: true,
+        },
+        current: {
+          state,
+          status: comment.status,
+          editedAt: comment.editedAt?.toISOString() ?? null,
+          versionDigest: inspected.versionDigest,
+          report: {
+            status: report.resolvedAt === null ? "unresolved" : "resolved",
+            resolvedAt: report.resolvedAt?.toISOString() ?? null,
+          },
+        },
+        responseEligible:
+          state === "unchanged" &&
+          report.resolvedAt === null &&
+          !["resolved", "dismissed"].includes(facts.incident.status),
+      };
+    }
     const { event, outcome } = checked;
     const hexDigest = Buffer.from(
       source.eventHash.slice("cj1:sha256:".length),
@@ -209,22 +410,8 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       collection: event.subject.collection,
       id: event.subject.commentId,
     };
-    let inspected;
-    try {
-      inspected = await npInspectCommunityCommentEvidenceV1(db as unknown as NpTransaction, {
-        siteId: input.siteId,
-        target,
-        user: facts.user,
-      });
-    } catch (error) {
-      if (
-        error instanceof NpForbiddenError ||
-        error instanceof NpNotFoundError ||
-        error instanceof NpValidationError
-      )
-        return missing;
-      throw error;
-    }
+    const inspected = facts.comments.get(source.id);
+    if (!inspected) return missing;
     const row = inspected.comment;
     if (row.targetId !== event.subject.documentId || row.memberId !== event.payload.authorMemberId)
       return missing;
@@ -263,6 +450,31 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     const next = await snapshot(db, input);
     if (next.binding !== previous.binding) throw unavailable();
   }
+  function pageOffset(s: Awaited<ReturnType<typeof snapshot>>, cursor?: string | null) {
+    if (cursor === undefined || cursor === null) return 0;
+    try {
+      const c = codec.open(cursor) as { binding: unknown; offset: unknown; expires: unknown };
+      if (
+        c.binding !== s.binding ||
+        typeof c.offset !== "number" ||
+        !Number.isInteger(c.offset) ||
+        c.offset <= 0 ||
+        c.offset >= s.groups.length ||
+        c.offset % 10 !== 0 ||
+        typeof c.expires !== "number" ||
+        c.expires <= now().getTime()
+      )
+        throw invalidCursor();
+      return c.offset;
+    } catch {
+      throw invalidCursor();
+    }
+  }
+  function nextCursor(s: Awaited<ReturnType<typeof snapshot>>, offset: number) {
+    return offset + 10 < s.groups.length
+      ? codec.seal({ binding: s.binding, offset: offset + 10, expires: now().getTime() + 900000 })
+      : null;
+  }
   return {
     canReadStaffIncident: ({ incident, signals, context }) =>
       withCurrentSite(context.siteId, async () => {
@@ -279,7 +491,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           incident.siteId !== context.siteId
         )
           return false;
-        // This source owner supports only its canonical comment observations, and never skips an unknown subject/ref.
+        // Every canonical content observation or report must be readable; unknown subjects/refs are never skipped.
         if (
           incident.primarySubject !== null ||
           !signals.length ||
@@ -302,16 +514,19 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           .flatMap((s) => s.evidence)
           .filter((ref): ref is EventRef => ref.kind === "event");
         const ids = [...new Set(refs.map((ref) => ref.eventId))];
-        if (ids.length > 100) return false;
-        const sources = await db
-          .select()
-          .from(npAgentEvents)
-          .where(and(eq(npAgentEvents.siteId, context.siteId), inArray(npAgentEvents.id, ids)));
+        if (ids.length > MAXIMUM_INCIDENT_EVENTS) return false;
+        const sources = await sourceRows(db, context.siteId, ids.sort());
+        const comments = await inspectComments(
+          db,
+          { ...context, incidentId: incident.id },
+          user,
+          sources,
+        );
         for (const eventId of ids) {
           const item = await project(
             db,
             { ...context, incidentId: incident.id },
-            { auth, incident, sources, user },
+            { auth, incident, sources, user, comments },
             { eventId, signalIds: [], refs: refs.filter((ref) => ref.eventId === eventId) },
           );
           if (item.availability !== "available") return false;
@@ -322,30 +537,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       withCurrentSite(input.siteId, async () => {
         const db = getDb();
         const s = await snapshot(db, input);
-        let offset = 0;
-        if (input.cursor !== undefined && input.cursor !== null) {
-          try {
-            const c = codec.open(input.cursor) as {
-              binding: unknown;
-              offset: unknown;
-              expires: unknown;
-            };
-            if (
-              c.binding !== s.binding ||
-              typeof c.offset !== "number" ||
-              !Number.isInteger(c.offset) ||
-              c.offset <= 0 ||
-              c.offset >= s.groups.length ||
-              c.offset % 10 !== 0 ||
-              typeof c.expires !== "number" ||
-              c.expires <= now().getTime()
-            )
-              throw invalidCursor();
-            offset = c.offset;
-          } catch {
-            throw invalidCursor();
-          }
-        }
+        const offset = pageOffset(s, input.cursor);
         const items = s.items.slice(offset, offset + 10);
         await current(db, input, s);
         return npRequireAgentIncidentEvidenceV1({
@@ -353,14 +545,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           incidentId: s.incident.id,
           incidentVersion: s.incident.versionNumber,
           items,
-          nextCursor:
-            offset + 10 < s.groups.length
-              ? codec.seal({
-                  binding: s.binding,
-                  offset: offset + 10,
-                  expires: now().getTime() + 900000,
-                })
-              : null,
+          nextCursor: nextCursor(s, offset),
         });
       }),
     resolveTargets: (input) =>
@@ -368,13 +553,32 @@ export function createAgentIncidentEvidenceServiceV1(options: {
         const s = await snapshot(input.db, input);
         if (serializeAgentCanonicalJson(input.incident) !== serializeAgentCanonicalJson(s.incident))
           throw unavailable();
+        if (input.cursor !== undefined && input.target !== undefined) throw unavailable();
+        const offset = pageOffset(s, input.cursor);
         const unique = new Map<string, NpCommunityContentTargetV1>();
-        for (const item of s.items) {
+        let paged = input.cursor !== undefined;
+        const items = paged ? s.items.slice(offset, offset + 10) : s.items;
+        for (const item of items) {
           if (item.responseEligible && item.target)
-            unique.set(serializeAgentCanonicalJson(item.target), item.target);
+            if (
+              !input.target ||
+              serializeAgentCanonicalJson(input.target) === serializeAgentCanonicalJson(item.target)
+            )
+              unique.set(serializeAgentCanonicalJson(item.target), item.target);
+        }
+        // Cursor absence is the existing all-target read for a representable
+        // response. Only a larger result opts into the new bounded first page;
+        // an exact plan target remains independent of the displayed page.
+        if (!paged && input.target === undefined && unique.size > 100) {
+          paged = true;
+          unique.clear();
+          for (const item of s.items.slice(0, 10))
+            if (item.responseEligible && item.target)
+              unique.set(serializeAgentCanonicalJson(item.target), item.target);
         }
         await current(input.db, input, s);
-        return [...unique.values()];
+        const targets = [...unique.values()];
+        return paged ? { targets, nextCursor: nextCursor(s, offset) } : targets;
       }),
   };
 }

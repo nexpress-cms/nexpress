@@ -5,11 +5,13 @@ import type { NpFieldConfig } from "../config/types.js";
 
 const mocks = vi.hoisted(() => ({
   findDocuments: vi.fn(),
+  readAccess: vi.fn().mockResolvedValue(undefined),
   readDocumentBase: vi.fn(),
   queryRows: [] as Array<{ id: string }>,
   getSiteById: vi.fn(),
   listEnabledPluginIds: vi.fn(),
   fields: [] as NpFieldConfig[],
+  blockFields: [] as Array<{ type: string; fields: NpFieldConfig[] }>,
   queryParameters: [] as unknown[],
 }));
 
@@ -37,6 +39,7 @@ const collection = {
 
 vi.mock("../collections/index.js", () => ({
   findDocuments: mocks.findDocuments,
+  npAssertCollectionReadAccess: mocks.readAccess,
   getAllCollectionSlugs: () => ["posts"],
   getCollectionConfig: (slug: string) => {
     if (slug !== "posts") throw new Error("missing collection");
@@ -110,6 +113,7 @@ const context = {
 function executors(cursorHmacKey = { id: "cursor-2026", key: new Uint8Array(32).fill(7) }) {
   return createAgentCoreReadCapabilityExecutorsV1({
     cursorHmacKey,
+    resolveBlockFields: () => mocks.blockFields,
     resolveBlockSchemas: () => [
       {
         type: "core.hero",
@@ -154,6 +158,7 @@ describe("Agent core read capability executors", () => {
     mocks.listEnabledPluginIds.mockReset();
     mocks.queryRows = [];
     mocks.fields = [];
+    mocks.blockFields = [];
     mocks.queryParameters = [];
   });
 
@@ -243,6 +248,117 @@ describe("Agent core read capability executors", () => {
     );
   });
 
+  it("omits document-specific read denials before projecting any field values", async () => {
+    const allowed = "01900000-0000-7000-8000-000000000040",
+      denied = "01900000-0000-7000-8000-000000000041";
+    mocks.queryRows = [{ id: denied }, { id: allowed }];
+    const secret = vi.fn(() => "private text");
+    mocks.findDocuments.mockResolvedValue({
+      docs: [
+        Object.defineProperty(
+          { id: denied, status: "published", updatedAt: new Date(requestedAt) },
+          "title",
+          { enumerable: true, get: secret },
+        ),
+        { id: allowed, status: "published", updatedAt: new Date(requestedAt), title: "Visible" },
+      ],
+    });
+    mocks.readAccess.mockImplementation((_config, _collection, user, doc) => {
+      expect(user).toBeNull();
+      return doc.id === denied
+        ? Promise.reject(new Error("private ACL detail"))
+        : Promise.resolve();
+    });
+    try {
+      const result = await executors()["content.query"](
+        {
+          collection: "posts",
+          filter: null,
+          fields: ["title"],
+          audience: "public",
+          status: "published",
+          sort: [],
+          limit: 10,
+          cursor: null,
+        },
+        context,
+      );
+      expect(result.items.map((item) => item.id)).toEqual([allowed]);
+      expect(JSON.stringify(result)).not.toContain(denied);
+      expect(secret).not.toHaveBeenCalled();
+    } finally {
+      mocks.readAccess.mockReset().mockResolvedValue(undefined);
+    }
+  });
+  it("projects declared block props and children while omitting hidden/undeclared props without getters", async () => {
+    mocks.blockFields = [
+      {
+        type: "core.hero",
+        fields: [
+          { name: "title", type: "text" },
+          { name: "internalNote", type: "text", hidden: true },
+          {
+            name: "entries",
+            type: "array",
+            fields: [
+              { name: "label", type: "text" },
+              { name: "secret", type: "text", hidden: true },
+            ],
+          },
+        ],
+      },
+    ];
+    const hidden = vi.fn(() => "must not read");
+    const block = (id: string) => ({
+      id,
+      type: "core.hero",
+      props: Object.defineProperty(
+        {
+          title: "Visible",
+          undeclared: "private",
+          entries: [{ label: "Visible", secret: "private" }],
+        },
+        "internalNote",
+        { enumerable: true, get: hidden },
+      ),
+    });
+    const id = "01900000-0000-7000-8000-000000000040";
+    mocks.queryRows = [{ id }];
+    mocks.findDocuments.mockResolvedValue({
+      docs: [
+        {
+          id,
+          slug: "blocks",
+          status: "published",
+          updatedAt: new Date(requestedAt),
+          layout: [{ ...block("parent"), children: [block("child")] }],
+        },
+      ],
+    });
+    const input = {
+      collection: "posts",
+      filter: null,
+      fields: ["layout"],
+      audience: "public" as const,
+      status: "published" as const,
+      sort: [],
+      limit: 1,
+      cursor: null,
+    };
+    const result = await executors()["content.query"](input, context);
+    const safe = { title: "Visible", entries: [{ label: "Visible" }] };
+    expect(result.items[0].data.layout).toEqual([
+      {
+        id: "parent",
+        type: "core.hero",
+        props: safe,
+        children: [{ id: "child", type: "core.hero", props: safe }],
+      },
+    ]);
+    expect(hidden).not.toHaveBeenCalled();
+    mocks.blockFields = [];
+    await expect(executors()["content.query"](input, context)).rejects.toThrow("declarations");
+  });
   it("excludes hidden and undeclared nested group/array fields without reading getters", async () => {
     const nestedFields: NpFieldConfig[] = [
       {
@@ -744,6 +860,22 @@ describe("Runtime read identity and document evidence", () => {
     expect(result).toMatchObject({
       observedAt: requestedAt,
       scanned: 1,
+      selectionReceipt: {
+        schemaVersion: "np.agent-publisher-selection-receipt.v1",
+        observedAt: requestedAt,
+        criteria: {
+          collectionSlugs: ["posts"],
+          staleBefore: "2026-03-03T00:00:00.000Z",
+          candidateLimit: 2,
+          batchSize: 1,
+          audience: "public",
+          status: "published",
+          ranking: "bounded-findings-age-identity.v1",
+        },
+        coverage: { candidateSample: "complete", routeInventory: "unavailable" },
+        counts: { scanned: 1, admitted: 1, selected: 1 },
+        exclusions: [],
+      },
       candidates: [
         {
           documentId: doc.id,
@@ -772,6 +904,65 @@ describe("Runtime read identity and document evidence", () => {
     );
     expect(mocks.queryParameters).toContain("2026-03-03T00:00:00.000Z");
   });
+  it("does not include hidden block names or values even when a generic host schema lists them", async () => {
+    const doc = {
+      ...publisherDocument(),
+      layout: [
+        {
+          id: "hero",
+          type: "core.hero",
+          props: {
+            title: "Visible",
+            internalNote: "private block text",
+            undeclared: "private extra",
+          },
+        },
+      ],
+    };
+    mocks.findDocuments.mockResolvedValue({ docs: [doc] });
+    mocks.readDocumentBase.mockResolvedValue({
+      base: { version: "owner", digest: `cj1:sha256:${"A".repeat(43)}` },
+      document: doc,
+    });
+    const result = await createAgentCoreRuntimeDocumentEvidenceReaderV1({
+      ...options,
+      resolveBlockFields: () => [
+        {
+          type: "core.hero",
+          fields: [
+            { name: "title", type: "text" },
+            { name: "internalNote", type: "text", hidden: true },
+          ],
+        },
+      ],
+      resolveBlockSchemas: () => [
+        {
+          type: "core.hero",
+          schema: {
+            $schema: "https://json-schema.org/draft/2020-12/schema",
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              props: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  title: { type: "string", maxLength: 200 },
+                  internalNote: { type: "string", maxLength: 200 },
+                },
+              },
+            },
+          },
+        },
+      ],
+    }).publisherCandidates(publisherRun());
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].content.layout).toEqual([
+      { id: "hero", type: "core.hero", props: { title: "Visible" } },
+    ]);
+    for (const hidden of ["internalNote", "private block text", "undeclared", "private extra"])
+      expect(JSON.stringify(result)).not.toContain(hidden);
+  });
   it("excludes unwritable, nonpublic, cross-site and changed revisions before provider projection", async () => {
     const doc = publisherDocument();
     mocks.findDocuments.mockResolvedValue({ docs: [doc] });
@@ -787,7 +978,14 @@ describe("Runtime read identity and document evidence", () => {
         base: { version: "owner", digest: `cj1:sha256:${"A".repeat(43)}` },
         document: current,
       });
-      expect((await reader.publisherCandidates(publisherRun())).candidates).toEqual([]);
+      const result = await reader.publisherCandidates(publisherRun());
+      expect(result.candidates).toEqual([]);
+      expect(result.truncated).toBe(true);
+      expect(result.selectionReceipt.counts).toEqual({ scanned: 1, admitted: 0, selected: 0 });
+      expect(result.selectionReceipt.exclusions).toEqual([{ code: "unavailable", count: 1 }]);
+      expect(JSON.stringify(result.selectionReceipt)).not.toContain(doc.id);
+      expect(Object.isFrozen(result.selectionReceipt)).toBe(true);
+      expect(Object.isFrozen(result.selectionReceipt.criteria.collectionSlugs)).toBe(true);
     }
     mocks.readDocumentBase.mockRejectedValue(new Error("write denied"));
     expect((await reader.publisherCandidates(publisherRun())).candidates).toEqual([]);
@@ -831,6 +1029,51 @@ describe("Runtime read identity and document evidence", () => {
     expect(result.candidates).toHaveLength(1);
     expect(result.truncated).toBe(true);
     expect(result.candidates[0].documentId).toBe(first.id);
+    expect(result.selectionReceipt.counts).toEqual({ scanned: 2, admitted: 2, selected: 1 });
+    expect(result.selectionReceipt.exclusions).toEqual([{ code: "batch-limit", count: 1 }]);
+    expect(result.selectionReceipt.coverage.candidateSample).toBe("partial");
+  });
+  it("keeps unhydrated query slots anonymous and marks their coverage partial", async () => {
+    const doc = publisherDocument();
+    mocks.queryRows = [{ id: doc.id }, { id: "01900000-0000-7000-8000-000000000099" }];
+    mocks.findDocuments.mockResolvedValue({ docs: [doc] });
+    mocks.readDocumentBase.mockResolvedValue({
+      base: { version: "owner", digest: `cj1:sha256:${"A".repeat(43)}` },
+      document: doc,
+    });
+    const result =
+      await createAgentCoreRuntimeDocumentEvidenceReaderV1(options).publisherCandidates(
+        publisherRun(),
+      );
+    expect(result.truncated).toBe(true);
+    expect(result.selectionReceipt).toMatchObject({
+      coverage: { candidateSample: "partial" },
+      counts: { scanned: 1, admitted: 1, selected: 1 },
+      exclusions: [],
+    });
+    expect(JSON.stringify(result)).not.toContain("01900000-0000-7000-8000-000000000099");
+  });
+  it("records a safe size exclusion without retaining the excluded value", async () => {
+    const doc = { ...publisherDocument(), title: "x".repeat(49 * 1024) };
+    mocks.findDocuments.mockResolvedValue({ docs: [doc] });
+    mocks.readDocumentBase.mockResolvedValue({
+      base: { version: "owner", digest: `cj1:sha256:${"A".repeat(43)}` },
+      document: doc,
+    });
+    const result =
+      await createAgentCoreRuntimeDocumentEvidenceReaderV1(options).publisherCandidates(
+        publisherRun(),
+      );
+    expect(result).toMatchObject({
+      truncated: true,
+      candidates: [],
+      selectionReceipt: {
+        counts: { scanned: 1, admitted: 0, selected: 0 },
+        exclusions: [{ code: "oversized", count: 1 }],
+      },
+    });
+    expect(JSON.stringify(result.selectionReceipt)).not.toContain(doc.id);
+    expect(JSON.stringify(result.selectionReceipt)).not.toContain(doc.title);
   });
 });
 

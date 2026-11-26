@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpNotFoundError,
@@ -113,7 +114,7 @@ async function toDetail(state: {
   };
 }
 
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string }> },
 ) {
@@ -136,7 +137,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function npGuardianPATCH(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string }> },
 ) {
@@ -193,3 +194,6 @@ export async function PATCH(
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("plugins", npGuardianGET);
+export const PATCH = npWithAgentGuardianHttpResponseV1("plugins", npGuardianPATCH);

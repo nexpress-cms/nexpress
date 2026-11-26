@@ -181,3 +181,47 @@ export async function npCreateAgentPublisherRecipeDefinitionV1(): Promise<NpAgen
     recipes: [definition],
   }).recipes[0];
 }
+
+/**
+ * Explicit alternative instruction profile. The recipe wire stays V1; only the
+ * instruction template advances. Hosts select its distinct definition fingerprint,
+ * and saved drafts must be revalidated before adoption. The original factory is unchanged.
+ */
+export async function npCreateAgentPublisherUncertaintyRecipeDefinitionV1(): Promise<NpAgentRecipeDefinitionCanonicalV1> {
+  const recipe = await npCreateAgentPublisherRecipeDefinitionV1();
+  const text = [
+    recipe.instruction!.text,
+    "When observations are incomplete, unavailable or truncated, state which checks remain unverified. Completing without a ChangeSet is not evidence that content or links are normal. A separately evidenced improvement can still be proposed without inventing a conclusion for the unverified checks. Never describe an uncertain check as passed.",
+  ].join("\n");
+  recipe.instruction = {
+    templateId: "publisher.stale-content",
+    templateVersion: 2,
+    digest: await digestAgentCanonicalSha256(new TextEncoder().encode(text)),
+    text,
+  };
+  return npRequireAgentRecipeRegistryCanonical({
+    schemaVersion: "np.agent-recipe-registry.v1",
+    projection: "definition",
+    recipes: [recipe],
+  }).recipes[0];
+}
+
+/** Explicit evidence-receipt profile; older saved instructions and evaluation suites stay frozen. */
+export async function npCreateAgentPublisherSelectionRecipeDefinitionV1(): Promise<NpAgentRecipeDefinitionCanonicalV1> {
+  const recipe = await npCreateAgentPublisherUncertaintyRecipeDefinitionV1();
+  const text = [
+    recipe.instruction!.text,
+    "Use the framework selectionReceipt to describe selection scope and excluded-candidate coverage. A partial candidate sample is not an exhaustive site audit. Do not infer hidden document identities or content from exclusion counts. Only selected current candidates may receive a draft.",
+  ].join("\n");
+  recipe.instruction = {
+    templateId: "publisher.stale-content",
+    templateVersion: 3,
+    digest: await digestAgentCanonicalSha256(new TextEncoder().encode(text)),
+    text,
+  };
+  return npRequireAgentRecipeRegistryCanonical({
+    schemaVersion: "np.agent-recipe-registry.v1",
+    projection: "definition",
+    recipes: [recipe],
+  }).recipes[0];
+}

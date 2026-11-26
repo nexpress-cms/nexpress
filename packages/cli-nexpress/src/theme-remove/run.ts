@@ -90,30 +90,7 @@ function discoverCollections(cwd: string): PlanCollectionShape[] {
     const filePath = join(dir, entry.name);
     const extracted = extractCollectionFromFile(filePath);
     if (!extracted) continue;
-    out.push({
-      slug: extracted.config.slug,
-      filePath: extracted.filePath,
-      fieldNames: collectFieldNames(extracted.config.fields),
-    });
-  }
-  return out;
-}
-
-/** Match the patcher's `walkFieldNames` recursion: row /
- *  collapsible containers expose their inner names. */
-function collectFieldNames(
-  fields: { name?: string; type?: string; fields?: unknown }[] | undefined,
-): string[] {
-  if (!fields) return [];
-  const out: string[] = [];
-  for (const f of fields) {
-    if (f.type === "row" || f.type === "collapsible") {
-      out.push(
-        ...collectFieldNames(f.fields as { name?: string; type?: string; fields?: unknown }[]),
-      );
-      continue;
-    }
-    if (typeof f.name === "string") out.push(f.name);
+    out.push(extracted);
   }
   return out;
 }

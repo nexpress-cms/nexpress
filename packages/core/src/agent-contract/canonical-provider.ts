@@ -86,15 +86,16 @@ export const npAgentProviderRetryableErrorClassesV1 = Object.freeze([
 const RETRYABLE_ERROR_CLASSES = new Set<ProviderFailureErrorClass>(
   npAgentProviderRetryableErrorClassesV1,
 );
-const RECIPE_TASK_BY_ID = {
-  "publisher.stale-content": "interactive-capability",
-  "moderator.repeated-link-spam": "moderation-classification",
-  "operator.worker-not-draining": "interactive-capability",
-  "guardian.credential-stuffing": "guardian-assessment",
-  "guardian.agent-abuse": "guardian-assessment",
-} as const satisfies Record<NpAgentRecipeId, NpAgentRecipeTask>;
+const RECIPE_TASKS_BY_ID: Record<NpAgentRecipeId, readonly NpAgentRecipeTask[]> = {
+  "publisher.stale-content": ["interactive-capability"],
+  // Classification stays available; the installed Runtime recipe may propose approved actions.
+  "moderator.repeated-link-spam": ["moderation-classification", "interactive-capability"],
+  "operator.worker-not-draining": ["interactive-capability"],
+  "guardian.credential-stuffing": ["guardian-assessment"],
+  "guardian.agent-abuse": ["guardian-assessment"],
+};
 const UTF8_ENCODER = new TextEncoder();
-const PROVIDER_ERROR_CLASSES = new Set<ProviderFailureErrorClass>([
+export const npAgentProviderFailureErrorClassesV1 = Object.freeze([
   "authentication",
   "rate-limited",
   "transient",
@@ -104,7 +105,10 @@ const PROVIDER_ERROR_CLASSES = new Set<ProviderFailureErrorClass>([
   "content-policy",
   "cancelled",
   "unknown",
-]);
+] as const satisfies readonly ProviderFailureErrorClass[]);
+const PROVIDER_ERROR_CLASSES = new Set<ProviderFailureErrorClass>(
+  npAgentProviderFailureErrorClassesV1,
+);
 
 export const npAgentProviderRequestCanonicalIncludedKeysV1 = [
   "schemaVersion",
@@ -486,7 +490,7 @@ function parseProviderRequestCanonical(value: unknown): NpAgentProviderRequestCa
     failCanonicalBody("invalid-field", `${path}.dataClass`, "must not exceed dataClassCeiling");
   }
   const task = canonicalBodyEnum<NpAgentRecipeTask>(record.task, `${path}.task`, RECIPE_TASKS);
-  if (task !== RECIPE_TASK_BY_ID[recipeId]) {
+  if (!RECIPE_TASKS_BY_ID[recipeId].includes(task)) {
     failCanonicalBody("invalid-field", `${path}.task`, "must match the selected recipe task");
   }
   if (task !== "interactive-capability" && tools.length !== 0) {
@@ -610,7 +614,7 @@ function parseProviderRequestCanonical(value: unknown): NpAgentProviderRequestCa
   return result;
 }
 
-function parseUsage(
+export function parseAgentProviderUsageV1(
   value: unknown,
   path: string,
   state: CanonicalBodyInspectionState,
@@ -727,7 +731,7 @@ function parseOutcome(
       ...commonResult,
       status: "succeeded",
       output: record.output as NpAgentJsonValue,
-      usage: parseUsage(record.usage, `${path}.usage`, state),
+      usage: parseAgentProviderUsageV1(record.usage, `${path}.usage`, state),
       finishReason: canonicalBodyEnum(
         record.finishReason,
         `${path}.finishReason`,
@@ -771,7 +775,8 @@ function parseOutcome(
     `${path}.dispatchState`,
     new Set(["not-dispatched", "dispatched"]),
   );
-  const usage = record.usage === null ? null : parseUsage(record.usage, `${path}.usage`, state);
+  const usage =
+    record.usage === null ? null : parseAgentProviderUsageV1(record.usage, `${path}.usage`, state);
   const finishReason =
     record.finishReason === null
       ? null

@@ -17,7 +17,7 @@
     "lint:fix": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint --concurrency=2 -- --fix",
     "typecheck": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run typecheck",
     "test": "pnpm test:repo && NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test",
-    "test:repo": "tsx --test scripts/*.test.mts scripts/*.test.mjs",
+    "test:repo": "tsx --test scripts/*.test.mts scripts/*.test.mjs packages/core/scripts/build-declarations.test.mjs",
     "test:integration": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test:integration --concurrency=1",
     "verify": "pnpm test:repo && NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build typecheck test",
     "format": "prettier --write .",
@@ -63,7 +63,7 @@
       "js-yaml": "4.3.1",
       "nanoid": "3.3.18",
       "postcss": "8.5.26",
-      "sharp": "0.35.4",
+      "sharp": "0.35.5",
       "shell-quote": "1.9.0",
       "vite": "7.3.5"
     },

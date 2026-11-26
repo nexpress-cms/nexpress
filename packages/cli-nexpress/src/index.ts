@@ -1,9 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   npRequireAgentRuntimeOpsResultV1,
+  npRequireAgentGuardianControlOpsResultV1,
   npParseAgentEvaluationCommandArgsV1,
   type NpAgentEvaluationCommandArgsV1,
   type NpAgentRuntimeOpsResultV1,
+  type NpAgentGuardianControlOpsResultV1,
 } from "@nexpress/core/agent-contract";
 import {
   blockedEvaluationResult,
@@ -34,7 +36,7 @@ import {
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
 import { packageNameFromSlug, resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
-import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
+import type { ScaffoldKind, ScaffoldOptions, ScaffoldResult } from "./scaffold-utils.js";
 import { packageNameFromThemeSlug, scaffoldTheme } from "./scaffold-theme.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
@@ -60,6 +62,7 @@ import { runThemeAdd } from "./theme-add/run.js";
 import { parseThemeRemoveArgs } from "./theme-remove/args.js";
 import { runThemeRemove } from "./theme-remove/run.js";
 import { AGENT_CONNECT_HELP, parseAgentConnectArgsV1, runAgentConnectV1 } from "./agent-connect.js";
+import { runSiteCommandV1 } from "./site-build/command.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
@@ -77,10 +80,16 @@ Usage:
   nexpress theme remove <package> --apply             Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
+  nexpress site brief init|validate                  Create or canonicalize a local Site Brief
+  nexpress site proposal validate                    Check a blueprint proposal against its exact brief
+  nexpress site catalog inspect                      Inspect configured declarations in an isolated worker
+  nexpress site generate                            Verify a private candidate; publish with exact execute/plan arguments
+  nexpress site skill install --client <codex|claude> [--apply]  Plan or install the local Build skill
   nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
   nexpress agent evaluate --report manifest.json [--out report.json] [--json]   Unified offline evaluation report
-  nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--json]   Bounded offline evaluation
+  nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|publisher.v2|publisher.v3|moderator-assessment.v1|moderator-assessment.v2|moderator-member-report.v1|moderator.v1|moderator.v2|moderator.v3|moderator-proposal.v1|moderator-proposal.v2|moderator-proposal.v3|guardian.v1] [--json]   Bounded offline evaluation
   nexpress agent runtime status|pause|resume --site <siteId> [--json]   Local runtime containment and recovery
+  nexpress agent guardian status|disable|enable-plan|enable --site <siteId> [--json]   Local Guardian capture control
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
@@ -257,6 +266,7 @@ function runProjectScript(
   cwd: string,
 ): Promise<void> {
   if (script === "agent:evaluate") return runEvaluationProjectScript(manager, passthrough, cwd);
+  if (script === "agent:guardian") return runGuardianProjectScript(manager, passthrough, cwd);
   const runtimeJson =
     script === "agent:runtime" &&
     passthrough.includes("--json") &&
@@ -355,6 +365,105 @@ function runProjectScript(
   });
 }
 
+async function runGuardianProjectScript(
+  manager: NpPackageManager,
+  passthrough: string[],
+  cwd: string,
+): Promise<void> {
+  const json = passthrough.includes("--json");
+  if (passthrough.includes("--help") || passthrough.includes("-h")) {
+    process.stdout.write(
+      "nexpress agent guardian status --site <siteId> [--json]\nnexpress agent guardian disable --site <siteId> --reason <text> --execute [--json]\nnexpress agent guardian enable-plan --site <siteId> --out <artifact> [--json]\nnexpress agent guardian enable --site <siteId> --plan <artifact> --execute --approve <planId> [--json]\nLocal deployment authority is required. Enable plans expire after five minutes and require installed capture/key owners. Response policy and cleanup remain separate.\n",
+    );
+    return;
+  }
+  const operation: NpAgentGuardianControlOpsResultV1["operation"] =
+    passthrough[0] === "disable"
+      ? "disable"
+      : passthrough[0] === "enable-plan" ||
+          (passthrough[0] === "enable" && !passthrough.includes("--execute"))
+        ? "enable-plan"
+        : passthrough[0] === "enable"
+          ? "enable"
+          : "status";
+  const blocked = () =>
+    npRequireAgentGuardianControlOpsResultV1({
+      schemaVersion: "np.agent-guardian-control-ops.v1",
+      operation,
+      outcome: "blocked",
+      errorCode: "GUARDIAN_UNAVAILABLE",
+      status: null,
+      plan: null,
+    });
+  const print = (result: NpAgentGuardianControlOpsResultV1) =>
+    process.stdout.write(
+      `${json ? JSON.stringify(result) : `Agent guardian ${result.operation}: ${result.outcome}${result.errorCode ? ` (${result.errorCode})` : ""}`}\n`,
+    );
+  const childArgs = json ? passthrough : [...passthrough, "--json"];
+  let yarnVersion: string | undefined;
+  if (manager === "yarn") {
+    const version = spawnSync(manager, ["--version"], {
+      cwd,
+      encoding: "utf8",
+      timeout: 10000,
+      maxBuffer: 1024,
+    });
+    if (
+      version.error ||
+      version.status !== 0 ||
+      !/^\d+\.\d+\.\d+(?:[-+].*)?\s*$/u.test(version.stdout)
+    ) {
+      print(blocked());
+      throw new Error("Project script unavailable");
+    }
+    yarnVersion = version.stdout.trim();
+  }
+  return new Promise((resolveFn, reject) => {
+    const child = spawn(
+      manager,
+      buildRunScriptArgs(manager, "agent:guardian", childArgs, yarnVersion),
+      { cwd, stdio: ["inherit", "pipe", "pipe"] },
+    );
+    const chunks: Buffer[] = [];
+    let size = 0,
+      finished = false;
+    child.stdout.on("data", (chunk: Buffer) => {
+      size += chunk.byteLength;
+      if (size <= 32768) chunks.push(chunk);
+    });
+    child.stderr.resume();
+    const finish = (code: number | null) => {
+      if (finished) return;
+      finished = true;
+      let result = blocked();
+      try {
+        if (size > 32768) throw new Error("Project result exceeded bound");
+        const parsed = npRequireAgentGuardianControlOpsResultV1(
+            JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+          ),
+          siteIndex = passthrough.indexOf("--site");
+        if (
+          parsed.operation !== operation ||
+          (parsed.status && (siteIndex < 0 || parsed.status.siteId !== passthrough[siteIndex + 1]))
+        )
+          throw new Error("Project result binding failed");
+        if (
+          (code === 0 && parsed.outcome !== "blocked") ||
+          (code === 1 && parsed.outcome === "blocked")
+        )
+          result = parsed;
+      } catch {
+        /* Only the closed local result may cross this boundary. */
+      }
+      print(result);
+      if (result.outcome === "blocked") reject(new Error("Project script unavailable"));
+      else resolveFn();
+    };
+    child.on("error", () => finish(null));
+    child.on("close", finish);
+  });
+}
+
 async function runEvaluationProjectScript(
   manager: "pnpm" | "npm" | "yarn",
   passthrough: string[],
@@ -362,7 +471,7 @@ async function runEvaluationProjectScript(
 ): Promise<void> {
   if (passthrough.length === 1 && (passthrough[0] === "--help" || passthrough[0] === "-h")) {
     process.stdout.write(
-      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. Moderator uses the actual offline detector with no network providers or explicit model/budget flags. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
+      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|publisher.v2|publisher.v3|moderator-assessment.v1|moderator-assessment.v2|moderator-member-report.v1|moderator.v1|moderator.v2|moderator.v3|moderator-proposal.v1|moderator-proposal.v2|moderator-proposal.v3|guardian.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. guardian.v1 uses 64 synthetic Korean/English cases with a deterministic reference baseline; production rule replay, precision, model usefulness and enablement remain unestablished. Guardian reviews support or reject only the exact synthetic prediction and confer no approval authority. moderator.v1 preserves original observed-content fixtures; moderator.v2 replays unverified report and mixed facts through the actual detector. moderator.v3 adds document-report and document/comment mixed facts with exact target deduplication and author independence. All detector datasets are offline with no network providers or explicit model/budget flags; reports confer no spam verdict or approval authority. moderator-proposal.v1 checks recipe proposals and abstentions against synthetic observed evidence. moderator-proposal.v2 adds unverified report and mixed evidence. moderator-proposal.v3 adds exact document/comment targets to document-report and mixed evidence; reports confer no verdict or approval authority. publisher.v2 retains V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile. publisher.v3 checks bounded multi-document selection with its explicit V3 instruction. moderator-assessment.v1 checks the explicit read-only semantic profile using bilingual synthetic evidence; confidence is not calibrated probability. moderator-assessment.v2 replays synthetic V2 segments and reports coverage separately from the advisory classification. moderator-member-report.v1 scores synthetic reports and eligibility for human review locally. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
     );
     return;
   }
@@ -641,6 +750,13 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
     return 0;
   }
 
+  if (args[0] === "site") {
+    const result = await runSiteCommandV1(args.slice(1), cwd);
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    return result.code;
+  }
+
   if (args[0] === "feedback") {
     if (args.includes("--help") || args.includes("-h")) {
       process.stdout.write(
@@ -670,11 +786,15 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
   }
 
   if (args[0] === "agent") {
-    if (args[1] === "runtime" || args[1] === "evaluate") {
+    if (args[1] === "runtime" || args[1] === "evaluate" || args[1] === "guardian") {
       try {
         await projectScriptRunner(
           detectPackageManager(cwd),
-          args[1] === "evaluate" ? "agent:evaluate" : "agent:runtime",
+          args[1] === "evaluate"
+            ? "agent:evaluate"
+            : args[1] === "guardian"
+              ? "agent:guardian"
+              : "agent:runtime",
           args.slice(2),
           cwd,
         );
@@ -861,6 +981,7 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         label: string;
         supportsInteractive: boolean;
         workspaceDir: "packages/plugins" | "packages/themes";
+        generate: (options: ScaffoldOptions) => Promise<ScaffoldResult>;
       }
     > = {
       "block-plugin": {
@@ -868,42 +989,49 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         label: "block",
         supportsInteractive: true,
         workspaceDir: "packages/plugins",
+        generate: scaffoldBlockPlugin,
       },
       "hook-plugin": {
         kind: "hook",
         label: "content-hook",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldHookPlugin,
       },
       "route-plugin": {
         kind: "route",
         label: "API-route",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldRoutePlugin,
       },
       "page-plugin": {
         kind: "page",
         label: "public page-route",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldPagePlugin,
       },
       "admin-plugin": {
         kind: "admin",
         label: "admin-extension",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldAdminPlugin,
       },
       "scheduled-plugin": {
         kind: "scheduled",
         label: "scheduled-task",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldScheduledPlugin,
       },
       theme: {
         kind: "theme",
         label: "theme",
         supportsInteractive: false,
         workspaceDir: "packages/themes",
+        generate: scaffoldTheme,
       },
     };
 
@@ -950,37 +1078,7 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         : ["@nexpress/blocks", "@nexpress/plugin-sdk"],
     );
     try {
-      let result: ScaffoldResult;
-      switch (meta.kind) {
-        case "block":
-          result = await scaffoldBlockPlugin({ slug, outDir, dependencyRanges, interactive });
-          break;
-        case "hook":
-          result = await scaffoldHookPlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "route":
-          result = await scaffoldRoutePlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "page":
-          result = await scaffoldPagePlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "admin":
-          result = await scaffoldAdminPlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "scheduled":
-          result = await scaffoldScheduledPlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "theme":
-          result = await scaffoldTheme({ slug, outDir, dependencyRanges });
-          break;
-        default: {
-          // Exhaustiveness check — adding a kind without updating the
-          // switch makes the type system complain here.
-          const _exhaustive: never = meta.kind;
-          void _exhaustive;
-          throw new Error(`unreachable: unhandled scaffold kind ${meta.kind as string}`);
-        }
-      }
+      const result = await meta.generate({ slug, outDir, dependencyRanges, interactive });
 
       const labelPrefix = meta.kind === "block" && interactive ? "interactive block" : meta.label;
       const packageName =

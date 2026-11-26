@@ -20,27 +20,63 @@ comparison functions, including the actual offline Moderator replay.
 The shared App script writes atomically; the installed CLI captures the inputs
 before running the project script and independently reconstructs its result.
 
-Each recipe occurs at most once. Operator requires the diagnosis/plan category
+Each recipe occurs at most once in a V1 manifest. Operator requires the diagnosis/plan category
 from `operator-plan.v1`; legacy `operator.v1` tag-only results do not substitute
 for plan evaluation. Publisher uses its proposal artifact, and Moderator uses
-its deterministic detector artifact. A supplied review must bind the exact
+its deterministic detector artifact from `moderator.v1`, `moderator.v2` or
+`moderator.v3`. V2 replays report/mixed comment facts; the
+[content detector corpus](r6-moderator-content-evaluation-flow.md) adds document
+reports and combined document/comment facts through the same actual detector.
+Different corpus versions report `INCOMPATIBLE_SUITE` with no comparable cohort
+or delta. The separate `moderator-proposal` entry uses
+[recipe response evaluation](r6-moderator-proposal-evaluation-flow.md); it never
+substitutes for detector evidence. Default reports contain four rows. Historical
+three-row reports remain verifiable by independent reconstruction of their exact
+original projection. A supplied review must bind the exact
 supplied evaluation, even if another artifact has the same suite or predictions.
 The report preserves existing validators' scope; a hash establishes consistency,
 not the authenticity of an external provider run or reviewer identity.
+
+The [content proposal dataset](r6-moderator-content-proposal-evaluation-flow.md)
+extends that separate row with document/comment candidates. Exact v3 sources and
+reviews retain their versioned facts; incompatible earlier suites remain explicit
+without pooled comparison deltas.
+
+Two explicit entries extend the report only when supplied:
+`moderator-assessment` for `moderator-assessment.v1` (eight semantic cases), and
+`publisher-selection` for `publisher.v3` (eleven V3 selection cases). Their
+`np.agent-profile-eval-review.v1` reviews bind exact case versions, source and
+prediction hashes. An edit contains the full structured prediction; accepting
+a case independently rechecks that exact version without changing a failed
+suite gate. Publisher no-proposal results are ineligible for proposal review;
+semantic uncertainty remains reviewable. These families do not replace earlier
+rows or inherit their model results. Their absence preserves historical default
+report bytes and their unlike cohorts are never pooled.
 
 ## Produce and review evidence
 
 Create versioned synthetic evaluation files using the existing commands:
 
 ```bash
-pnpm agent:evaluate --dataset moderator.v1 --out moderator.json --json
+pnpm agent:evaluate --dataset moderator.v3 --out moderator.json --json
+pnpm agent:evaluate --dataset moderator-proposal.v1 --out moderator-proposal.json --json
 pnpm agent:evaluate --dataset operator-plan.v1 --out operator.json --json
 pnpm agent:evaluate --dataset publisher.v1 --out publisher.json --json
+pnpm agent:evaluate --dataset moderator-assessment.v1 --out semantic.json --json
+pnpm agent:evaluate --dataset publisher.v3 --out selection.json --json
 ```
+
+The last two commands select deterministic fake evaluation by default. Review,
+comparison and Workbench use the same paths as the earlier profiles. To include
+them in a manifest, use recipe `moderator-assessment` or `publisher-selection`
+with the corresponding evaluation and optional exact-bound review. No command
+above installs or calls a provider. A provider-mode empty response is a structured
+output error, never a fabricated fake prediction.
 
 Create review templates with `--review <evaluation.json> --out <template.json>`.
 Inspect the source and use the exact bindings when authoring labels. Follow the
 [Moderator feedback guide](r6-moderator-evaluation-flow.md#run-and-review),
+[Moderator response review](r6-moderator-proposal-evaluation-flow.md#run-and-review),
 [Operator review guide](r6-operator-plan-evaluation-flow.md#run-and-review), and
 [Publisher review guide](r6-publisher-evaluation-flow.md). A template contains no
 human judgments. Run `--review <evaluation.json> --reviews <labels.json> --out
@@ -57,6 +93,12 @@ use `null` when a review or baseline is absent:
     {
       "recipe": "moderator",
       "evaluation": "moderator.json",
+      "review": null,
+      "baseline": null
+    },
+    {
+      "recipe": "moderator-proposal",
+      "evaluation": "moderator-proposal.json",
       "review": null,
       "baseline": null
     },
@@ -79,8 +121,8 @@ use `null` when a review or baseline is absent:
 Paths resolve relative to the manifest directory; absolute local paths also
 work. Every declared reference counts toward the read budget. The manifest plus all file
 reads share a 4 MiB budget, and the embedded report has its own 4 MiB bound.
-Symlink inputs, non-files, malformed/extra fields and duplicate recipes fail
-closed. The output must differ from the manifest and every input, including
+Symlink inputs, non-files, malformed or extra fields, and duplicates fail
+validation. The output must differ from the manifest and every input, including
 hardlink aliases. Errors expose fixed codes rather than paths or file contents.
 
 ```bash
@@ -92,14 +134,68 @@ When a prior run exists, an entry's `baseline` can be
 `{"evaluation":"prior/evaluation.json","review":"prior/reviewed.json"}`.
 Set its review to null if it was not reviewed. Leave out an entire recipe entry
 when its evaluation is missing; the report still includes its missing row.
-An empty entries array is valid and produces three missing rows.
+An empty entries array is valid and produces four missing rows. The historical
+three-row projection is retained only for verifying its original artifacts.
+
+### Include multiple datasets for one recipe
+
+Use a V2 manifest to see semantic assessment, segmented assessment and Member
+report evidence in one report. Generate the semantic evaluation as shown above,
+then create the two other evaluation files:
+
+```bash
+pnpm agent:evaluate --dataset moderator-assessment.v2 --out segmented.json --json
+pnpm agent:evaluate --dataset moderator-member-report.v1 --out member-report.json --json
+```
+
+```json
+{
+  "schemaVersion": "np.agent-eval-report-manifest.v2",
+  "entries": [
+    {
+      "recipe": "moderator-assessment",
+      "evaluation": "semantic.json",
+      "review": null,
+      "baseline": null
+    },
+    {
+      "recipe": "moderator-assessment",
+      "evaluation": "segmented.json",
+      "review": null,
+      "baseline": null
+    },
+    {
+      "recipe": "moderator-assessment",
+      "evaluation": "member-report.json",
+      "review": null,
+      "baseline": null
+    }
+  ]
+}
+```
+
+Run the same `--report` command with this manifest. It writes an
+`np.agent-eval-report.v2` artifact in the existing JSON command envelope.
+Each row names the validated dataset ID and version. Rows within a recipe
+sort by dataset ID and then numeric version. Missing default recipe rows show
+`dataset: null`. V2 allows up to 16 entries within the same byte limits, with
+one current entry per recipe, dataset ID and version. This identity is derived
+from the artifact, so different filenames cannot create duplicate rows.
+
+Set review and baseline paths on each entry independently. A review must bind
+its exact evaluation. Comparisons reuse the owning evaluator's requirements,
+including exact suite or corpus compatibility, and report incompatible
+baselines without deltas. The report keeps metrics and reviews separate by
+dataset. V1 manifests continue to produce V1 reports, including the reports
+used by the single-evaluation Workbench.
 
 ## Interpret the result and recover
 
 The report embeds its validated source input, derived rows and hash. The public
 server verifier recomputes the whole report rather than trusting reported rates,
-coverage, comparisons or authority. Rows always appear in Moderator, Operator,
-Publisher order. Metrics remain separate by recipe; there is no combined score.
+coverage, comparisons or authority. Current rows appear in Moderator detector,
+Moderator proposal, Operator, Publisher order. Metrics remain separate by recipe;
+there is no combined score.
 
 | Report state                           | Meaning and next step                                                                                                                                      |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -120,12 +216,26 @@ A nonempty provider-mode result is still self-contained evidence, not proof of
 representative model quality. Historical changed Moderator predictions remain
 unsupported by the fixed installed-version verifier.
 
+Reviewer attribution is self-reported. When a user delegates assessment to AI,
+identify the reviewer as AI in every label and record the corpus, rubric and
+limitations separately. Such labels are neither independent human judgments nor
+authenticated Incident feedback. Publisher decisions without proposals stay
+ineligible for proposal labels even when qualitatively assessed. Detector
+confirmed-spam labels require an actual adjudication; do not manufacture them
+from rule conformance or a fixture's intent. The
+[2026-10-15 delegated acceptance](r6-delegated-acceptance-review.md) records this
+distinction and a manual milestone decision without changing report contracts.
+
 Exit zero means a valid report was generated, including a report with missing
 or failed evidence. `fullR6` and `modelUsefulness` remain `not-established`.
 Report errors return exit one and a closed error envelope. Automation must read
 the rows instead of treating command success as production readiness.
 
 ## Remaining acceptance and operating boundaries
+
+The [Admin evaluation review workspace](r6-evaluation-workbench-flow.md) provides
+bounded evaluation/review file imports, case labels and baseline comparisons,
+then exports the same owner artifacts without persistent review history.
 
 Full R6 requires the roadmap and [testing/evaluation gates](testing-and-evaluation.md#93-enablement-gates),
 including representative usefulness evidence and the relevant operational,

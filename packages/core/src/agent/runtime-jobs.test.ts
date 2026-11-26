@@ -1,3 +1,4 @@
+import type { NpAgentRuntimeControlContextV1 } from "./runtime-controls.js";
 import type { NpJobData } from "../jobs-contract/types.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -56,6 +57,146 @@ describe("explicit Runtime job registration", () => {
     );
     expect(f.handlers.getJobHandler("agent:eventDispatch")).toBeUndefined();
     expect(f.handlers.getAllJobHandlers().size).toBe(1);
+  });
+  it("registers delivery only for an explicit host owner and carries the persisted site and attempt", async () => {
+    const send = vi.fn(() => Promise.resolve());
+    expect(f.handlers.getJobHandler("agent:notificationSend")).toBeUndefined();
+    f.createAgentRuntimeJobsV1({
+      ...f.options,
+      notificationDelivery: { process: send, reconcile: () => Promise.resolve() },
+    }).register();
+    expect(send).not.toHaveBeenCalled();
+    await f.context.withCurrentSite("site-a", async () => {
+      await f.handlers.getJobHandler("agent:notificationSend")!({
+        siteId: "site-b",
+        notificationId: eventId,
+        expectedAttempt: 2,
+      });
+    });
+    expect(send).toHaveBeenCalledExactlyOnceWith({
+      siteId: "site-b",
+      notificationId: eventId,
+      expectedAttempt: 2,
+    });
+    const invalidPayloads: NpJobData[] = [
+      { siteId: "site-b", notificationId: eventId, expectedAttempt: 6 },
+      { siteId: "site-b", notificationId: eventId, expectedAttempt: 1.5 },
+      { siteId: "site-b", notificationId: eventId, expectedAttempt: 0, authority: "staff" },
+    ];
+    for (const payload of invalidPayloads)
+      await expect(f.handlers.getJobHandler("agent:notificationSend")!(payload)).rejects.toThrow();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("reconciles only installed Guardian owners for each persisted fanout site while Runtime is disabled", async () => {
+    vi.resetModules();
+    const schema = await import("../db/schema/system.js");
+    const { npCreateDisabledAgentRuntimeSettingsV1 } =
+      await import("../agent-contract/runtime-contract.js");
+    const settings = npCreateDisabledAgentRuntimeSettingsV1();
+    const siteRows = [{ id: "site-b" }, { id: "site-c" }];
+    interface Query {
+      where(): Query;
+      orderBy(): Query;
+      limit(): Promise<Array<{ id: string }>>;
+    }
+    const db = {
+      select: () => ({
+        from: (table: unknown) => {
+          const query: Query = {
+            where: () => query,
+            orderBy: () => query,
+            limit: () => Promise.resolve(table === schema.npSites ? siteRows : []),
+          };
+          return query;
+        },
+      }),
+      insert: () => ({ values: () => ({ onConflictDoUpdate: () => Promise.resolve() }) }),
+    };
+    // Replace only the transaction/source seam. The registered job still owns actual fanout/context behavior.
+    vi.doMock("./runtime-controls.js", () => ({
+      npWithAgentRuntimeControlTransactionV1: <T>(
+        siteId: string,
+        operation: (context: NpAgentRuntimeControlContextV1) => Promise<T>,
+      ) =>
+        operation({
+          db: db as unknown as NpAgentRuntimeControlContextV1["db"],
+          siteId,
+          settings,
+          revision: 1,
+          control: { revision: 1, currentResumePlan: null, lastResumeReceipt: null },
+        }),
+    }));
+    try {
+      const local = await fixture();
+      const seen: Array<string | null> = [];
+      const reconcile = vi.fn(async (_input: { siteId: string; limit?: number }) => {
+        seen.push(await local.context.getCurrentSiteId());
+        return { checked: 0, resolved: 0 };
+      });
+      const contentSites: Array<string | null> = [];
+      const collect = vi.fn(async (_input: { siteId: string; limit?: number }) => {
+        contentSites.push(await local.context.getCurrentSiteId());
+        return {
+          state: "collecting" as const,
+          processed: 0,
+          emitted: 0,
+          blocked: 0,
+          sampled: 0,
+          backlog: 0,
+          held: 0,
+        };
+      });
+      const runtimeSites: Array<string | null> = [];
+      const runtimeCollect = vi.fn(async (_input: { siteId: string; limit?: number }) => {
+        runtimeSites.push(await local.context.getCurrentSiteId());
+        return {
+          state: "collecting" as const,
+          processed: 0,
+          emitted: 0,
+          blocked: 0,
+          sampled: 0,
+          held: 0,
+          backlog: 0,
+        };
+      });
+      const installed = local.createAgentRuntimeJobsV1({
+        ...local.options,
+        guardianRestrictions: { reconcile },
+        guardianContent: { collect },
+        guardianRuntime: { collect: runtimeCollect },
+      });
+      expect(reconcile).not.toHaveBeenCalled();
+      expect(collect).not.toHaveBeenCalled();
+      await local.context.withCurrentSite("site-a", async () => {
+        await installed.reconcile();
+        expect(await local.context.getCurrentSiteId()).toBe("site-a");
+      });
+      expect(settings.enabled).toBe(false);
+      expect(reconcile.mock.calls.map(([input]) => input)).toEqual([
+        { siteId: "site-b", limit: 25 },
+        { siteId: "site-c", limit: 25 },
+      ]);
+      expect(seen).toEqual(["site-b", "site-c"]);
+      expect(collect.mock.calls.map(([input]) => input)).toEqual([
+        { siteId: "site-b", limit: 25 },
+        { siteId: "site-c", limit: 25 },
+      ]);
+      expect(contentSites).toEqual(["site-b", "site-c"]);
+      expect(runtimeSites).toEqual(["site-b", "site-c"]);
+      expect(runtimeCollect.mock.calls.map(([input]) => input)).toEqual([
+        { siteId: "site-b", limit: 25 },
+        { siteId: "site-c", limit: 25 },
+      ]);
+      await local.createAgentRuntimeJobsV1(local.options).reconcile();
+      expect(reconcile).toHaveBeenCalledTimes(2);
+      expect(collect).toHaveBeenCalledTimes(2);
+      expect(runtimeCollect).toHaveBeenCalledTimes(2);
+      expect(local.dispatch).not.toHaveBeenCalled();
+      expect(local.process).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("./runtime-controls.js");
+      vi.resetModules();
+    }
   });
   it("rejects invalid explicit coordination site with a stable error", () => {
     expect(() =>

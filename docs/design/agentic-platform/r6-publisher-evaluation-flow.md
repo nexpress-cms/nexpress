@@ -1,7 +1,9 @@
 # R6 Publisher proposal evaluation and offline review
 
 This AP-606 slice extends the existing `agent:evaluate` owner with `publisher.v1`
-and evaluation-only human review records. It evaluates actual ChangeSet-shaped
+and evaluation-only human review records. The additive `publisher.v2` dataset
+uses an explicit uncertainty instruction profile while retaining every V1 source
+case and the same scoring rules. It evaluates actual ChangeSet-shaped
 proposals against synthetic source content, resource/base bindings, allowed
 fields, route evidence and forbidden actions. It does not execute ChangeSets,
 create live approvals, publish content or establish real-model usefulness.
@@ -63,12 +65,53 @@ output remain compatible. Publisher predictions additionally require `proposal`
 usefulness, long-form writing quality, actual preview output or live Runtime
 continuation.
 
+## Explicit uncertainty profile and V2 evaluation
+
+The original manual factory, unattended V1 profile, twelve-case suite, benchmark
+text and policy/gate hashes remain unchanged. Hosts may explicitly select
+`npCreateAgentPublisherUncertaintyRecipeDefinitionV1()` or the complete
+`npCreateAgentR6UnattendedRecipeRegistryV2()` installation profile. Both use the
+existing recipe wire/version one; Publisher's instruction `templateVersion` is
+two with its own digest and definition/registry fingerprints. Capabilities,
+settings, response schemas and authority are unchanged. An old saved draft cannot
+be silently adopted under the changed installation: save and explicitly activate
+its reviewed replacement through the existing owner.
+
+The instruction distinguishes an unverified check from a completed check that
+found no justified improvement. It requires a truthful explanation of partial,
+unavailable or truncated observations. Independently evidenced improvements remain
+possible in Runtime; no new capability or effect permission is granted.
+
+`publisher.v2` retains all twelve V1 cases byte-for-byte and adds six controls:
+English incomplete routes, missing SEO with incomplete routes, incomplete routes
+without a link, Korean missing content, and fresh-but-partial candidates in both
+languages. The benchmark states the existing priority explicitly: absent/fresh
+candidates stop with ignore/normal; stale incomplete facts stop with
+observe/unknown; only stale complete facts reach improvement selection. The
+benchmark's all-facts completeness requirement is an explicit synthetic subset,
+not a new Runtime prohibition on an independently justified change.
+
+One pure profile resolver supplies both dispatch and artifact reconstruction with
+the selected recipe instruction, benchmark version and text. V2 is selected only
+for `publisher-content-review:2`; legacy/custom suites retain V1. V2 binds a new
+suite/policy hash while preserving the exact V1 gate hash. When provider/model
+identity matches, cross-version comparison returns `SUITE_MISMATCH`; it cannot pool
+rates or claim matched-cohort improvement.
+A wrong model prediction remains visible as a failed result, never rewritten into
+the deterministic answer. The installed CLI independently binds the requested
+version and rejects a valid artifact from the other suite.
+
+Use `--dataset publisher.v2` explicitly to select the new corpus. Review, report
+and Workbench retain their existing exact-bound semantics. Shipped wrappers still
+install no provider, credentials, Runtime or worker.
+
 ## Runbook
 
 From `apps/web` or a generated project, generate an offline evaluation artifact:
 
 ```sh
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out ./publisher-evaluation.json --json
+pnpm agent:evaluate --provider fake --dataset publisher.v2 --out ./publisher-v2-evaluation.json --json
 ```
 
 Compare another run through the existing evaluation command:

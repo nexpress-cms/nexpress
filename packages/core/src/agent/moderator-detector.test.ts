@@ -110,6 +110,37 @@ describe("versioned advisory repeated-link detector", () => {
     }
     expect(await detect([fact(1, "안녕하세요"), fact(2, "Normal conversation")])).toEqual([]);
   });
+  it("keeps reported targets advisory without inventing adapter verdicts or counting duplicate claims", async () => {
+    const reports = Array.from({ length: 5 }, (_, index) => {
+      const original = fact(index + 1);
+      return npRequireAgentModeratorFactV1({
+        ...original,
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        evidence: { ...original.evidence, eventKind: "community.content.reported" },
+      });
+    });
+    const [candidate] = await detect(reports);
+    expect(npRequireAgentModeratorSignalCandidateV1(candidate)).toEqual(candidate);
+    expect(candidate).toMatchObject({ scoreBasisPoints: 7000, advisory: true, severity: "medium" });
+    expect(
+      candidate?.facts.every(
+        (entry) => entry.spamVerdict === "unknown" && entry.profanityVerdict === "unknown",
+      ),
+    ).toBe(true);
+    expect(await detect([...reports, ...reports].reverse())).toEqual([candidate]);
+    expect(await detect(reports.map((entry) => ({ ...entry, memberId: uuid(50) })))).toEqual([]);
+    expect(() =>
+      npRequireAgentModeratorFactV1({
+        ...fact(1),
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+      }),
+    ).toThrow();
+    expect(() =>
+      npRequireAgentModeratorFactV1({ ...reports[0], profanityVerdict: "pass" }),
+    ).toThrow();
+  });
   it("deduplicates replay and edits deterministically while retaining immutable evidence bindings", async () => {
     const facts = Array.from({ length: 5 }, (_, i) => fact(i + 1));
     const expected = await detect(facts);

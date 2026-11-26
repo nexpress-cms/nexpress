@@ -8,6 +8,21 @@
 
 export { createDbConnection, npCloseDbConnection, type NpDb } from "../db/connection.js";
 export { getDb, getOptionalDb, resetDb, setDb } from "../db/runtime.js";
+export {
+  setCollectionMutationObserverV1,
+  resetCollectionMutationObserverV1,
+} from "../collections/mutation-observer.js";
+export {
+  setSiteAuthorityObserverV1,
+  resetSiteAuthorityObserverV1,
+} from "../sites/authority-observer.js";
+export type {
+  NpSiteAuthorityObserverV1,
+  NpSiteAuthorityObservationV1,
+  NpSiteAuthorityMutationActorV1,
+  NpSiteAuthorityMutationScopeV1,
+  NpSiteAuthorityTransitionV1,
+} from "../sites/authority-observer.js";
 
 export { registerCollection, resetCollections } from "../collections/registry.js";
 
@@ -58,3 +73,39 @@ export {
   resetCommunityModerationObserverV1,
 } from "../community/moderation-observer.js";
 export type { NpCommunityModerationObserverV1 } from "../community/moderation-observer.js";
+
+export {
+  setCommunityCommentReportObserverV1,
+  resetCommunityCommentReportObserverV1,
+} from "../community/report-observer.js";
+export type { NpCommunityCommentReportObserverV1 } from "../community/report-observer.js";
+
+export {
+  setCommunityDocumentReportObserverV1,
+  resetCommunityDocumentReportObserverV1,
+} from "../community/document-report-observer.js";
+export type { NpCommunityDocumentReportObserverV1 } from "../community/document-report-observer.js";
+
+export {
+  setCommunityMemberReportObserverV1,
+  resetCommunityMemberReportObserverV1,
+} from "../community/member-report-observer.js";
+export type { NpCommunityMemberReportObserverV1 } from "../community/member-report-observer.js";
+
+export {
+  setAgentGuardianRuntimeObserverV1,
+  resetAgentGuardianRuntimeObserverV1,
+} from "../agent/guardian-runtime-observer.js";
+export type {
+  NpAgentGuardianRuntimeObserverV1,
+  NpAgentGuardianRuntimeObservationV1,
+} from "../agent/guardian-runtime-observer.js";
+
+export {
+  setGuardianSensitiveObserverV1,
+  resetGuardianSensitiveObserverV1,
+} from "../agent/guardian-sensitive-observer.js";
+export type {
+  NpGuardianSensitiveObserverV1,
+  NpGuardianSensitiveObservationContextV1,
+} from "../agent/guardian-sensitive-observer.js";

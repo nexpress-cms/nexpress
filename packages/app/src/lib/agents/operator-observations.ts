@@ -24,6 +24,8 @@ export interface NpAgentOperatorObservationOwnersV1 {
 export interface OperatorObservation {
   state: "ok" | "warn" | "error";
   targetCount: number;
+  /** Internal audit budget: an unknown inspection reserves its full attempted bound. */
+  consumedTargets: number;
   detail: string;
   /** Safe facts retained inline by the existing audit invocation, not opaque external objects. */
   evidenceRefs: string[];
@@ -48,6 +50,7 @@ export async function collectOperatorObservation(
     return {
       state,
       targetCount: result.inspectedCount ?? 0,
+      consumedTargets: result.inspectedCount ?? maxTargets,
       detail: `Retained 24-hour framework site-payload cohort: ${result.inspectedCount ?? "unknown"} jobs, ${result.failed ?? "unknown"} failed; ${result.complete ? "complete" : "partial or unavailable"}. Excludes custom, global and unattributed jobs; does not verify worker health.`,
       evidenceRefs: [
         "observation:jobs:v1",
@@ -91,6 +94,7 @@ export async function collectOperatorObservation(
     return {
       state: result.missingTargets > 0 ? "error" : result.status === "complete" ? "ok" : "warn",
       targetCount: result.attemptedTargets,
+      consumedTargets: result.attemptedTargets,
       detail: `Selected authorized media object existence: ${result.presentTargets} present, ${result.missingTargets} missing, ${result.unavailableObservations} unavailable; ${result.status}. This sample does not verify the whole inventory or content integrity.`,
       evidenceRefs: [
         "observation:storage:v1",
@@ -112,6 +116,7 @@ export async function collectOperatorObservation(
       return {
         state: "warn",
         targetCount: 0,
+        consumedTargets: 0,
         detail:
           "Deployment plugin registry exceeds the selected bound; diagnostics were not collected.",
         evidenceRefs: [
@@ -127,6 +132,7 @@ export async function collectOperatorObservation(
     return {
       state: errors ? "error" : warnings ? "warn" : "ok",
       targetCount: count,
+      consumedTargets: count,
       detail: `Deployment runtime registry: ${count} plugins, ${errors} diagnostic errors, ${warnings} warnings. This observes registration contracts, not plugin code security or external connectivity.`,
       evidenceRefs: [
         "observation:plugins:v1",

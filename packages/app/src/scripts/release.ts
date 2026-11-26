@@ -1,9 +1,14 @@
 // Must be first so child scripts see the same environment shape.
 import "./_load-env.js";
+import {
+  commandText,
+  detectPackageManager,
+  runArgs,
+  type PackageManager,
+} from "./ops-package-manager.js";
 
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -25,9 +30,8 @@ import {
   type ReleaseStepId,
   type ReleaseStepReport,
 } from "./release-core.js";
-import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
+import { readCommandOption, normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
-type PackageManager = "pnpm" | "npm" | "yarn";
 type ReleaseCliMode = ReleaseMode | "apply";
 
 interface CapturedCommand {
@@ -87,64 +91,6 @@ Options:
 
 function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
-}
-
-function readUrlArg(argv: string[]): string | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--url") return argv[i + 1] ?? null;
-    if (arg?.startsWith("--url=")) return arg.slice("--url=".length);
-  }
-  return null;
-}
-
-function readOutArg(argv: string[]): string | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--out") return argv[i + 1] ?? null;
-    if (arg?.startsWith("--out=")) return arg.slice("--out=".length);
-  }
-  return null;
-}
-
-function readPlanArg(argv: string[]): string | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--plan") return argv[i + 1] ?? null;
-    if (arg?.startsWith("--plan=")) return arg.slice("--plan=".length);
-  }
-  return null;
-}
-
-function readApproveArg(argv: string[]): string | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--approve") return argv[i + 1] ?? null;
-    if (arg?.startsWith("--approve=")) return arg.slice("--approve=".length);
-  }
-  return null;
-}
-
-function detectPackageManager(cwd: string): PackageManager {
-  let current = cwd;
-  while (true) {
-    if (existsSync(resolve(current, "pnpm-lock.yaml"))) return "pnpm";
-    if (existsSync(resolve(current, "yarn.lock"))) return "yarn";
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return "npm";
-}
-
-function runArgs(manager: PackageManager, script: string, passthrough: string[]): string[] {
-  if (manager === "yarn") return [script, ...passthrough];
-  if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
-  return ["run", script, "--", ...passthrough];
-}
-
-function commandText(manager: PackageManager, args: string[]): string {
-  return `${manager} ${args.join(" ")}`;
 }
 
 function captureProcess(
@@ -277,7 +223,7 @@ async function runRelease(): Promise<ReleaseJson> {
   }
 
   if (MODE === "verify") {
-    const url = readUrlArg(ARGV);
+    const url = readCommandOption(ARGV, "--url");
     const steps = await Promise.all(verifyRuns(manager, url));
     return buildReleaseJson({ mode: MODE, url, steps });
   }
@@ -371,7 +317,10 @@ async function runReleasePlan(): Promise<ReleasePlanJson> {
   const target = check.target ?? parseDeployTargetArg(ARGV) ?? "docker";
   const createdAt = new Date().toISOString();
   const planId = `release-${createdAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
-  const artifactPath = resolve(process.cwd(), readOutArg(ARGV) ?? defaultPlanArtifactPath(planId));
+  const artifactPath = resolve(
+    process.cwd(),
+    readCommandOption(ARGV, "--out") ?? defaultPlanArtifactPath(planId),
+  );
   const plan = buildReleasePlanJson({ planId, createdAt, target, artifactPath, check });
   await writeReleasePlanArtifact(plan, artifactPath);
   return plan;
@@ -427,16 +376,16 @@ async function executeReleasePlanCommands(
 }
 
 async function runReleaseApply(): Promise<ReleaseApplyJson> {
-  const planArg = readPlanArg(ARGV);
+  const planArg = readCommandOption(ARGV, "--plan");
   if (!planArg) throw new Error("release apply requires --plan <path>");
   const planArtifactPath = resolve(process.cwd(), planArg);
   const plan = await readReleasePlanArtifact(planArtifactPath);
   const createdAt = new Date().toISOString();
   const artifactPath = resolve(
     process.cwd(),
-    readOutArg(ARGV) ?? defaultApplyArtifactPath(plan.planId),
+    readCommandOption(ARGV, "--out") ?? defaultApplyArtifactPath(plan.planId),
   );
-  const approved = readApproveArg(ARGV) === plan.planId;
+  const approved = readCommandOption(ARGV, "--approve") === plan.planId;
   const mode: ReleaseApplyJson["mode"] = EXECUTE_MODE ? "execute" : "dry-run";
   const preflight = buildReleaseApplyJson({
     plan,

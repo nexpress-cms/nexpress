@@ -85,6 +85,41 @@ function item(): NpAgentApprovalListItemV1 {
   };
 }
 describe("approval request, challenge and safe review contracts", () => {
+  it("binds Member restriction review to a staff Action and its exact signed current policy", () => {
+    const actionReview = {
+      actionId: id,
+      proposalHash: hash,
+      capabilityId: "moderation.member.restrict",
+      incidentId: id,
+      memberId: id,
+      expectedMemberVersionDigest: hash,
+      operation: { kind: "restrict", durationSeconds: 3600 },
+      policyDigest: hash,
+    };
+    const detail = {
+      schemaVersion: "np.agent-approval-detail.v1",
+      item: {
+        ...item(),
+        target: { kind: "action", actionId: id, runId: null, agentId: null, proposalHash: hash },
+        capabilityId: "moderation.member.restrict",
+        intendedOperation: null,
+        policyHashes: [hash],
+      },
+      review: null,
+      rollbackReview: null,
+      actionReview,
+    };
+    expect(npRequireAgentApprovalDetailV1(detail).actionReview).toEqual(actionReview);
+    for (const changed of [
+      { ...detail, actionReview: { ...actionReview, capabilityId: "moderation.member.revoke" } },
+      {
+        ...detail,
+        actionReview: { ...actionReview, policyDigest: `cj1:sha256:${"B".repeat(43)}` },
+      },
+      { ...detail, item: { ...detail.item, target: { ...detail.item.target, runId: id } } },
+    ])
+      expect(() => npRequireAgentApprovalDetailV1(changed)).toThrow();
+  });
   it("binds action review facts to the signed target and rejects private restoration state", () => {
     const actionItem = {
       ...item(),
@@ -330,7 +365,7 @@ describe("approval request, challenge and safe review contracts", () => {
       string,
       Record<string, unknown>
     >;
-    expect(properties.item.required).toEqual(expect.arrayContaining(Object.keys(item())));
+    expect(properties.item.minProperties).toBe(Object.keys(item()).length);
     expect(properties.item.additionalProperties).toBe(false);
     for (const id of [
       "agents.changesets.request_approval",

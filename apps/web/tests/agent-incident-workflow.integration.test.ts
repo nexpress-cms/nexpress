@@ -61,6 +61,9 @@ describe.skipIf(skipIfNoTestDb())("Incident human workflow", () => {
         summary: "Staff investigation.",
         firstObservedAt: time,
         lastObservedAt: time,
+        // Keep the synthetic Incident on one clock; PostgreSQL may run in a VM.
+        createdAt: time,
+        updatedAt: time,
       })
       .returning();
     const reads = createAgentIncidentServiceV1({

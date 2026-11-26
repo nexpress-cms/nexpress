@@ -100,8 +100,36 @@ function invalid(value: unknown) {
   expect(npAnalyzeAgentSourceReleaseCanonical(value).ok).toBe(false);
 }
 
+const guardian = {
+  ...base,
+  kind: "guardian-event",
+  family: "security-transitions",
+  eventKind: "security.authority.changed",
+  sourceComponent: "guardian.authority.v1",
+  namespaceDigest: digest,
+  deliveryKeyDigest: digest,
+  eventHash: digest,
+  sourceProofDigest: digest,
+  closureDigest: digest,
+  closedBefore: "2026-06-01T00:00:00.000Z",
+  occurredAt: at,
+  recordedAt: at,
+  retentionEligibleAt: "2026-06-01T00:00:00.000Z",
+} satisfies NpAgentSourceReleaseCanonicalV1;
+
 describe("source-release receipts", () => {
-  it.each([run, call, reservation, breaker])(
+  it("requires exact Guardian source pairs and a closed, retention-aged delivery period", () => {
+    for (const change of [
+      { eventKind: "agent.policy.changed" },
+      { family: "sentry" },
+      { sourceComponent: "arbitrary-source" },
+      { occurredAt: guardian.closedBefore },
+      { closedBefore: "2026-06-01T00:00:01.000Z" },
+      { retentionEligibleAt: "2027-01-01T00:00:00.000Z" },
+    ])
+      invalid({ ...guardian, ...change });
+  });
+  it.each([run, call, reservation, breaker, guardian])(
     "validates exact $kind facts through the canonical registry",
     async (body) => {
       expect(npRequireAgentSourceReleaseV1(body)).toEqual(body);

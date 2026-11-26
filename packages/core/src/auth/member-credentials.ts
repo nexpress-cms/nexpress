@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -13,6 +13,9 @@ import { NpValidationError } from "../errors.js";
 import { npMemberSessions, npMembers } from "../db/schema/community.js";
 import { hashPassword } from "./password.js";
 import { sha256 } from "./session.js";
+import type { getDb } from "../db/runtime.js";
+import type { NpMemberStatus } from "../auth-contract/types.js";
+import { npGetGuardianSensitiveObserverV1 } from "../agent/guardian-sensitive-observer.js";
 
 /**
  * Member-side credential flows: email verification on registration,
@@ -229,8 +232,33 @@ export async function consumeMemberPasswordReset(
   }
 
   const newPasswordHash = await hashPassword(newPassword);
+  const observer = npGetGuardianSensitiveObserverV1(),
+    scope = { kind: "deployment" } as const;
 
   await db.transaction(async (tx) => {
+    const sourceDb = tx as unknown as ReturnType<typeof getDb>;
+    let previous:
+      { tokenVersion: number; emailVerified: boolean; status: NpMemberStatus } | undefined;
+    if (observer) {
+      await observer.prepare({ db: sourceDb, scope });
+      [previous] = await tx
+        .select({
+          tokenVersion: npMembers.tokenVersion,
+          emailVerified: npMembers.emailVerified,
+          status: npMembers.status,
+        })
+        .from(npMembers)
+        .where(
+          and(
+            eq(npMembers.id, member.id),
+            eq(npMembers.passwordResetTokenHash, tokenHash),
+            isNotNull(npMembers.passwordResetExpiresAt),
+            gt(npMembers.passwordResetExpiresAt, new Date()),
+          ),
+        )
+        .for("update")
+        .limit(1);
+    }
     const consumedAt = new Date();
     const [updated] = await tx
       .update(npMembers)
@@ -256,7 +284,12 @@ export async function consumeMemberPasswordReset(
           gt(npMembers.passwordResetExpiresAt, consumedAt),
         ),
       )
-      .returning({ id: npMembers.id });
+      .returning({
+        id: npMembers.id,
+        tokenVersion: npMembers.tokenVersion,
+        emailVerified: npMembers.emailVerified,
+        status: npMembers.status,
+      });
 
     if (!updated) {
       throw new NpValidationError("Invalid input", [
@@ -265,6 +298,28 @@ export async function consumeMemberPasswordReset(
     }
 
     await tx.delete(npMemberSessions).where(eq(npMemberSessions.memberId, member.id));
+    if (observer) {
+      if (!previous) throw new Error("Credential transition source state is unavailable");
+      await observer.recordCredential({
+        db: sourceDb,
+        scope,
+        actor: { kind: "system", component: "auth.member-password-reset" },
+        transitionId: randomUUID(),
+        occurredAt: consumedAt,
+        transition: {
+          kind: "password-replaced",
+          audience: "member",
+          principalId: member.id,
+          purpose: "password-reset",
+          previous: { tokenVersion: previous.tokenVersion },
+          current: { tokenVersion: updated.tokenVersion },
+          memberResetActivation: {
+            previous: { emailVerified: previous.emailVerified, status: previous.status },
+            current: { emailVerified: updated.emailVerified, status: updated.status },
+          },
+        },
+      });
+    }
   });
 
   return { memberId: member.id, email: member.email };

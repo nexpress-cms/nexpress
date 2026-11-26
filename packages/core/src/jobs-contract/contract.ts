@@ -387,6 +387,17 @@ function parseBuiltinPayload(
 ): NpJobData {
   const path = `${dataPath}(${type})`;
   switch (type) {
+    case "agent:notificationSend": {
+      const input = exactRecord(value, path, ["siteId", "notificationId", "expectedAttempt"]);
+      if (!npIsCanonicalSiteId(input.siteId)) fail(`${path}.siteId`, "must be a canonical site id");
+      const expectedAttempt = nonNegativeInteger(input.expectedAttempt, `${path}.expectedAttempt`);
+      if (expectedAttempt > 5) fail(`${path}.expectedAttempt`, "must be at most five");
+      return {
+        siteId: input.siteId,
+        notificationId: uuid(input.notificationId, `${path}.notificationId`),
+        expectedAttempt,
+      };
+    }
     case "agent:eventDispatch":
     case "agent:runExecute":
     case "agent:retentionPrune": {

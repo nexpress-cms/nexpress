@@ -1,3 +1,5 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import { npRequireAgentGuardianAssessmentRetryV1 } from "./guardian-assessment-context.js";
 import {
   npRequireAgentRuntimeManualInputV1,
   npDigestAgentRuntimeManualInputV1,
@@ -46,7 +48,7 @@ import {
   npRequireAgentConnectionConfigCanonical,
   npDigestAgentConnectionConfigCanonical,
 } from "../agent-contract/canonical-connections.js";
-import { npDigestAgentRecipeRegistryCanonical } from "../agent-contract/canonical-recipe-registry.js";
+import { npRequireAgentRuntimeRecipeEvidenceV1 } from "./runtime-recipe-evidence.js";
 import {
   npResolveAgentBudgetV1,
   npAgentBudgetWindowsV1,
@@ -75,6 +77,7 @@ import {
 } from "../agent-contract/canonical-runtime-primitives.js";
 import { npAgentRecipeIds, npAgentProviderDataClassRank } from "../agent-contract/types.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import type {
   NpAgentJsonObject,
   NpAgentModelPricingV1,
@@ -554,19 +557,25 @@ export function createAgentRuntimeAdmissionV1(
       snapshot.sourceRefs.find((ref) => ref.kind === "agent")?.version !== evidence.version.version
     )
       fail("RUNTIME_ADMISSION_INVALID");
-    const recipe = evidence.registry.recipes.find(
-      (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+    const recipeEvidence = npRequireAgentRuntimeRecipeEvidenceV1(
+      evidence.registry,
+    ).definitions.find(
+      ({ recipe }) => recipe.id === run.recipeId && recipe.version === run.recipeVersion,
     );
+    const recipe = recipeEvidence?.recipe;
     if (
+      !recipeEvidence ||
       !recipe ||
       !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id) ||
-      (await npDigestAgentRecipeRegistryCanonical(
-        { ...evidence.registry, projection: "definition", recipes: [recipe] },
-        evidence.registry.recipes,
-      )) !== run.recipeFingerprint
+      recipeEvidence.fingerprint !== run.recipeFingerprint
     )
       fail("RUNTIME_ADMISSION_INVALID");
-    if (recipe.task !== "interactive-capability") fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+    if (
+      recipe.task !== "interactive-capability" &&
+      !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+      !npIsAgentGuardianAssessmentRecipeV1(recipe)
+    )
+      fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
     if (run.manualInput != null) {
       const validated = npRequireAgentRuntimeManualInputV1(recipe, run.manualInput);
       if ((await npDigestAgentRuntimeManualInputV1(validated)) !== run.manualInputDigest)
@@ -656,9 +665,10 @@ export function createAgentRuntimeAdmissionV1(
       );
       return service.withRunAuthority(
         { siteId: input.siteId, runId: input.failedRunId, db: input.db, allowTerminal: true },
-        async ({ run, db }) => {
+        async ({ run, db, evidence }) => {
           if (run.state !== "failed" || !run.finishedAt || !run.agentId || !run.agentVersionId)
             fail("RUNTIME_RETRY_CONFLICT");
+          await npRequireAgentGuardianAssessmentRetryV1({ db, run, evidence });
           const eventRef = run.eventRef;
           const source = run.triggerId
             ? {
@@ -1123,7 +1133,12 @@ export function createAgentRuntimeAdmissionV1(
           !recipe.triggerKinds.includes(trigger.kind as "event" | "schedule" | "manual")
         )
           fail("RUNTIME_RECIPE_UNAVAILABLE");
-        if (recipe.task !== "interactive-capability") fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+        if (
+          recipe.task !== "interactive-capability" &&
+          !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+          !npIsAgentGuardianAssessmentRecipeV1(recipe)
+        )
+          fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
         const provider =
           recipe.providerMode === "forbidden"
             ? { connection: null, connectionSnapshot: null, pricing: null, canonical: null }
@@ -1194,10 +1209,13 @@ export function createAgentRuntimeAdmissionV1(
             fail("RUNTIME_BUDGET_EXHAUSTED");
         }
         const runLimits = resolveRunLimits(agentBudget, provider.connection !== null);
-        const fingerprint = await npDigestAgentRecipeRegistryCanonical(
-          { ...evidence.registry, projection: "definition", recipes: [recipe] },
-          evidence.registry.recipes,
+        const selectedRecipe = npRequireAgentRuntimeRecipeEvidenceV1(
+          evidence.registry,
+        ).definitions.find(
+          (entry) => entry.recipe.id === recipe.id && entry.recipe.version === recipe.version,
         );
+        if (!selectedRecipe) fail("RUNTIME_ADMISSION_INVALID");
+        const fingerprint = selectedRecipe.fingerprint;
         const recipeRef = { id: recipe.id, version: recipe.version, fingerprint };
         const snapshot = npRequireAgentBudgetSnapshotCanonical({
           schemaVersion: "np.agent-budget-snapshot.v1",

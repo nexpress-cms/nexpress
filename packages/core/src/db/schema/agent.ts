@@ -1,3 +1,4 @@
+import type { NpAgentEvaluationReportRecipeV1 } from "../../agent-contract/evaluation-report-recipe-contract.js";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -55,6 +56,7 @@ import type {
   NpAgentTargetRef,
   NpAgentSiteDeletionPlanCanonicalV1,
   NpAgentVaultAadCanonicalV1,
+  NpAgentRestrictionCanonicalV1,
 } from "../../agent-contract/types.js";
 import type { NpAgentBudgetV1 } from "../../agent-contract/wire-contract.js";
 import type {
@@ -1437,6 +1439,9 @@ export const npAgentSourceReleases = pgTable(
     unique("np_agent_source_releases_site_id_id_unique").on(t.siteId, t.id),
     unique("np_agent_source_releases_source_unique").on(t.siteId, t.sourceKind, t.sourceId),
     index("np_agent_source_releases_source_idx").on(t.sourceId, t.siteId),
+    uniqueIndex("np_agent_source_releases_guardian_key_unique")
+      .on(t.siteId, sql`(${t.evidenceBody}->>'deliveryKeyDigest')`)
+      .where(sql`${t.sourceKind}='guardian-event'`),
     index("np_agent_source_releases_reservation_idx")
       .on(t.siteId, sql`(${t.evidenceBody}->>'reservationId')`)
       .where(sql`${t.sourceKind}='provider-call'`),
@@ -1450,7 +1455,7 @@ export const npAgentSourceReleases = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_releases_kind_check",
-      sql`${t.sourceKind} in ('runtime-run','provider-call','usage-reservation','circuit-breaker')`,
+      sql`${t.sourceKind} in ('runtime-run','provider-call','usage-reservation','circuit-breaker','guardian-event')`,
     ),
     check(
       "np_agent_source_releases_body_check",
@@ -1499,11 +1504,11 @@ export const npAgentSourceReleaseEdges = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_release_edges_owner_check",
-      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit','changeset-validation','changeset-preview','changeset-approval')`,
+      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit','changeset-validation','changeset-preview','changeset-approval','guardian-audit','guardian-closure-audit')`,
     ),
     check(
       "np_agent_source_release_edges_code_check",
-      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset') or (${t.ownerKind}='changeset-validation' and ${t.edgeCode}='validation-authority-run') or (${t.ownerKind}='changeset-preview' and ${t.edgeCode}='preview-authority-run') or (${t.ownerKind}='changeset-approval' and ${t.edgeCode}='approval-history')`,
+      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset') or (${t.ownerKind}='changeset-validation' and ${t.edgeCode}='validation-authority-run') or (${t.ownerKind}='changeset-preview' and ${t.edgeCode}='preview-authority-run') or (${t.ownerKind}='changeset-approval' and ${t.edgeCode}='approval-history') or (${t.ownerKind}='guardian-audit' and ${t.edgeCode}='guardian-event') or (${t.ownerKind}='guardian-closure-audit' and ${t.edgeCode}='guardian-closure')`,
     ),
     check(
       "np_agent_source_release_edges_digest_check",
@@ -4131,6 +4136,7 @@ export const npAgentIncidentTimeline = pgTable(
   (t) => [
     unique("np_agent_incident_timeline_site_id_id_unique").on(t.siteId, t.id),
     unique("np_agent_incident_timeline_sequence_unique").on(t.siteId, t.incidentId, t.sequence),
+    index("np_agent_timeline_site_source_sequence_idx").on(t.siteId, t.sourceId, t.sequence),
     foreignKey({
       name: "np_agent_incident_timeline_incident_fk",
       columns: [t.siteId, t.incidentId],
@@ -4400,6 +4406,122 @@ export const npAgentContainments = pgTable(
   ],
 );
 
+/** R7 workflow containment is separate from content quarantine/restore evidence. */
+export const npAgentActorRestrictions = pgTable(
+  "np_agent_actor_restrictions",
+  {
+    id: uuid("id").primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    incidentId: uuid("incident_id").notNull(),
+    sourceActionId: uuid("source_action_id").notNull(),
+    removalActionId: uuid("removal_action_id"),
+    descriptor: jsonb("descriptor").$type<NpAgentRestrictionCanonicalV1>().notNull(),
+    restrictionHash: text("restriction_hash").notNull(),
+    subjectKey: text("subject_key").notNull(),
+    scopeDigest: text("scope_digest").notNull(),
+    adapterId: text("adapter_id").notNull(),
+    adapterContractVersion: integer("adapter_contract_version").notNull(),
+    adapterFingerprint: text("adapter_fingerprint").notNull(),
+    state: text("state").notNull(),
+    installReceipt: jsonb("install_receipt").$type<NpAgentJsonObject>(),
+    removalReceipt: jsonb("removal_receipt").$type<NpAgentJsonObject>(),
+    rowVersion: integer("row_version").default(1).notNull(),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    activatedAt: timestamp("activated_at", { withTimezone: true, mode: "date" }),
+    removedAt: timestamp("removed_at", { withTimezone: true, mode: "date" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_actor_restrictions_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_actor_restrictions_source_action_unique").on(t.sourceActionId),
+    unique("np_agent_actor_restrictions_removal_action_unique").on(t.removalActionId),
+    uniqueIndex("np_agent_actor_restrictions_active_target_uidx")
+      .on(t.siteId, t.subjectKey, t.scopeDigest)
+      .where(sql`${t.state} in ('pending','active','removing')`),
+    index("np_agent_actor_restrictions_incident_idx").on(t.siteId, t.incidentId),
+    index("np_agent_actor_restrictions_expiry_idx").on(t.siteId, t.expiresAt),
+    foreignKey({
+      name: "np_agent_actor_restrictions_incident_fk",
+      columns: [t.siteId, t.incidentId],
+      foreignColumns: [npAgentIncidents.siteId, npAgentIncidents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_actor_restrictions_source_action_fk",
+      columns: [t.siteId, t.sourceActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_actor_restrictions_removal_action_fk",
+      columns: [t.siteId, t.removalActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_actor_restrictions_descriptor_check",
+      sql`(jsonb_typeof(${t.descriptor})='object' and octet_length(${t.descriptor}::text)<=8192 and ${t.descriptor}->>'restrictionId'=${t.id}::text and ${t.descriptor}->>'siteId'=${t.siteId} and ${t.descriptor}->>'schemaVersion'='np.agent-restriction.v1' and (${t.descriptor}->>'expiresAt')::timestamptz=${t.expiresAt}) is true`,
+    ),
+    check(
+      "np_agent_actor_restrictions_bounds_check",
+      sql`(${t.restrictionHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.scopeDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and length(${t.subjectKey}) between 1 and 512 and length(${t.adapterId}) between 1 and 128 and ${t.adapterContractVersion}>0 and length(${t.adapterFingerprint}) between 1 and 256 and ${t.rowVersion}>0 and (${t.lastErrorCode} is null or ${t.lastErrorCode} ~ '^[A-Z][A-Z0-9_]{0,63}$') and (${t.installReceipt} is null or (jsonb_typeof(${t.installReceipt})='object' and octet_length(${t.installReceipt}::text)<=4096)) and (${t.removalReceipt} is null or (jsonb_typeof(${t.removalReceipt})='object' and octet_length(${t.removalReceipt}::text)<=4096))) is true`,
+    ),
+    check(
+      "np_agent_actor_restrictions_state_check",
+      sql`(${t.state} in ('pending','active','removing','removed','expired','failed') and (${t.state}<>'active' or (${t.activatedAt} is not null and ${t.installReceipt} is not null)) and (${t.state} in ('removed','expired'))=(${t.removedAt} is not null) and (${t.removedAt} is null or ${t.removalReceipt} is not null) and (${t.removalActionId} is null or ${t.removalActionId}<>${t.sourceActionId})) is true`,
+    ),
+    check(
+      "np_agent_actor_restrictions_time_check",
+      sql`(${t.updatedAt}>=${t.createdAt} and ${t.expiresAt}>(${t.descriptor}->>'startsAt')::timestamptz and ${t.expiresAt}>=(${t.descriptor}->>'startsAt')::timestamptz+interval '60 seconds' and ${t.expiresAt}<=(${t.descriptor}->>'startsAt')::timestamptz+interval '3600 seconds' and (${t.activatedAt} is null or ${t.activatedAt}>=${t.createdAt}) and (${t.removedAt} is null or ${t.removedAt}>=${t.createdAt}) and (${t.revokedAt} is null or ${t.revokedAt}>=${t.createdAt})) is true`,
+    ),
+  ],
+);
+
+/** Independent shared adapter effects: never foreign-key an uncommitted workflow row. */
+export const npAgentRestrictionEnforcements = pgTable(
+  "np_agent_restriction_enforcements",
+  {
+    id: uuid("id").primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    descriptor: jsonb("descriptor").$type<NpAgentRestrictionCanonicalV1>().notNull(),
+    restrictionHash: text("restriction_hash").notNull(),
+    subjectKey: text("subject_key").notNull(),
+    actionScopes: text("action_scopes").array().notNull(),
+    installKey: text("install_key").notNull(),
+    removeKey: text("remove_key"),
+    expectedRowVersion: integer("expected_row_version").notNull(),
+    state: text("state").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_restriction_enforcements_site_id_id_unique").on(t.siteId, t.id),
+    index("np_agent_restriction_enforcements_subject_idx").on(t.siteId, t.subjectKey, t.expiresAt),
+    check(
+      "np_agent_restriction_enforcements_descriptor_check",
+      sql`(jsonb_typeof(${t.descriptor})='object' and octet_length(${t.descriptor}::text)<=8192 and ${t.descriptor}->>'restrictionId'=${t.id}::text and ${t.descriptor}->>'siteId'=${t.siteId} and ${t.descriptor}->>'schemaVersion'='np.agent-restriction.v1' and (${t.descriptor}->>'startsAt')::timestamptz=${t.startsAt} and (${t.descriptor}->>'expiresAt')::timestamptz=${t.expiresAt}) is true`,
+    ),
+    check(
+      "np_agent_restriction_enforcements_bounds_check",
+      sql`(${t.restrictionHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and length(${t.subjectKey}) between 1 and 512 and cardinality(${t.actionScopes}) between 1 and 5 and ${t.actionScopes}<@ARRAY['auth.staff','auth.member','agent.gateway','community.write','content.write']::text[] and ${t.expectedRowVersion}>0 and length(${t.installKey}) between 1 and 256 and (${t.removeKey} is null or length(${t.removeKey}) between 1 and 256)) is true`,
+    ),
+    check(
+      "np_agent_restriction_enforcements_state_check",
+      sql`(${t.state} in ('installed','removed') and (${t.state}='removed')=(${t.removeKey} is not null)) is true`,
+    ),
+    check(
+      "np_agent_restriction_enforcements_time_check",
+      sql`(${t.updatedAt}>=${t.createdAt} and ${t.expiresAt}>=${t.startsAt}+interval '60 seconds' and ${t.expiresAt}<=${t.startsAt}+interval '3600 seconds') is true`,
+    ),
+  ],
+);
+
 /** AP-602 imported owner plan artifact. Canonical body is private; invocation output is redacted. */
 export const npAgentOperatorPlans = pgTable(
   "np_agent_operator_plans",
@@ -4510,6 +4632,98 @@ export const npAgentOperatorExecutions = pgTable(
     check(
       "np_agent_operator_executions_run_check",
       sql`${t.resultRunId} is null or (${t.sourceRunId} is not null and ${t.resultRunId}<>${t.sourceRunId})`,
+    ),
+  ],
+);
+
+/** AP-606 explicitly stored offline evaluation evidence; immutable source body, CAS review head. */
+export const npAgentEvaluationSources = pgTable(
+  "np_agent_evaluation_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    recipe: text("recipe").$type<NpAgentEvaluationReportRecipeV1>().notNull(),
+    sourceHash: text("source_hash").notNull(),
+    evaluationBody: jsonb("evaluation_body").$type<unknown>().notNull(),
+    versionNumber: integer("version_number").notNull(),
+    caseCount: integer("case_count").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_evaluation_sources_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_evaluation_sources_source_unique").on(t.siteId, t.recipe, t.sourceHash),
+    index("np_agent_evaluation_sources_page_idx").on(t.siteId, t.id),
+    check(
+      "np_agent_evaluation_sources_bounds_check",
+      sql`(${t.versionNumber} between 0 and 10000 and ${t.caseCount} between 1 and 100 and ${t.recipe} in ('moderator','moderator-proposal','operator','publisher','moderator-assessment','publisher-selection','guardian') and ${t.sourceHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.evaluationBody})='object' and octet_length(${t.evaluationBody}::text)<=4194304) is true`,
+    ),
+  ],
+);
+/** Append-only per-case decisions; label compatibility never upgrades offline artifact authority. */
+export const npAgentEvaluationReviews = pgTable(
+  "np_agent_evaluation_reviews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    sourceId: uuid("source_id").notNull(),
+    versionNumber: integer("version_number").notNull(),
+    caseId: text("case_id").notNull(),
+    caseVersion: integer("case_version").notNull(),
+    caseHash: text("case_hash").notNull(),
+    predictionHash: text("prediction_hash").notNull(),
+    previousRevisionId: uuid("previous_revision_id"),
+    recordedByUserId: uuid("recorded_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    actorFingerprint: text("actor_fingerprint").notNull(),
+    labelBody: jsonb("label_body").$type<Record<string, unknown> | null>(),
+    revisionHash: text("revision_hash").notNull(),
+    invocationId: uuid("invocation_id").notNull(),
+    auditEventId: uuid("audit_event_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: "np_agent_evaluation_reviews_audit_fk",
+      columns: [t.auditEventId],
+      foreignColumns: [npAuditEvents.id],
+    }).onDelete("restrict"),
+    unique("np_agent_evaluation_reviews_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_evaluation_reviews_source_id_id_unique").on(t.siteId, t.sourceId, t.id),
+    unique("np_agent_evaluation_reviews_version_unique").on(t.siteId, t.sourceId, t.versionNumber),
+    unique("np_agent_evaluation_reviews_invocation_unique").on(t.siteId, t.invocationId),
+    uniqueIndex("np_agent_evaluation_reviews_supersedes_unique")
+      .on(t.siteId, t.previousRevisionId)
+      .where(sql`${t.previousRevisionId} is not null`),
+    index("np_agent_evaluation_reviews_case_idx").on(
+      t.siteId,
+      t.sourceId,
+      t.caseId,
+      t.caseVersion,
+      t.versionNumber,
+    ),
+    foreignKey({
+      name: "np_agent_evaluation_reviews_source_fk",
+      columns: [t.siteId, t.sourceId],
+      foreignColumns: [npAgentEvaluationSources.siteId, npAgentEvaluationSources.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_evaluation_reviews_previous_fk",
+      columns: [t.siteId, t.sourceId, t.previousRevisionId],
+      foreignColumns: [t.siteId, t.sourceId, t.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_evaluation_reviews_invocation_fk",
+      columns: [t.siteId, t.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_evaluation_reviews_bounds_check",
+      sql`(${t.versionNumber} between 1 and 10000 and ${t.caseVersion} between 1 and 2147483646 and char_length(${t.caseId}) between 1 and 128 and ${t.caseHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.predictionHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.actorFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.revisionHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.previousRevisionId} is null or ${t.previousRevisionId}<>${t.id}) and (${t.labelBody} is null or (jsonb_typeof(${t.labelBody})='object' and octet_length(${t.labelBody}::text)<=393216 and ${t.labelBody}->>'reviewer'='staff:'||${t.actorFingerprint} and ${t.labelBody}->>'caseId'=${t.caseId} and ${t.labelBody}->>'caseHash'=${t.caseHash} and ${t.labelBody}->>'predictionHash'=${t.predictionHash}))) is true`,
     ),
   ],
 );

@@ -1,11 +1,13 @@
 import { NpServiceUnavailableError, NpValidationError } from "@nexpress/core";
 import {
   npRequireAgentIncidentGetInputV1,
-  npRequireAgentIncidentListInputV1,
-  npRequireAgentIncidentListOutputV1,
+  npRequireAgentIncidentStudioListQueryV1,
+  npRequireAgentIncidentStudioListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentMemberReportEvidenceV1,
   npRequireAgentIncidentNotificationsV1,
+  npRequireAgentIncidentNotificationDeliveriesV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentAssignmentInputV1,
   npRequireAgentIncidentFeedbackInputV1,
@@ -39,22 +41,61 @@ function query(request: NextRequest, detail: boolean) {
     cursor: null,
   };
   const seen = new Set<string>();
+  const extra = new Set([
+    "source",
+    "assignedAgentId",
+    "containment",
+    "observedAfter",
+    "observedBefore",
+    "query",
+    "includeSummaries",
+  ]);
   for (const [key, value] of request.nextUrl.searchParams) {
-    if (seen.has(key) || !Object.hasOwn(values, key) || (detail && key !== "cursor"))
+    if (
+      seen.has(key) ||
+      (!Object.hasOwn(values, key) && !extra.has(key)) ||
+      (detail && key !== "cursor")
+    )
       throw invalid();
     seen.add(key);
     if (key === "limit") {
       if (!/^[1-9][0-9]{0,2}$/u.test(value)) throw invalid();
       values[key] = Number(value);
+    } else if (key === "includeSummaries") {
+      if (!["true", "false"].includes(value)) throw invalid();
+      values[key] = value === "true";
     } else if (["statuses", "categories", "severities"].includes(key)) {
       values[key] = value.split(",");
     } else values[key] = value;
   }
   try {
-    return npRequireAgentIncidentListInputV1(values);
+    return npRequireAgentIncidentStudioListQueryV1(values);
   } catch {
     throw invalid();
   }
+}
+
+function detailQuery(request: NextRequest): {
+  cursor: string | null;
+  responseCursor?: string | null;
+} {
+  if (request.nextUrl.search.length > 8192) throw invalid();
+  const seen = new Set<string>();
+  const result: { cursor: string | null; responseCursor?: string | null } = { cursor: null };
+  for (const [key, value] of request.nextUrl.searchParams) {
+    if (
+      !["cursor", "responseCursor"].includes(key) ||
+      seen.has(key) ||
+      !value ||
+      value.length > 2048 ||
+      /[\p{Cc}\p{Cs}]/u.test(value)
+    )
+      throw invalid();
+    seen.add(key);
+    if (key === "cursor") result.cursor = value;
+    else result.responseCursor = value;
+  }
+  return result;
 }
 
 /** HTTP decoding only; current visibility and mutation authority belong to the host service. */
@@ -63,8 +104,10 @@ export async function handleAgentIncidentAdminRequest(
   operation:
     | "list"
     | "notifications"
+    | "deliveries"
     | "detail"
     | "evidence"
+    | "member-report-evidence"
     | "assignment"
     | "assign"
     | "feedback"
@@ -75,9 +118,15 @@ export async function handleAgentIncidentAdminRequest(
     | "restore",
   id?: string,
 ): Promise<Response> {
-  const mutation = !["list", "detail", "evidence", "assignment", "notifications"].includes(
-    operation,
-  );
+  const mutation = ![
+    "list",
+    "detail",
+    "evidence",
+    "member-report-evidence",
+    "assignment",
+    "notifications",
+    "deliveries",
+  ].includes(operation);
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
@@ -94,7 +143,7 @@ export async function handleAgentIncidentAdminRequest(
         await service.notifications({ ...staff, cursor: query(request, true).cursor }),
       );
     } else if (operation === "list") {
-      const page = npRequireAgentIncidentListOutputV1(
+      const page = npRequireAgentIncidentStudioListOutputV1(
         await service.list({ ...staff, query: query(request, false) }),
       );
       if (page.items.some((incident) => incident.siteId !== staff.siteId))
@@ -107,7 +156,19 @@ export async function handleAgentIncidentAdminRequest(
       } catch {
         throw invalid();
       }
-      if (operation === "assignment") {
+      if (operation === "deliveries") {
+        const cursor = query(request, true).cursor;
+        if (!service.deliveries)
+          throw new NpServiceUnavailableError(
+            "External notification delivery is disabled or unavailable.",
+          );
+        const deliveries = npRequireAgentIncidentNotificationDeliveriesV1(
+          await service.deliveries({ ...staff, incidentId, cursor }),
+        );
+        if (deliveries.incidentId !== incidentId)
+          throw new Error("Incident delivery response binding is invalid.");
+        result = deliveries;
+      } else if (operation === "assignment") {
         if (request.nextUrl.search) throw invalid();
         const assignment = npRequireAgentIncidentAssignmentV1(
           await service.assignment({ ...staff, incidentId }),
@@ -115,6 +176,16 @@ export async function handleAgentIncidentAdminRequest(
         if (assignment.incidentId !== incidentId)
           throw new Error("Incident assignment response binding is invalid.");
         result = assignment;
+      } else if (operation === "member-report-evidence") {
+        const cursor = query(request, true).cursor;
+        if (!service.memberReportEvidence)
+          throw new NpServiceUnavailableError("Member report evidence is unavailable.");
+        const evidence = npRequireAgentIncidentMemberReportEvidenceV1(
+          await service.memberReportEvidence({ ...staff, incidentId, cursor }),
+        );
+        if (evidence.incidentId !== incidentId)
+          throw new Error("Member report evidence response binding is invalid.");
+        result = evidence;
       } else if (operation === "evidence") {
         const evidence = npRequireAgentIncidentEvidenceV1(
           await service.evidence({ ...staff, incidentId, cursor: query(request, true).cursor }),
@@ -124,7 +195,7 @@ export async function handleAgentIncidentAdminRequest(
         result = evidence;
       } else if (operation === "detail") {
         const detail = npRequireAgentIncidentStudioDetailV1(
-          await service.get({ ...staff, incidentId, cursor: query(request, true).cursor }),
+          await service.get({ ...staff, incidentId, ...detailQuery(request) }),
         );
         if (detail.incident.id !== incidentId || detail.incident.siteId !== staff.siteId)
           throw new Error("Incident detail response binding is invalid.");
@@ -204,8 +275,13 @@ export async function handleAgentIncidentAdminRequest(
     }
     return npSuccessResponse(result, { headers });
   } catch (error) {
-    return agentStudioErrorResponse(error, mutation ? "mutation" : "read", {
-      headers,
-    });
+    return agentStudioErrorResponse(
+      error,
+      mutation ? "mutation" : "read",
+      {
+        headers,
+      },
+      request,
+    );
   }
 }

@@ -1,4 +1,41 @@
-import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
+import {
+  npAgentGuardianHttpDetectorIdsV1,
+  type NpAgentGuardianHttpEvidenceV1,
+} from "../agent-contract/guardian-http-contract.js";
+import type { NpAgentGuardianHttpObservationServiceV1 } from "./guardian-http-observation.js";
+import {
+  npAgentGuardianRuntimeDetectorIdsV1,
+  type NpAgentGuardianRuntimeEvidenceV1,
+} from "../agent-contract/guardian-runtime-contract.js";
+import type { NpAgentGuardianRuntimeObservationServiceV1 } from "./guardian-runtime-observation.js";
+import type { NpAgentNotificationDeliveryServiceV1 } from "./notification-delivery-service.js";
+import { npReadAgentGuardianIncidentEvidenceV1 } from "./guardian-observation-service.js";
+import type { NpAgentGuardianSecurityObservationServiceV1 } from "./guardian-security-observation.js";
+import type { NpAgentGuardianContentObservationServiceV1 } from "./guardian-content-observation.js";
+import type { NpAgentGuardianExternalObservationServiceV1 } from "./guardian-external-observation.js";
+import {
+  npAgentGuardianContentDetectorIdsV1,
+  type NpAgentGuardianContentEvidenceV1,
+} from "../agent-contract/guardian-content-contract.js";
+import {
+  NP_AGENT_GUARDIAN_EXTERNAL_DETECTOR_ID_V1,
+  type NpAgentGuardianExternalEvidenceV1,
+} from "../agent-contract/guardian-external-contract.js";
+import {
+  npAgentGuardianSecurityDetectorIdsV1,
+  type NpAgentGuardianSecurityEvidenceV1,
+} from "../agent-contract/guardian-security-contract.js";
+import type { NpAgentGuardianEvidenceV1 } from "../agent-contract/guardian-contract.js";
+import type { NpAgentGuardianSessionEvidenceV1 } from "../agent-contract/guardian-session-contract.js";
+import { npReadAgentGuardianSessionSafeEvidenceV1 } from "./guardian-session-evidence.js";
+import type { NpAgentIncidentMemberReportEvidenceServiceV1 } from "./incident-member-report-evidence-service.js";
+import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
+import {
+  npRequireIncidentSeverityEvidence,
+  npRequireIncidentRuleSeverityEvidence,
+} from "./incident-severity-evidence.js";
+import type { NpAgentIncidentRuleSeverityChangeV1 } from "../agent-contract/incident-rule-severity-contract.js";
+import { npRequireIncidentTimelineAssessmentV1 } from "./incident-timeline-assessment.js";
 import {
   type NpAgentIncidentSeverityChangeV1,
   type NpAgentIncidentSeverityInputV1,
@@ -15,7 +52,7 @@ import {
 } from "../agent-contract/incident-workflow-contract.js";
 import type { NpAgentIncidentWorkflowServiceV1 } from "./incident-workflow-service.js";
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lte, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentSignals,
@@ -23,16 +60,20 @@ import {
   npAgentFeedback,
   npAgentIncidents,
   npAgentActions,
+  npAgentContainments,
+  npAgentIncidentSignals,
 } from "../db/schema/agent.js";
 import {
-  npRequireAgentIncidentStudioDetailV1,
-  type NpAgentIncidentStudioDetailV1,
-} from "../agent-contract/incident-studio-contract.js";
+  npRequireAgentIncidentStudioListQueryV1,
+  type NpAgentIncidentStudioListQueryV1,
+} from "../agent-contract/incident-studio-query-contract.js";
 import {
-  npRequireAgentIncidentListInputV1,
-  type NpAgentIncidentListInputV1,
-  type NpAgentIncidentListOutputV1,
-} from "../agent-contract/incident-contract.js";
+  npRequireAgentIncidentStudioDetailV1,
+  npRequireAgentIncidentStudioListOutputV1,
+  type NpAgentIncidentStudioDetailV1,
+  type NpAgentIncidentStudioListOutputV1,
+} from "../agent-contract/incident-studio-contract.js";
+import { type NpAgentIncidentListOutputV1 } from "../agent-contract/incident-contract.js";
 import { type NpAgentIncidentFeedbackInputV1 } from "../agent-contract/incident-feedback-contract.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
@@ -51,16 +92,22 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 export interface NpAgentIncidentStudioServiceV1 {
   notifications: NpAgentIncidentNotificationsServiceV1["list"];
+  deliveries?: NpAgentNotificationDeliveryServiceV1["list"];
   assignment: NpAgentIncidentAssignmentServiceV1["get"];
   assign: NpAgentIncidentAssignmentServiceV1["assign"];
   evidence: NpAgentIncidentEvidenceServiceV1["get"];
+  memberReportEvidence?: NpAgentIncidentMemberReportEvidenceServiceV1["get"];
   responsePlan: NpAgentIncidentResponseServiceV1["responsePlan"];
   responseExecute: NpAgentIncidentResponseServiceV1["responseExecute"];
   restore: NpAgentIncidentResponseServiceV1["restore"];
-  list(input: Staff & { query: NpAgentIncidentListInputV1 }): Promise<NpAgentIncidentListOutputV1>;
+  list(
+    input: Staff & { query: NpAgentIncidentStudioListQueryV1 },
+  ): Promise<NpAgentIncidentStudioListOutputV1>;
   get(
-    input: Staff & { incidentId: string; cursor?: string | null },
+    input: Staff & { incidentId: string; cursor?: string | null; responseCursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1>;
+  /** Authorize the same Incident for Activity without loading its Studio projections. */
+  readIncidentForActivity?: NpAgentIncidentStaffReadServiceV1["get"];
   escalate(
     input: Staff & { incidentId: string; command: NpAgentIncidentSeverityInputV1 },
   ): Promise<{ resourceId: string; replayed: boolean }>;
@@ -72,13 +119,20 @@ export interface NpAgentIncidentStudioServiceV1 {
   ): Promise<{ resourceId: string; replayed: boolean }>;
 }
 export interface NpAgentIncidentStudioServiceOptionsV1 {
+  guardianSecurityObservations?: Pick<NpAgentGuardianSecurityObservationServiceV1, "evidence">;
+  guardianContentObservations?: Pick<NpAgentGuardianContentObservationServiceV1, "evidence">;
+  guardianExternalObservations?: Pick<NpAgentGuardianExternalObservationServiceV1, "evidence">;
+  guardianRuntimeObservations?: Pick<NpAgentGuardianRuntimeObservationServiceV1, "evidence">;
+  guardianHttpObservations?: Pick<NpAgentGuardianHttpObservationServiceV1, "evidence">;
   reads: NpAgentIncidentStaffReadServiceV1;
   writer?: NpAgentIncidentWriteServiceV1;
   workflow?: NpAgentIncidentWorkflowServiceV1;
   response?: NpAgentIncidentResponseServiceV1;
   evidence?: NpAgentIncidentEvidenceServiceV1;
+  memberReportEvidence?: NpAgentIncidentMemberReportEvidenceServiceV1;
   assignment?: NpAgentIncidentAssignmentServiceV1;
   notifications?: NpAgentIncidentNotificationsServiceV1;
+  notificationDelivery?: NpAgentNotificationDeliveryServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -95,9 +149,9 @@ export function createAgentIncidentStudioServiceV1(
   const now = options.now ?? (() => new Date());
   const cursor = createAgentCursorCodecV1(options.cursorHmacKey, "np.agent-incident-studio.cursor");
   async function list(
-    input: Staff & { query: NpAgentIncidentListInputV1 },
-  ): Promise<NpAgentIncidentListOutputV1> {
-    const query = npRequireAgentIncidentListInputV1(input.query);
+    input: Staff & { query: NpAgentIncidentStudioListQueryV1 },
+  ): Promise<NpAgentIncidentStudioListOutputV1> {
+    const query = npRequireAgentIncidentStudioListQueryV1(input.query);
     await options.reads.authorize(input);
     const db = getDb();
     const auth = await npResolveAgentStaffSessionAuthorizationV1(
@@ -165,6 +219,24 @@ export function createAgentIncidentStudioServiceV1(
           query.updatedAfter
             ? gt(npAgentIncidents.updatedAt, new Date(query.updatedAfter))
             : undefined,
+          query.assignedAgentId
+            ? eq(npAgentIncidents.assignedAgentId, query.assignedAgentId)
+            : undefined,
+          query.observedAfter
+            ? gte(npAgentIncidents.lastObservedAt, new Date(query.observedAfter))
+            : undefined,
+          query.observedBefore
+            ? lte(npAgentIncidents.lastObservedAt, new Date(query.observedBefore))
+            : undefined,
+          query.query
+            ? sql`position(lower(${query.query}) in lower(${npAgentIncidents.title} || ' ' || ${npAgentIncidents.summary}))>0`
+            : undefined,
+          query.source
+            ? sql`exists (select 1 from ${npAgentIncidentSignals} link join ${npAgentSignals} signal on signal.site_id=link.site_id and signal.id=link.signal_id where link.site_id=${input.siteId} and link.incident_id=${npAgentIncidents.id} and signal.detector_id=${query.source})`
+            : undefined,
+          query.containment
+            ? sql`${query.containment === "inactive" ? sql`not` : sql``} exists (select 1 from ${npAgentContainments} containment where containment.site_id=${input.siteId} and containment.incident_id=${npAgentIncidents.id} and containment.state='active')`
+            : undefined,
           position
             ? sql`(${closed},${severity},-extract(epoch from ${npAgentIncidents.lastObservedAt}),${npAgentIncidents.id}) > (${position.closed},${position.severity},-extract(epoch from ${position.time}::timestamptz),${position.id}::uuid)`
             : undefined,
@@ -178,14 +250,82 @@ export function createAgentIncidentStudioServiceV1(
       )
       .limit(query.limit + 1);
     const items: NpAgentIncidentListOutputV1["items"] = [];
+    const summaries: NonNullable<NpAgentIncidentStudioListOutputV1["summaries"]> = [];
     for (const row of rows.slice(0, query.limit)) {
       try {
         const current = (await options.reads.get({ incidentId: row.id }, input)).incident;
         if (
           current.versionNumber === row.version &&
           current.updatedAt === row.updatedAt.toISOString()
-        )
+        ) {
+          if (query.includeSummaries) {
+            const summary: (typeof summaries)[number] = {
+              incidentId: current.id,
+              versionNumber: current.versionNumber,
+              containment: null,
+              assessmentAvailable: null,
+            };
+            if (options.workflow) {
+              try {
+                const review = await options.workflow.get({ ...input, incidentId: current.id });
+                const [aggregate] = await db
+                  .select({
+                    active: sql<number>`count(*)::integer`,
+                    nearestExpiryAt: sql<
+                      string | null
+                    >`to_char(min(${npAgentContainments.expiresAt}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+                  })
+                  .from(npAgentContainments)
+                  .where(
+                    and(
+                      eq(npAgentContainments.siteId, input.siteId),
+                      eq(npAgentContainments.incidentId, current.id),
+                      eq(npAgentContainments.state, "active"),
+                    ),
+                  );
+                const confirmed = await options.workflow.get({ ...input, incidentId: current.id });
+                if (
+                  aggregate &&
+                  aggregate.active === review.containment.active &&
+                  confirmed.containment.reviewHash === review.containment.reviewHash
+                )
+                  summary.containment = {
+                    active: aggregate.active,
+                    nearestExpiryAt: aggregate.nearestExpiryAt,
+                  };
+              } catch {
+                // The optional owner must prove every containment/action visible.
+                // No owner or an unavailable review is unknown, never zero.
+              }
+            }
+            const [entry] = await db
+              .select()
+              .from(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, input.siteId),
+                  eq(npAgentIncidentTimeline.incidentId, current.id),
+                  eq(npAgentIncidentTimeline.kind, "agent_assessment"),
+                ),
+              )
+              .orderBy(desc(npAgentIncidentTimeline.sequence))
+              .limit(1);
+            if (!entry) summary.assessmentAvailable = false;
+            else {
+              try {
+                await npRequireIncidentTimelineAssessmentV1(db, entry);
+                summary.assessmentAvailable = true;
+              } catch {
+                /* Invalid/legacy assessment evidence stays unknown. */
+              }
+            }
+            const checked = (await options.reads.get({ incidentId: current.id }, input)).incident;
+            if (serializeAgentCanonicalJson(checked) !== serializeAgentCanonicalJson(current))
+              continue;
+            summaries.push(summary);
+          }
           items.push(current);
+        }
       } catch (error) {
         if (!(error instanceof NpAgentGatewayError) || error.code !== "INCIDENT_NOT_FOUND")
           throw error;
@@ -198,9 +338,10 @@ export function createAgentIncidentStudioServiceV1(
     )
       throw new NpAgentGatewayError("INCIDENT_FORBIDDEN", 403, "Incident permission is required.");
     const last = rows[Math.min(rows.length, query.limit) - 1];
-    return {
+    return npRequireAgentIncidentStudioListOutputV1({
       schemaVersion: "np.agent-incident-list.v1",
       items,
+      ...(query.includeSummaries ? { summaries } : {}),
       nextCursor:
         rows.length > query.limit && last
           ? cursor.seal({
@@ -214,10 +355,10 @@ export function createAgentIncidentStudioServiceV1(
               },
             })
           : null,
-    };
+    });
   }
   async function get(
-    input: Staff & { incidentId: string; cursor?: string | null },
+    input: Staff & { incidentId: string; cursor?: string | null; responseCursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1> {
     const db = getDb();
     const { incident } = await options.reads.get({ incidentId: input.incidentId }, input);
@@ -279,6 +420,7 @@ export function createAgentIncidentStudioServiceV1(
           eq(npAgentIncidentTimeline.siteId, input.siteId),
           eq(npAgentIncidentTimeline.incidentId, incident.id),
           gt(npAgentIncidentTimeline.sequence, after),
+          sql`coalesce(${npAgentIncidentTimeline.details}->>'schemaVersion','') <> ${NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA}`,
         ),
       )
       .orderBy(asc(npAgentIncidentTimeline.sequence))
@@ -343,6 +485,7 @@ export function createAgentIncidentStudioServiceV1(
         }
       }
       let severityChange: NpAgentIncidentSeverityChangeV1 | undefined;
+      let ruleSeverityChange: NpAgentIncidentRuleSeverityChangeV1 | undefined;
       if (row.details.schemaVersion === "np.agent-incident-severity-entry.v1") {
         try {
           severityChange = await npRequireIncidentSeverityEvidence(db, row);
@@ -350,9 +493,36 @@ export function createAgentIncidentStudioServiceV1(
           continue;
         }
       }
+      if (row.details.schemaVersion === "np.agent-incident-rule-severity-entry.v1") {
+        try {
+          ruleSeverityChange = await npRequireIncidentRuleSeverityEvidence(db, row);
+        } catch {
+          continue;
+        }
+      }
+      let assessment: Awaited<ReturnType<typeof npRequireIncidentTimelineAssessmentV1>> | undefined;
+      if (row.kind === "agent_assessment") {
+        try {
+          assessment = await npRequireIncidentTimelineAssessmentV1(db, row);
+        } catch {
+          // Raw model prose and unverified legacy entries never become a trusted projection.
+          continue;
+        }
+      }
       timeline.push({
+        ...assessment,
         ...(containmentFailure ? { containmentFailure } : {}),
+        ...(containmentFailure && options.notifications?.recoveryState
+          ? {
+              notificationRecovery: await options.notifications.recoveryState({
+                ...input,
+                db,
+                timelineId: row.id,
+              }),
+            }
+          : {}),
         ...(severityChange ? { severityChange } : {}),
+        ...(ruleSeverityChange ? { ruleSeverityChange } : {}),
         id: row.id,
         sequence: row.sequence,
         kind: row.kind,
@@ -415,9 +585,21 @@ export function createAgentIncidentStudioServiceV1(
           .limit(100)
       : [];
     let response = null;
-    if (options.response) {
+    const memberReports =
+      incident.primarySubject?.kind === "member" &&
+      signals.length > 0 &&
+      signals.every((signal) => signal.detectorId === "moderator.member-report-review");
+    if (options.response && !memberReports) {
       try {
-        response = await options.response.get(input);
+        const {
+          responseCursor: selectedResponseCursor,
+          cursor: _timelineCursor,
+          ...responseInput
+        } = input;
+        response = await options.response.get({
+          ...responseInput,
+          ...(selectedResponseCursor !== undefined ? { cursor: selectedResponseCursor } : {}),
+        });
       } catch (error) {
         if (!(error instanceof NpAgentGatewayError) || ![403, 404, 409].includes(error.status))
           throw error;
@@ -439,6 +621,126 @@ export function createAgentIncidentStudioServiceV1(
           throw error;
       }
     }
+    let guardianEvidence: NpAgentGuardianEvidenceV1[] | null | undefined;
+    if (
+      signals.some(
+        (signal) =>
+          signal.detectorId === "guardian.login-failures" ||
+          signal.detectorId === "guardian.rate-limits",
+      )
+    ) {
+      guardianEvidence = null;
+      try {
+        guardianEvidence = await npReadAgentGuardianIncidentEvidenceV1({
+          db,
+          siteId: input.siteId,
+          incident,
+        });
+      } catch {
+        // Missing or corrupt sources are unavailable; no invented aggregate crosses the wire.
+      }
+    }
+    let guardianSecurityEvidence: NpAgentGuardianSecurityEvidenceV1[] | null | undefined;
+    if (
+      signals.some((signal) =>
+        npAgentGuardianSecurityDetectorIdsV1.some((id) => id === signal.detectorId),
+      )
+    ) {
+      guardianSecurityEvidence = null;
+      try {
+        if (options.guardianSecurityObservations)
+          guardianSecurityEvidence = await options.guardianSecurityObservations.evidence({
+            db,
+            siteId: input.siteId,
+            incident,
+          });
+      } catch {
+        // Historical integrity or retained-key loss is unavailable, never an invented source fact.
+      }
+    }
+    let guardianSessionEvidence: NpAgentGuardianSessionEvidenceV1[] | null | undefined;
+    if (signals.some((signal) => signal.detectorId === "guardian.login-after-failures")) {
+      guardianSessionEvidence = null;
+      try {
+        guardianSessionEvidence = await npReadAgentGuardianSessionSafeEvidenceV1({
+          db,
+          siteId: input.siteId,
+          incident,
+        });
+      } catch {
+        /* Historical proof loss cannot disclose session/principal targets. */
+      }
+    }
+    let guardianContentEvidence: NpAgentGuardianContentEvidenceV1[] | null | undefined;
+    if (
+      signals.some((signal) =>
+        npAgentGuardianContentDetectorIdsV1.some((id) => id === signal.detectorId),
+      )
+    ) {
+      guardianContentEvidence = null;
+      try {
+        if (options.guardianContentObservations)
+          guardianContentEvidence = await options.guardianContentObservations.evidence({
+            db,
+            siteId: input.siteId,
+            incident,
+            actor: input.actor,
+          });
+      } catch {
+        // Hidden documents and unavailable source proof never become aggregate facts.
+      }
+    }
+    let guardianExternalEvidence: NpAgentGuardianExternalEvidenceV1[] | null | undefined;
+    if (signals.some((signal) => signal.detectorId === NP_AGENT_GUARDIAN_EXTERNAL_DETECTOR_ID_V1)) {
+      guardianExternalEvidence = null;
+      try {
+        if (options.guardianExternalObservations)
+          guardianExternalEvidence = await options.guardianExternalObservations.evidence({
+            db,
+            siteId: input.siteId,
+            incident,
+          });
+      } catch {
+        // External signatures and local provenance are required, not inferred from labels.
+      }
+    }
+    let guardianRuntimeEvidence: NpAgentGuardianRuntimeEvidenceV1[] | null | undefined;
+    if (
+      signals.some((signal) =>
+        npAgentGuardianRuntimeDetectorIdsV1.some((id) => id === signal.detectorId),
+      )
+    ) {
+      guardianRuntimeEvidence = null;
+      try {
+        if (options.guardianRuntimeObservations)
+          guardianRuntimeEvidence = await options.guardianRuntimeObservations.evidence({
+            db,
+            siteId: input.siteId,
+            incident,
+            actor: input.actor,
+          });
+      } catch {
+        /* Unknown accounting/provenance never becomes an invented aggregate. */
+      }
+    }
+    let guardianHttpEvidence: NpAgentGuardianHttpEvidenceV1[] | null | undefined;
+    if (
+      signals.some((signal) =>
+        npAgentGuardianHttpDetectorIdsV1.some((id) => id === signal.detectorId),
+      )
+    ) {
+      guardianHttpEvidence = null;
+      try {
+        if (options.guardianHttpObservations)
+          guardianHttpEvidence = await options.guardianHttpObservations.evidence({
+            db,
+            siteId: input.siteId,
+            incident,
+          });
+      } catch {
+        /* A response count never substitutes for its source proof. */
+      }
+    }
     // Reread all evidence and item ACLs after composing related records; do not return a mixed generation.
     const current = await options.reads.get({ incidentId: incident.id }, input);
     if (
@@ -450,6 +752,13 @@ export function createAgentIncidentStudioServiceV1(
       throw unavailable();
     return npRequireAgentIncidentStudioDetailV1({
       schemaVersion: "np.agent-incident-studio-detail.v1",
+      ...(guardianSecurityEvidence === undefined ? {} : { guardianSecurityEvidence }),
+      ...(guardianSessionEvidence === undefined ? {} : { guardianSessionEvidence }),
+      ...(guardianContentEvidence === undefined ? {} : { guardianContentEvidence }),
+      ...(guardianExternalEvidence === undefined ? {} : { guardianExternalEvidence }),
+      ...(guardianRuntimeEvidence === undefined ? {} : { guardianRuntimeEvidence }),
+      ...(guardianHttpEvidence === undefined ? {} : { guardianHttpEvidence }),
+      ...(guardianEvidence === undefined ? {} : { guardianEvidence }),
       incident,
       workflow,
       response,
@@ -463,6 +772,7 @@ export function createAgentIncidentStudioServiceV1(
         createdAt: s.createdAt.toISOString(),
       })),
       timeline,
+      timelinePageComplete: timeline.length === Math.min(rows.length, 50),
       nextTimelineCursor:
         rows.length > 50
           ? cursor.seal({ binding, expires: now().getTime() + 900000, after: rows[49].sequence })
@@ -481,6 +791,16 @@ export function createAgentIncidentStudioServiceV1(
     });
   }
   return {
+    readIncidentForActivity: (input, context) => options.reads.get(input, context),
+    deliveries: (input) => {
+      if (!options.notificationDelivery)
+        throw new NpAgentGatewayError(
+          "INCIDENT_NOTIFICATION_DELIVERIES_UNAVAILABLE",
+          503,
+          "External notification delivery is disabled or unavailable.",
+        );
+      return options.notificationDelivery.list(input);
+    },
     notifications: (input) => {
       if (!options.notifications)
         throw new NpAgentGatewayError(
@@ -507,6 +827,15 @@ export function createAgentIncidentStudioServiceV1(
           "Incident assignment is unavailable.",
         );
       return options.assignment.assign(input);
+    },
+    memberReportEvidence: (input) => {
+      if (!options.memberReportEvidence)
+        throw new NpAgentGatewayError(
+          "INCIDENT_EVIDENCE_UNAVAILABLE",
+          503,
+          "Member report evidence is unavailable.",
+        );
+      return options.memberReportEvidence.get(input);
     },
     evidence: (input) => {
       if (!options.evidence)

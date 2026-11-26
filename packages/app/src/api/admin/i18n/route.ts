@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, getI18nConfig, can } from "@nexpress/core";
 import { npRequireI18nConfigResponse } from "@nexpress/core/i18n-contract";
 import type { NextRequest } from "next/server";
@@ -21,7 +22,7 @@ import { ensureFor } from "../../../lib/init-core";
  * declared in nexpress.config.ts, but we keep it admin-area
  * to avoid leaking deployment internals to the public site.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -45,3 +46,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

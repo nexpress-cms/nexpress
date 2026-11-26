@@ -1,4 +1,4 @@
-import { npPluginIdMaxLength, npPluginIdPattern } from "../settings/contract.js";
+import { npPluginIdMaxLength, npPluginIdPattern } from "./id-contract.js";
 import { npAnalyzeTranslationCatalog } from "../i18n-contract/contract.js";
 
 export interface NpPluginDefinitionContractInput {

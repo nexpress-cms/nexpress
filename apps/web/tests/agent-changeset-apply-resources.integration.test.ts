@@ -233,9 +233,12 @@ async function rollback(
 }
 
 describe.skipIf(skipIfNoTestDb())("ChangeSet atomic existing-domain apply", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     registerTestCollections();
     registerThemes([defaultTheme]);
   });

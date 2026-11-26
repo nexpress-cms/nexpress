@@ -46,6 +46,7 @@ describe("Agent Studio host runtime", () => {
       "Agent Studio OAuth runtime is unavailable.",
     );
     expect(runtime.mcp).toBeNull();
+    expect(runtime.guardian).toBeNull();
     expect(runtime.activity).toBeNull();
     expect(runtime.agentHttp).toBeNull();
     expect(() => requireAgentStudioActivityRuntimeV1()).toThrow(

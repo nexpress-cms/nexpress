@@ -9,20 +9,31 @@ import { AgentStudioApiError } from "./agent-studio-api.js";
 import { runtimeAccessLost, useRuntimeResource } from "./agent-runtime-api.js";
 import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import { Button } from "../ui/button.js";
+import { IncidentMemberReportEvidence } from "./agent-incident-member-report-evidence.js";
 
-export function IncidentEvidence({
-  detail,
-  onSelect,
-  onClearSelection,
-  onAccessLost,
-  onConflict,
-}: {
+interface IncidentEvidenceProps {
   detail: NpAgentIncidentStudioDetailV1;
   onSelect: (index: string) => void;
   onClearSelection: () => void;
   onAccessLost: (error: unknown) => void;
   onConflict: () => void;
-}) {
+}
+
+export function IncidentEvidence(props: IncidentEvidenceProps) {
+  return props.detail.incident.primarySubject?.kind === "member" ? (
+    <IncidentMemberReportEvidence {...props} />
+  ) : (
+    <IncidentContentEvidence {...props} />
+  );
+}
+
+function IncidentContentEvidence({
+  detail,
+  onSelect,
+  onClearSelection,
+  onAccessLost,
+  onConflict,
+}: IncidentEvidenceProps) {
   const [cursor, setCursor] = React.useState<string | null>(null);
   const path = `/api/admin/agents/incidents/${encodeURIComponent(detail.incident.id)}/evidence${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
   const state = useRuntimeResource(path, npRequireAgentIncidentEvidenceV1);
@@ -51,6 +62,9 @@ export function IncidentEvidence({
       staleTarget),
   );
   React.useEffect(() => {
+    onClearSelection();
+  }, [state.loading, evidence, onClearSelection]);
+  React.useEffect(() => {
     if (!state.failure && !mismatch) return;
     onClearSelection();
     if (runtimeAccessLost(state.failure)) onAccessLost(state.failure);
@@ -69,23 +83,23 @@ export function IncidentEvidence({
     setCursor(next);
   }
   return (
-    <section className="min-w-0 space-y-3" aria-labelledby="incident-comment-evidence">
-      <h3 id="incident-comment-evidence" className="font-semibold">
-        Comment evidence
+    <section className="min-w-0 space-y-3" aria-labelledby="incident-content-evidence">
+      <h3 id="incident-content-evidence" className="font-semibold">
+        Content evidence
       </h3>
       <p className="text-sm text-neutral-500">
-        Compare recorded observation metadata with the comment’s current state. Comment content and
-        author details are not included. The current version is not a historical version.
+        Compare recorded observation or report metadata with the content’s current state. Content
+        and author details are not included. The current version is not a historical version.
       </p>
       <AgentRecoveryBoundary error={state.failure}>
-        {state.loading ? <p role="status">Loading comment evidence…</p> : null}
-        {state.error ? <p role="alert">Comment evidence is unavailable. {state.error}</p> : null}
+        {state.loading ? <p role="status">Loading content evidence…</p> : null}
+        {state.error ? <p role="alert">Content evidence is unavailable. {state.error}</p> : null}
         {mismatch ? (
           <p role="alert">Evidence changed. Refresh the incident before continuing.</p>
         ) : null}
         {evidence && !mismatch ? (
           <>
-            {evidence.items.length === 0 ? <p>No visible comment evidence on this page.</p> : null}
+            {evidence.items.length === 0 ? <p>No visible content evidence on this page.</p> : null}
             <ul className="space-y-3">
               {evidence.items.map((item) => {
                 const choiceIndex =
@@ -112,18 +126,33 @@ export function IncidentEvidence({
                     item.target ? (
                       <>
                         <p className="break-all">
-                          Comment: {item.target.collection} · {item.target.id}
+                          {item.target.kind === "document" ? "Document" : "Comment"}:{" "}
+                          {item.target.collection} · {item.target.id}
                         </p>
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="space-y-1">
-                            <h4 className="font-medium">Recorded observation</h4>
+                            <h4 className="font-medium">
+                              {item.observed.reportFiled
+                                ? "Recorded report"
+                                : "Recorded observation"}
+                            </h4>
                             <p>Status: {item.observed.status}</p>
+                            {item.target.kind === "document" ? (
+                              <p>Visibility: {item.observed.visibility}</p>
+                            ) : null}
+                            {item.observed.reportFiled ? (
+                              <p>
+                                A report is an unverified claim. No spam or profanity verdict was
+                                recorded.
+                              </p>
+                            ) : (
+                              <p>
+                                Spam: {item.observed.spamVerdict} · Profanity:{" "}
+                                {item.observed.profanityVerdict}
+                              </p>
+                            )}
                             <p>
-                              Spam: {item.observed.spamVerdict} · Profanity:{" "}
-                              {item.observed.profanityVerdict}
-                            </p>
-                            <p>
-                              Observed:{" "}
+                              {item.observed.reportFiled ? "Filed: " : "Observed: "}
                               <time dateTime={item.observed.occurredAt}>
                                 {item.observed.occurredAt}
                               </time>
@@ -140,13 +169,42 @@ export function IncidentEvidence({
                             </p>
                           </div>
                           <div className="min-w-0 space-y-1">
-                            <h4 className="font-medium">Current comment</h4>
+                            <h4 className="font-medium">
+                              Current {item.target.kind === "document" ? "document" : "comment"}
+                            </h4>
                             <p>Compared with observation: {item.current.state}</p>
                             <p>Status: {item.current.status}</p>
-                            <p>Edited: {item.current.editedAt ?? "No edit recorded"}</p>
+                            {item.target.kind === "document" ? (
+                              <>
+                                <p>Visibility: {item.current.visibility}</p>
+                                <p>
+                                  Moderation hidden: {item.current.moderationHidden ? "Yes" : "No"}
+                                </p>
+                              </>
+                            ) : null}
+                            <p>
+                              {item.target.kind === "document" ? "Updated" : "Edited"}:{" "}
+                              {item.current.editedAt ?? "No edit recorded"}
+                            </p>
                             <p className="break-all">
                               Current version: {item.current.versionDigest}
                             </p>
+                            {item.current.report ? (
+                              <div className="space-y-1 pt-2">
+                                <h4 className="font-medium">Current report</h4>
+                                <p>Report status: {item.current.report.status}</p>
+                                <p>
+                                  Resolved:{" "}
+                                  {item.current.report.resolvedAt ? (
+                                    <time dateTime={item.current.report.resolvedAt}>
+                                      {item.current.report.resolvedAt}
+                                    </time>
+                                  ) : (
+                                    "Not resolved"
+                                  )}
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         <Button
@@ -196,7 +254,7 @@ export function IncidentEvidence({
             state.reload();
           }}
         >
-          Refresh comment evidence
+          Refresh content evidence
         </Button>
       </AgentRecoveryBoundary>
     </section>

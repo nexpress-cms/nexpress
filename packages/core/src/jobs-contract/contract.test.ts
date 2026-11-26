@@ -24,6 +24,10 @@ describe("job runtime contract", () => {
   it("closes Runtime jobs over only site-stamped identities or exact global empty payloads", () => {
     for (const [name, payload] of [
       ["agent:eventDispatch", { siteId: "default", eventId: DOCUMENT_ID }],
+      [
+        "agent:notificationSend",
+        { siteId: "default", notificationId: DOCUMENT_ID, expectedAttempt: 0 },
+      ],
       ["agent:runExecute", { siteId: "default", runId: DOCUMENT_ID }],
       ["agent:retentionPrune", { siteId: "default" }],
     ] as const) {

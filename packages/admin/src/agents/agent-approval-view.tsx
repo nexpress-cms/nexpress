@@ -21,6 +21,7 @@ import {
 } from "@nexpress/core/agent-contract";
 import { npFetch } from "../lib/api-client.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
+import { useAgentPolling } from "./use-agent-polling.js";
 import {
   AgentChangeSetReviewFacts,
   AgentChangeSetPreview,
@@ -86,10 +87,15 @@ const filterLabels: Record<string, string> = {
 };
 export function AgentApprovalListView({ queryString = "" }: { queryString?: string }) {
   const router = useRouter();
-  const result = useAgentReviewRead(
-    `${base}${queryString ? `?${queryString}` : ""}`,
-    npRequireAgentApprovalPageV1,
-    approvalError,
+  const path = `${base}${queryString ? `?${queryString}` : ""}`;
+  const result = useAgentReviewRead(path, npRequireAgentApprovalPageV1, approvalError);
+  useAgentPolling(
+    path,
+    result.value,
+    result.value !== null && !result.failure,
+    result.busy,
+    result.refreshBackground,
+    "list",
   );
   const [filterError, setFilterError] = React.useState<string | null>(null);
   const query = new URLSearchParams(queryString);
@@ -293,11 +299,145 @@ function ApprovalPreview({
   );
 }
 
-function ApprovalActionFacts({
+export function ApprovalActionFacts({
   review,
 }: {
   review: NonNullable<NpAgentApprovalDetailV1["actionReview"]>;
 }) {
+  if (review.capabilityId === "security.revokeSessions") {
+    return (
+      <section className="space-y-3" aria-label="Guardian session revocation action">
+        <h2 className="text-lg font-semibold">Revoke this exact browser session</h2>
+        <p>
+          This action invalidates access and refresh for the selected session family across the
+          deployment. It cannot be undone. Other session families remain valid and a new sign-in
+          creates a new session. Approval requires a different super administrator with recent
+          staff-primary reauthentication. Execution is a separate explicit request.
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Incident</dt>
+          <dd className="break-all">{review.incidentId}</dd>
+          <dt>Session audience</dt>
+          <dd>{review.target.actorKind}</dd>
+          <dt>Exact session family</dt>
+          <dd className="break-all">{review.target.sessionFamilyId}</dd>
+          <dt>Session created</dt>
+          <dd>{review.target.createdAt}</dd>
+          <dt>Impact</dt>
+          <dd>Deployment · {review.target.affectedSiteCount} sites</dd>
+          <dt>Impact digest</dt>
+          <dd className="break-all">{review.target.impactDigest}</dd>
+          <dt>Current target facts version</dt>
+          <dd className="break-all">{review.expectedTargetVersionDigest}</dd>
+          <dt>Policy</dt>
+          <dd className="break-all">{review.policyDigest}</dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+      </section>
+    );
+  }
+  if ("expectedTargetVersionDigest" in review) {
+    return (
+      <section className="space-y-3" aria-label="Guardian request restriction action">
+        <h2 className="text-lg font-semibold">
+          {review.operation.kind === "limit"
+            ? "Temporarily limit requests on this site"
+            : "Remove this exact request limit"}
+        </h2>
+        <p>
+          {review.operation.kind === "limit"
+            ? "Limit the verified network target only within the selected request scopes and duration. Shared networks may include innocent users. This approval grants no permanent ban or session revocation."
+            : "Remove only the exact temporary request limit created by the selected workflow. Other limits remain effective."}
+        </p>
+        <p className="text-sm">
+          Scope coverage is limited to supported request routes in the installed proxy.
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Incident</dt>
+          <dd className="break-all">{review.incidentId}</dd>
+          {review.operation.kind === "limit" ? (
+            <>
+              <dt>Duration after execution</dt>
+              <dd>{review.operation.durationSeconds} seconds</dd>
+              <dt>Request scopes</dt>
+              <dd className="break-words">{review.operation.actionScopes.join(", ")}</dd>
+            </>
+          ) : (
+            <>
+              <dt>Original restriction action</dt>
+              <dd className="break-all">{review.operation.sourceActionId}</dd>
+              <dt>Exact restriction</dt>
+              <dd className="break-all">{review.operation.restrictionId}</dd>
+            </>
+          )}
+          <dt>Current target facts version</dt>
+          <dd className="break-all">{review.expectedTargetVersionDigest}</dd>
+          <dt>Policy</dt>
+          <dd className="break-all">{review.policyDigest}</dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+        <p>
+          A different authorized staff member must approve. Execution is a separate explicit request
+          and checks current evidence again. Expired access does not prove enforcement cleanup
+          completed.
+        </p>
+      </section>
+    );
+  }
+  if ("memberId" in review) {
+    const restrict = review.operation.kind === "restrict";
+    return (
+      <section className="space-y-3" aria-label="Member site restriction action">
+        <h2 className="text-lg font-semibold">
+          {restrict
+            ? "Temporarily restrict Member on this site"
+            : "Revoke this workflow’s Member restriction"}
+        </h2>
+        <p>
+          {restrict
+            ? "This temporary site restriction blocks Community writes on the current site until its expiry. It does not change the global account or revoke sessions."
+            : "Remove only the exact temporary site restriction created by the selected approved workflow. Other restrictions remain effective."}
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Member</dt>
+          <dd className="break-all">{review.memberId}</dd>
+          <dt>Incident</dt>
+          <dd className="break-all">{review.incidentId}</dd>
+          {review.operation.kind === "restrict" ? (
+            <>
+              <dt>Duration after execution</dt>
+              <dd>{review.operation.durationSeconds} seconds</dd>
+            </>
+          ) : (
+            <>
+              <dt>Original restriction action</dt>
+              <dd className="break-all">{review.operation.sourceActionId}</dd>
+              <dt>Exact restriction</dt>
+              <dd className="break-all">{review.operation.banId}</dd>
+            </>
+          )}
+          <dt>Current facts version</dt>
+          <dd className="break-all">{review.expectedMemberVersionDigest}</dd>
+          <dt>Policy</dt>
+          <dd className="break-all">{review.policyDigest}</dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+        <p>
+          A different authorized staff member must approve. Execution is a separate explicit request
+          and checks current evidence again.
+        </p>
+      </section>
+    );
+  }
   if (review.capabilityId === "ops.execute") {
     const operation = review.operation;
     const target = operation.target;
@@ -671,7 +811,13 @@ function DecisionControls({
   );
 }
 
-export function AgentApprovalDetailView({ id }: { id: string }) {
+export function AgentApprovalDetailView({
+  id,
+  canViewActivity = false,
+}: {
+  id: string;
+  canViewActivity?: boolean;
+}) {
   const parse = React.useCallback(
     (value: unknown) => {
       const detail = npRequireAgentApprovalDetailV1(value);
@@ -681,6 +827,10 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
     [id],
   );
   const result = useAgentReviewRead(`${base}/${encodeURIComponent(id)}`, parse, approvalError);
+  const factsRef = React.useRef<HTMLHeadingElement>(null);
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
+  const moveFocusAfterRead = React.useRef(false);
+  const factsStatusId = React.useId();
   const [notice, setNotice] = React.useState<string | null>(null);
   const clear = result.clear;
   const onLost = React.useCallback(
@@ -695,6 +845,16 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
     [clear],
   );
   const detail = result.value;
+  React.useEffect(() => {
+    if (notice || result.error) {
+      moveFocusAfterRead.current = false;
+      if (document.activeElement === document.body) errorRef.current?.focus();
+      return;
+    }
+    if (result.busy || !moveFocusAfterRead.current) return;
+    moveFocusAfterRead.current = false;
+    if (detail && document.activeElement === document.body) factsRef.current?.focus();
+  }, [detail, notice, result.busy, result.error]);
   return (
     <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
       <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
@@ -704,9 +864,10 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
         </Link>
         <Button
           className="ml-3"
-          disabled={result.busy}
+          aria-disabled={result.busy}
           variant="outline"
           onClick={() => {
+            if (result.busy) return;
             setNotice(null);
             result.refresh();
           }}
@@ -720,15 +881,33 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
           observedAt={result.observedAt}
           label="approval"
         />
-        {result.error && <p role="alert">{result.error}</p>}
-        {notice && <p role="alert">{notice}</p>}
+        {(notice || result.error) && (
+          <p ref={errorRef} tabIndex={-1} role="alert">
+            {notice || result.error}
+          </p>
+        )}
         {detail && (
           <>
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold">Server approval facts</h2>
-              <p>
+              <h2
+                ref={factsRef}
+                tabIndex={-1}
+                aria-describedby={factsStatusId}
+                className="text-lg font-semibold"
+              >
+                Server approval facts
+              </h2>
+              <p id={factsStatusId}>
                 <Badge>{detail.item.approval.state}</Badge> · Risk: {detail.item.risk}
               </p>
+              {canViewActivity ? (
+                <Link
+                  className="underline"
+                  href={`/admin/agents/activity?approvalId=${encodeURIComponent(detail.item.approval.id)}`}
+                >
+                  View related runs
+                </Link>
+              ) : null}
               <dl className="grid gap-2 text-sm">
                 <dt>Approval</dt>
                 <dd>
@@ -790,9 +969,12 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
                 </dd>
               </dl>
               <p>
-                {detail.actionReview
-                  ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact reviewed target and plan."
-                  : "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks."}
+                {detail.item.approval.state === "pending" ||
+                detail.item.approval.state === "approved"
+                  ? detail.actionReview
+                    ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact reviewed target and plan."
+                    : "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks."
+                  : "This approval is closed. The record is available for reference."}
               </p>
             </section>
             {detail.actionReview && <ApprovalActionFacts review={detail.actionReview} />}
@@ -829,7 +1011,10 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
             <DecisionControls
               key={`${id}:${detail.item.version}:${detail.item.statementHash}`}
               detail={detail}
-              onChanged={result.refresh}
+              onChanged={() => {
+                moveFocusAfterRead.current = true;
+                result.refresh();
+              }}
               onLost={onLost}
             />
           </>

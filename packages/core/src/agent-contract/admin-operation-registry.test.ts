@@ -68,6 +68,7 @@ const expectedOperationIds = [
   "agents.changesets.rollback_plans.create",
   "agents.changesets.rollback_plans.request_approval",
   "agents.changesets.rollback_plans.execute",
+  "agents.evaluations.review",
   "agents.incidents.feedback",
   "agents.incidents.assign",
   "agents.incidents.escalate",
@@ -75,6 +76,12 @@ const expectedOperationIds = [
   "agents.incidents.response_plan",
   "agents.incidents.response_execute",
   "agents.incidents.restore",
+  "agents.incidents.guardian_session_plan",
+  "agents.incidents.guardian_session_execute",
+  "agents.incidents.guardian_response_plan",
+  "agents.incidents.guardian_response_execute",
+  "agents.incidents.member_response_plan",
+  "agents.incidents.member_response_execute",
   "agents.budgets.update",
   "agents.runtime.pause",
   "agents.runtime.resume",
@@ -101,11 +108,11 @@ function adminInvocation(operationId: string) {
 }
 
 describe("Agent Admin operation registry v1", () => {
-  it("locks all 59 Agent Studio mutation rows in product order", () => {
+  it("locks all 66 Agent Studio mutation rows in product order", () => {
     expect(npAgentAdminOperationIdsV1).toEqual(expectedOperationIds);
-    expect(npAgentAdminOperationRegistryV1).toHaveLength(59);
+    expect(npAgentAdminOperationRegistryV1).toHaveLength(66);
     expect(Object.keys(npAgentAdminOperationsV1)).toEqual(expectedOperationIds);
-    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(59);
+    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(66);
     expect(Object.isFrozen(npAgentAdminOperationIdsV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1[0])).toBe(true);
@@ -113,7 +120,7 @@ describe("Agent Admin operation registry v1", () => {
     const routeKeys = npAgentAdminOperationRegistryV1.map(
       ({ method, pathTemplate }) => `${method} ${pathTemplate}`,
     );
-    expect(new Set(routeKeys).size).toBe(59);
+    expect(new Set(routeKeys).size).toBe(66);
     expect(routeKeys.every((route) => route.includes(" /api/admin/agents/"))).toBe(true);
   });
 
@@ -254,7 +261,9 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:5bRzvOysV9gaLGs7Rj3wGiN3yYNfVvFwxEtKRGe4r1g",
+      // R7 expands activation Event kinds and adds the Guardian evaluation-review profile.
+      // A baseline registry comparison confirmed these are the only contract deltas.
+      "cj1:sha256:5Ts4bKsHrASLrQevcELGkj5-WZwVP2zdzI4061K1nnQ",
     );
 
     await expect(

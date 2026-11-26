@@ -201,6 +201,8 @@ describe.skipIf(skipIfNoTestDb())("Incident local Admin notifications", () => {
         summary: "Private source summary",
         firstObservedAt: t,
         lastObservedAt: t,
+        createdAt: t,
+        updatedAt: t,
       })
       .returning();
     const input = { ...x.input, incidentId: incident.id };
@@ -269,6 +271,8 @@ describe.skipIf(skipIfNoTestDb())("Incident local Admin notifications", () => {
             summary: "Test-owned persisted incident.",
             firstObservedAt: time,
             lastObservedAt: time,
+            createdAt: time,
+            updatedAt: time,
           })
           .returning();
         const input = { ...x.input, incidentId: incident.id };

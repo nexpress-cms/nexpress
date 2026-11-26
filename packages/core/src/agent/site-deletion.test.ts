@@ -9,6 +9,7 @@ import {
 
 const expectedTables = [
   "np_agent_actions",
+  "np_agent_actor_restrictions",
   "np_agent_approvals",
   "np_agent_changeset_executions",
   "np_agent_changeset_operations",
@@ -24,6 +25,9 @@ const expectedTables = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_containments",
+  "np_agent_content_receipts",
+  "np_agent_evaluation_reviews",
+  "np_agent_evaluation_sources",
   "np_agent_events",
   "np_agent_feedback",
   "np_agent_incident_signals",
@@ -46,7 +50,9 @@ const expectedTables = [
   "np_agent_preview_viewer_launches",
   "np_agent_principals",
   "np_agent_provider_calls",
+  "np_agent_restriction_enforcements",
   "np_agent_runs",
+  "np_agent_runtime_receipts",
   "np_agent_service_tokens",
   "np_agent_signals",
   "np_agent_source_release_edges",
@@ -73,8 +79,13 @@ describe("Agent site deletion foundation", () => {
   it("deletes release edges before Actions and receipts before principals", () => {
     const position = (name: (typeof npAgentSiteDeletionOrderV1)[number]) =>
       npAgentSiteDeletionOrderV1.indexOf(name);
+    expect(position("np_agent_actor_restrictions")).toBeLessThan(position("np_agent_incidents"));
+    expect(position("np_agent_actor_restrictions")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_containments")).toBeLessThan(position("np_agent_incidents"));
     expect(position("np_agent_containments")).toBeLessThan(position("np_agent_actions"));
+    expect(position("np_agent_runtime_receipts")).toBeLessThan(position("np_agent_runs"));
+    expect(position("np_agent_runtime_receipts")).toBeLessThan(position("np_agent_events"));
+    expect(position("np_agent_content_receipts")).toBeLessThan(position("np_agent_events"));
     expect(position("np_agent_source_release_edges")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_actions")).toBeLessThan(position("np_agent_source_releases"));
     expect(position("np_agent_source_releases")).toBeLessThan(position("np_agent_principals"));

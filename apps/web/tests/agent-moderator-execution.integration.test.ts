@@ -10,7 +10,7 @@ import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/i
 import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
 import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   npAgentActions,
@@ -72,12 +72,14 @@ async function moderationFixture(
   options: {
     notifications?: boolean;
     failNotification?: boolean;
+    recoverFailures?: boolean;
     denyFailureRead?: boolean;
     documentTarget?: boolean;
   } = {},
 ) {
   let time = new Date();
   let failTimeline = false;
+  let denyFailureRead = options.denyFailureRead ?? false;
   const f = await fixture();
   if (options.documentTarget) {
     const config = getCollectionConfig("discussions");
@@ -126,18 +128,21 @@ async function moderationFixture(
   const notifications = createAgentIncidentNotificationsServiceV1({
     reads: reads.staff,
     cursorHmacKey: new Uint8Array(32).fill(72),
-    canReviewAction: () => !options.denyFailureRead,
+    canReviewAction: () => !denyFailureRead,
+    recoverFailures: options.recoverFailures,
     now: () => time,
   });
   const incidents = createAgentIncidentWriteServiceV1({
     resolveEvidence: () => false,
     notifications: options.notifications
-      ? {
-          record: async (input) => {
-            await notifications.record(input);
-            if (options.failNotification) throw new Error("Notification persistence unavailable");
-          },
-        }
+      ? options.recoverFailures
+        ? notifications
+        : {
+            record: async (input) => {
+              await notifications.record(input);
+              if (options.failNotification) throw new Error("Notification persistence unavailable");
+            },
+          }
       : undefined,
     now: () => time,
   });
@@ -295,9 +300,92 @@ async function moderationFixture(
     failTimeline: (value: boolean) => {
       failTimeline = value;
     },
+    denyFailureRead: (value: boolean) => {
+      denyFailureRead = value;
+    },
   };
 }
 type Fixture = Awaited<ReturnType<typeof moderationFixture>>;
+const recoverySchema = "np.agent-incident-notification-recovery-entry.v1";
+async function failLocalNotificationInserts(f: Fixture, fail: boolean) {
+  // Exercise PostgreSQL's aborted savepoint rather than an injected service error.
+  await f.db.execute(
+    fail
+      ? sql`ALTER TABLE np_agent_notifications ADD CONSTRAINT np_test_notification_unavailable CHECK (channel <> 'admin') NOT VALID`
+      : sql`ALTER TABLE np_agent_notifications DROP CONSTRAINT IF EXISTS np_test_notification_unavailable`,
+  );
+}
+async function rolledBackFailure(f: Fixture) {
+  const approval = required(await f.invoke(f.quarantineRequest));
+  await decide(f, approval.approvalId);
+  const execute = execution("moderation.quarantine", approval);
+  const config = getCollectionConfig("discussions");
+  const hooks = config.hooks;
+  let deferredCalls = 0;
+  config.hooks = {
+    beforeUpdate: [({ data }) => ({ ...data, title: "Unexpected recovery fixture mutation" })],
+    afterUpdate: [
+      ({ data }) => {
+        deferredCalls++;
+        return data;
+      },
+    ],
+  };
+  try {
+    const result = await f.invoke(execute);
+    expect(result.output).toMatchObject({ state: "failed", containmentId: null });
+    expect(deferredCalls).toBe(0);
+    expect(
+      (await f.db.select().from(discussionsTable).where(eq(discussionsTable.id, f.document.id)))[0],
+    ).toMatchObject({ title: f.document.title, status: "published", locked: false });
+    expect(await f.db.select().from(npAgentContainments)).toEqual([]);
+    const [source] = await f.db
+      .select()
+      .from(npAgentIncidentTimeline)
+      .where(
+        and(
+          eq(npAgentIncidentTimeline.kind, "action"),
+          eq(npAgentIncidentTimeline.incidentId, f.incident.id),
+        ),
+      );
+    expect(source).toMatchObject({
+      actionId: approval.actionId,
+      details: { outcome: "rolled_back", transitionVersion: 2 },
+    });
+    return { approval, execute, result, source };
+  } finally {
+    config.hooks = hooks;
+  }
+}
+async function recoveryJournal(f: Fixture) {
+  return f.db
+    .select()
+    .from(npAgentIncidentTimeline)
+    .where(
+      and(
+        eq(npAgentIncidentTimeline.kind, "notification"),
+        eq(npAgentIncidentTimeline.incidentId, f.incident.id),
+      ),
+    )
+    .orderBy(asc(npAgentIncidentTimeline.sequence));
+}
+function recoveryOwners(f: Fixture) {
+  const { recover, recordFailure, recoveryState } = f.notifications;
+  if (!recover || !recordFailure || !recoveryState) throw new Error("Recovery owner required");
+  return { recover, recordFailure, recoveryState };
+}
+async function executionFacts(f: Fixture) {
+  return {
+    document: await f.db.select().from(discussionsTable),
+    comments: await f.db.select().from(npComments),
+    actions: await f.db.select().from(npAgentActions).orderBy(npAgentActions.id),
+    approvals: await f.db.select().from(npAgentApprovals).orderBy(npAgentApprovals.id),
+    invocations: await f.db.select().from(npAgentInvocations).orderBy(npAgentInvocations.id),
+    runs: await f.db.select().from(npAgentRuns).orderBy(npAgentRuns.id),
+    containments: await f.db.select().from(npAgentContainments),
+    audit: await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id),
+  };
+}
 function required(
   result: NpAgentModerationCapabilityInvocationResultV1,
 ): NpAgentDirectActionApprovalRequiredV1 {
@@ -401,6 +489,376 @@ describe.skipIf(skipIfNoTestDb())("Moderator reviewed Gateway execution", () => 
     registerTestCollections();
   });
   afterAll(closeTestDb);
+
+  it("recovers only due local notification failures with frozen evidence and concurrent replay", async () => {
+    const f = await moderationFixture({
+      notifications: true,
+      recoverFailures: true,
+      documentTarget: true,
+    });
+    const owners = recoveryOwners(f);
+    await failLocalNotificationInserts(f, true);
+    try {
+      const { source, execute, result } = await rolledBackFailure(f);
+      const identity = {
+        siteId,
+        actor: f.actor.actor,
+        incidentId: f.incident.id,
+        timelineId: source.id,
+      };
+      const studio = createAgentIncidentStudioServiceV1({
+        reads: createAgentIncidentServiceV1({
+          cursorHmacKey: new Uint8Array(32).fill(86),
+          canReadIncident: () => true,
+          canReadStaffIncident: () => true,
+        }).staff,
+        approvals: f.approvals,
+        notifications: f.notifications,
+        cursorHmacKey: new Uint8Array(32).fill(87),
+      });
+      expect(source.details.notificationRecoveryRequested).toBe(true);
+      const initial = await recoveryJournal(f);
+      expect(initial).toHaveLength(2);
+      expect(initial.map((row) => row.details)).toMatchObject([
+        {
+          schemaVersion: recoverySchema,
+          source: {
+            timelineId: source.id,
+            transitionVersion: 2,
+            severity: "high",
+            status: "open",
+            observedAt: source.createdAt.toISOString(),
+          },
+          recovery: { state: "pending", attempts: 0 },
+        },
+        {
+          schemaVersion: recoverySchema,
+          recovery: {
+            state: "pending",
+            attempts: 1,
+            lastErrorCode: "NOTIFICATION_RECORDING_FAILED",
+            nextAttemptAt: new Date(f.now().getTime() + 30_000).toISOString(),
+          },
+        },
+      ]);
+      expect(initial.every((row) => row.sourceId === source.id)).toBe(true);
+      expect(await f.db.select().from(npAgentNotifications)).toEqual([]);
+      const facts = await executionFacts(f);
+      const failureInput = {
+        db: f.db,
+        siteId,
+        incidentId: f.incident.id,
+        timelineId: source.id,
+        transitionVersion: 2,
+        transition: "containment_failed" as const,
+      };
+      await Promise.all([owners.recordFailure(failureInput), owners.recordFailure(failureInput)]);
+      expect(await f.invoke(execute)).toEqual(result);
+      const visible = await studio.get(identity);
+      expect(visible.timeline).toHaveLength(1);
+      expect(visible.timeline[0]).toMatchObject({
+        id: source.id,
+        notificationRecovery: { state: "pending", attempts: 1 },
+      });
+      expect(await owners.recoveryState(identity)).toMatchObject({ state: "pending", attempts: 1 });
+      expect(await recoveryJournal(f)).toEqual(initial);
+      await failLocalNotificationInserts(f, false);
+      f.advance(29);
+      await owners.recover({ siteId });
+      expect(await recoveryJournal(f)).toEqual(initial);
+      expect(await f.db.select().from(npAgentNotifications)).toEqual([]);
+      await f.db
+        .update(npAgentIncidents)
+        .set({
+          severity: "low",
+          status: "resolved",
+          resolvedAt: f.now(),
+          resolutionCode: "HUMAN_REVIEW",
+          updatedAt: f.now(),
+          versionNumber: 3,
+        })
+        .where(eq(npAgentIncidents.id, f.incident.id));
+      f.advance(1);
+      await Promise.all([owners.recover({ siteId }), owners.recover({ siteId })]);
+      const journal = await recoveryJournal(f);
+      expect(journal).toHaveLength(3);
+      expect(journal.slice(0, 2)).toEqual(initial);
+      expect(journal[2].details).toMatchObject({
+        source: initial[0].details.source,
+        recovery: { state: "sent", attempts: 2, nextAttemptAt: null, lastErrorCode: null },
+      });
+      expect((await f.notifications.list({ siteId, actor: f.actor.actor })).items).toMatchObject([
+        {
+          incidentVersion: 2,
+          severity: "high",
+          status: "open",
+          transition: "containment_failed",
+          createdAt: source.createdAt.toISOString(),
+        },
+      ]);
+      expect(await f.db.select().from(npAgentNotifications)).toHaveLength(1);
+      expect(await f.invoke(execute)).toEqual(result);
+      f.advance(3600);
+      await owners.recover({ siteId });
+      expect(await recoveryJournal(f)).toEqual(journal);
+      expect(await executionFacts(f)).toEqual(facts);
+      expect(
+        (
+          await f.db
+            .select()
+            .from(npAgentIncidentTimeline)
+            .where(eq(npAgentIncidentTimeline.id, source.id))
+        )[0],
+      ).toEqual(source);
+      const [receipt] = await f.db.select().from(npAgentNotifications);
+      await f.db
+        .update(npAgentNotifications)
+        .set({ payloadRedacted: { ...receipt.payloadRedacted, severity: "critical" } })
+        .where(eq(npAgentNotifications.id, receipt.id));
+      expect(await owners.recoveryState(identity)).toBeNull();
+      expect((await studio.get(identity)).timeline[0].notificationRecovery).toBeNull();
+      expect((await f.notifications.list({ siteId, actor: f.actor.actor })).items).toEqual([]);
+      expect(await recoveryJournal(f)).toEqual(journal);
+    } finally {
+      await failLocalNotificationInserts(f, false);
+    }
+  });
+
+  it("bounds actual database recording failures at five append-only attempts", async () => {
+    const f = await moderationFixture({
+      notifications: true,
+      recoverFailures: true,
+      documentTarget: true,
+    });
+    const owners = recoveryOwners(f);
+    await failLocalNotificationInserts(f, true);
+    try {
+      const { source, execute, result } = await rolledBackFailure(f);
+      const facts = await executionFacts(f);
+      for (const [index, delay] of [30, 120, 600, 1800].entries()) {
+        const before = await recoveryJournal(f);
+        f.advance(delay - 1);
+        await owners.recover({ siteId });
+        expect(await recoveryJournal(f)).toEqual(before);
+        f.advance(1);
+        await owners.recover({ siteId });
+        const after = await recoveryJournal(f);
+        expect(after.slice(0, before.length)).toEqual(before);
+        expect(after.at(-1)?.details.recovery).toMatchObject({
+          attempts: index + 2,
+          state: index === 3 ? "failed" : "pending",
+          lastErrorCode: "NOTIFICATION_RECORDING_FAILED",
+        });
+      }
+      const terminal = await recoveryJournal(f);
+      expect(terminal).toHaveLength(6);
+      expect(
+        await owners.recoveryState({
+          siteId,
+          actor: f.actor.actor,
+          incidentId: f.incident.id,
+          timelineId: source.id,
+        }),
+      ).toMatchObject({ state: "failed", attempts: 5, nextAttemptAt: null });
+      expect(await f.invoke(execute)).toEqual(result);
+      await failLocalNotificationInserts(f, false);
+      f.advance(86400);
+      await owners.recover({ siteId });
+      await owners.recordFailure({
+        db: f.db,
+        siteId,
+        incidentId: f.incident.id,
+        timelineId: source.id,
+        transitionVersion: 2,
+        transition: "containment_failed",
+      });
+      expect(await recoveryJournal(f)).toEqual(terminal);
+      expect(await f.db.select().from(npAgentNotifications)).toEqual([]);
+      expect(await executionFacts(f)).toEqual(facts);
+    } finally {
+      await failLocalNotificationInserts(f, false);
+    }
+  });
+
+  it("hides recovery under current ACL or tampered evidence without repairing reads", async () => {
+    const f = await moderationFixture({
+      notifications: true,
+      recoverFailures: true,
+      documentTarget: true,
+    });
+    const owners = recoveryOwners(f);
+    await failLocalNotificationInserts(f, true);
+    try {
+      const { source } = await rolledBackFailure(f);
+      const identity = {
+        siteId,
+        actor: f.actor.actor,
+        incidentId: f.incident.id,
+        timelineId: source.id,
+      };
+      const journal = await recoveryJournal(f);
+      f.denyFailureRead(true);
+      expect(await owners.recoveryState(identity)).toBeNull();
+      expect(await recoveryJournal(f)).toEqual(journal);
+      f.denyFailureRead(false);
+      await f.db
+        .update(npSiteMemberships)
+        .set({ role: "viewer" })
+        .where(
+          and(
+            eq(npSiteMemberships.siteId, siteId),
+            eq(npSiteMemberships.userId, f.actor.actor.user.id),
+          ),
+        );
+      await expect(owners.recoveryState(identity)).rejects.toThrow();
+      expect(await recoveryJournal(f)).toEqual(journal);
+      await f.db
+        .update(npSiteMemberships)
+        .set({ role: "admin" })
+        .where(
+          and(
+            eq(npSiteMemberships.siteId, siteId),
+            eq(npSiteMemberships.userId, f.actor.actor.user.id),
+          ),
+        );
+      const altered = {
+        ...journal[1].details,
+        recovery: {
+          state: "sent",
+          attempts: 1,
+          lastAttemptAt: f.now().toISOString(),
+          nextAttemptAt: null,
+          lastErrorCode: null,
+        },
+      };
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ details: altered })
+        .where(eq(npAgentIncidentTimeline.id, journal[1].id));
+      expect(await owners.recoveryState(identity)).toBeNull();
+      f.advance(30);
+      await owners.recover({ siteId });
+      expect(await recoveryJournal(f)).toHaveLength(2);
+      expect((await recoveryJournal(f))[1].details).toEqual(altered);
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ details: journal[1].details })
+        .where(eq(npAgentIncidentTimeline.id, journal[1].id));
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ sourceFingerprint: `cj1:sha256:${"A".repeat(43)}` })
+        .where(eq(npAgentIncidentTimeline.id, journal[1].id));
+      const malformed = await recoveryJournal(f);
+      expect(await owners.recoveryState(identity)).toBeNull();
+      await owners.recover({ siteId });
+      expect(await recoveryJournal(f)).toEqual(malformed);
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ sourceFingerprint: journal[1].sourceFingerprint })
+        .where(eq(npAgentIncidentTimeline.id, journal[1].id));
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ details: { ...source.details, executionInvocationId: randomUUID() } })
+        .where(eq(npAgentIncidentTimeline.id, source.id));
+      expect(await owners.recoveryState(identity)).toBeNull();
+      expect(await recoveryJournal(f)).toEqual(journal);
+      await owners.recover({ siteId });
+      const terminal = await recoveryJournal(f);
+      expect(terminal.at(-1)?.details.recovery).toMatchObject({
+        state: "failed",
+        attempts: 2,
+        lastErrorCode: "SOURCE_EVIDENCE_INVALID",
+        nextAttemptAt: null,
+      });
+      expect(await f.db.select().from(npAgentNotifications)).toEqual([]);
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ details: source.details })
+        .where(eq(npAgentIncidentTimeline.id, source.id));
+      await failLocalNotificationInserts(f, false);
+      f.advance(3600);
+      await owners.recover({ siteId });
+      expect(await recoveryJournal(f)).toEqual(terminal);
+      expect(await owners.recoveryState(identity)).toMatchObject({
+        state: "failed",
+        lastErrorCode: "SOURCE_EVIDENCE_INVALID",
+      });
+    } finally {
+      await failLocalNotificationInserts(f, false);
+    }
+  });
+
+  it("never backfills unmarked failure history when a recovery owner is later installed", async () => {
+    const f = await moderationFixture({ notifications: true, documentTarget: true });
+    expect(f.notifications.recover).toBeUndefined();
+    expect(f.notifications.recordFailure).toBeUndefined();
+    await failLocalNotificationInserts(f, true);
+    try {
+      const { source } = await rolledBackFailure(f);
+      expect(source.details.notificationRecoveryRequested).toBeUndefined();
+      const notifications = createAgentIncidentNotificationsServiceV1({
+        reads: createAgentIncidentServiceV1({
+          cursorHmacKey: new Uint8Array(32).fill(88),
+          canReadIncident: () => true,
+          canReadStaffIncident: () => true,
+        }).staff,
+        cursorHmacKey: new Uint8Array(32).fill(89),
+        recoverFailures: true,
+        canReviewAction: () => true,
+        now: f.now,
+      });
+      if (!notifications.recover || !notifications.recoveryState || !notifications.recordFailure)
+        throw new Error("Recovery owner required");
+      await failLocalNotificationInserts(f, false);
+      await notifications.recover({ siteId });
+      expect(
+        await notifications.recoveryState({
+          siteId,
+          actor: f.actor.actor,
+          incidentId: f.incident.id,
+          timelineId: source.id,
+        }),
+      ).toBeNull();
+      await expect(
+        notifications.recordFailure({
+          db: f.db,
+          siteId,
+          incidentId: f.incident.id,
+          timelineId: source.id,
+          transitionVersion: 2,
+          transition: "containment_failed",
+        }),
+      ).rejects.toThrow();
+      expect(await recoveryJournal(f)).toEqual([]);
+      expect(await f.db.select().from(npAgentNotifications)).toEqual([]);
+      expect(await f.db.select().from(npAgentIncidentTimeline)).toEqual([source]);
+    } finally {
+      await failLocalNotificationInserts(f, false);
+    }
+  });
+
+  it("journals a confirmed local notification on the initial attempt", async () => {
+    const f = await moderationFixture({
+      notifications: true,
+      recoverFailures: true,
+      documentTarget: true,
+    });
+    const { source } = await rolledBackFailure(f);
+    const initial = await recoveryJournal(f);
+    expect(initial.map((row) => row.details.recovery)).toMatchObject([
+      { state: "pending", attempts: 0 },
+      { state: "sent", attempts: 1 },
+    ]);
+    expect(
+      await recoveryOwners(f).recoveryState({
+        siteId,
+        actor: f.actor.actor,
+        incidentId: f.incident.id,
+        timelineId: source.id,
+      }),
+    ).toMatchObject({ state: "sent", attempts: 1 });
+    expect(await f.db.select().from(npAgentNotifications)).toHaveLength(1);
+  });
 
   it.each([false, true])(
     "persists only confirmed rolled-back quarantine failure, with isolated notification failure=%s",

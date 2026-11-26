@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, isSuperAdmin, setSuperAdmin } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -19,7 +20,7 @@ import { ensureFor } from "../../../../../lib/init-core";
  * change ownership promote a successor first, then have the
  * successor demote them.
  */
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianPATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -46,7 +47,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       ]);
     }
 
-    await setSuperAdmin(id, body.isSuperAdmin);
+    await setSuperAdmin(id, body.isSuperAdmin, { actor: { kind: "staff", userId: user.id } });
     return npSuccessResponse({ id, isSuperAdmin: body.isSuperAdmin });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -54,3 +55,5 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 }
 
 export const dynamic = "force-dynamic";
+
+export const PATCH = npWithAgentGuardianHttpResponseV1("admin", npGuardianPATCH);

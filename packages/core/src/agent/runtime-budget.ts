@@ -158,9 +158,9 @@ export async function npMeasureAgentRuntimeBudgetV1(input: {
       outputTokensUtcMonth: counter(row.monthly_output),
       costMicrosUtcDay: counter(row.daily_cost, Number.MAX_SAFE_INTEGER),
       costMicrosUtcMonth: counter(row.monthly_cost, Number.MAX_SAFE_INTEGER),
-      // These target-specific dimensions are non-applicable to the foundation
-      // root admission. Their zero is never permission for incident/subject work:
-      // that admission remains unavailable until it owns concrete target evidence.
+      // Foundation admission has no concrete target. The semantic assessment
+      // owner separately measures its request-bound fingerprint before reservation
+      // and dispatch; this zero never grants Incident or subject capacity.
       incidentAnalysesFingerprintUtcDay: 0,
       directActionsRollingHour: directActions,
       directActionsSubjectRollingHour: 0,

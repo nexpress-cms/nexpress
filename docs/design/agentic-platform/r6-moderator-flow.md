@@ -111,13 +111,17 @@ terminal containment pruning owner are not installed here.
 ## Explicit boundaries
 
 - The concrete collector captures comment creates and author edits. Historical
-  comments without exact source evidence, document/report collectors, and model
-  classification are not fabricated. Approved document quarantine/restore is
+  comments without exact source evidence, document/member report collectors, and model
+  classification are not fabricated. The subsequent
+  [comment report flow](r6-incident-comment-report-flow.md) adds actual filing
+  observations through a separate opt-in collector using the same advisory rule.
+  Approved document quarantine/restore is
   supported through its domain owner.
 - These effect capabilities support explicitly installed Gateway use and the
-  [staff Incident response flow](r6-incident-response-flow.md). Runtime source
-  projection does not advertise them and Runtime invocation fails closed until
-  the recipe executor owns the corresponding approval resume lifecycle.
+  [staff Incident response flow](r6-incident-response-flow.md). The optional
+  [Runtime continuation owner](r6-moderator-runtime-flow.md) adds proposal,
+  human approval and exact resumption within an admitted Run. Without that
+  installation, Runtime discovery and invocation remain disabled.
 - The host must install the observer/collector, policy/budget sources, Incident
   visibility, approval routing and moderation facade. No reference/scaffold
   bootstrap silently enables any of them.

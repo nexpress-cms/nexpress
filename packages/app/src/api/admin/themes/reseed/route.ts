@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpConflictError,
@@ -95,7 +96,7 @@ function parseSlugCollision(error: unknown): string | null {
  *
  * Capability: `admin.manage`. CSRF is enforced by `apps/web/src/proxy.ts`.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
  * collection) so the response is bounded — no row-count cap
  * and no per-row deserialization. Site-scoped via `site_id`.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
@@ -261,3 +262,6 @@ export async function GET(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

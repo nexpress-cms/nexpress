@@ -1,6 +1,7 @@
 import React from "react";
 
-import { slugifyHeading } from "./heading-toc.js";
+import { headingTocEntry } from "./heading-toc.js";
+import { richTextChildren, richTextNodeText, type RichTextNode } from "./rich-text-node.js";
 import type { NpRichTextContent } from "./types.js";
 
 const IS_BOLD = 1;
@@ -10,27 +11,6 @@ const IS_UNDERLINE = 8;
 const IS_CODE = 16;
 const IS_SUBSCRIPT = 32;
 const IS_SUPERSCRIPT = 64;
-
-type RichTextNode = {
-  type?: string;
-  children?: RichTextNode[];
-  text?: string;
-  format?: number | string;
-  tag?: string;
-  listType?: string;
-  url?: string;
-  src?: string;
-  altText?: string;
-  direction?: "ltr" | "rtl" | null;
-};
-
-function isRichTextNode(value: unknown): value is RichTextNode {
-  return typeof value === "object" && value !== null;
-}
-
-function toArray(value: unknown): RichTextNode[] {
-  return Array.isArray(value) ? value.filter(isRichTextNode) : [];
-}
 
 function toFormatMask(value: number | string | undefined): number {
   if (typeof value === "number") {
@@ -74,18 +54,6 @@ function sanitizeUrl(url: unknown): string | undefined {
   }
 
   return undefined;
-}
-
-function extractText(node: RichTextNode): string {
-  if (node.type === "text") {
-    return node.text ?? "";
-  }
-
-  if (node.type === "linebreak") {
-    return "\n";
-  }
-
-  return toArray(node.children).map(extractText).join("");
 }
 
 function applyTextFormats(text: string, format: number, key: string): React.ReactNode {
@@ -148,12 +116,6 @@ export interface NpRenderRichTextOptions {
   headingAnchors?: boolean;
 }
 
-function nextHeadingId(slug: string, ctx: RenderContext): string {
-  const prior = ctx.headingSlugs.get(slug) ?? 0;
-  ctx.headingSlugs.set(slug, prior + 1);
-  return prior === 0 ? slug : `${slug}-${(prior + 1).toString()}`;
-}
-
 function renderChildren(
   nodes: RichTextNode[],
   keyPrefix: string,
@@ -172,7 +134,7 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
       return React.createElement(
         "p",
         { key, dir: node.direction ?? undefined },
-        renderChildren(toArray(node.children), key, ctx),
+        renderChildren(richTextChildren(node.children), key, ctx),
       );
     case "heading": {
       const tag = typeof node.tag === "string" && /^h[1-6]$/.test(node.tag) ? node.tag : "h1";
@@ -181,14 +143,8 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
       // typically the page title — pages own that id at the
       // wrapper level. h4–h6 are too deep for a top-level TOC and
       // emitting ids on them just pollutes the DOM with collisions.
-      let id: string | undefined;
-      if (tag === "h2" || tag === "h3") {
-        const text = extractText(node).trim();
-        if (text.length > 0) {
-          id = nextHeadingId(slugifyHeading(text), ctx);
-        }
-      }
-      const children = renderChildren(toArray(node.children), key, ctx);
+      const id = headingTocEntry(node, ctx.headingSlugs)?.id;
+      const children = renderChildren(richTextChildren(node.children), key, ctx);
       const finalChildren: React.ReactNode[] =
         ctx.headingAnchors && id
           ? [
@@ -211,27 +167,27 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
       return React.createElement(
         "blockquote",
         { key, dir: node.direction ?? undefined },
-        renderChildren(toArray(node.children), key, ctx),
+        renderChildren(richTextChildren(node.children), key, ctx),
       );
     case "list": {
       const tag = node.listType === "number" ? "ol" : "ul";
       return React.createElement(
         tag,
         { key, dir: node.direction ?? undefined },
-        renderChildren(toArray(node.children), key, ctx),
+        renderChildren(richTextChildren(node.children), key, ctx),
       );
     }
     case "listitem":
       return React.createElement(
         "li",
         { key, dir: node.direction ?? undefined },
-        renderChildren(toArray(node.children), key, ctx),
+        renderChildren(richTextChildren(node.children), key, ctx),
       );
     case "link":
       return React.createElement(
         "a",
         { key, href: sanitizeUrl(node.url) },
-        renderChildren(toArray(node.children), key, ctx),
+        renderChildren(richTextChildren(node.children), key, ctx),
       );
     case "image":
       return React.createElement("img", {
@@ -243,14 +199,14 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
       return React.createElement(
         "pre",
         { key, dir: node.direction ?? undefined },
-        React.createElement("code", null, extractText(node)),
+        React.createElement("code", null, richTextNodeText(node)),
       );
     case "horizontalrule":
       return React.createElement("hr", { key });
     case "linebreak":
       return React.createElement("br", { key });
     default: {
-      const children = toArray(node.children);
+      const children = richTextChildren(node.children);
       if (children.length === 0) {
         return null;
       }
@@ -279,6 +235,6 @@ export function renderRichText(
   return React.createElement(
     React.Fragment,
     null,
-    renderChildren(toArray(content.document.root.children), "root", ctx),
+    renderChildren(richTextChildren(content.document.root.children), "root", ctx),
   );
 }

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import { listNotifications, unreadNotificationCount } from "@nexpress/core/community";
 import {
   npRequireNotificationListWire,
@@ -11,7 +12,7 @@ import { ensureFor } from "../../lib/init-core";
 import { npReadCommunityWindow } from "../../lib/community-contract";
 import { requireMember } from "../../lib/member-auth-helpers";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const member = await requireMember(request);
@@ -42,3 +43,5 @@ export async function GET(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);

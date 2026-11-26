@@ -1,4 +1,4 @@
-import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
+import { defineTheme, npCreateSeedRichText, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { CommunityFooter } from "./footer.js";
 import { CommunityHeader } from "./header.js";
@@ -14,39 +14,6 @@ import { PageFrontTemplate } from "./templates/page-front.js";
 import { PostDefaultTemplate } from "./templates/post-default.js";
 import { PostListTemplate } from "./templates/post-list.js";
 
-function richText(paragraphs: string[]): unknown {
-  return {
-    version: 1,
-    document: {
-      root: {
-        type: "root",
-        version: 1,
-        direction: null,
-        format: "",
-        indent: 0,
-        children: paragraphs.map((text) => ({
-          type: "paragraph",
-          version: 1,
-          direction: null,
-          format: "",
-          indent: 0,
-          children: [
-            {
-              type: "text",
-              version: 1,
-              detail: 0,
-              format: 0,
-              mode: "normal",
-              style: "",
-              text,
-            },
-          ],
-        })),
-      },
-    },
-  };
-}
-
 const SEED_NOW = new Date("2026-07-19T09:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
 const daysAgo = (days: number): string => new Date(SEED_NOW.getTime() - days * DAY).toISOString();
@@ -56,7 +23,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "오래 머무는 커뮤니티를 만드는 작은 규칙들",
     slug: "small-rules-for-a-lasting-community",
     excerpt: "빠른 반응보다 좋은 맥락, 많은 글보다 다시 찾게 되는 기록을 선택한 운영 노트입니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "커뮤니티의 분위기는 거창한 선언보다 매일 반복되는 작은 선택에서 만들어집니다. 질문에 맥락을 덧붙이고, 다른 경험을 틀렸다고 단정하지 않고, 정보의 출처를 함께 남기는 일부터 시작할 수 있습니다.",
       "운영자는 규칙을 늘리기보다 좋은 대화가 눈에 띄는 구조를 만들고, 회원은 답을 서두르기보다 상대가 무엇을 해결하려는지 한 번 더 읽습니다. 이 두 가지가 만나면 새로 온 사람도 안전하게 첫 글을 쓸 수 있습니다.",
       "이곳은 완성된 정답보다 시행착오와 배운 점을 환영합니다. 오래 남을 기록을 함께 만들어 주세요.",
@@ -68,7 +35,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "서울 골목의 여름을 기록하는 열두 가지 방법",
     slug: "twelve-ways-to-record-seoul-summer",
     excerpt: "사진, 소리, 지도와 짧은 인터뷰로 동네의 계절을 남긴 회원들의 공동 기록입니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "같은 골목도 기록하는 사람에 따라 전혀 다른 장소가 됩니다. 누군가는 간판의 색을 모으고, 누군가는 오후 네 시의 그늘을 따라 걷고, 또 누군가는 오래 일한 가게 주인의 목소리를 남겼습니다.",
       "이번 공동 기록은 잘 찍은 사진보다 다시 찾아갈 수 있는 단서를 중요하게 생각했습니다. 날짜와 대략적인 위치, 날씨와 기록자의 짧은 감상을 함께 적었습니다.",
     ]),
@@ -79,7 +46,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "처음 조립한 키보드에서 배운 것",
     slug: "lessons-from-first-custom-keyboard",
     excerpt: "스위치 선택부터 흡음재까지, 초보자가 놓치기 쉬운 순서를 실패담과 함께 정리했습니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "첫 조립에서 가장 오래 걸린 건 납땜이 아니라 선택이었습니다. 정보가 많을수록 내게 필요한 기준을 세우기 어려웠고, 결국 소리보다 손의 피로를 먼저 확인했어야 한다는 걸 뒤늦게 알았습니다.",
       "두 번째 조립에서는 스위치를 적게 사서 일주일씩 써 보고, 책상 높이와 손목 받침을 먼저 맞췄습니다. 결과적으로 더 저렴했고 훨씬 오래 사용할 수 있는 구성이 되었습니다.",
     ]),
@@ -91,7 +58,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     slug: "recipe-for-a-weekend-table",
     excerpt:
       "요리를 잘하는 사람보다 역할을 자연스럽게 나누는 사람이 필요한 작은 식탁 모임 이야기입니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "메뉴는 한 사람이 정하지 않습니다. 먹고 싶은 것 하나와 피하고 싶은 것 하나를 적고, 장보기와 손질, 설거지 역할을 먼저 나눕니다.",
       "완벽한 한 상보다 다음 모임을 약속할 여유를 남기는 것이 이 모임의 규칙입니다. 그래서 마지막 요리는 늘 과일이나 차처럼 준비가 간단한 것으로 끝냅니다.",
     ]),
@@ -102,7 +69,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "작은 오픈소스 프로젝트의 첫 기여 안내서",
     slug: "first-contribution-to-small-open-source",
     excerpt: "코드 한 줄을 고치기 전에 이슈의 맥락을 읽고 안전하게 대화를 시작하는 방법입니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "첫 기여는 코드보다 질문에서 시작됩니다. 재현 방법과 기대한 결과, 실제 결과를 짧게 정리하면 유지보수자는 문제를 훨씬 빠르게 이해할 수 있습니다.",
       "수정 범위를 작게 유지하고 기존 테스트가 말하는 계약을 먼저 읽으세요. 좋은 풀 리퀘스트는 영리한 코드보다 검토자가 안심할 수 있는 근거를 남깁니다.",
     ]),
@@ -113,7 +80,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "한 달 동안 알림을 절반으로 줄여 봤습니다",
     slug: "one-month-with-fewer-notifications",
     excerpt: "중요한 소식을 놓치지 않으면서도 집중 시간을 되찾은 현실적인 설정 목록입니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "모든 알림을 끄는 극단적인 방법은 오래가지 못했습니다. 대신 사람의 직접 메시지, 일정 변경, 결제처럼 즉시 행동이 필요한 알림만 남겼습니다.",
       "나머지는 하루 두 번 확인하는 묶음으로 옮겼습니다. 놓친 정보는 거의 없었고, 작업을 다시 시작하는 데 드는 시간이 크게 줄었습니다.",
     ]),
@@ -124,7 +91,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "사진 없이도 여행을 오래 기억하는 법",
     slug: "remembering-a-trip-without-photos",
     excerpt: "장소마다 한 문장과 한 가지 소리만 남기는 느린 여행 기록법을 소개합니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "카메라를 꺼내지 않는 대신 장소를 떠나기 전 한 문장을 적었습니다. 무엇을 봤는지보다 몸이 어떻게 느꼈는지, 주변에서 어떤 소리가 났는지를 남겼습니다.",
       "돌아와서 읽어 보니 사진보다 빈 곳이 많았고, 그 빈 곳 덕분에 기억을 더 천천히 꺼내 볼 수 있었습니다.",
     ]),
@@ -136,7 +103,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     slug: "when-a-question-invites-a-good-answer",
     excerpt:
       "도움을 요청할 때 시도한 것과 막힌 지점을 함께 적으면 대화가 어떻게 달라지는지 살펴봅니다.",
-    content: richText([
+    content: npCreateSeedRichText([
       "좋은 질문은 많이 아는 사람이 쓰는 문장이 아닙니다. 해결하려는 목표와 지금까지 확인한 사실, 어디서 판단이 어려운지를 상대가 따라갈 수 있게 적은 문장입니다.",
       "질문을 정리하는 동안 스스로 답을 찾기도 하지만, 그렇지 않더라도 다음 사람이 같은 길을 반복하지 않게 만드는 기록이 남습니다.",
     ]),
@@ -179,7 +146,7 @@ const SEED_PAGES = [
         id: "community-about-copy",
         type: "rich-text",
         props: {
-          content: richText([
+          content: npCreateSeedRichText([
             "모두의 광장은 서로 다른 취향과 경험을 안전하게 나누는 공간입니다. 빠르게 사라지는 반응보다 다시 찾을 수 있는 기록을, 정답을 겨루는 대화보다 맥락을 이해하는 질문을 소중하게 생각합니다.",
             "테마는 게시판 플러그인 없이도 글 중심 커뮤니티로 완전히 동작합니다. 필요한 경우 운영자가 포럼을 설치하고 홈 편집기에서 게시판 블록을 추가해 더 넓은 참여 공간으로 확장할 수 있습니다.",
           ]),
@@ -197,7 +164,7 @@ const SEED_PAGES = [
         id: "community-guidelines-copy",
         type: "rich-text",
         props: {
-          content: richText([
+          content: npCreateSeedRichText([
             "사람이 아니라 생각과 경험을 이야기해 주세요. 동의하지 않을 때는 상대의 의도를 단정하기보다 어떤 부분이 다른지 구체적으로 적어 주세요.",
             "다른 사람의 글과 사진을 가져올 때는 출처를 밝혀 주세요. 개인 정보, 광고성 반복 게시물, 혐오와 괴롭힘은 운영 정책에 따라 제한될 수 있습니다.",
             "처음 쓰는 글이라면 완벽하게 정리하지 않아도 괜찮습니다. 무엇을 나누고 싶은지, 어떤 답을 기다리는지만 알려 주세요.",

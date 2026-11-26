@@ -6,6 +6,7 @@ import {
   NP_AGENT_REFERENCE_FENCE_SQL_V3,
   NP_AGENT_REFERENCE_FENCE_SQL_V4,
   NP_AGENT_REFERENCE_FENCE_SQL_V5,
+  NP_AGENT_REFERENCE_FENCE_SQL_V6,
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
   npAgentReferenceFenceTriggersSqlV1,
   npAgentSiteOwnedTableNamesV1,
@@ -31,6 +32,12 @@ export function npAgentReferenceMigrationSqlV1(): string {
       ...[
         ...npAgentSiteOwnedTableNamesV1.filter(
           (name) =>
+            name !== "np_agent_content_receipts" &&
+            name !== "np_agent_runtime_receipts" &&
+            name !== "np_agent_actor_restrictions" &&
+            name !== "np_agent_restriction_enforcements" &&
+            name !== "np_agent_evaluation_sources" &&
+            name !== "np_agent_evaluation_reviews" &&
             name !== "np_agent_containments" &&
             name !== "np_agent_operator_plans" &&
             name !== "np_agent_operator_executions" &&
@@ -43,6 +50,45 @@ export function npAgentReferenceMigrationSqlV1(): string {
     ].join("\n--> statement-breakpoint\n") +
     "\n"
   );
+}
+
+/** Guardian source receipts remain immutable after their exact Event payload is released. */
+export function npAgentReferenceMigrationSqlV12(): string {
+  return (
+    "-- NexPress verified Guardian source audit reference lifecycle v12\n" +
+    NP_AGENT_REFERENCE_FENCE_SQL_V6.trimEnd() +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV12(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes('CREATE TABLE "np_agent_content_receipts"'))) return;
+  if (
+    !texts.some((text) => text.includes("'guardian-event'")) ||
+    !texts.some((text) => text.includes(marker))
+  )
+    throw new Error("Guardian source release migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV12();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Guardian source audit reference lifecycle v12"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Guardian source reference migration differs from reviewed SQL.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter(
+    (file) => file.endsWith(".sql") && !files.includes(file),
+  );
+  if (added.length !== 1)
+    throw new Error("Expected one generated Guardian source reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
 }
 
 /** Generated custom SQL from the same inventory used by guards and Doctor. */
@@ -351,5 +397,119 @@ export async function npEnsureAgentReferenceMigrationV9(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent Operator execution reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append explicit evaluation evidence/review reference coverage, preserving historical SQL. */
+export function npAgentReferenceMigrationSqlV10(): string {
+  return (
+    "-- NexPress verified evaluation history reference lifecycle v10\n" +
+    ["np_agent_evaluation_sources", "np_agent_evaluation_reviews"]
+      .map(npAgentReferenceFenceTriggersSqlV1)
+      .join("\n--> statement-breakpoint\n") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV10(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  const tables = ["np_agent_evaluation_sources", "np_agent_evaluation_reviews"];
+  if (!tables.some((t) => texts.some((text) => text.includes(`CREATE TABLE "${t}"`)))) return;
+  if (
+    !tables.every((t) => texts.some((text) => text.includes(`CREATE TABLE "${t}"`))) ||
+    !texts.some((text) => text.includes(marker))
+  )
+    throw new Error("Evaluation history reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV10();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified evaluation history reference lifecycle v10"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Evaluation history reference migration differs from reviewed SQL.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated evaluation history reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append Guardian workflow/effect fences only after their additive tables exist. */
+export function npAgentReferenceMigrationSqlV11(): string {
+  return (
+    "-- NexPress verified Guardian restriction reference lifecycle v11\n" +
+    ["np_agent_actor_restrictions", "np_agent_restriction_enforcements"]
+      .map(npAgentReferenceFenceTriggersSqlV1)
+      .join("\n--> statement-breakpoint\n") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV11(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  const tables = ["np_agent_actor_restrictions", "np_agent_restriction_enforcements"];
+  if (!tables.some((t) => texts.some((text) => text.includes(`CREATE TABLE "${t}"`)))) return;
+  if (
+    !tables.every((t) => texts.some((text) => text.includes(`CREATE TABLE "${t}"`))) ||
+    !texts.some((text) => text.includes(marker))
+  )
+    throw new Error("Guardian restriction reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV11();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Guardian restriction reference lifecycle v11"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Guardian restriction reference migration differs from reviewed SQL.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Guardian restriction reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Runtime source receipts contain real retained Run/Agent references and require ordinary fences. */
+export function npAgentReferenceMigrationSqlV13(): string {
+  return (
+    "-- NexPress verified Guardian Runtime receipt reference lifecycle v13\n" +
+    npAgentReferenceFenceTriggersSqlV1("np_agent_runtime_receipts") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV13(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes('CREATE TABLE "np_agent_runtime_receipts"'))) return;
+  if (!texts.some((text) => text.includes(marker)))
+    throw new Error("Runtime receipt reference inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV13();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Guardian Runtime receipt reference lifecycle v13"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Runtime receipt reference migration differs from reviewed SQL.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Runtime receipt reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

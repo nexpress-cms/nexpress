@@ -1,4 +1,10 @@
+import { npParseAgentGuardianHttpEventPayloadV1 } from "./guardian-http-contract.js";
+import { npParseAgentGuardianRuntimeEventPayloadV1 } from "./guardian-runtime-contract.js";
 import { npRequireAgentContractResult } from "./contract.js";
+import { npParseAgentSecurityTransitionPayloadV1 } from "./guardian-security-contract.js";
+import { npParseAgentGuardianContentEventPayloadV1 } from "./guardian-content-contract.js";
+
+import { npAgentGuardianRouteFamiliesV1 } from "./guardian-contract.js";
 import {
   analyzeCanonicalBody,
   canonicalBodyArray,
@@ -54,6 +60,14 @@ import {
 } from "./types.js";
 
 const EVENT_PURPOSE = "np.agent-event.v1" as const;
+
+/** Exact pg-boss queue grammar; canonical identifiers must not lowercase queue names. */
+function parseQueueName(value: unknown, path: string): string {
+  const name = parseCanonicalAscii(value, path, 96);
+  if (!/^[A-Za-z0-9_.\-/]+$/u.test(name))
+    failCanonicalBody("invalid-field", path, "Invalid queue name");
+  return name;
+}
 const SIGNAL_PURPOSE = "np.agent-signal-evidence.v1" as const;
 const EVENT_KINDS = new Set<string>(npAgentEventKinds);
 const EVENT_SOURCE_KINDS = new Set<string>([
@@ -181,6 +195,34 @@ function parseEventPayload(
   if (typeof kind !== "string" || !EVENT_KINDS.has(kind)) {
     failCanonicalBody("invalid-field", `${path}.kind`, "is not a supported event kind");
   }
+  if (
+    kind === "security.authority.changed" ||
+    kind === "agent.policy.changed" ||
+    kind === "security.credential.changed" ||
+    kind === "security.plugin.changed"
+  )
+    return npParseAgentSecurityTransitionPayloadV1(value, path, state);
+  if (kind === "http.response.observed")
+    return npParseAgentGuardianHttpEventPayloadV1(value, path, state);
+  if (kind === "agent.runtime.activity.observed")
+    return npParseAgentGuardianRuntimeEventPayloadV1(value, path, state);
+  if (kind === "content.activity.observed")
+    return npParseAgentGuardianContentEventPayloadV1(value, path, state);
+  if (kind === "api.rate-limited") {
+    const record = payloadRecord(value, path, ["kind", "routeFamily", "ipBucket"], state);
+    return {
+      kind,
+      routeFamily: canonicalBodyEnum(
+        record.routeFamily,
+        `${path}.routeFamily`,
+        new Set(npAgentGuardianRouteFamiliesV1),
+      ),
+      ipBucket: {
+        ...parseActorBucket(record.ipBucket, `${path}.ipBucket`, state, "network-address"),
+        purpose: "network-address",
+      },
+    };
+  }
   if (kind === "auth.login.failed" || kind === "auth.login.succeeded") {
     const record = payloadRecord(
       value,
@@ -272,6 +314,19 @@ function parseEventPayload(
       currentRole: parseCanonicalAscii(record.currentRole, `${path}.currentRole`, 96),
     };
   }
+  if (kind === "community.member.reported") {
+    const record = payloadRecord(value, path, ["kind", "memberId", "memberStatus", "claim"], state);
+    return {
+      kind,
+      memberId: parseCanonicalUuid(record.memberId, `${path}.memberId`),
+      memberStatus: canonicalBodyEnum(
+        record.memberStatus,
+        `${path}.memberStatus`,
+        new Set(["active"] as const),
+      ),
+      claim: canonicalBodyEnum(record.claim, `${path}.claim`, new Set(["unverified"] as const)),
+    };
+  }
   if (kind.startsWith("community.content.")) {
     const record = payloadRecord(
       value,
@@ -322,7 +377,7 @@ function parseEventPayload(
     );
     return {
       kind,
-      handlerName: parseCanonicalIdentifier(record.handlerName, `${path}.handlerName`, 96),
+      handlerName: parseQueueName(record.handlerName, `${path}.handlerName`),
       jobId: parseCanonicalAscii(record.jobId, `${path}.jobId`, 128),
       reasonCode: canonicalRuntimeStableCode(record.reasonCode, `${path}.reasonCode`),
     };
@@ -344,7 +399,7 @@ function parseEventPayload(
     );
     return {
       kind,
-      handlerName: parseCanonicalIdentifier(record.handlerName, `${path}.handlerName`, 96),
+      handlerName: parseQueueName(record.handlerName, `${path}.handlerName`),
       countBucket: parseCanonicalInteger(
         record.countBucket,
         `${path}.countBucket`,
@@ -474,7 +529,10 @@ function parseEventPayload(
   };
 }
 
-function parseEventCanonical(value: unknown): NpAgentEventCanonicalV1 {
+function parseEventCanonical(value: unknown): {
+  body: NpAgentEventCanonicalV1;
+  bytes: NpAgentCanonicalBodyBytesV1<typeof EVENT_PURPOSE, NpAgentEventCanonicalV1>;
+} {
   const path = "agent.canonical.event";
   const state: CanonicalBodyInspectionState = { seen: new WeakSet<object>() };
   const record = canonicalBodyRecord(
@@ -520,8 +578,56 @@ function parseEventCanonical(value: unknown): NpAgentEventCanonicalV1 {
     privacy: canonicalBodyEnum(record.privacy, `${path}.privacy`, EVENT_PRIVACY),
     payload,
   };
-  buildAgentCanonicalFoundationBytes(EVENT_PURPOSE, result);
-  return result;
+  if (payload.kind === "agent.runtime.activity.observed") {
+    const activity = payload.activity;
+    if (
+      result.siteId !== activity.siteId ||
+      result.occurredAt !== activity.occurredAt ||
+      result.source.kind !== "agent" ||
+      result.source.component !== "guardian.runtime.v1" ||
+      result.subject?.kind !== "agent" ||
+      result.subject.agentId !== activity.agentId ||
+      result.subject.agentVersionId !== activity.agentVersionId ||
+      result.actor?.kind !== "agent-principal" ||
+      result.actor.principalId !== activity.principalId ||
+      result.causation !== null ||
+      result.correlationId !== null ||
+      result.privacy !== "sensitive" ||
+      result.deduplicationKey !== `guardian-runtime:${payload.receiptId}`
+    )
+      failCanonicalBody(
+        "invalid-field",
+        path,
+        "Runtime observation must bind its exact source facts",
+      );
+  }
+  if (payload.kind === "http.response.observed") {
+    const activity = payload.activity;
+    if (
+      result.siteId !== activity.siteId ||
+      result.occurredAt !== activity.occurredAt ||
+      result.source.kind !== "api" ||
+      result.source.component !== "guardian.http.v1" ||
+      serializeAgentCanonicalJson(result.subject) !==
+        serializeAgentCanonicalJson({ kind: "actor-bucket", ...activity.networkBucket }) ||
+      serializeAgentCanonicalJson(result.actor) !==
+        serializeAgentCanonicalJson({ kind: "anonymous", ...activity.networkBucket }) ||
+      result.causation !== null ||
+      result.correlationId !== null ||
+      result.privacy !== "sensitive" ||
+      result.deduplicationKey !== `guardian-http:${payload.receiptId}`
+    )
+      failCanonicalBody(
+        "invalid-field",
+        path,
+        "HTTP observation must bind its exact final response facts",
+      );
+  }
+  const bytes = buildAgentCanonicalFoundationBytes(
+    EVENT_PURPOSE,
+    result,
+  ) as unknown as NpAgentCanonicalBodyBytesV1<typeof EVENT_PURPOSE, NpAgentEventCanonicalV1>;
+  return { body: result, bytes };
 }
 
 function parseEvidenceRef(
@@ -713,7 +819,7 @@ function parseSignalEvidenceCanonical(value: unknown): NpAgentSignalEvidenceCano
 export function npAnalyzeAgentEventCanonical(
   value: unknown,
 ): NpAgentContractResult<NpAgentEventCanonicalV1> {
-  return analyzeCanonicalBody("agent.canonical.event", () => parseEventCanonical(value));
+  return analyzeCanonicalBody("agent.canonical.event", () => parseEventCanonical(value).body);
 }
 
 export function npRequireAgentEventCanonical(value: unknown): NpAgentEventCanonicalV1 {
@@ -726,10 +832,12 @@ export function npRequireAgentEventCanonical(value: unknown): NpAgentEventCanoni
 export function npBuildAgentEventCanonicalBytes(
   value: unknown,
 ): NpAgentCanonicalBodyBytesV1<"np.agent-event.v1", NpAgentEventCanonicalV1> {
-  return buildAgentCanonicalFoundationBytes(
-    EVENT_PURPOSE,
-    npRequireAgentEventCanonical(value),
-  ) as unknown as NpAgentCanonicalBodyBytesV1<"np.agent-event.v1", NpAgentEventCanonicalV1>;
+  // Parsing already builds and validates these exact generic foundation bytes.
+  // Return that detached result rather than cloning/serializing the body again.
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.canonical.event", () => parseEventCanonical(value).bytes),
+    "Invalid Agent event canonical body",
+  );
 }
 
 export async function npDigestAgentEventCanonical(value: unknown): Promise<`cj1:sha256:${string}`> {

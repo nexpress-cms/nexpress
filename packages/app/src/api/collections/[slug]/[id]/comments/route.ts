@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpValidationError } from "@nexpress/core";
 import {
   createComment,
@@ -29,7 +30,7 @@ import { optionalMember, requireMember } from "../../../../../lib/member-auth-he
  * create endpoint needs a member session + CSRF and a collection
  * that opted in via `community.comments=true`.
  */
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -90,7 +91,7 @@ export async function GET(
   }
 }
 
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -116,3 +117,6 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("collections", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("collections", npGuardianPOST);

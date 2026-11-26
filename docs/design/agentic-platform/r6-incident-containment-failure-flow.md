@@ -40,8 +40,10 @@ review owner must also permit reading the exact failed action target. Missing
 or denying action review hides that notification without hiding other authorized
 notifications. The notification write is isolated from the source result; an unavailable
 notification cannot undo the stored failure outcome. Exact replay does not retry
-a missed notification; this slice installs no delivery retry or outbox. There is no external
-transport, automatic execution, worker, polling or new credential.
+a missed notification. The optional
+[recording recovery owner](r6-incident-notification-recovery-flow.md) now retains
+bounded work for explicitly marked new outcomes and host maintenance. There is
+no external transport, automatic execution, worker activation or new credential.
 
 An Action labelled failed can also represent an approval failure. Admin must not
 infer a rolled-back quarantine solely from that label; the specific Incident

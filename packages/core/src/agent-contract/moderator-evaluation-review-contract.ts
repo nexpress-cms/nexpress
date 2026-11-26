@@ -1,5 +1,9 @@
 import type { NpAgentModeratorFeedbackLabelV1 } from "./moderator-contract.js";
-import type { NpAgentModeratorEvaluationArtifactV1 } from "./moderator-evaluation-contract.js";
+import type {
+  NpAgentModeratorEvaluationArtifactV1,
+  NpAgentModeratorEvaluationArtifactV2,
+  NpAgentModeratorEvaluationArtifactV3,
+} from "./moderator-evaluation-contract.js";
 
 export interface NpAgentModeratorEvaluationReviewLabelV1 {
   caseId: string;
@@ -52,3 +56,36 @@ export interface NpAgentModeratorEvaluationReviewComparisonV1 {
   confirmedSpamBasisPointsDelta: number | null;
   falsePositiveBasisPointsDelta: number | null;
 }
+
+export interface NpAgentModeratorEvaluationReviewEntryV2 extends Omit<
+  NpAgentModeratorEvaluationReviewEntryV1,
+  "caseVersion"
+> {
+  caseVersion: 2;
+}
+export interface NpAgentModeratorEvaluationReviewArtifactV2 extends Omit<
+  NpAgentModeratorEvaluationReviewArtifactV1,
+  "schemaVersion" | "source" | "entries"
+> {
+  schemaVersion: "np.agent-moderator-eval-review.v2";
+  source: NpAgentModeratorEvaluationArtifactV2;
+  entries: NpAgentModeratorEvaluationReviewEntryV2[];
+}
+export interface NpAgentModeratorEvaluationReviewEntryV3 extends Omit<
+  NpAgentModeratorEvaluationReviewEntryV1,
+  "caseVersion"
+> {
+  caseVersion: 3;
+}
+export interface NpAgentModeratorEvaluationReviewArtifactV3 extends Omit<
+  NpAgentModeratorEvaluationReviewArtifactV1,
+  "schemaVersion" | "source" | "entries"
+> {
+  schemaVersion: "np.agent-moderator-eval-review.v3";
+  source: NpAgentModeratorEvaluationArtifactV3;
+  entries: NpAgentModeratorEvaluationReviewEntryV3[];
+}
+export type NpAgentModeratorEvaluationReviewArtifact =
+  | NpAgentModeratorEvaluationReviewArtifactV1
+  | NpAgentModeratorEvaluationReviewArtifactV2
+  | NpAgentModeratorEvaluationReviewArtifactV3;

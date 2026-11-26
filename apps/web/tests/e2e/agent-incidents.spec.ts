@@ -2,15 +2,28 @@ import { expect, test } from "@playwright/test";
 import {
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentMemberReportEvidenceV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentNotificationsV1,
+  npRequireAgentIncidentNotificationDeliveriesV1,
+  npRequireAgentMemberResponseV1,
+  npRequireAgentGuardianResponseV1,
+  npRequireAgentGuardianResponsePlanInputV1,
+  npRequireAgentGuardianResponseExecuteInputV1,
+  npRequireAgentApprovalDetailV1,
+  type NpAgentGuardianResponsePlanInputV1,
+  type NpAgentGuardianResponseExecuteInputV1,
   type NpAgentIncidentEvidenceItemV1,
+  type NpAgentIncidentMemberReportEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/admin/agents/incidents/notifications*", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.route("**/api/admin/agents/incidents/*/deliveries*", (route) =>
     route.fulfill({ status: 503, json: {} }),
   );
   await page.route("**/api/admin/agents/incidents/*/assignment", (route) =>
@@ -99,7 +112,381 @@ function detail() {
   });
 }
 
-test("incident list defaults to unresolved and filters without treating failures as empty", async ({
+test("Guardian observations and explicit temporary limits preserve approval and recovery boundaries", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    216 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const base = detail();
+  const actorBucket = "G".repeat(43);
+  const observedEnd = "2026-09-27T00:09:59.000Z";
+  const result = npRequireAgentIncidentStudioDetailV1({
+    ...base,
+    incident: {
+      ...base.incident,
+      category: "traffic",
+      severity: "medium",
+      title: "Repeated request limits",
+      summary:
+        "At least 5 request-limit decisions observed in one ten-minute window. This rule does not establish malicious intent.",
+      eventCount: 5,
+      lastObservedAt: observedEnd,
+      createdAt: observedEnd,
+      updatedAt: observedEnd,
+      primarySubject: {
+        kind: "actor-bucket",
+        purpose: "network-address",
+        projectionVersion: 1,
+        projectionFingerprint: `cj1:sha256:${"P".repeat(43)}`,
+        keyId: "guardian-fixture",
+        bucket: actorBucket,
+      },
+    },
+    signals: [
+      {
+        ...base.signals[0],
+        detectorId: "guardian.rate-limits",
+        category: "traffic",
+        scoreBasisPoints: null,
+        createdAt: observedEnd,
+      },
+    ],
+    timeline: [{ ...base.timeline[0], createdAt: observedEnd }],
+    feedbackAvailable: false,
+    workflow: {
+      availableTransitions: ["investigating", "resolved", "dismissed"],
+      containment: {
+        reviewHash: `cj1:sha256:${"a".repeat(43)}`,
+        total: 0,
+        active: 0,
+        restored: 0,
+        unresolved: 0,
+        pendingActions: 0,
+      },
+    },
+    guardianEvidence: [
+      {
+        schemaVersion: "np.agent-guardian-evidence.v1",
+        signalId,
+        detectorId: "guardian.rate-limits",
+        audience: null,
+        routeFamily: "mcp",
+        window: { startedAt: at, endedAt: observedEnd },
+        observedCount: 5,
+        threshold: 5,
+        countBasis: "at-least",
+      },
+    ],
+  });
+  const contentRequests: string[] = [];
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (/\/(?:evidence|member-report-evidence|member-response)$/.test(url.pathname))
+      contentRequests.push(url.pathname);
+    if (request.method() === "POST" && url.pathname.startsWith("/api/admin/agents/"))
+      mutations.push(url.pathname);
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  const hash = `cj1:sha256:${"a".repeat(43)}`;
+  const expiresAt = "2026-10-18T01:00:00.000Z";
+  const approvalRequestedAt = "2026-10-18T00:50:00.000Z";
+  let planState: "approval_pending" | "approved" | "executing" | "succeeded" | null = null;
+  let operation: NpAgentGuardianResponsePlanInputV1["operation"] = {
+    kind: "limit",
+    durationSeconds: 600,
+    actionScopes: ["agent.gateway"],
+  };
+  let active = false;
+  const planCommands: NpAgentGuardianResponsePlanInputV1[] = [];
+  const executeCommands: NpAgentGuardianResponseExecuteInputV1[] = [];
+  const responseRoot = `**/api/admin/agents/incidents/${id}/guardian-response`;
+  await page.route(responseRoot, (route) =>
+    route.fulfill({
+      json: npRequireAgentGuardianResponseV1({
+        schemaVersion: "np.agent-guardian-response.v1",
+        incidentId: id,
+        incidentVersion: 1,
+        targetVersionDigest: hash,
+        maximumDurationSeconds: 600,
+        allowedScopes: ["agent.gateway"],
+        canLimit: !active && planState === null,
+        truncated: false,
+        restrictions: active
+          ? [
+              {
+                restrictionId: signalId,
+                sourceActionId: id,
+                expiresAt,
+                state: "active",
+                rowVersion: 2,
+                lastErrorCode: null,
+                canRemove: true,
+              },
+            ]
+          : [],
+        plans:
+          planState === null
+            ? []
+            : [
+                {
+                  actionId: id,
+                  approvalId: id,
+                  proposalHash: hash,
+                  capabilityId:
+                    operation.kind === "limit"
+                      ? "security.limitActor"
+                      : "security.removeActorLimit",
+                  operation,
+                  state: planState,
+                  approvalExpiresAt: expiresAt,
+                  canExecute: planState === "approved" || planState === "executing",
+                },
+              ],
+      }),
+    }),
+  );
+  await page.route(`${responseRoot}/plan`, (route) => {
+    const command = npRequireAgentGuardianResponsePlanInputV1(route.request().postDataJSON());
+    planCommands.push(command);
+    if (planCommands.length === 1) return route.abort("failed");
+    operation = command.operation;
+    planState = "approval_pending";
+    return route.fulfill({ json: { resourceId: id, replayed: planCommands.length === 2 } });
+  });
+  await page.route(`${responseRoot}/execute`, (route) => {
+    executeCommands.push(
+      npRequireAgentGuardianResponseExecuteInputV1(route.request().postDataJSON()),
+    );
+    planState = executeCommands.length === 1 ? "executing" : "succeeded";
+    active = executeCommands.length > 1;
+    return route.fulfill({ json: { resourceId: id, replayed: executeCommands.length > 1 } });
+  });
+  await page.route(`**/api/admin/agents/approvals/${id}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentApprovalDetailV1({
+        schemaVersion: "np.agent-approval-detail.v1",
+        review: null,
+        rollbackReview: null,
+        item: {
+          schemaVersion: "np.agent-approval-list-item.v1",
+          version: 1,
+          approval: {
+            id,
+            generation: 1,
+            state: "pending",
+            statementHash: hash,
+            requiredHumanCapabilities: ["admin.manage"],
+            requiredHumanPredicates: [],
+            requestedAt: approvalRequestedAt,
+            expiresAt,
+            decidedAt: null,
+          },
+          target: { kind: "action", actionId: id, runId: null, agentId: null, proposalHash: hash },
+          intendedOperation: null,
+          scheduledFor: null,
+          statementHash: hash,
+          reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+          allowedDecisions: [],
+          risk: "sensitive",
+          capabilityId: "security.limitActor",
+          capabilityContractVersion: 1,
+          capabilityFingerprint: hash,
+          policyHashes: [],
+          requiresLivePreview: false,
+          reviewSummary: {
+            operationCount: 1,
+            targetCount: 1,
+            previewState: null,
+            checksRun: null,
+            rollbackPlan: "unavailable",
+          },
+          requiredScopes: ["security:execute"],
+          requester: { kind: "staff", id },
+        },
+        actionReview: {
+          actionId: id,
+          proposalHash: hash,
+          capabilityId: "security.limitActor",
+          incidentId: id,
+          expectedTargetVersionDigest: hash,
+          operation: { kind: "limit", durationSeconds: 600, actionScopes: ["agent.gateway"] },
+          policyDigest: hash,
+        },
+      }),
+    }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const observations = page.getByRole("region", { name: "Guardian observations", exact: true });
+  await expect(observations.getByText("Requests limited", { exact: true })).toBeVisible();
+  await expect(observations.getByText("Route family: mcp", { exact: true })).toBeVisible();
+  await expect(
+    observations.getByText("At least 5 observations · Rule threshold: 5", { exact: true }),
+  ).toBeVisible();
+  await expect(observations.getByText(/not proof of an attack/)).toBeVisible();
+  await expect(observations.getByText(/lower bound, not the total activity/)).toBeVisible();
+  await expect(observations.locator(`time[datetime="${at}"]`)).toBeVisible();
+  await expect(observations.locator("button, form")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Content evidence", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Response plans", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /Prepare response plan|Execute approved|Record feedback/ }),
+  ).toHaveCount(0);
+  await expect(page.getByText(actorBucket, { exact: false })).toHaveCount(0);
+  const handling = page.getByRole("region", { name: "Incident handling", exact: true });
+  await expect(handling.getByRole("combobox", { name: "Incident decision" })).toBeVisible();
+  await handling.getByLabel("Decision note").fill("Reviewing the observed request limits.");
+  await expect(handling.getByRole("button", { name: "Record incident decision" })).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 900 });
+  if (await page.locator('[data-np-admin-sidebar][data-open="true"]').count())
+    await page.getByRole("button", { name: "Close navigation" }).last().click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  expect(contentRequests).toEqual([]);
+  expect(mutations).toEqual([]);
+  const response = page.getByRole("region", {
+    name: "Guardian temporary request limits",
+    exact: true,
+  });
+  await response.getByLabel("Restriction duration in seconds").fill("600");
+  await response.getByRole("checkbox", { name: "agent.gateway", exact: true }).check();
+  await response
+    .getByRole("button", { name: "Prepare temporary request limit", exact: true })
+    .click();
+  await expect(
+    response.getByRole("status").filter({ hasText: "The request outcome is unknown" }),
+  ).toBeFocused();
+  await response
+    .getByRole("button", { name: "Retry unchanged Guardian response request", exact: true })
+    .click();
+  await expect(
+    response.getByRole("link", { name: "Review human approval", exact: true }),
+  ).toBeVisible();
+  await expect(
+    response.getByRole("heading", { name: /Temporary request limit .*approval_pending/ }),
+  ).toBeFocused();
+  expect(planCommands).toHaveLength(2);
+  expect(planCommands[1]).toEqual(planCommands[0]);
+  expect(planCommands[0]).toMatchObject({
+    expectedVersion: 1,
+    expectedTargetVersionDigest: hash,
+    operation: { kind: "limit", durationSeconds: 600, actionScopes: ["agent.gateway"] },
+  });
+  await response.getByRole("link", { name: "Review human approval", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/approvals/${id}$`));
+  const approval = page.getByRole("region", {
+    name: "Guardian request restriction action",
+    exact: true,
+  });
+  await expect(
+    approval.getByRole("heading", { name: "Temporarily limit requests on this site", exact: true }),
+  ).toBeVisible();
+  await expect(approval.getByText("600 seconds", { exact: true })).toBeVisible();
+  await expect(approval.getByText("agent.gateway", { exact: true })).toBeVisible();
+  await expect(approval.locator("button")).toHaveCount(0);
+  // This UI fixture supplies externally approved facts. The database integration owns signed distinct-human approval proof.
+  planState = "approved";
+  await page.goBack();
+  await expect(
+    response.getByRole("button", { name: "Execute this approved Guardian response", exact: true }),
+  ).toBeVisible();
+  await response
+    .getByRole("button", { name: "Execute this approved Guardian response", exact: true })
+    .click();
+  await expect(response.getByText(/Awaiting verification/)).toBeVisible();
+  await expect(response.getByRole("heading", { name: /Awaiting verification/ })).toBeFocused();
+  await response.getByRole("button", { name: "Check result", exact: true }).click();
+  await expect(
+    response.getByText(`Restriction ${signalId} · active`, { exact: true }),
+  ).toBeVisible();
+  expect(executeCommands).toHaveLength(2);
+  for (const command of executeCommands)
+    expect(command).toMatchObject({
+      expectedVersion: 1,
+      actionId: id,
+      approvalId: id,
+      proposalHash: hash,
+    });
+  await response
+    .getByRole("button", { name: "Prepare early removal of this limit", exact: true })
+    .click();
+  await expect(
+    response.getByText("Remove the selected request limit · approval_pending", { exact: true }),
+  ).toBeVisible();
+  expect(planCommands.at(-1)?.operation).toEqual({
+    kind: "remove",
+    sourceActionId: id,
+    restrictionId: signalId,
+  });
+  await expect(page.getByText(actorBucket, { exact: false })).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  const screenshot = testInfo.outputPath("incident-guardian-observations-390.png");
+  await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+  await testInfo.attach("Guardian observations and Incident handling", {
+    path: screenshot,
+    contentType: "image/png",
+  });
+  expect(contentRequests).toEqual([]);
+  expect(mutations).toHaveLength(5);
+});
+
+test("Member response retains its duration draft while Incident polling refreshes current policy", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 214 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1_000));
+  const memberId = "b1111111-1111-4111-8111-111111111111";
+  const result = detail();
+  result.incident.primarySubject = { kind: "member", memberId };
+  let incidentReads = 0;
+  let maximumDurationSeconds = 600;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) => {
+    incidentReads++;
+    return route.fulfill({ json: result });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/member-response`, (route) =>
+    route.fulfill({
+      json: npRequireAgentMemberResponseV1({
+        schemaVersion: "np.agent-member-response.v1",
+        incidentId: id,
+        incidentVersion: 1,
+        memberId,
+        memberVersionDigest: `cj1:sha256:${"A".repeat(43)}`,
+        maximumDurationSeconds,
+        canRestrict: true,
+        revocable: [],
+        plans: [],
+        truncated: false,
+      }),
+    }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const panel = page.getByRole("region", { name: "Member site response", exact: true });
+  const duration = panel.getByRole("spinbutton", { name: "Restriction duration in seconds" });
+  await duration.fill("300");
+  maximumDurationSeconds = 450;
+  await page.clock.fastForward(2_000);
+  await expect.poll(() => incidentReads).toBe(2);
+  await expect(panel.getByText(/Current policy maximum: 450 seconds/)).toBeVisible();
+  await expect(duration).toHaveValue("300");
+  await expect(duration).toHaveAttribute("max", "450");
+  await expect(
+    panel.getByRole("button", { name: "Prepare temporary site restriction" }),
+  ).toBeEnabled();
+});
+
+test("incident list keeps its filters through background refresh and distinguishes failure from empty", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -110,10 +497,15 @@ test("incident list defaults to unresolved and filters without treating failures
   const uninstalled = await page.request.get("/api/admin/agents/incidents");
   expect(uninstalled.status()).toBe(503);
   expect(uninstalled.headers()["cache-control"]).toContain("no-store");
+  const start = new Date();
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 1_000));
   let unavailable = false;
+  let pendingRead: Promise<void> | undefined;
   const queries: URLSearchParams[] = [];
-  await page.route("**/api/admin/agents/incidents?*", (route) => {
+  await page.route("**/api/admin/agents/incidents?*", async (route) => {
     queries.push(new URL(route.request().url()).searchParams);
+    await pendingRead;
     return unavailable
       ? route.fulfill({ status: 503, json: {} })
       : route.fulfill({
@@ -135,6 +527,35 @@ test("incident list defaults to unresolved and filters without treating failures
     .toBe("open,investigating,contained,monitoring,resolved,dismissed");
   expect(queries.at(-1)?.has("categories")).toBe(false);
   expect(queries.at(-1)?.has("severities")).toBe(false);
+  await page
+    .getByRole("textbox", { name: "Detector source", exact: true })
+    .fill("moderator.repeated-domain");
+  await page
+    .getByRole("textbox", { name: "Search incident title and summary", exact: true })
+    .fill("literal %_ evidence");
+  await page.getByRole("textbox", { name: "Observed since (UTC ISO)", exact: true }).fill(at);
+  await page.getByRole("combobox", { name: "Active containment", exact: true }).click();
+  await page.getByRole("option", { name: "No active containment", exact: true }).click();
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect.poll(() => queries.at(-1)?.get("query")).toBe("literal %_ evidence");
+  expect(queries.at(-1)?.get("source")).toBe("moderator.repeated-domain");
+  expect(queries.at(-1)?.get("observedAfter")).toBe(at);
+  expect(queries.at(-1)?.get("containment")).toBe("inactive");
+  let releaseRead: (() => void) | undefined;
+  pendingRead = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const currentQueries = queries.map((query) => query.toString());
+  const selectedQuery = currentQueries.at(-1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => queries.length).toBe(currentQueries.length + 1);
+  await expect(page.getByText("No incidents match this view.")).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search incident title and summary" });
+  await search.fill("Unsubmitted search draft");
+  expect(queries.at(-1)?.toString()).toBe(selectedQuery);
+  releaseRead?.();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await expect(search).toHaveValue("Unsubmitted search draft");
   unavailable = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
@@ -152,6 +573,46 @@ test("incident feedback retries one identity and exposes only review links", asy
   );
   await signInAsE2EAdmin(page);
   const result = detail();
+  const digest = `cj1:sha256:${"a".repeat(43)}`;
+  result.timeline.push({
+    id: "71111111-1111-4111-8111-111111111111",
+    sequence: 3,
+    kind: "agent_assessment",
+    createdAt: at,
+    approvalId: null,
+    actionId: null,
+    decision: null,
+    assessment: {
+      schemaVersion: "np.agent-moderator-assessment.v1",
+      incidentId: id,
+      incidentVersion: 1,
+      observedAt: at,
+      label: "uncertain",
+      confidenceBasisPoints: 100,
+      reasonCodes: ["insufficient-evidence"],
+      evidenceDigests: [],
+      summary: "Evidence requires staff review.",
+      evidence: {
+        schemaVersion: "np.agent-moderator-assessment-evidence.v1",
+        observedAt: at,
+        incident: { id, versionNumber: 1, fingerprint: "safe-fixture" },
+        truncated: true,
+        sources: [],
+      },
+      provenance: {
+        runId: id,
+        providerCallId: signalId,
+        provider: "fixture",
+        model: "test-model",
+        recipeFingerprint: digest,
+        instructionDigest: digest,
+        policyDigests: [],
+        requestDigest: digest,
+        responseDigest: digest,
+        sourceDigest: digest,
+      },
+    },
+  });
   const commands: unknown[] = [];
   await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
     route.fulfill({ json: result }),
@@ -170,6 +631,12 @@ test("incident feedback retries one identity and exposes only review links", asy
   await expect(page.getByText("Observed fact", { exact: true })).toBeVisible();
   await expect(page.getByText("Deterministic confidence basis: exact-rule")).toBeVisible();
   await expect(page.getByText("Deterministic score: 9900 basis points")).toBeVisible();
+  await expect(page.getByText("AI assessment: uncertain", { exact: true })).toBeVisible();
+  await expect(page.getByText("Evidence requires staff review.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review assessment Run" })).toHaveAttribute(
+    "href",
+    `/admin/agents/runs/${id}`,
+  );
   await expect(page.getByRole("link", { name: "Review approval" })).toHaveAttribute(
     "href",
     `/admin/agents/approvals/${id}`,
@@ -204,6 +671,21 @@ test("incident feedback retries one identity and exposes only review links", asy
     label: "confirmed-spam",
     supersedesId: null,
   });
+  await page.route(/\/api\/admin\/agents\/activity\?/, (route) =>
+    route.fulfill({
+      json: { schemaVersion: "np.agent-activity-runs.v1", items: [], nextCursor: null },
+    }),
+  );
+  const activityRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/admin/agents/activity" && url.searchParams.get("incidentId") === id
+    );
+  });
+  await page.getByRole("link", { name: "View related runs", exact: true }).click();
+  await activityRequest;
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/activity\\?incidentId=${id}$`));
+  await expect(page.getByLabel("Incident ID", { exact: true })).toHaveValue(id);
 });
 
 test("incident feedback conflict discards stale evidence and access loss clears the refreshed view", async ({
@@ -243,9 +725,12 @@ test("incident investigation and closure retain one decision identity until conf
   await signInAsE2EAdmin(page);
   const result = detail();
   const commands: Record<string, unknown>[] = [];
-  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
-    route.fulfill({ json: result }),
-  );
+  await page.clock.install();
+  let reads = 0;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) => {
+    reads++;
+    return route.fulfill({ json: result });
+  });
   await page.route(`**/api/admin/agents/incidents/${id}/transitions`, (route) => {
     const command = route.request().postDataJSON();
     commands.push(command);
@@ -318,6 +803,9 @@ test("incident investigation and closure retain one decision identity until conf
     page.getByText("Reviewed <script>text</script>; retain quarantine.", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("No incident transitions are currently available.")).toBeVisible();
+  const terminalReads = reads;
+  await page.clock.fastForward(60_000);
+  expect(reads).toBe(terminalReads);
   expect(commands).toHaveLength(4);
   expect(commands[2]).toEqual(commands[1]);
   expect(commands[3]).toEqual(commands[1]);
@@ -502,6 +990,9 @@ test("incident response prepares an exact target, waits for approval, and explic
     response.getByText(`Current target version: ${targetDigest}`, { exact: true }),
   ).toBeVisible();
   await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect(
+    response.getByRole("status").filter({ hasText: "The response outcome is unconfirmed" }),
+  ).toBeFocused();
   await expect(response.getByRole("button", { name: "Retry unchanged response" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Record feedback", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
@@ -546,7 +1037,7 @@ test("incident response prepares an exact target, waits for approval, and explic
   await response.getByRole("button", { name: "Retry unchanged response" }).click();
   await expect(
     response.getByRole("heading", { name: "Quarantine plan · succeeded" }),
-  ).toBeVisible();
+  ).toBeFocused();
   expect(executed[1]).toEqual(executed[0]);
   expect(executed[0]).toMatchObject({
     expectedVersion: 2,
@@ -568,7 +1059,7 @@ test("incident response prepares an exact target, waits for approval, and explic
   result.response!.plans[1]!.canExecute = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await response.getByRole("button", { name: "Execute approved restore" }).click();
-  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeVisible();
+  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeFocused();
   await expect(page.getByText(/Containment: 1 total · 0 active · 1 restored/)).toBeVisible();
   expect(executed[2]).toMatchObject({
     expectedVersion: 4,
@@ -608,6 +1099,13 @@ test("incident response shows a persisted failed quarantine after an unchanged u
         approvalId: actionId,
         actionId,
         decision: null,
+        notificationRecovery: {
+          state: "pending",
+          attempts: 1,
+          lastAttemptAt: at,
+          nextAttemptAt: "2026-09-27T00:00:30.000Z",
+          lastErrorCode: "NOTIFICATION_RECORDING_FAILED",
+        },
         containmentFailure: {
           outcome: "rolled_back",
           reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
@@ -639,6 +1137,11 @@ test("incident response shows a persisted failed quarantine after an unchanged u
       "Quarantine verification failed. The attempted content changes were rolled back.",
     ),
   ).toBeVisible();
+  await expect(
+    page.getByText("Recording pending. Retries require host maintenance."),
+  ).toBeVisible();
+  await expect(page.getByText("Recording attempts: 1 of 5")).toBeVisible();
+  await expect(page.getByText("Next eligible attempt:")).toContainText("2026-09-27T00:00:30.000Z");
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
@@ -652,6 +1155,21 @@ test("incident response shows a persisted failed quarantine after an unchanged u
       animations: "disabled",
     });
   }
+  result.timeline.at(-1)!.notificationRecovery = {
+    state: "sent",
+    attempts: 2,
+    lastAttemptAt: "2026-09-27T00:00:30.000Z",
+    nextAttemptAt: null,
+    lastErrorCode: null,
+  };
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("Local Admin notification recorded. This does not confirm external delivery."),
+  ).toBeVisible();
+  await expect(page.getByText("Recording attempts: 2 of 5")).toBeVisible();
+  await expect(page.getByText("Recording pending. Retries require host maintenance.")).toHaveCount(
+    0,
+  );
   expect(result.workflow!.containment).toEqual(originalContainment);
   expect(commands).toHaveLength(2);
   expect(commands[1]).toEqual(commands[0]);
@@ -680,7 +1198,7 @@ test("incident response conflict and access loss remove stale plans before retry
   await page.getByRole("button", { name: "Execute approved quarantine" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This response plan or its target changed" }),
-  ).toBeVisible();
+  ).toBeFocused();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Review response approval" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Retry unchanged response" })).toHaveCount(0);
@@ -689,7 +1207,7 @@ test("incident response conflict and access loss remove stale plans before retry
   await page.getByRole("button", { name: "Execute approved quarantine" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
-  ).toBeVisible();
+  ).toBeFocused();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
 });
 
@@ -779,7 +1297,7 @@ test("incident evidence separates observed and current facts, pages safely, and 
     return route.fulfill({ json: { resourceId: id, replayed: false } });
   });
   await page.goto(`/admin/agents/incidents/${id}`);
-  const evidence = page.getByRole("region", { name: "Comment evidence" });
+  const evidence = page.getByRole("region", { name: "Content evidence" });
   const response = page.getByRole("region", { name: "Response plans" });
   await expect(evidence.getByRole("heading", { name: "Recorded observation" })).toHaveCount(4);
   await expect(
@@ -829,6 +1347,483 @@ test("incident evidence separates observed and current facts, pages safely, and 
     capabilityId: "moderation.quarantine",
     proposal: { target: responseTarget, expectedVersionDigest: targetDigest },
   });
+});
+
+test("incident report evidence keeps claims separate from current resolution and clears the selected response", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    82 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = responseDetail();
+  result.response!.choices.unshift({
+    ...result.response!.choices[0]!,
+    target: { ...responseTarget, id: actionId },
+  });
+  const filed = evidenceItem(id);
+  filed.observed = {
+    ...filed.observed!,
+    spamVerdict: "unknown",
+    profanityVerdict: "unknown",
+    reportFiled: true,
+  };
+  filed.current = {
+    ...filed.current!,
+    report: { status: "unresolved", resolvedAt: null },
+  };
+  const resolvedAt = "2026-09-27T01:00:00.000Z";
+  const resolved: NpAgentIncidentEvidenceItemV1 = {
+    ...structuredClone(filed),
+    eventId: actionId,
+    target: { ...responseTarget },
+    current: { ...filed.current, report: { status: "resolved", resolvedAt } },
+    responseEligible: false,
+  };
+  const changed: NpAgentIncidentEvidenceItemV1 = {
+    ...structuredClone(filed),
+    eventId: containmentId,
+    target: { ...responseTarget },
+    current: {
+      ...filed.current,
+      state: "changed",
+      editedAt: resolvedAt,
+      report: { status: "unresolved", resolvedAt: null },
+    },
+    responseEligible: false,
+  };
+  let prepared = 0;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/evidence*`, (route) =>
+    route.fulfill({ json: evidencePage([filed, resolved, changed]) }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared += 1;
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const evidence = page.getByRole("region", { name: "Content evidence" });
+  const response = page.getByRole("region", { name: "Response plans" });
+  await expect(evidence.getByRole("heading", { name: "Recorded report" })).toHaveCount(3);
+  await expect(evidence.getByText(/A report is an unverified claim/)).toHaveCount(3);
+  await expect(evidence.getByText(/Spam:|Profanity:/)).toHaveCount(0);
+  await expect(evidence.getByText("Report status: unresolved", { exact: true })).toHaveCount(2);
+  await expect(evidence.getByText("Report status: resolved", { exact: true })).toBeVisible();
+  const rows = evidence.locator("li");
+  await expect(rows.nth(1).getByText("Resolved:")).toContainText(resolvedAt);
+  await expect(rows.nth(2).getByText("Compared with observation: changed")).toBeVisible();
+  const selects = evidence.getByRole("button", { name: "Select for response plan" });
+  await expect(selects.first()).toBeEnabled();
+  await expect(selects.nth(1)).toBeDisabled();
+  await expect(selects.nth(2)).toBeDisabled();
+  await selects.first().click();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Quarantine comment 2",
+  );
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await evidence.screenshot({
+      path: testInfo.outputPath(`incident-report-evidence-${width}.png`),
+      animations: "disabled",
+    });
+  }
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(evidence.getByRole("heading", { name: "Recorded report" })).toHaveCount(3);
+  await expect(response.getByRole("combobox", { name: "Response target" })).not.toHaveText(
+    /Quarantine comment/,
+  );
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  await selects.first().click();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Quarantine comment 2",
+  );
+  filed.current.report = { status: "resolved", resolvedAt };
+  filed.responseEligible = false;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await expect(evidence.getByText("Report status: resolved", { exact: true })).toHaveCount(2);
+  await expect(selects.first()).toBeDisabled();
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  await expect(page.getByText(`Incident ${id} · Version 1`, { exact: true })).toBeVisible();
+  expect(prepared).toBe(0);
+});
+
+test("document report evidence reviews actual visibility, selects the exact target, and clears resolved or inaccessible evidence", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    168 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const documentTarget = { kind: "document" as const, collection: "posts", id: signalId };
+  const result = responseDetail();
+  result.response!.choices.push({
+    ...result.response!.choices[0]!,
+    target: documentTarget,
+  });
+  const filed: NpAgentIncidentEvidenceItemV1 = {
+    eventId: id,
+    signalIds: [signalId],
+    availability: "available",
+    target: documentTarget,
+    observed: {
+      occurredAt: at,
+      retentionExpiresAt: "2026-09-28T00:00:00.000Z",
+      status: "published",
+      visibility: "public",
+      spamVerdict: "unknown",
+      profanityVerdict: "unknown",
+      reportFiled: true,
+    },
+    current: {
+      state: "unchanged",
+      status: "published",
+      visibility: "public",
+      moderationHidden: false,
+      editedAt: at,
+      versionDigest: targetDigest,
+      report: { status: "unresolved", resolvedAt: null },
+    },
+    responseEligible: true,
+  };
+  const hidden: NpAgentIncidentEvidenceItemV1 = {
+    ...structuredClone(filed),
+    eventId: actionId,
+    target: { ...documentTarget, id: actionId },
+    current: {
+      ...structuredClone(filed.current!),
+      state: "hidden",
+      status: "pending",
+      moderationHidden: true,
+    },
+    responseEligible: false,
+  };
+  const privateDocument: NpAgentIncidentEvidenceItemV1 = {
+    ...structuredClone(filed),
+    eventId: containmentId,
+    target: { ...documentTarget, id: containmentId },
+    current: {
+      ...structuredClone(filed.current!),
+      state: "changed",
+      status: "draft",
+      visibility: "private",
+      editedAt: "2026-09-27T01:00:00.000Z",
+    },
+    responseEligible: false,
+  };
+  let evidenceStatus = 200;
+  const prepared: unknown[] = [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/evidence*`, (route) =>
+    route.fulfill({
+      status: evidenceStatus,
+      json: evidenceStatus === 200 ? evidencePage([filed, hidden, privateDocument]) : {},
+    }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared.push(route.request().postDataJSON());
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const evidence = page.getByRole("region", { name: "Content evidence" });
+  const response = page.getByRole("region", { name: "Response plans" });
+  const rows = evidence.locator("li");
+  await expect(evidence.getByRole("heading", { name: "Current document" })).toHaveCount(3);
+  await expect(evidence.getByRole("heading", { name: "Recorded report" })).toHaveCount(3);
+  await expect(evidence.getByText(/A report is an unverified claim/)).toHaveCount(3);
+  await expect(evidence.getByText(/Spam:|Profanity:/)).toHaveCount(0);
+  await expect(
+    rows.first().getByText(`Document: posts · ${signalId}`, { exact: true }),
+  ).toBeVisible();
+  await expect(rows.first().getByText("Visibility: public", { exact: true })).toHaveCount(2);
+  await expect(rows.first().getByText("Moderation hidden: No", { exact: true })).toBeVisible();
+  await expect(rows.nth(1).getByText("Moderation hidden: Yes", { exact: true })).toBeVisible();
+  await expect(rows.nth(2).getByText("Status: draft", { exact: true })).toBeVisible();
+  await expect(rows.nth(2).getByText("Visibility: private", { exact: true })).toBeVisible();
+  const selects = evidence.getByRole("button", { name: "Select for response plan" });
+  await expect(selects.first()).toBeEnabled();
+  await expect(selects.nth(1)).toBeDisabled();
+  await expect(selects.nth(2)).toBeDisabled();
+  await selects.first().click();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Quarantine document 2",
+  );
+  expect(prepared).toHaveLength(0);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await evidence.screenshot({
+      path: testInfo.outputPath(`incident-document-report-evidence-${width}.png`),
+      animations: "disabled",
+    });
+  }
+  await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect.poll(() => prepared.length).toBe(1);
+  expect(prepared[0]).toMatchObject({
+    expectedVersion: 1,
+    capabilityId: "moderation.quarantine",
+    proposal: { target: documentTarget, expectedVersionDigest: targetDigest },
+  });
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  await selects.first().click();
+  filed.current!.report = { status: "resolved", resolvedAt: "2026-09-27T01:00:00.000Z" };
+  filed.responseEligible = false;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await expect(rows.first().getByText("Report status: resolved", { exact: true })).toBeVisible();
+  await expect(selects.first()).toBeDisabled();
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  filed.current!.report = { status: "unresolved", resolvedAt: null };
+  filed.responseEligible = true;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await selects.first().click();
+  evidenceStatus = 403;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await expect(page.getByRole("heading", { name: "Current document" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
+  expect(prepared).toHaveLength(1);
+});
+
+test("member report evidence connects bounded site restrictions and authorized management while claims remain read-only", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    174 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const memberId = "b1111111-1111-4111-8111-111111111111";
+  const result = detail();
+  result.incident.primarySubject = { kind: "member", memberId };
+  result.incident.category = "abuse";
+  result.incident.severity = "info";
+  result.incident.title = "Member report review";
+  result.incident.summary = "A filed member report requires human review.";
+  result.incident.eventCount = 1;
+  result.signals = [
+    {
+      id: signalId,
+      detectorId: "moderator.member-report-review",
+      detectorVersion: 1,
+      confidenceBasis: "external",
+      scoreBasisPoints: null,
+      category: "abuse",
+      createdAt: at,
+    },
+  ];
+  result.timeline = result.timeline.slice(0, 1);
+  result.workflow = null;
+  result.feedbackAvailable = false;
+  result.response = null;
+  const memberDetail = npRequireAgentIncidentStudioDetailV1(result);
+  const filed: NpAgentIncidentMemberReportEvidenceItemV1 = {
+    eventId: id,
+    signalIds: [signalId],
+    availability: "available",
+    target: { kind: "member", id: memberId },
+    observed: {
+      occurredAt: at,
+      retentionExpiresAt: "2026-09-28T00:00:00.000Z",
+      status: "active",
+      claim: "unverified",
+    },
+    current: {
+      state: "unchanged",
+      status: "active",
+      updatedAt: at,
+      versionDigest: targetDigest,
+      report: { status: "unresolved", resolvedAt: null },
+      reviewContext: {
+        siteId: "default",
+        snapshotAt: at,
+        activeRestrictions: [
+          { scopeType: "site", scopeId: null, kind: "permanent", expiresAt: null },
+          {
+            scopeType: "collection",
+            scopeId: "posts",
+            kind: "temporary",
+            expiresAt: "2026-09-28T00:00:00.000Z",
+          },
+        ],
+        hasMoreRestrictions: false,
+        canOpenMemberManagement: true,
+      },
+    },
+    responseEligible: false,
+  };
+  const unavailable: NpAgentIncidentMemberReportEvidenceItemV1 = {
+    eventId: actionId,
+    signalIds: [signalId],
+    availability: "unavailable",
+    target: null,
+    observed: null,
+    current: null,
+    responseEligible: false,
+  };
+  const cursor = "sealed-member-report-page";
+  let cursorInvalid = false;
+  let evidenceVersion = 1;
+  let evidenceStatus = 200;
+  const posts: string[] = [];
+  const memberRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/api/admin/agents/"))
+      posts.push(request.url());
+    if (request.url().includes(`/admin/members/${memberId}`)) memberRequests.push(request.url());
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: memberDetail }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/member-report-evidence*`, (route) => {
+    const paged = new URL(route.request().url()).searchParams.has("cursor");
+    if (paged && cursorInvalid)
+      return route.fulfill({
+        status: 400,
+        json: {
+          status: 400,
+          error: {
+            code: "INCIDENT_MEMBER_REPORT_EVIDENCE_CURSOR_INVALID",
+            message: "Member report evidence cursor is invalid.",
+          },
+        },
+      });
+    return route.fulfill({
+      status: evidenceStatus,
+      json:
+        evidenceStatus === 200
+          ? npRequireAgentIncidentMemberReportEvidenceV1({
+              schemaVersion: "np.agent-incident-member-report-evidence.v1",
+              incidentId: id,
+              incidentVersion: evidenceVersion,
+              items: paged ? [unavailable] : [filed],
+              nextCursor: paged ? null : cursor,
+            })
+          : {},
+    });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const evidence = page.getByRole("region", { name: "Member report evidence" });
+  await expect(evidence.getByRole("heading", { name: "Filed member report" })).toBeVisible();
+  await expect(evidence.getByText(`Member: ${memberId}`, { exact: true })).toBeVisible();
+  await expect(
+    evidence.getByText("Recorded account status: active", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText("Global account status: active", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Site report status: unresolved", { exact: true })).toBeVisible();
+  const restrictions = evidence.getByRole("region", { name: "Current site restrictions" });
+  await expect(restrictions.getByText("Scope: site — this site", { exact: true })).toBeVisible();
+  await expect(restrictions.getByText("Scope: collection — posts", { exact: true })).toBeVisible();
+  await expect(restrictions.getByText("Expires: No expiry", { exact: true })).toBeVisible();
+  await expect(restrictions.locator('time[datetime="2026-09-28T00:00:00.000Z"]')).toBeVisible();
+  await expect(restrictions.getByRole("link", { name: "Open member management" })).toHaveAttribute(
+    "href",
+    `/admin/members/${memberId}`,
+  );
+  await expect(restrictions.getByText(/does not establish prior restrictions/)).toBeVisible();
+  await expect(
+    evidence.getByText("Claim: unverified. No abuse assessment was recorded.", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText(/References can retain evidence/)).toBeVisible();
+  await expect(page.getByText("Report evidence basis: external", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Abuse assessment score: Not assessed", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Content evidence" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Response plans" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: /Select for response plan|Prepare response plan|Execute approved/,
+    }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 900 });
+  if (await page.locator('[data-np-admin-sidebar][data-open="true"]').count())
+    await page.getByRole("button", { name: "Close navigation" }).last().click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await evidence.screenshot({
+    path: testInfo.outputPath("incident-member-report-evidence-320.png"),
+    animations: "disabled",
+  });
+  expect(memberRequests).toEqual([]);
+  filed.current!.reviewContext = {
+    ...filed.current!.reviewContext!,
+    activeRestrictions: Array.from({ length: 25 }, (_, index) => ({
+      scopeType: "collection",
+      scopeId: `bounded-scope-${index}`,
+      kind: "permanent",
+      expiresAt: null,
+    })),
+    hasMoreRestrictions: true,
+    canOpenMemberManagement: false,
+  };
+  filed.current!.state = "changed";
+  filed.current!.status = "suspended";
+  filed.current!.updatedAt = "2026-09-27T01:00:00.000Z";
+  filed.current!.versionDigest = `cj1:sha256:${"b".repeat(43)}`;
+  filed.current!.report = { status: "resolved", resolvedAt: "2026-09-27T01:00:00.000Z" };
+  await evidence.getByRole("button", { name: "Refresh member report evidence" }).click();
+  await expect(
+    evidence.getByText("Compared with filed account state: changed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    evidence.getByText("Global account status: suspended", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText("Site report status: resolved", { exact: true })).toBeVisible();
+  await expect(restrictions.getByRole("link", { name: "Open member management" })).toHaveCount(0);
+  await expect(restrictions.getByText(/unavailable with your current permissions/)).toBeVisible();
+  await expect(restrictions.getByText(/Only the first 25 active restrictions/)).toBeVisible();
+  await expect(
+    evidence.getByText("Recorded account status: active", { exact: true }),
+  ).toBeVisible();
+  await evidence.getByRole("button", { name: "Next member report page" }).click();
+  await expect(
+    evidence.getByText(/Its current account state and retention outcome cannot be determined/),
+  ).toBeVisible();
+  await expect(evidence.getByRole("heading", { name: "Current member" })).toHaveCount(0);
+  await evidence.getByRole("button", { name: "First member report page" }).click();
+  cursorInvalid = true;
+  await evidence.getByRole("button", { name: "Next member report page" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Member report review", exact: true }),
+  ).toHaveCount(0);
+  cursorInvalid = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(evidence.getByRole("heading", { name: "Current member" })).toBeVisible();
+  evidenceVersion = 2;
+  await evidence.getByRole("button", { name: "Refresh member report evidence" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  evidenceVersion = 1;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(evidence.getByRole("heading", { name: "Current member" })).toBeVisible();
+  evidenceStatus = 403;
+  await evidence.getByRole("button", { name: "Refresh member report evidence" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Member report review", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Current member" })).toHaveCount(0);
+  await expect(page.getByText(memberId, { exact: false })).toHaveCount(0);
+  expect(posts).toEqual([]);
+  expect(memberRequests).toEqual([]);
 });
 
 test("incident evidence failure clears its selection, stale generations require review, and access loss clears detail", async ({
@@ -882,16 +1877,16 @@ test("incident evidence failure clears its selection, stale generations require 
   await page.goto(`/admin/agents/incidents/${id}`);
   await page.getByRole("button", { name: "Select for response plan" }).click();
   evidenceStatus = 503;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Comment evidence is unavailable" }),
+    page.getByRole("alert").filter({ hasText: "Content evidence is unavailable" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recorded observation" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
   evidenceStatus = 200;
   staleTarget = true;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
   ).toBeVisible();
@@ -900,7 +1895,7 @@ test("incident evidence failure clears its selection, stale generations require 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: "Select for response plan" }).click();
   evidenceVersion = 2;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
   ).toBeVisible();
@@ -917,7 +1912,7 @@ test("incident evidence failure clears its selection, stale generations require 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: "Select for response plan" }).click();
   evidenceStatus = 403;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Current comment" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
@@ -1313,7 +2308,7 @@ test("incident severity raises from current server choices, retries one identity
   );
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await refresh;
-  await expect(page.getByRole("heading", { name: "Comment evidence", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Content evidence", exact: true })).toHaveCount(1);
   await expect(severity.getByLabel("Severity change note")).toHaveValue(
     "  Human review <script>text</script>  ",
   );
@@ -1338,7 +2333,7 @@ test("incident severity raises from current server choices, retries one identity
   await expect(page.getByText("Human severity change: high → critical")).toBeVisible();
   await expect(page.getByText("Human review <script>text</script>", { exact: true })).toBeVisible();
   await expect(severity.getByText("No severity increases are currently available.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Comment evidence", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Content evidence", exact: true })).toHaveCount(1);
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
@@ -1397,4 +2392,271 @@ test("incident severity conflicts discard stale decisions and access loss clears
     page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+});
+
+test("incident summaries and response target pages keep unknown evidence and target choice explicit", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    228 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const first = responseDetail();
+  const responseCursor = `eyJvZmZzZXQiOjEwfQ.${"a".repeat(43)}`;
+  first.response!.truncated = true;
+  first.response!.nextCursor = responseCursor;
+  first.incident.assignedAgentId = actionId;
+  const second = structuredClone(first);
+  second.response!.choices[0]!.target = { ...responseTarget, id: actionId };
+  second.response!.nextCursor = null;
+  second.response!.truncated = false;
+  const detailQueries: URLSearchParams[] = [];
+  const prepared: unknown[] = [];
+  let unknown = false;
+  await page.route("**/api/admin/agents/incidents?*", (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    expect(query.get("includeSummaries")).toBe("true");
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [first.incident],
+        nextCursor: null,
+        summaries: [
+          {
+            incidentId: id,
+            versionNumber: first.incident.versionNumber,
+            containment: unknown
+              ? null
+              : { active: 1, nearestExpiryAt: "2026-10-16T00:00:00.000Z" },
+            assessmentAvailable: unknown ? null : true,
+          },
+        ],
+      },
+    });
+  });
+  await page.route(new RegExp(`/api/admin/agents/incidents/${id}(?:\\?.*)?$`), (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    detailQueries.push(query);
+    return route.fulfill({
+      json: npRequireAgentIncidentStudioDetailV1(
+        query.get("responseCursor") === responseCursor ? second : first,
+      ),
+    });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared.push(route.request().postDataJSON());
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto("/admin/agents/incidents");
+  await expect(page.getByText(`Assigned Agent: ${actionId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Active containments: 1", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("AI assessment: Available for review", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Nearest containment expiry: 2026-10-16/)).toBeVisible();
+  await page.getByRole("link", { name: "Repeated links", exact: true }).click();
+  const response = page.getByRole("region", { name: "Response plans" });
+  await response.getByRole("button", { name: "Next response targets", exact: true }).click();
+  await expect(
+    response.getByRole("button", { name: "First response targets", exact: true }),
+  ).toBeVisible();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Select a response target",
+  );
+  expect(detailQueries.at(-1)?.get("responseCursor")).toBe(responseCursor);
+  expect(detailQueries.at(-1)?.has("cursor")).toBe(false);
+  await response.getByRole("combobox", { name: "Response target" }).click();
+  await page.getByRole("option", { name: "Quarantine comment 1", exact: true }).click();
+  await expect(response.getByText(new RegExp(`Target: comment.*${actionId}`))).toBeVisible();
+  await response.getByRole("button", { name: "Prepare response plan", exact: true }).click();
+  await expect.poll(() => prepared.length).toBe(1);
+  expect(prepared[0]).toMatchObject({ proposal: { target: { id: actionId } }, expectedVersion: 1 });
+  unknown = true;
+  await page.getByRole("link", { name: "All incidents", exact: true }).click();
+  await expect(page.getByText("Active containments: Unknown", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI assessment: Unknown", { exact: true })).toBeVisible();
+});
+
+test("segmented Incident assessment distinguishes full snapshot coverage from incomplete review", async ({
+  page,
+}, testInfo) => {
+  await signInAsE2EAdmin(page);
+  const result = detail();
+  const digest = `cj1:sha256:${"A".repeat(43)}`;
+  const callIds = Array.from(
+    { length: 16 },
+    (_, index) => `01900000-0000-7000-8000-${(index + 1).toString().padStart(12, "0")}`,
+  );
+  const assessment = {
+    schemaVersion: "np.agent-moderator-segmented-assessment.v2" as const,
+    incidentId: id,
+    incidentVersion: result.incident.versionNumber,
+    observedAt: at,
+    label: "spam" as const,
+    confidenceBasisPoints: 6000,
+    reasonCodes: ["repeated-template" as const],
+    summary: "All sixteen recorded batches support the same advisory classification.",
+    coverage: {
+      manifestDigest: digest,
+      signalCount: 2,
+      eventCount: 151,
+      targetCount: 151,
+      segmentCount: 16,
+      incomplete: false,
+      complete: true,
+    },
+    segmentProviderCallIds: callIds,
+    proofDigest: digest,
+    provenance: {
+      runId: id,
+      provider: "synthetic-browser-fixture",
+      model: "no-inference",
+      recipeFingerprint: digest,
+      instructionDigest: digest,
+      policyDigests: [digest],
+    },
+  };
+  result.timeline = [
+    {
+      id: signalId,
+      sequence: 3,
+      kind: "agent_assessment",
+      createdAt: at,
+      approvalId: null,
+      actionId: null,
+      decision: null,
+      segmentedAssessment: assessment,
+    },
+  ];
+  let denied = false;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    denied
+      ? route.fulfill({ status: 403, json: {} })
+      : route.fulfill({ json: npRequireAgentIncidentStudioDetailV1(result) }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await expect(page.getByText("AI assessment across batches: spam", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Coverage: 16 of 16 batches; 151 content targets/)).toBeVisible();
+  await expect(
+    page.getByText("All evidence in this recorded snapshot was covered.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Review assessment batches in Run" }),
+  ).toHaveAttribute("href", `/admin/agents/runs/${id}`);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`segmented-assessment-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  result.timeline[0].segmentedAssessment = {
+    ...assessment,
+    label: "uncertain",
+    confidenceBasisPoints: 0,
+    reasonCodes: ["insufficient-evidence"],
+    summary: "Incomplete evidence cannot establish a verdict for the entire Incident.",
+    coverage: { ...assessment.coverage, complete: false },
+    segmentProviderCallIds: callIds.slice(0, 15),
+  };
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("AI assessment across batches: uncertain", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Evidence coverage is incomplete/)).toBeVisible();
+  denied = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText(/AI assessment across batches:/)).toHaveCount(0);
+});
+
+test("Incident external delivery status stays distinct from local recording and unknown delivery outcomes", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    212 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: detail() }),
+  );
+  let mode: "records" | "absent" | "denied" = "records";
+  const queries: Array<string | null> = [];
+  const item = {
+    notificationId: id,
+    connectionId: signalId,
+    channel: "slack",
+    incidentVersion: 1,
+    state: "failed",
+    outcome: "unknown",
+    attempts: 1,
+    lastErrorCode: "DELIVERY_OUTCOME_UNKNOWN",
+    nextAttemptAt: null,
+    sentAt: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  await page.route(`**/api/admin/agents/incidents/${id}/deliveries*`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    queries.push(cursor);
+    if (mode !== "records")
+      return route.fulfill({ status: mode === "denied" ? 403 : 503, json: {} });
+    const items = cursor
+      ? [{ ...item, state: "sent", outcome: "confirmed", sentAt: at, lastErrorCode: null }]
+      : [item];
+    return route.fulfill({
+      json: npRequireAgentIncidentNotificationDeliveriesV1({
+        schemaVersion: "np.agent-incident-notification-deliveries.v1",
+        incidentId: id,
+        items,
+        nextCursor: cursor ? null : "delivery-page-2",
+      }),
+    });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const panel = page.getByRole("region", { name: "External notification delivery", exact: true });
+  await expect(panel.getByText("Slack · Failed", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/Delivery outcome unknown/)).toContainText(
+    "may have been delivered",
+  );
+  await expect(panel.getByText("Confirmed not sent.", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText(/Local Admin notification recording is separate/)).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await panel.screenshot({
+      path: testInfo.outputPath(`incident-external-delivery-${width}.png`),
+      animations: "disabled",
+    });
+  }
+  await panel.getByRole("button", { name: "Next delivery page" }).click();
+  await expect(panel.getByText("Delivery confirmed.", { exact: true })).toBeVisible();
+  expect(queries.at(-1)).toBe("delivery-page-2");
+  mode = "absent";
+  await panel.getByRole("button", { name: "Refresh delivery status" }).click();
+  await expect(panel.getByRole("alert")).toContainText("disabled or unavailable");
+  await expect(panel.getByText("Delivery confirmed.", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText(/No visible external delivery records/)).toHaveCount(0);
+  mode = "records";
+  await panel.getByRole("button", { name: "First delivery page" }).click();
+  await expect(panel.getByText(/Delivery outcome unknown/)).toBeVisible();
+  mode = "denied";
+  await panel.getByRole("button", { name: "Refresh delivery status" }).click();
+  await expect(page.getByRole("heading", { name: "Repeated links", exact: true })).toHaveCount(0);
+  await expect(page.getByText("DELIVERY_OUTCOME_UNKNOWN", { exact: true })).toHaveCount(0);
+  mode = "records";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(panel.getByText(/Delivery outcome unknown/)).toBeVisible();
 });

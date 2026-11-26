@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { NpForbiddenError } from "@nexpress/core";
 import { npApiErrorDiagnosticsHeader } from "@nexpress/core/api-contract";
+import {
+  npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentMemberReportEvidenceV1,
+} from "@nexpress/core/agent-contract";
 
 const mocks = vi.hoisted(() => ({
   runtime: vi.fn(),
@@ -9,8 +13,10 @@ const mocks = vi.hoisted(() => ({
   ensure: vi.fn(),
   list: vi.fn(),
   notifications: vi.fn(),
+  deliveries: vi.fn(),
   get: vi.fn(),
   evidence: vi.fn(),
+  memberReportEvidence: vi.fn(),
   assignment: vi.fn(),
   assign: vi.fn(),
   feedback: vi.fn(),
@@ -132,15 +138,69 @@ describe("Incident Studio HTTP boundary", () => {
     "?cursor=",
     "?cursor=" + "x".repeat(2049),
     "?updatedAfter=yesterday",
+    "?containment=all",
+    "?source=bad%20source",
+    "?assignedAgentId=not-a-uuid",
+    "?query=one&query=two",
+    "?observedAfter=2026-10-16T00:00:00.000Z&observedBefore=2026-10-15T00:00:00.000Z",
+    "?includeSummaries=1",
+    "?includeSummaries=true&includeSummaries=false",
   ])("rejects ambiguous/unsupported query %s", async (query) => {
     expect((await handleAgentIncidentAdminRequest(request(query), "list")).status).toBe(400);
     expect(mocks.list).not.toHaveBeenCalled();
   });
-  it("validates IDs and accepts only timeline cursor for detail", async () => {
+  it("decodes the staff-only Incident filters without normalizing literal search characters", async () => {
+    const params = new URLSearchParams({
+      source: "moderator.repeated-domain",
+      assignedAgentId: id,
+      containment: "active",
+      observedAfter: "2026-10-15T00:00:00.000Z",
+      observedBefore: "2026-10-16T00:00:00.000Z",
+      query: "literal %_ evidence",
+    });
+    expect((await handleAgentIncidentAdminRequest(request(`?${params}`), "list")).status).toBe(200);
+    expect(mocks.list).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.objectContaining(Object.fromEntries(params)) }),
+    );
+  });
+  it("decodes optional staff summaries without changing legacy list bytes", async () => {
+    const page = {
+      schemaVersion: "np.agent-incident-list.v1",
+      items: [],
+      nextCursor: null,
+      summaries: [],
+    };
+    mocks.list.mockResolvedValue(page);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?includeSummaries=true"),
+      "list",
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(page);
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: expect.objectContaining({ includeSummaries: true }) }),
+    );
+    await handleAgentIncidentAdminRequest(request("?includeSummaries=false"), "list");
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: expect.objectContaining({ includeSummaries: false }) }),
+    );
+    mocks.list.mockResolvedValue({
+      ...page,
+      summaries: [
+        { incidentId: id, versionNumber: 1, containment: null, assessmentAvailable: false },
+      ],
+    });
+    expect(
+      (await handleAgentIncidentAdminRequest(request("?includeSummaries=true"), "list")).status,
+    ).toBe(500);
+  });
+  it("validates IDs and keeps timeline and response cursors separate for detail", async () => {
     for (const [query, target] of [
       ["", "bad-id"],
       ["?statuses=open", id],
       ["?cursor=a&cursor=b", id],
+      ["?responseCursor=a&responseCursor=b", id],
+      [`?responseCursor=${"x".repeat(2049)}`, id],
     ]) {
       expect((await handleAgentIncidentAdminRequest(request(query), "detail", target)).status).toBe(
         400,
@@ -153,6 +213,17 @@ describe("Incident Studio HTTP boundary", () => {
         .status,
     ).toBe(403);
     expect(mocks.get).toHaveBeenCalledWith({ ...staff, incidentId: id, cursor: "sealed-cursor" });
+    await handleAgentIncidentAdminRequest(
+      request("?cursor=timeline&responseCursor=responses"),
+      "detail",
+      id,
+    );
+    expect(mocks.get).toHaveBeenLastCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "timeline",
+      responseCursor: "responses",
+    });
   });
   it("projects bounded detail and rejects response identity or private field injection", async () => {
     const time = "2026-09-27T00:00:00.000Z";
@@ -509,6 +580,91 @@ describe("Incident evidence HTTP boundary", () => {
     items: [],
     nextCursor: null,
   };
+  it("round-trips filed report metadata through the shared parser and rejects private report fields", async () => {
+    const item = {
+      eventId: id,
+      signalIds: [id],
+      availability: "available",
+      target: { kind: "comment", collection: "comments", id },
+      observed: {
+        occurredAt: "2026-10-01T00:00:00.000Z",
+        retentionExpiresAt: "2026-10-02T00:00:00.000Z",
+        status: "visible",
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        reportFiled: true,
+      },
+      current: {
+        state: "unchanged",
+        status: "visible",
+        editedAt: null,
+        versionDigest: `cj1:sha256:${"a".repeat(43)}`,
+        report: { status: "resolved", resolvedAt: "2026-10-01T01:00:00.000Z" },
+      },
+      responseEligible: false,
+    };
+    const projection = npRequireAgentIncidentEvidenceV1({ ...evidence, items: [item] });
+    mocks.evidence.mockResolvedValue(projection);
+    const response = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(response.status).toBe(200);
+    const received = await response.json();
+    expect(npRequireAgentIncidentEvidenceV1(received)).toEqual(projection);
+    expect(received).toEqual({ ...evidence, items: [item] });
+    for (const privateItem of [
+      { ...item, observed: { ...item.observed, reporterId: "private-reporter" } },
+      {
+        ...item,
+        current: {
+          ...item.current,
+          report: { ...item.current.report, reason: "private-report-reason", reportId: id },
+        },
+      },
+    ]) {
+      mocks.evidence.mockResolvedValue({ ...evidence, items: [privateItem] });
+      const rejected = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+      expect(rejected.status).toBe(500);
+      expect(await rejected.text()).not.toMatch(/private-reporter|private-report-reason/);
+    }
+  });
+  it("returns actual document state through the same metadata-only evidence route", async () => {
+    const item = {
+      eventId: id,
+      signalIds: [id],
+      availability: "available",
+      target: { kind: "document", collection: "discussions", id },
+      observed: {
+        occurredAt: "2026-10-01T00:00:00.000Z",
+        retentionExpiresAt: "2026-10-02T00:00:00.000Z",
+        status: "published",
+        visibility: "public",
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        reportFiled: true,
+      },
+      current: {
+        state: "hidden",
+        status: "pending",
+        visibility: "public",
+        moderationHidden: true,
+        editedAt: "2026-10-01T01:00:00.000Z",
+        versionDigest: `cj1:sha256:${"a".repeat(43)}`,
+        report: { status: "unresolved", resolvedAt: null },
+      },
+      responseEligible: false,
+    };
+    mocks.evidence.mockResolvedValue({ ...evidence, items: [item] });
+    const response = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(response.status).toBe(200);
+    expect(npRequireAgentIncidentEvidenceV1(await response.json()).items[0]).toEqual(item);
+    expect(mocks.evidence).toHaveBeenCalledWith({ ...staff, incidentId: id, cursor: null });
+    mocks.evidence.mockResolvedValue({
+      ...evidence,
+      items: [{ ...item, current: { ...item.current, body: "private-document-body" } }],
+    });
+    const denied = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(denied.status).toBe(500);
+    expect(await denied.text()).not.toContain("private-document-body");
+  });
   it("decodes only a bounded cursor and returns the exact Incident-bound projection", async () => {
     mocks.evidence.mockResolvedValue(evidence);
     const response = await handleAgentIncidentAdminRequest(
@@ -560,6 +716,130 @@ describe("Incident evidence HTTP boundary", () => {
       recovery: "retry-read",
     });
     expect(mocks.evidence).not.toHaveBeenCalled();
+  });
+});
+
+describe("Incident member report evidence HTTP boundary", () => {
+  const item = {
+    eventId: id,
+    signalIds: [id],
+    availability: "available",
+    target: { kind: "member", id },
+    observed: {
+      occurredAt: "2026-10-01T00:00:00.000Z",
+      retentionExpiresAt: "2026-10-02T00:00:00.000Z",
+      status: "active",
+      claim: "unverified",
+    },
+    current: {
+      state: "changed",
+      status: "suspended",
+      updatedAt: "2026-10-01T01:00:00.000Z",
+      versionDigest: `cj1:sha256:${"a".repeat(43)}`,
+      report: { status: "resolved", resolvedAt: "2026-10-01T01:00:00.000Z" },
+    },
+    responseEligible: false,
+  };
+  const evidence = {
+    schemaVersion: "np.agent-incident-member-report-evidence.v1",
+    incidentId: id,
+    incidentVersion: 2,
+    items: [item],
+    nextCursor: null,
+  };
+  it("reads the current staff-bound member projection without dispatching content evidence or writes", async () => {
+    const projection = npRequireAgentIncidentMemberReportEvidenceV1(evidence);
+    mocks.memberReportEvidence.mockResolvedValue(projection);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?cursor=sealed-member-cursor"),
+      "member-report-evidence",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(npRequireAgentIncidentMemberReportEvidenceV1(await response.json())).toEqual(projection);
+    expect(mocks.memberReportEvidence).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "sealed-member-cursor",
+    });
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.evidence).not.toHaveBeenCalled();
+    expect(mocks.responsePlan).not.toHaveBeenCalled();
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+  it("rejects changed response identity, private fields, and account action eligibility", async () => {
+    for (const malformed of [
+      { ...evidence, incidentId: "20000000-0000-4000-8000-000000000002" },
+      {
+        ...evidence,
+        items: [{ ...item, observed: { ...item.observed, reporterId: "private-reporter" } }],
+      },
+      {
+        ...evidence,
+        items: [{ ...item, current: { ...item.current, profile: "private-profile" } }],
+      },
+      {
+        ...evidence,
+        items: [
+          {
+            ...item,
+            current: {
+              ...item.current,
+              report: { ...item.current.report, reason: "private-reason" },
+            },
+          },
+        ],
+      },
+      { ...evidence, items: [{ ...item, responseEligible: true }] },
+    ]) {
+      mocks.memberReportEvidence.mockResolvedValue(malformed);
+      const rejected = await handleAgentIncidentAdminRequest(
+        request(),
+        "member-report-evidence",
+        id,
+      );
+      expect(rejected.status).toBe(500);
+      expect(await rejected.text()).not.toMatch(/private-reporter|private-profile|private-reason/);
+    }
+  });
+  it("rejects injected filters, ambiguous cursors and invalid IDs before the member owner", async () => {
+    for (const [query, target] of [
+      ["?siteId=other", id],
+      ["?limit=1", id],
+      ["?cursor=a&cursor=b", id],
+      ["?cursor=" + "x".repeat(2049), id],
+      ["", "invalid-id"],
+    ])
+      expect(
+        (await handleAgentIncidentAdminRequest(request(query), "member-report-evidence", target))
+          .status,
+      ).toBe(400);
+    expect(mocks.memberReportEvidence).not.toHaveBeenCalled();
+  });
+  it("keeps authorization, absent optional owner and empty pages distinct", async () => {
+    mocks.staff.mockRejectedValueOnce(new NpForbiddenError("incident", "read"));
+    expect(
+      (await handleAgentIncidentAdminRequest(request(), "member-report-evidence", id)).status,
+    ).toBe(403);
+    expect(mocks.runtime).not.toHaveBeenCalled();
+    mocks.runtime.mockReturnValue({ incidents: { ...mocks, memberReportEvidence: undefined } });
+    const unavailable = await handleAgentIncidentAdminRequest(
+      request(),
+      "member-report-evidence",
+      id,
+    );
+    expect(unavailable.status).toBe(503);
+    expect(JSON.parse(unavailable.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "retry-read",
+    });
+    expect(mocks.memberReportEvidence).not.toHaveBeenCalled();
+    mocks.runtime.mockReturnValue({ incidents: mocks });
+    mocks.memberReportEvidence.mockResolvedValue({ ...evidence, items: [] });
+    const empty = await handleAgentIncidentAdminRequest(request(), "member-report-evidence", id);
+    expect(empty.status).toBe(200);
+    expect(await empty.json()).toEqual({ ...evidence, items: [] });
   });
 });
 
@@ -723,5 +1003,97 @@ describe("Incident notification HTTP boundary", () => {
     mocks.staff.mockResolvedValue(staff);
     mocks.runtime.mockReturnValue(null);
     expect((await handleAgentIncidentAdminRequest(request(), "notifications")).status).toBe(503);
+  });
+});
+
+describe("Incident external delivery HTTP boundary", () => {
+  const at = "2026-10-16T00:00:00.000Z";
+  const item = {
+    notificationId: id,
+    connectionId: id,
+    channel: "slack",
+    incidentVersion: 2,
+    state: "failed",
+    outcome: "unknown",
+    attempts: 1,
+    lastErrorCode: "DELIVERY_OUTCOME_UNKNOWN",
+    nextAttemptAt: null,
+    sentAt: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  const page = {
+    schemaVersion: "np.agent-incident-notification-deliveries.v1",
+    incidentId: id,
+    items: [item],
+    nextCursor: "next-page",
+  };
+  it("reads only retained facts with current staff/site, exact Incident binding and an independent cursor", async () => {
+    mocks.deliveries.mockResolvedValue(page);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?cursor=sealed-page"),
+      "deliveries",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.deliveries).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "sealed-page",
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(await response.json()).toEqual(page);
+    for (const mutation of [
+      mocks.feedback,
+      mocks.transition,
+      mocks.responsePlan,
+      mocks.responseExecute,
+      mocks.restore,
+    ])
+      expect(mutation).not.toHaveBeenCalled();
+  });
+  it.each([
+    "?siteId=other",
+    "?limit=20",
+    "?cursor=",
+    "?cursor=a&cursor=b",
+    "?responseCursor=timeline",
+    `?cursor=${"x".repeat(2049)}`,
+  ])("rejects unsupported delivery query %s", async (query) => {
+    expect((await handleAgentIncidentAdminRequest(request(query), "deliveries", id)).status).toBe(
+      400,
+    );
+    expect(mocks.deliveries).not.toHaveBeenCalled();
+  });
+  it("keeps absent/denied delivery owners distinct from empty records", async () => {
+    mocks.runtime.mockReturnValue({ incidents: { ...mocks, deliveries: undefined } });
+    const absent = await handleAgentIncidentAdminRequest(request(), "deliveries", id);
+    expect(absent.status).toBe(503);
+    expect(JSON.parse(absent.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "retry-read",
+    });
+    mocks.runtime.mockReturnValue({ incidents: mocks });
+    mocks.staff.mockRejectedValue(new NpForbiddenError("incident", "read"));
+    expect((await handleAgentIncidentAdminRequest(request(), "deliveries", id)).status).toBe(403);
+    expect(mocks.deliveries).not.toHaveBeenCalled();
+    mocks.staff.mockResolvedValue(staff);
+    expect((await handleAgentIncidentAdminRequest(request(), "deliveries", "bad-id")).status).toBe(
+      400,
+    );
+  });
+  it("rejects cross-Incident results, unsafe metadata and inconsistent unknown/sent outcomes", async () => {
+    for (const malformed of [
+      { ...page, incidentId: "10000000-0000-4000-8000-000000000002" },
+      { ...page, items: [{ ...item, destination: "private-delivery@example.test" }] },
+      { ...page, items: [{ ...item, receipt: "private-delivery@example.test" }] },
+      { ...page, items: [{ ...item, state: "sent", sentAt: at }] },
+    ]) {
+      mocks.deliveries.mockResolvedValue(malformed);
+      const response = await handleAgentIncidentAdminRequest(request(), "deliveries", id);
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("private-delivery@example.test");
+    }
   });
 });

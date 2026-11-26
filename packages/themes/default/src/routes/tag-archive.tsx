@@ -90,7 +90,7 @@ export async function DefaultTagArchiveRoute({
   const hasPosts = posts.docs.length > 0;
 
   return (
-    <main className="np-default-tag">
+    <div className="np-default-tag">
       <section className="np-default-tag-hero">
         <nav className="np-default-tag-crumbs" aria-label="Breadcrumb">
           <a href="/">Writing</a>
@@ -184,7 +184,7 @@ export async function DefaultTagArchiveRoute({
           </ul>
         </section>
       ) : null}
-    </main>
+    </div>
   );
 }
 

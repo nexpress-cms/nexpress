@@ -570,7 +570,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         if (!(await isEditorOrAbove(args))) return false;
         const boardId = args.data?.board;
         if (typeof boardId !== "string") return false;
-        const board = await getForumBoardById(runtime, boardId);
+        const board = await getForumBoardById(runtime, boardId, args.readDocument);
         return board !== null && board.writeMode !== "closed";
       },
       update: isEditorOrAbove,
@@ -578,13 +578,13 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
     },
     hooks: {
       beforeCreate: [
-        async ({ data, principal }) => {
+        async ({ data, principal, readDocument }) => {
           const boardId = data.board;
           const board =
             typeof boardId === "string"
               ? principal?.kind === "member"
-                ? await findForumBoardById(runtime, boardId, principal.memberId)
-                : await getForumBoardById(runtime, boardId)
+                ? await findForumBoardById(runtime, boardId, principal.memberId, readDocument)
+                : await getForumBoardById(runtime, boardId, readDocument)
               : null;
           if (!board) {
             throw new NpValidationError("Invalid forum board", [
@@ -622,13 +622,13 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         },
       ],
       beforeUpdate: [
-        async ({ data, principal, originalDoc }) => {
+        async ({ data, principal, originalDoc, readDocument }) => {
           const boardId = data.board;
           const board =
             typeof boardId === "string"
               ? principal?.kind === "member"
-                ? await findForumBoardById(runtime, boardId, principal.memberId)
-                : await getForumBoardById(runtime, boardId)
+                ? await findForumBoardById(runtime, boardId, principal.memberId, readDocument)
+                : await getForumBoardById(runtime, boardId, readDocument)
               : null;
           if (!board) {
             throw new NpValidationError("Invalid forum board", [

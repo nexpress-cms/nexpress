@@ -221,7 +221,9 @@ const notice: NpForumPostSummary = {
 };
 
 async function markup(node: ReactNode | Promise<ReactNode>): Promise<string> {
-  return renderToStaticMarkup(<>{await node}</>);
+  const html = renderToStaticMarkup(<main className="np-site-main">{await node}</main>);
+  expect(html.match(/<main(?:\s|>)/gu)).toHaveLength(1);
+  return html;
 }
 
 function hrefForQuery(query: NpForumPostListQuery) {

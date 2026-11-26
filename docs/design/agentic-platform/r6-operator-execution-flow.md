@@ -28,6 +28,25 @@ permissions also protect retained results. Changed or expired evidence requires
 a new plan. Direct-action limits use the existing shared budget measurement;
 Operator subjects are conservatively grouped by operation within the site.
 
+The concrete App host additionally requires `NP_REMOTE_OPS_MUTATIONS=1` for all
+three effects. Its deterministic `preflightExecution` runs before approval
+consumption/reservation and again before dispatch, with a final flag check at
+the effect boundary. When disabled, an already approved plan remains approved
+and unconsumed; an authorized later retry still follows the existing expiry,
+current authority and one-use checks. The flag neither installs an owner nor
+replaces any approval, policy or target-access requirement.
+
+Retained Activity review has its own explicit installation: supply
+`authorizeReview` to [the App host](../../../packages/app/src/lib/agents/operator-host.ts)
+and the Operator service as the Activity service's optional `operator` facet.
+Current staff/site/target authorization is checked around the integrity-bound
+read. [The pure review contract](../../../packages/core/src/agent-contract/operator-review-contract.ts)
+admits only stable check IDs/states, the validated public plan, aggregate queue
+facts, recorded recovery state/counts/times and execution state/result digest.
+The Admin Activity card exposes no execution button, private artifacts, paths or
+raw worker evidence. Historical recovery and expired plans remain clearly dated
+evidence rather than renewed authority.
+
 ## Dispatch and uncertainty
 
 The Operator owner persists a single-use execution reservation before effects.
@@ -83,12 +102,32 @@ The appended reference-fence migration extends the existing lifecycle without
 rewriting applied SQL. Doctor, source-reference checks and dependency-safe site
 deletion include the new table.
 
+## Retained source update, 2026-10-15
+
+Restore plans now preserve the backup owner's actual check IDs instead of
+inventing index-based IDs. Explicit `reportSources` can add retained shipped
+Doctor/release checks to authorized readiness status and source-change events.
+The [source and monitor flow](r6-operator-source-monitor-flow.md) describes the
+concrete bounded file reader, freshness/unknown rules and explicit maintenance
+installation. Supplying a report never invokes Doctor, release or restore.
+
+Focused checks passed Core contracts 16/16, App 30/30, three new PostgreSQL
+retained-review/preflight cases and 22 existing Activity/execution/Runtime
+regressions. The new review case checks persisted recovery from backlog 11 to 5,
+safe Activity facts, changed authority and tampered evidence. A disabled
+deployment flag leaves the actual approval unconsumed before reservation; the
+same approved request can execute once after explicit enablement. Typechecks,
+scoped lint, formatting and diff checks passed. The dedicated Activity browser
+fixture belongs to the coordinated final gate; no live provider was called.
+
 ## Acceptance boundary
 
-This bundle does not add shell/SQL execution, migration or restore execution,
+The original execution bundle does not add shell/SQL execution, migration or restore execution,
 global queue control, provider credentials or automatic service activation.
 AP-602 still needs additional scoped collectors and recipe/evaluation acceptance;
-full R5/R6 acceptance remains open. Versions, changesets and lockfile are deferred.
+this was the original 2026-09-29 boundary. The retained-source update above closes
+its listed review/source gaps; it does not establish full R5/R6 acceptance.
+Versions, changesets and lockfile are deferred.
 
 ## Verification
 

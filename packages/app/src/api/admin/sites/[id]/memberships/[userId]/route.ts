@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -15,7 +16,7 @@ import { ensureFor } from "../../../../../../lib/init-core";
  * Phase 15.6 — DELETE /api/admin/sites/{id}/memberships/{userId}
  * revokes a specific user's membership on a site.
  */
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; userId: string }> },
 ) {
@@ -35,7 +36,7 @@ export async function DELETE(
       throw new NpForbiddenError("memberships", "delete");
     }
 
-    await revokeSiteMembership(id, userId);
+    await revokeSiteMembership(id, userId, { actor: { kind: "staff", userId: user.id } });
     return npSuccessResponse({ ok: true });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -43,3 +44,5 @@ export async function DELETE(
 }
 
 export const dynamic = "force-dynamic";
+
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

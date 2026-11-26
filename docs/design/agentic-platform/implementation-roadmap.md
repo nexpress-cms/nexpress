@@ -632,10 +632,52 @@ Gate:
 - false-positive and usefulness thresholds in the evaluation doc are met on
   versioned fixtures.
 
+Current implementation reconciliation (2026-10-15): the
+[R6 acceptance crosswalk](r6-acceptance.md) separates the implemented AP-600–606
+human-approved/read/proposal scope from local verification and actual model or
+operating acceptance. The [explicit unattended profile](r6-unattended-flow.md)
+adds event/scheduled eligibility with separate immutable fingerprints while
+preserving the original manual factories and evaluation bytes. Deterministic
+Moderator collection precedes new event/schedule admission; Operator additionally
+offers bounded actual retained job transitions. Nothing is installed or activated
+automatically. The [2026-10-15 user-delegated AI review](r6-delegated-acceptance-review.md)
+accepts the retained model responses within the implemented reference/scaffold
+slice: all 58 selected actual model responses were reviewed, alongside the
+recorded operating verification. The subsequent
+[original-goal gap audit](r6-goal-gap-audit.md) found the full R6 goal incomplete.
+Its [authorized follow-up](r6-goal-gap-audit.md#authorized-implementation-follow-up)
+implements bounded flood continuation, Operator event/runbook/recovery owners,
+Publisher selection/inventory evidence, read-only semantic assessment, Incident
+filters and explicit dependency-safe history retention. Actual live-model Runtime
+validation is excluded by the user's current instruction; the new profiles do
+not inherit earlier model quality results. Required audit/Action/approval history
+remains protected under the [retention matrix](r6-history-retention-flow.md). This corrects
+the earlier AP-600–606 development-completion claim. Bounded AI review does not
+establish independent human review or production usefulness/accuracy.
+The [post-bundle integrated-path recheck](r6-goal-gap-audit.md#integrated-path-recheck-after-the-gap-fix-bundle)
+identified concrete source, selection, visibility, Operator review/gate and
+evaluation-tooling gaps. Its
+[authorized corrections](r6-goal-gap-audit.md#authorized-integrated-path-corrections)
+connect those paths, including versioned semantic/Publisher V3 offline evaluation,
+authorized Incident summaries and declared-block projection. The subsequent
+[explicit Moderator extensions](r6-moderator-automatic-segmented-flow.md) add a
+host-preauthorized deterministic automatic-quarantine path and a separately
+selected V2 segmented read-only assessment profile. Automatic quarantine remains
+unqualified for production enablement; no real deployment artifact is installed.
+Incomplete evidence or interrupted/budget-limited segment work never establishes
+a complete whole-Incident verdict.
+External email/Slack, Member account responses and automatic-quarantine
+enablement remain separate optional extensions or production gates. Fixed
+offline report fields do not grant milestone authority and remain
+`not-established`.
+
 The [Publisher content review flow](r6-publisher-content-review-flow.md) records
 bounded stale-content/SEO/link evidence, current-base ChangeSet draft/preview,
-cross-run duplicate protection and the explicit Studio draft setup. Real-model
-quality and the full R6 evaluation gate remain open.
+cross-run duplicate protection and the explicit Studio draft setup. Four actual
+V2 model drafts were accepted by the delegated AI review; general production
+editorial quality remains unestablished. Older slice notes below describe their
+then-current evidence; the acceptance crosswalk above owns the current milestone
+decision.
 
 The [AP-600 foundation flow](r6-incident-foundation-flow.md) records the shared
 persistence and explicitly installed read boundary. It does not close R5
@@ -645,6 +687,20 @@ The [AP-601 Moderator flow](r6-moderator-flow.md) records observed-comment
 detection, approved content quarantine/restore and attributed feedback. Its
 explicit source, Gateway installation and evaluation boundaries remain open;
 local verification does not authorize automatic moderation or close R6.
+The optional [Moderator Runtime continuation flow](r6-moderator-runtime-flow.md)
+connects proposals to the same Run's signed human approval and exact execution,
+then projects only verified completed receipts to the provider. It does not
+enable automatic quarantine or supply production/model quality evidence.
+The [Moderator recipe and Studio flow](r6-moderator-recipe-flow.md) adds explicit
+setup and a bounded current-evidence source for exact quarantine proposals.
+Supporting evidence is rechecked before proposal and approved execution; the
+recipe has no automatic execution authority and leaves the full R6 gate open.
+The [comment report recipe flow](r6-moderator-report-recipe-flow.md) extends that
+same source with actual report claims and current resolution checks across
+context attestation, proposal and approved execution. Its explicitly invoked
+combined collector joins sub-threshold observation/report activity under one
+100-Event bound and reuses the current source owners before storing a mixed
+Signal.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
 list/detail review, authorized history links, immutable feedback and explicit
@@ -661,8 +717,34 @@ The [containment verification failure flow](r6-incident-containment-failure-flow
 adds confirmed rollback outcomes, authorized history and local notifications.
 The [manual severity flow](r6-incident-severity-flow.md) adds audited staff
 upward-only decisions and their local notifications without changing authority.
-Other source evidence viewers, external notification delivery, automatic escalation,
-unknown execution outcomes and recipe/evaluation gates stay open.
+The optional [notification recording recovery flow](r6-incident-notification-recovery-flow.md)
+retains bounded local recording retries for new confirmed quarantine failures
+and connects them to host-owned maintenance and authorized Studio state.
+The optional [external notification delivery foundation](r6-external-incident-notifications-flow.md)
+adds a durable, current-authority outbox, bounded retry/recovery and read-only
+Studio delivery state through host-injected Connection/vault/transport owners.
+Actual email/Slack integration and delivery remain separate; no transport or
+worker is activated by default. Other source evidence viewers, automatic
+escalation, unknown execution outcomes and recipe/evaluation gates stay open.
+
+The [member report review flow](r6-incident-member-report-flow.md) adds transactional
+filing observations, bounded unscored advisory Incidents and current global
+account/site-report evidence. It supplies no account response authority.
+
+The [comment report evidence flow](r6-incident-comment-report-flow.md) adds actual
+transactional filing observations, bounded advisory collection and current-ACL
+review/response selection. Report claims do not establish classifier verdicts or
+automatic moderation readiness. The [document report evidence flow](r6-incident-document-report-flow.md)
+adds actual document filing observations, current Studio review and existing staff
+human approval quarantine/restore. The
+[document report recipe flow](r6-moderator-document-recipe-flow.md) connects those
+current sources and correlated comment/document Incidents to the existing
+Moderator Runtime proposal, human approval and completed receipt. Member account
+response policy and real-model quality remain open. The
+[combined content collection flow](r6-moderator-content-collection-flow.md)
+joins sub-threshold document and comment activity through one global 100-Event
+scan and complete mixed-candidate resolver, preserving the same recipe and human
+approval owners.
 
 The [Operator diagnostics and planning flow](r6-operator-diagnostics-flow.md)
 records the explicitly installed status, bounded audit and plan-only artifact
@@ -672,9 +754,12 @@ continuation. The [operational observations flow](r6-operator-observations-flow.
 connects bounded Jobs/media sources, plugin registry diagnostics and explicitly
 labeled backup/readiness evidence. The [Operator recipe flow](r6-operator-recipe-flow.md)
 connects explicit Studio setup, deployment worker observations and owner-backed
-plan review with deterministic evaluation fixtures. Broader source coverage,
-longitudinal observations and model usefulness evaluations remain open; these
-slices do not close AP-602 or AP-606. The
+plan review with deterministic evaluation fixtures. The subsequent observations
+extension adds explicitly installed site/deployment progress checks from a bounded
+15-minute window of actual retained job transition timestamps. These observations
+do not establish full history, throughput or a stuck worker. Broader source
+coverage and actual model usefulness remain separate; the acceptance crosswalk
+above owns the current AP-602/AP-606/R6 decision. The
 [Operator evaluation flow](r6-operator-evaluation-flow.md) adds a bounded offline
 benchmark, explicitly injected evaluation provider boundary and artifact review
 CLI. Its synthetic structured-diagnosis results do not establish real-model
@@ -685,25 +770,67 @@ and exact-bound offline human labels with matched-cohort comparison. It grants
 no approval authority and leaves real-model usefulness and the full AP-606/R6
 gate open. The
 [Moderator offline evaluation and feedback review flow](r6-moderator-evaluation-flow.md)
-adds actual repeated-link detector replay on bilingual synthetic cases and
-exact-bound offline feedback comparison. Deterministic signal conformance,
+adds actual repeated-link detector replay on bilingual synthetic observed,
+report and mixed cases with exact-bound offline feedback comparison. Its versioned
+report corpus preserves the original detector dataset and rejects cross-version
+baseline comparisons. Deterministic signal conformance,
 synthetic classification and self-reported human labels remain separate;
 production precision and automatic-quarantine readiness are not established.
+The [Moderator proposal evaluation and review flow](r6-moderator-proposal-evaluation-flow.md)
+adds the recipe's actual response schema, exact synthetic candidate grounding and
+reviewable abstentions as evidence separate from detector replay. Its versioned
+report/mixed source fixtures retain unverified claim counts through the CLI,
+review/report and Admin workspace while preserving the original dataset. It does not
+establish real-model usefulness or automatic-quarantine readiness.
+The [content proposal evaluation flow](r6-moderator-content-proposal-evaluation-flow.md)
+adds separately versioned document/comment candidates and their exact offline
+selection, abstention, review and comparison while preserving both earlier suites.
+The [content detector evaluation flow](r6-moderator-content-evaluation-flow.md)
+adds a separate 32-case bilingual document/comment replay corpus with actual
+threshold, author independence, target-kind deduplication and newest-fact checks.
+It preserves both earlier detector artifacts and keeps CLI/Workbench/report
+feedback bound to exact predictions. Member filings now have the advisory
+review flow above. The [Member report evaluation](r6-evaluation-workbench-flow.md#member-report-and-response-evaluation)
+adds a standalone synthetic corpus for claim classification and response review
+eligibility. Production precision, longitudinal comparison and live-model
+quality remain separate work.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.
 Its bounded statements and synthetic intent do not establish arbitrary natural
 language accuracy, live-model usefulness or full AP-602/AP-606/R6 acceptance.
 The [unified evaluation report and operating guide](r6-evaluation-report-flow.md)
-brings the three recipe owners' results, review coverage and compatible baseline
-comparisons into one independently recomputed offline artifact. Missing evidence
-and unreviewed cases stay explicit; report generation does not establish model
-usefulness, production readiness or full R6 acceptance.
+brings the recipe owners' results, review coverage and compatible baseline
+comparisons into one independently recomputed offline artifact. V2 shows each
+dataset and version separately, including Member report, V1 semantic
+assessment and V2 segmented assessment. Missing and unreviewed evidence stay
+visible. Model usefulness and production acceptance require their own evidence.
+
+The [Admin evaluation review workspace](r6-evaluation-workbench-flow.md) connects
+these existing owners to bounded file imports, case review, baseline comparison
+and compatible artifact exports. Staff can send a validated case-review result
+and its baseline to the grouped V2 report, with confirmation for replacement.
+The resulting report carries self-reported offline review evidence.
 
 ### R7 — Guardian and application security orchestration
 
 Outcome: application signals are correlated into incidents, with narrowly
 reversible responses.
+
+The [completion plan](r7-completion-plan.md) records the completed AP-701–708
+implementation and no-cost local acceptance, including the complete repository,
+PostgreSQL, Redis, theme, native-preview, production-browser and packed-scaffold
+gates. Its matrix keeps coverage limits and missing production qualification
+explicit. Independent security approval, real shadow evidence, legitimate-user
+impact and deployment qualification remain outstanding; the full R7 production
+gate is not marked complete and unattended responses remain disabled.
+
+The earlier [request-observation slice](r7-guardian-observation-flow.md),
+[approved temporary request limits](r7-guardian-request-limits-flow.md) and
+[approved exact-session revocation](r7-guardian-session-revocation-flow.md)
+retain their historical implementation boundaries. The current integrated
+collector, advisory, external-source, retention and recovery evidence is in the
+completion plan and [operations flow](r7-guardian-operations-flow.md).
 
 | ID     | Scope                                                                                                                                              |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -732,6 +859,18 @@ brief while following existing codegen/migration/release contracts.
 
 The artifact and workflow contract is
 [build-agent-and-site-blueprint.md](build-agent-and-site-blueprint.md).
+
+AP-801–805 local implementation and unpaid acceptance are complete for the
+recorded package/source/environment epochs (2026-10-27). The workflow includes
+all sixteen canonical artifact owners, three-direction trusted rendering and
+fresh rerender acceptance, reviewed schema/SQL generation, bounded repository
+publication, ordinary Admin/member continuation and a non-authorizing handoff.
+The [completion evidence and limits](build-agent-and-site-blueprint.md#current-local-implementation)
+record the final 113-task `verify`, 41-task lint, focused PostgreSQL regression,
+packed-scaffold, native, preview and privacy results without conflating package
+epochs or opt-in skips. The [Launchpad evaluation](r8-launchpad-evaluation.md)
+completes AP-806 with a defer decision. Hosted adoption, production enablement,
+Git publication and deployment require their own later authorization.
 
 | ID     | Scope                                                                                                              |
 | ------ | ------------------------------------------------------------------------------------------------------------------ |
@@ -823,6 +962,24 @@ ship:
 - package changeset and live documentation.
 
 ## 8. Product release boundary
+
+The local development closeout on 2026-11-26 KST records the completed report
+workflow and preserves the operating conditions for a later release decision:
+
+- [R5 Admin acceptance](r5-acceptance.md#remaining-admin-acceptance-work) retains
+  the observed VoiceOver and browser evidence. Complete operator-led acceptance
+  and proof of the required queues and maintenance on the selected host remain open.
+- [R6 operating acceptance](r6-acceptance.md#actual-model-and-operating-acceptance)
+  requires representative model and operating evidence. Automatic Moderator
+  quarantine has a separate reviewed-precision and
+  [production shadow gate](testing-and-evaluation.md#93-enablement-gates).
+- [R7 qualification](r7-completion-plan.md#advisory-reasoning-offline-evaluation-and-response-qualification)
+  requires independent security review, real shadow evidence, legitimate-user
+  impact review, compensation verification and deployment approval for
+  automatic responses.
+- [R8 local acceptance](build-agent-and-site-blueprint.md#current-local-implementation)
+  is complete for its recorded scope. The [hosted Launchpad decision](r8-launchpad-evaluation.md)
+  remains deferred.
 
 The first credible public release should include R1–R4 plus:
 

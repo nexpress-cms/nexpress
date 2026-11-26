@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { NpAgentGatewayError } from "../../../packages/core/src/agent/admin-admission.js";
+import { createAgentIncidentWorkflowServiceV1 } from "../../../packages/core/src/agent/incident-workflow-service.js";
+import { moderationRuntimeFixture } from "./agent-moderation-runtime-fixture.js";
 import {
   npAgentIncidents,
   npAgentIncidentTimeline,
@@ -136,6 +139,116 @@ describe.skipIf(skipIfNoTestDb())("Incident staff Studio", () => {
       },
     };
   }
+  it("keeps opt-in summaries unknown without owners and verifies actual workflow counts", async () => {
+    const x = await setup();
+    expect((await x.service.list({ ...x.input, query })).summaries).toBeUndefined();
+    expect(
+      (await x.service.list({ ...x.input, query: { ...query, includeSummaries: true } })).summaries,
+    ).toEqual([
+      {
+        incidentId: x.input.incidentId,
+        versionNumber: 1,
+        containment: null,
+        assessmentAvailable: false,
+      },
+    ]);
+    const workflow = createAgentIncidentWorkflowServiceV1({
+      reads: x.reader.staff,
+      canReviewContainment: () => true,
+    });
+    const service = createAgentIncidentStudioServiceV1({
+      reads: x.reader.staff,
+      workflow,
+      cursorHmacKey: key,
+    });
+    expect(
+      (await service.list({ ...x.input, query: { ...query, includeSummaries: true } }))
+        .summaries?.[0]?.containment,
+    ).toEqual({ active: 0, nearestExpiryAt: null });
+    const denied = createAgentIncidentStudioServiceV1({
+      reads: x.reader.staff,
+      workflow: {
+        ...workflow,
+        get: () =>
+          Promise.reject(
+            new NpAgentGatewayError("INCIDENT_WORKFLOW_FORBIDDEN", 403, "Unavailable"),
+          ),
+      },
+      cursorHmacKey: key,
+    });
+    expect(
+      (await denied.list({ ...x.input, query: { ...query, includeSummaries: true } }))
+        .summaries?.[0]?.containment,
+    ).toBeNull();
+  });
+  it("derives active containment metadata only after actual approved quarantine and current all-containment visibility", async () => {
+    const f = await moderationRuntimeFixture();
+    try {
+      const queued = await f.queue();
+      expect(await f.executor.process(queued)).toEqual({ state: "waiting_approval" });
+      const pending = await f.pending(queued.runId);
+      await f.decide(pending.output.approvalId);
+      expect(
+        await f.executor.resumeApproval({ ...queued, requestActionId: pending.action.id }),
+      ).toEqual({ state: "succeeded" });
+      let visible = true;
+      const reads = createAgentIncidentServiceV1({
+        cursorHmacKey: key,
+        canReadIncident: () => false,
+        canReadStaffIncident: () => true,
+      }).staff;
+      const workflow = createAgentIncidentWorkflowServiceV1({
+        reads,
+        canReviewContainment: () => visible,
+        canReviewAction: () => visible,
+      });
+      const studio = createAgentIncidentStudioServiceV1({ reads, workflow, cursorHmacKey: key });
+      const input = {
+        siteId,
+        actor: f.actor.actor,
+        query: { ...query, limit: 25, includeSummaries: true },
+      };
+      expect(
+        (await studio.list(input)).summaries?.find(
+          (summary) => summary.incidentId === f.incident.id,
+        )?.containment,
+      ).toEqual({ active: 1, nearestExpiryAt: null });
+      visible = false;
+      expect(
+        (await studio.list(input)).summaries?.find(
+          (summary) => summary.incidentId === f.incident.id,
+        )?.containment,
+      ).toBeNull();
+    } finally {
+      await f.dispose();
+    }
+  });
+  it("drops a summary if its owning Incident changes during composition", async () => {
+    const x = await setup();
+    const workflow = createAgentIncidentWorkflowServiceV1({
+      reads: x.reader.staff,
+      canReviewContainment: () => true,
+    });
+    let changed = false;
+    const service = createAgentIncidentStudioServiceV1({
+      reads: x.reader.staff,
+      workflow: {
+        ...workflow,
+        async get(input) {
+          const result = await workflow.get(input);
+          if (!changed) {
+            changed = true;
+            await x.writer.feedback({ ...x.input, command: command(x.observed.signalId, 1) });
+          }
+          return result;
+        },
+      },
+      cursorHmacKey: key,
+    });
+    const result = await service.list({ ...x.input, query: { ...query, includeSummaries: true } });
+    expect(result.items).toEqual([]);
+    expect(result.summaries).toEqual([]);
+  });
   it("projects current immutable feedback, preserves replay/CAS, redacts private source and rejects lost visibility", async () => {
     const x = await setup();
     const detail = await x.service.get(x.input);
@@ -277,6 +390,66 @@ describe.skipIf(skipIfNoTestDb())("Incident staff Studio", () => {
     await expect(disabled.staff.get({ incidentId: critical.id }, x.input)).rejects.toMatchObject({
       code: "INCIDENT_FORBIDDEN",
     });
+  });
+  it("binds staff-only source, literal search, containment and time filters to the same visible generation", async () => {
+    const x = await setup();
+    await x.f.db
+      .update(npAgentIncidents)
+      .set({ title: "Literal 100%_ match" })
+      .where(eq(npAgentIncidents.id, x.observed.incidentId));
+    const time = new Date();
+    await x.f.db.insert(npAgentIncidents).values({
+      siteId,
+      category: "availability",
+      severity: "critical",
+      status: "open",
+      fingerprint: randomUUID(),
+      title: "Other incident",
+      summary: "Fixture source",
+      firstObservedAt: time,
+      lastObservedAt: time,
+      createdAt: time,
+      updatedAt: time,
+    });
+    const found = await x.service.list({
+      ...x.input,
+      query: {
+        ...query,
+        source: "moderator.repeated-link-spam",
+        query: "%_",
+        containment: "inactive",
+        observedAfter: windowStartedAt,
+        observedBefore: new Date(time.getTime() + 1000).toISOString(),
+      },
+    });
+    expect(found.items.map((item) => item.id)).toEqual([x.observed.incidentId]);
+    expect(
+      (
+        await x.service.list({
+          ...x.input,
+          query: { ...query, source: "moderator.repeated-link-spam", query: "Other" },
+        })
+      ).items,
+    ).toEqual([]);
+    expect(
+      (await x.service.list({ ...x.input, query: { ...query, containment: "active" } })).items,
+    ).toEqual([]);
+    expect(
+      (await x.service.list({ ...x.input, query: { ...query, assignedAgentId: randomUUID() } }))
+        .items,
+    ).toEqual([]);
+    const first = await x.service.list({ ...x.input, query });
+    expect(first.nextCursor).toBeTruthy();
+    await expect(
+      x.service.list({
+        ...x.input,
+        query: { ...query, query: "changed", cursor: first.nextCursor },
+      }),
+    ).rejects.toMatchObject({ code: "INCIDENT_CURSOR_INVALID" });
+    x.hide();
+    expect((await x.service.list({ ...x.input, query: { ...query, query: "%_" } })).items).toEqual(
+      [],
+    );
   });
   it("does not advertise a writer with feedback disabled or return a row changed after list selection", async () => {
     const x = await setup();

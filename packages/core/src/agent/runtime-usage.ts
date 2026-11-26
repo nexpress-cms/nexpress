@@ -1,6 +1,14 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import { npRequireAgentGuardianAssessmentEvidenceV1 } from "../agent-contract/guardian-assessment-contract.js";
+import { npRequireAgentGuardianAssessmentBudgetV1 } from "./guardian-assessment-budget.js";
+import { npRequireAgentModeratorAssessmentEvidenceV2 } from "../agent-contract/moderator-segmented-assessment-contract.js";
 import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import { npRequireAgentRuntimeProviderFailureV1 } from "./runtime-provider-evidence.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npRequireAgentPublisherSelectionDiagnosticV2 } from "./publisher-content.js";
+import { npRequireAgentModeratorAssessmentEvidenceV1 } from "../agent-contract/moderator-assessment-contract.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
+import { npRequireAgentModeratorAssessmentBudgetV1 } from "./moderator-assessment-budget.js";
 import { npBuildAgentRuntimeClassificationManifestV1 } from "./runtime-context.js";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
@@ -42,6 +50,7 @@ import type {
   NpAgentRunLimitsV1,
   NpAgentModelPricingV1,
   NpAgentRecipeDefinitionCanonicalV1,
+  NpAgentJsonObject,
 } from "../agent-contract/types.js";
 import {
   npRuntimeRunAdmissionBodyV1,
@@ -59,6 +68,7 @@ import {
 } from "./runtime-budget.js";
 import { npRequireAgentProviderSchemaValueV1 } from "./provider-auth-contract.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
+import { npObserveAgentRuntimeCostV1 } from "./guardian-runtime-observer.js";
 
 type Db = ReturnType<typeof getDb>;
 type Call = typeof npAgentProviderCalls.$inferSelect;
@@ -212,7 +222,12 @@ async function validateCurrentRequest(
     !recipe.instruction
   )
     fail("RUNTIME_PROVIDER_UNAVAILABLE");
-  if (request.task !== "interactive-capability" || recipe.task !== request.task)
+  if (
+    (request.task !== "interactive-capability" &&
+      !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+      !npIsAgentGuardianAssessmentRecipeV1(recipe)) ||
+    recipe.task !== request.task
+  )
     fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
   const expectedConnection = {
     id: connection.id,
@@ -617,6 +632,26 @@ export function createAgentRuntimeUsageV1(
           )
             fail("RUNTIME_DISPATCH_UNAVAILABLE");
           await npRequireAgentRuntimeUsageKnownV1({ db, siteId: input.siteId });
+          if (
+            npIsAgentModeratorAssessmentProfileV1(
+              context.evidence.registry.recipes.find(
+                (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+              ),
+            )
+          )
+            await npRequireAgentModeratorAssessmentBudgetV1(context, request, {
+              existingCallId: call.id,
+            });
+          if (
+            npIsAgentGuardianAssessmentRecipeV1(
+              context.evidence.registry.recipes.find(
+                (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+              ),
+            )
+          )
+            await npRequireAgentGuardianAssessmentBudgetV1(context, request, {
+              existingCallId: call.id,
+            });
           await perRunCapacity(db, run, request, 0, context.limits, false);
           for (const agentId of [undefined, run.agentId!]) {
             const counters = await npMeasureAgentRuntimeBudgetV1({
@@ -680,6 +715,22 @@ export function createAgentRuntimeUsageV1(
           )
             fail("RUNTIME_RETRY_UNAVAILABLE");
         }
+        if (
+          npIsAgentModeratorAssessmentProfileV1(
+            context.evidence.registry.recipes.find(
+              (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+            ),
+          )
+        )
+          await npRequireAgentModeratorAssessmentBudgetV1(context, request);
+        if (
+          npIsAgentGuardianAssessmentRecipeV1(
+            context.evidence.registry.recipes.find(
+              (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+            ),
+          )
+        )
+          await npRequireAgentGuardianAssessmentBudgetV1(context, request);
         const cost = maximumCost(request);
         await perRunCapacity(db, run, request, cost, context.limits);
         const amount = {
@@ -727,6 +778,76 @@ export function createAgentRuntimeUsageV1(
           })
           .returning();
         if (!reservation) fail();
+        let selectionDiagnostic: Record<string, unknown> | null = null;
+        if (
+          request.recipe.id === "publisher.stale-content" &&
+          request.instruction.templateId === "publisher.stale-content" &&
+          request.instruction.templateVersion >= 3
+        ) {
+          try {
+            selectionDiagnostic = JSON.parse(
+              serializeAgentCanonicalJson({
+                ...npRequireAgentPublisherSelectionDiagnosticV2(request, requestDigest),
+              }),
+            ) as Record<string, unknown>;
+          } catch {
+            fail("RUNTIME_CONTEXT_INVALID");
+          }
+        }
+        if (
+          npIsAgentModeratorAssessmentProfileV1(
+            context.evidence.registry.recipes.find(
+              (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+            ),
+          )
+        ) {
+          try {
+            const entry = request.trustedContext.find((item) => item.id === "moderator-assessment");
+            if (!entry) fail("RUNTIME_CONTEXT_INVALID");
+            const assessmentEvidence =
+              request.instruction.templateVersion === 2
+                ? npRequireAgentModeratorAssessmentEvidenceV2(JSON.parse(entry.text))
+                : npRequireAgentModeratorAssessmentEvidenceV1(JSON.parse(entry.text));
+            selectionDiagnostic = JSON.parse(
+              serializeAgentCanonicalJson({
+                schemaVersion:
+                  request.instruction.templateVersion === 2
+                    ? "np.agent-moderator-assessment-diagnostic.v2"
+                    : "np.agent-moderator-assessment-diagnostic.v1",
+                requestDigest,
+                assessmentEvidence,
+              }),
+            ) as Record<string, unknown>;
+          } catch {
+            fail("RUNTIME_CONTEXT_INVALID");
+          }
+        }
+        if (
+          npIsAgentGuardianAssessmentRecipeV1(
+            context.evidence.registry.recipes.find(
+              (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+            ),
+          )
+        ) {
+          try {
+            const entries = request.trustedContext.filter(
+              (item) => item.id === "guardian-assessment",
+            );
+            if (entries.length !== 1) fail("RUNTIME_CONTEXT_INVALID");
+            const assessmentEvidence = npRequireAgentGuardianAssessmentEvidenceV1(
+              JSON.parse(entries[0].text),
+            );
+            selectionDiagnostic = JSON.parse(
+              serializeAgentCanonicalJson({
+                schemaVersion: "np.agent-guardian-assessment-diagnostic.v1",
+                requestDigest,
+                assessmentEvidence,
+              }),
+            ) as Record<string, unknown>;
+          } catch {
+            fail("RUNTIME_CONTEXT_INVALID");
+          }
+        }
         const [call] = await db
           .insert(npAgentProviderCalls)
           .values({
@@ -762,6 +883,12 @@ export function createAgentRuntimeUsageV1(
             dispatchState: "not-dispatched",
             usageReservationId: reservation.id,
             requestDigest,
+            ...(selectionDiagnostic
+              ? {
+                  requestRedacted: selectionDiagnostic as NpAgentJsonObject,
+                  diagnosticExpiresAt: new Date(context.now.getTime() + 30 * 86400000),
+                }
+              : {}),
             idempotencyKey: request.idempotencyKey,
             createdAt: context.now,
           })
@@ -803,7 +930,7 @@ export function createAgentRuntimeUsageV1(
             response.dispatchState !== "not-dispatched")
         )
           fail("RUNTIME_DISPATCH_UNAVAILABLE");
-        const { reservation, pricing, recipe } = await npRequireAgentRuntimeRetainedCallV1({
+        const { run, reservation, pricing, recipe } = await npRequireAgentRuntimeRetainedCallV1({
           db,
           call,
         });
@@ -901,7 +1028,18 @@ export function createAgentRuntimeUsageV1(
             );
           nextCall = { ...call, ...patch };
         }
-        if (state === "ambiguous") return receipt(nextCall, reservation, false);
+        if (state === "ambiguous") {
+          await npObserveAgentRuntimeCostV1({
+            db,
+            run,
+            call: nextCall,
+            reservation,
+            phase: "ambiguous",
+            occurredAt: current,
+            responseDigest,
+          });
+          return receipt(nextCall, reservation, false);
+        }
         if (response.dispatchState === "dispatched" && !usage)
           fail("RUNTIME_PROVIDER_OUTPUT_INVALID");
         await daily(db, reservation, usage, false);
@@ -947,6 +1085,15 @@ export function createAgentRuntimeUsageV1(
           current,
           response.outcome.status === "failed" ? response.outcome.safeCode : undefined,
         );
+        await npObserveAgentRuntimeCostV1({
+          db,
+          run,
+          call: nextCall,
+          reservation: { ...reservation, ...patch },
+          phase: late ? "late-reconciled" : "reconciled",
+          occurredAt: current,
+          responseDigest,
+        });
         return receipt(nextCall, { ...reservation, ...patch }, false);
       });
     },
@@ -986,9 +1133,10 @@ export function createAgentRuntimeUsageV1(
             .limit(1);
           if (!found) fail();
           const call = await findCall(db, input.siteId, found.id);
-          const { reservation } = await npRequireAgentRuntimeRetainedCallV1({ db, call });
+          const { run, reservation } = await npRequireAgentRuntimeRetainedCallV1({ db, call });
           if (!["reserved", "in_flight", "ambiguous"].includes(call.state)) fail();
           const undispatched = call.state === "reserved" && call.dispatchState === "not-dispatched";
+          let observedResponseDigest = call.responseDigest;
           if (call.state !== "ambiguous") {
             const outcome = undispatched
               ? {
@@ -1033,6 +1181,7 @@ export function createAgentRuntimeUsageV1(
               observedAt: current.toISOString(),
             });
             const responseDigest = await npDigestAgentProviderResponseCanonical(response);
+            observedResponseDigest = responseDigest;
             await db
               .update(npAgentProviderCalls)
               .set({
@@ -1078,7 +1227,26 @@ export function createAgentRuntimeUsageV1(
               ),
             );
           if (undispatched) released++;
-          else expired++;
+          else {
+            await npObserveAgentRuntimeCostV1({
+              db,
+              run,
+              call: { ...call, state: "ambiguous", responseDigest: observedResponseDigest },
+              reservation: {
+                ...reservation,
+                state: "expired",
+                actualUsageSource: "unknown",
+                actualCostSource: "unknown",
+                unpriced: true,
+                budgetChargeCostMicros: reservation.reservedCostMicros,
+                finalizedAt: current,
+              },
+              phase: "expired",
+              occurredAt: current,
+              responseDigest: observedResponseDigest,
+            });
+            expired++;
+          }
         }
         return { examined: rows.length, released, expired };
       });

@@ -62,3 +62,8 @@ export {
   NP_OPERATOR_SITE_JOB_QUEUES_V1,
   type NpOperatorJobsObservationV1,
 } from "./operator-observation.js";
+export {
+  npCollectOperatorProgressObservationV1,
+  type NpOperatorProgressObservationV1,
+  type NpOperatorProgressScopeV1,
+} from "./operator-progress-observation.js";

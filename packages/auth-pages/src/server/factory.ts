@@ -43,6 +43,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import type { MemberAuthRoutes, MemberAuthRoutesConfig, MemberAuthRoutesOptions } from "./types.js";
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
+import { npWithAuthResponseObserver } from "./response-observer.js";
 
 /**
  * Drizzle-shaped database surface this factory calls. The real
@@ -105,6 +106,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
   // ─── login ──────────────────────────────────────────────────
   const login = async (request: NextRequest): Promise<NextResponse> => {
+    let rejectedIdentifier: string | null = null;
     try {
       await ensureFor("write");
       const { email, password } = validateLoginBody(await readJsonBody(request));
@@ -129,9 +131,13 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
       // Anti-enumeration: missing-account / wrong-password / pending
       // / suspended / deleted all surface the same generic error.
-      if (!member || !member.password) throw new NpAuthError("Invalid credentials");
+      if (!member || !member.password) {
+        rejectedIdentifier = email;
+        throw new NpAuthError("Invalid credentials");
+      }
 
       if (member.lockUntil && member.lockUntil > new Date()) {
+        rejectedIdentifier = email;
         throw new NpAuthError("Account is temporarily locked");
       }
 
@@ -146,10 +152,12 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
             updatedAt: new Date(),
           })
           .where(eq(npMembers.id, member.id));
+        rejectedIdentifier = email;
         throw new NpAuthError("Invalid credentials");
       }
 
       if (member.status !== "active") {
+        rejectedIdentifier = email;
         throw new NpAuthError("Invalid credentials");
       }
 
@@ -194,8 +202,31 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         refresh: session.refresh,
         csrf,
       });
+      if (config.onLoginSuccess) {
+        try {
+          await config.onLoginSuccess({
+            request,
+            audience: "member",
+            principalId: member.id,
+            sessionFamilyId: session.sessionId,
+          });
+        } catch {
+          // A contained source observation cannot change the completed auth result.
+        }
+      }
       return response;
     } catch (error) {
+      if (rejectedIdentifier !== null && config.onLoginFailure) {
+        try {
+          await config.onLoginFailure({
+            request,
+            audience: "member",
+            loginIdentifier: rejectedIdentifier,
+          });
+        } catch {
+          // Observations cannot change the result or retry credential verification.
+        }
+      }
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
   };
@@ -577,6 +608,18 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       refresh: session.refresh,
       csrf,
     });
+    if (config.onLoginSuccess) {
+      try {
+        await config.onLoginSuccess({
+          request,
+          audience: "member",
+          principalId: member.id,
+          sessionFamilyId: session.sessionId,
+        });
+      } catch {
+        // A contained source observation cannot change the completed auth result.
+      }
+    }
     return response;
   };
 
@@ -726,18 +769,18 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   };
 
   return {
-    login,
-    register,
-    logout,
-    refresh,
-    verifyEmail,
-    forgotPassword,
-    resetPassword,
-    oauthStart,
-    oauthCallback,
-    meGet,
-    mePatch,
-    meDelete,
+    login: npWithAuthResponseObserver(login, "member", config.onResponse),
+    register: npWithAuthResponseObserver(register, "member", config.onResponse),
+    logout: npWithAuthResponseObserver(logout, "member", config.onResponse),
+    refresh: npWithAuthResponseObserver(refresh, "member", config.onResponse),
+    verifyEmail: npWithAuthResponseObserver(verifyEmail, "member", config.onResponse),
+    forgotPassword: npWithAuthResponseObserver(forgotPassword, "member", config.onResponse),
+    resetPassword: npWithAuthResponseObserver(resetPassword, "member", config.onResponse),
+    oauthStart: npWithAuthResponseObserver(oauthStart, "member", config.onResponse),
+    oauthCallback: npWithAuthResponseObserver(oauthCallback, "member", config.onResponse),
+    meGet: npWithAuthResponseObserver(meGet, "member", config.onResponse),
+    mePatch: npWithAuthResponseObserver(mePatch, "member", config.onResponse),
+    meDelete: npWithAuthResponseObserver(meDelete, "member", config.onResponse),
   };
 }
 

@@ -113,6 +113,39 @@ describe("Incident human decision contracts", () => {
       },
     };
     expect(npRequireAgentIncidentStudioDetailV1(detail)).toEqual(detail);
+    const failure = {
+      ...detail.timeline[0],
+      kind: "action",
+      actionId: id,
+      decision: null,
+      containmentFailure: { outcome: "rolled_back", reasonCode: "CONTAINMENT_VERIFICATION_FAILED" },
+    };
+    const recovery = {
+      state: "pending",
+      attempts: 1,
+      lastAttemptAt: at,
+      nextAttemptAt: "2026-09-27T00:00:30.000Z",
+      lastErrorCode: "NOTIFICATION_RECORDING_FAILED",
+    };
+    for (const notificationRecovery of [null, recovery]) {
+      const projected = { ...failure, notificationRecovery };
+      expect(
+        npRequireAgentIncidentStudioDetailV1({ ...detail, timeline: [projected] }).timeline,
+      ).toEqual([projected]);
+      expect(() =>
+        npRequireAgentIncidentStudioDetailV1({
+          ...detail,
+          timeline: [{ ...detail.timeline[0], notificationRecovery }],
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      npRequireAgentIncidentStudioDetailV1({
+        ...detail,
+        timeline: [{ ...failure, notificationRecovery: { ...recovery, source: "private" } }],
+      }),
+    ).toThrow();
+
     const altered = (value: object) => ({
       ...detail,
       workflow: { ...detail.workflow, containment: { ...detail.workflow.containment, ...value } },

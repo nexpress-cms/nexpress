@@ -10,11 +10,13 @@ import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
 import {
   npCollectAgentHealthSummaryV1,
+  npCollectAgentGuardianHealthV1,
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
   npCollectAgentWorkerHealthV2,
   npCollectAgentRuntimeOutcomeV1,
 } from "@nexpress/core/agents";
+import { checkGuardianSignals } from "../lib/guardian-health-check.js";
 import {
   npAnalyzeCustomRouteDefinitions,
   npGetCustomRouteKind,
@@ -39,7 +41,6 @@ import {
 } from "@nexpress/core/settings";
 import { npAnalyzeRevision } from "@nexpress/core/revisions";
 import { npAnalyzeMediaRecord } from "@nexpress/core/media-contract";
-import { npAnalyzeCollectionSystemRow } from "@nexpress/core/collection-contract";
 import {
   npAnalyzeI18nConfig,
   npAnalyzeStringOverrideRow,
@@ -68,7 +69,6 @@ import {
   npRequireCommunityRealtimeEventRow,
   npRequireReactionRow,
   npRequireReportRow,
-  npIsCommunityDocumentAudience,
 } from "@nexpress/core/community-contract";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
@@ -79,6 +79,7 @@ import {
   npIsSupportedNodeVersion,
 } from "./node-version.js";
 import {
+  npFindDoctorCollectionRowIssues,
   npIsCanonicalCollectionMainTableName,
   npIsCollectionMainTableName,
 } from "./doctor-collection-contract.js";
@@ -142,6 +143,8 @@ export interface CollectDoctorOptions {
   includeFixPlan?: boolean;
   env?: DoctorEnv;
   cwd?: string;
+  /** Explicit embedder input; omission preserves the normal cwd/.env check. */
+  environmentFile?: string;
   nodeVersion?: string;
   /** Explicit catalog for embedders/tests; the CLI loads src/lib/custom-routes.ts. */
   customRoutes?: unknown;
@@ -188,7 +191,7 @@ export async function collectDoctorChecks(
   const checks: CheckResult[] = [
     checkNodeVersion(options.nodeVersion ?? process.versions.node),
     checkPnpmVersion(env),
-    await checkEnvFile(cwd),
+    await checkEnvFile(cwd, options.environmentFile),
   ];
 
   for (const spec of REQUIRED_VARS) checks.push(checkRequiredVar(spec, prodMode, env));
@@ -212,7 +215,7 @@ export async function collectDoctorChecks(
   checks.push(await checkCollectionContracts(env));
   checks.push(await checkCommunityContracts(env));
   checks.push(await checkCommunityRealtimeRetention(env));
-  checks.push(await checkAgentContracts(env));
+  checks.push(...(await checkAgentContracts(env)));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
@@ -235,7 +238,18 @@ export async function collectDoctorChecks(
   return checks;
 }
 
-async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
+async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult[]> {
+  let guardian = checkGuardianSignals();
+  const contracts = await checkAgentPersistence(env, (check) => {
+    guardian = check;
+  });
+  return [contracts, guardian];
+}
+
+async function checkAgentPersistence(
+  env: DoctorEnv,
+  guardian: (check: ReturnType<typeof checkGuardianSignals>) => void,
+): Promise<CheckResult> {
   const url = env.DATABASE_URL;
   if (!url) {
     return {
@@ -283,6 +297,11 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     // loadPg constructed this actual Client; keep its query-config, row-mode and
     // transaction behavior intact instead of wrapping its narrow interface.
     const db = drizzle<Record<string, unknown>, Client>(client as unknown as Client);
+    try {
+      guardian(checkGuardianSignals(await npCollectAgentGuardianHealthV1({ db })));
+    } catch {
+      guardian(checkGuardianSignals());
+    }
     let budgetDetail =
       "Agent budget measurement evidence: unavailable. This does not change persistence contract severity.";
     try {
@@ -803,17 +822,30 @@ function checkPnpmVersion(env: DoctorEnv): CheckResult {
   return { id: "pnpm.version", state: "ok", label: "pnpm 10.33+", detail: match[1] };
 }
 
-async function checkEnvFile(cwd: string): Promise<CheckResult> {
-  const envPath = resolve(/* turbopackIgnore: true */ cwd, ".env");
+async function checkEnvFile(cwd: string, environmentFile?: string): Promise<CheckResult> {
+  const explicit = environmentFile !== undefined;
+  const label = explicit ? "Explicit environment input file present" : ".env file present";
   try {
+    if (explicit && (typeof environmentFile !== "string" || !environmentFile.length))
+      throw new Error("Invalid explicit environment file");
+    const envPath = resolve(/* turbopackIgnore: true */ cwd, environmentFile ?? ".env");
     await access(/* turbopackIgnore: true */ envPath);
-    return { id: "env.file", state: "ok", label: ".env file present" };
+    if (explicit && !(await stat(/* turbopackIgnore: true */ envPath)).isFile())
+      throw new Error("Explicit environment input is not a file");
+    return {
+      id: "env.file",
+      state: "ok",
+      label,
+      ...(explicit ? { detail: "custom environment input" } : {}),
+    };
   } catch {
     return {
       id: "env.file",
       state: "error",
-      label: ".env file present",
-      hint: "Run `pnpm run setup` (browser env wizard) or copy .env.example to .env.",
+      label,
+      hint: explicit
+        ? "Provide an existing environment input file; no default .env fallback is used."
+        : "Run `pnpm run setup` (browser env wizard) or copy .env.example to .env.",
     };
   }
 }
@@ -994,14 +1026,13 @@ async function checkCollectionContracts(env: DoctorEnv): Promise<CheckResult> {
       );
       rowCount += rows.rows.length;
       rows.rows.forEach((row, index) => {
-        const result = npAnalyzeCollectionSystemRow(row, `${tableName}[${index.toString()}]`);
-        if (!result.ok) issues.push(...result.issues);
-        if (columns.has("audience") && !npIsCommunityDocumentAudience(row.audience)) {
-          issues.push({
-            path: `${tableName}[${index.toString()}].audience`,
-            message: "must be public, members, or private.",
-          });
-        }
+        issues.push(
+          ...npFindDoctorCollectionRowIssues(
+            row,
+            `${tableName}[${index.toString()}]`,
+            columns.has("audience"),
+          ),
+        );
       });
     }
     await client.end();

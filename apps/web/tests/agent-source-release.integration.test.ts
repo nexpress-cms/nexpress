@@ -7,9 +7,12 @@ import {
   npAgentRuns,
   npAgentSourceReleases,
   npAgentSourceReleaseEdges,
+  npAgentProviderCalls,
+  npAgentUsageReservations,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npAuditEvents } from "../../../packages/core/src/db/schema/community.js";
-import { npSites } from "../../../packages/core/src/db/schema/system.js";
+import { npSettings, npSites } from "../../../packages/core/src/db/schema/system.js";
+import { createAgentRuntimeExecutionStoreV1 } from "../../../packages/core/src/agent/runtime-execution-store.js";
 import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import {
   getCollectionConfig,
@@ -27,6 +30,7 @@ import {
 import { npDigestAgentAuthorizationContextCanonical } from "../../../packages/core/src/agent-contract/canonical-authorization-context.js";
 import { npDigestAgentInvocationRequestCanonical } from "../../../packages/core/src/agent-contract/canonical-idempotency-request.js";
 import { runtimeReadCapabilityFixture } from "./agent-runtime-capability-fixture.js";
+import { runtimeUsageFixture } from "./agent-runtime-usage-fixture.js";
 import { siteId } from "./agent-runtime-service-fixture.js";
 import {
   closeTestDb,
@@ -41,6 +45,8 @@ const day = 86_400_000;
 async function finishedRead() {
   const f = await runtimeReadCapabilityFixture();
   const result = await f.capability.invokeRuntime(f.input);
+  if (!("actionId" in result) || typeof result.actionId !== "string")
+    throw new Error("Expected a retained read Action");
   await f.store.transition({
     siteId,
     runId: f.input.runId,
@@ -246,6 +252,83 @@ describe.skipIf(skipIfNoTestDb())("Runtime immutable evidence source-release lif
     },
   );
 
+  it("pins same-site private settings references before releasing settled Run, call and reservation sources", async () => {
+    const f = await runtimeUsageFixture();
+    try {
+      const request = await f.request();
+      await f.usage.reserve({ siteId, runId: f.runId, request });
+      await f.usage.beginDispatch({ siteId, runId: f.runId, request });
+      f.advance(1);
+      const decision = {
+        task: "interactive-capability" as const,
+        decision: { kind: "complete" as const, summary: "Observed fixture state." },
+      };
+      const response = await f.response(
+        request,
+        {
+          schemaVersion: "np.agent-provider-invoke-outcome.v1",
+          status: "succeeded",
+          provider: request.provider,
+          model: request.model,
+          providerRequestId: "settings-pin-fixture",
+          output: decision,
+          usage: {
+            inputTokens: 6,
+            cachedInputTokens: 2,
+            outputTokens: 3,
+            tokenSource: "provider",
+            costMicros: 11,
+            costSource: "adapter-estimate",
+          },
+          finishReason: "stop",
+          latencyMs: 10,
+        },
+        decision,
+      );
+      await f.usage.reconcile({ siteId, providerCallId: request.providerCallId, response });
+      const store = createAgentRuntimeExecutionStoreV1({
+        admission: f.admission,
+        now: f.options.now,
+      });
+      const { claim } = await store.claim({ siteId, runId: f.runId });
+      if (!claim) throw new Error("Expected real fixture claim");
+      await store.transition({ siteId, runId: f.runId, claim, state: "succeeded" });
+      const call = await f.call();
+      if (!call.usageReservationId) throw new Error("Expected settled usage reservation");
+      // The Run reference is in the private key, and the remaining source refs
+      // are nested JSON. Neither has an authorized source-release owner.
+      await f.db.insert(npSettings).values({
+        siteId,
+        key: `private.monitor:${f.runId}`,
+        value: { source: { providerCallId: call.id, reservationId: call.usageReservationId } },
+      });
+      const before = {
+        runs: await f.db.select().from(npAgentRuns),
+        calls: await f.db.select().from(npAgentProviderCalls),
+        reservations: await f.db.select().from(npAgentUsageReservations),
+        audit: await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id),
+      };
+      expect(
+        (
+          await pruneAgentRuntimeEventsV1({
+            siteId,
+            now: new Date(f.options.now().getTime() + 401 * day),
+          })
+        ).pruned,
+      ).toBe(0);
+      expect(await f.db.select().from(npAgentRuns)).toEqual(before.runs);
+      expect(await f.db.select().from(npAgentProviderCalls)).toEqual(before.calls);
+      expect(await f.db.select().from(npAgentUsageReservations)).toEqual(before.reservations);
+      expect(await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id)).toEqual(
+        before.audit,
+      );
+      expect(await f.db.select().from(npAgentSourceReleases)).toEqual([]);
+      expect(await f.db.select().from(npAgentSourceReleaseEdges)).toEqual([]);
+    } finally {
+      await f.dispose();
+    }
+  });
+
   it.each([
     { count: 1, mebibytes: 33 },
     { count: 3, mebibytes: 23 },
@@ -344,6 +427,8 @@ describe.skipIf(skipIfNoTestDb())("Runtime immutable evidence source-release lif
   it("retains an active read Run and canonical evidence even beyond nominal retention", async () => {
     const f = await runtimeReadCapabilityFixture();
     const result = await f.capability.invokeRuntime(f.input);
+    if (!("actionId" in result) || typeof result.actionId !== "string")
+      throw new Error("Expected a retained read Action");
     expect((await sweep(f, new Date(f.options.now().getTime() + 401 * day))).pruned).toBe(0);
     expect(
       await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.input.runId)),

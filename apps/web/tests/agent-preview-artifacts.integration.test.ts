@@ -279,9 +279,12 @@ async function previewFixture(mode: "committed" | "unknown" | "mismatch" = "comm
   };
 }
 describe.skipIf(skipIfNoTestDb())("Preview artifact persistence and storage journal", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     registerTestCollections();
   });
   afterEach(async () => {
