@@ -4,6 +4,7 @@ import {
   npRequireAgentModeratorAssessmentEvidenceV2,
   type NpAgentModeratorAssessmentEvidenceV2,
 } from "../agent-contract/moderator-segmented-assessment-contract.js";
+import { npAgentModeratorSegmentTargetsDigestPurposeV2 } from "../agent-contract/moderator-segmented-assessment-summary.js";
 import { npRequireAgentModeratorSettingsV1 } from "../agent-contract/moderator-contract.js";
 import type { NpAgentJsonObject } from "../agent-contract/types.js";
 import type { NpAgentIncidentV1 } from "../agent-contract/incident-contract.js";
@@ -273,7 +274,7 @@ export async function npReadAgentModeratorSegmentedSourcesV2(
   const segmentCount = Math.max(1, Math.ceil(bounded.length / 10));
   const segmentDigests = Array.from({ length: segmentCount }, (_, index) =>
     digest(
-      "np.agent-moderator-segment-targets.v2",
+      npAgentModeratorSegmentTargetsDigestPurposeV2,
       safeProjection.slice(index * 10, index * 10 + 10),
     ),
   );

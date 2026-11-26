@@ -22,14 +22,7 @@ describe.skipIf(skipIfNoTestDb())("site memberships (Phase 15.5)", () => {
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
   });
-  beforeEach(async () => {
-    await truncateAll();
-    const { listSites, deleteSite } = await import("@nexpress/core");
-    const sites = await listSites();
-    for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
-    }
-  });
+  beforeEach(truncateAll);
   afterAll(async () => {
     await closeTestDb();
   });
@@ -81,29 +74,20 @@ describe.skipIf(skipIfNoTestDb())("site memberships (Phase 15.5)", () => {
     ).rejects.toBeInstanceOf(NpValidationError);
   });
 
-  it("canOnSite uses an explicit membership role on non-default sites", async () => {
-    const user = await seedUser({ role: "viewer" });
+  it("canOnSite uses current membership and falls back to the persisted global role only on default", async () => {
     const { canOnSite, createSite, grantSiteMembership } = await import("@nexpress/core");
     await createSite({ id: "scoped", name: "Scoped" });
-    await grantSiteMembership("scoped", user.userId, "moderator");
-    expect(await canOnSite(authUser(user), "community.moderate", "scoped")).toBe(true);
-    expect(await canOnSite(authUser(user), "content.publish", "scoped")).toBe(false);
-  });
+    const member = await seedUser({ role: "viewer" });
+    await grantSiteMembership("scoped", member.userId, "moderator");
+    const editor = await seedUser({ role: "editor" });
+    const viewer = await seedUser({ role: "viewer" });
 
-  it("canOnSite uses the global role only on the reserved default site", async () => {
-    const user = await seedUser({ role: "editor" });
-    const { canOnSite, createSite } = await import("@nexpress/core");
-    await createSite({ id: "foreign", name: "Foreign" });
-    expect(await canOnSite(authUser(user), "content.publish", "default")).toBe(true);
-    expect(await canOnSite(authUser(user), "content.publish", "foreign")).toBe(false);
-  });
-
-  it("canOnSite ignores a stale token role and uses the persisted global role", async () => {
-    const user = await seedUser({ role: "viewer" });
-    const { canOnSite } = await import("@nexpress/core");
-    const staleAdminToken = { ...authUser(user), role: "admin" as const };
-
-    expect(await canOnSite(staleAdminToken, "admin.manage", "default")).toBe(false);
+    expect.soft(await canOnSite(authUser(member), "community.moderate", "scoped")).toBe(true);
+    expect.soft(await canOnSite(authUser(member), "content.publish", "scoped")).toBe(false);
+    expect.soft(await canOnSite(authUser(editor), "content.publish", "default")).toBe(true);
+    expect.soft(await canOnSite(authUser(editor), "content.publish", "scoped")).toBe(false);
+    const staleAdminToken = { ...authUser(viewer), role: "admin" as const };
+    expect.soft(await canOnSite(staleAdminToken, "admin.manage", "default")).toBe(false);
   });
 
   it("resolveSiteAuthUser projects the exact persisted membership role", async () => {

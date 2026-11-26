@@ -22,7 +22,11 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
     await ensureFor("read");
   });
   afterAll(async () => {
-    await closeTestDb();
+    try {
+      await truncateAll();
+    } finally {
+      await closeTestDb();
+    }
   });
   afterEach(async () => {
     // Wipe non-default sites between tests so id collisions
@@ -326,12 +330,5 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
     const { getCurrentSiteId, resetCurrentSiteResolver } = await import("@nexpress/core");
     resetCurrentSiteResolver();
     expect(await getCurrentSiteId()).toBeNull();
-  });
-
-  // Truncate any leftover state so the suite-level afterAll doesn't trip
-  // FK constraints from earlier tests.
-  it("teardown — truncate non-site tables", async () => {
-    await truncateAll();
-    expect(true).toBe(true);
   });
 });

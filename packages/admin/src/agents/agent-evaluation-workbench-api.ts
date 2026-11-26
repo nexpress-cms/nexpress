@@ -1,20 +1,43 @@
 import {
   npAgentEvaluationWorkbenchRequestMaxBytesV1,
+  npRequireAgentEvaluationWorkbenchReportV2,
   npRequireAgentEvaluationWorkbenchRequestV1,
   npRequireAgentEvaluationWorkbenchResultV1,
   type NpAgentEvaluationWorkbenchCaseV1,
   type NpAgentEvaluationWorkbenchRequestV1,
   type NpAgentEvaluationWorkbenchResultV1,
   type NpAgentEvaluationWorkbenchOutcomeV1,
+  type NpAgentEvaluationWorkbenchReportV2,
+  type NpAgentEvaluationReportInputV1,
+  type NpAgentEvaluationReportInputV2,
+  type NpAgentEvaluationReportRecipeV1,
 } from "@nexpress/core/agent-contract";
 import { npFetch } from "../lib/api-client.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
 
-export async function processAgentEvaluationWorkbench(
-  input: NpAgentEvaluationWorkbenchRequestV1,
+export const evaluationFileFields = ["evaluation", "review", "baseline", "baselineReview"] as const;
+export type EvaluationFileField = (typeof evaluationFileFields)[number];
+export const evaluationFileLabels: Record<EvaluationFileField, string> = {
+  evaluation: "Evaluation artifact (required)",
+  review: "Current review artifact (optional)",
+  baseline: "Baseline evaluation artifact (optional)",
+  baselineReview: "Baseline review artifact (optional)",
+};
+export const evaluationRecipeLabels: Record<NpAgentEvaluationReportRecipeV1, string> = {
+  moderator: "Moderator detector",
+  "moderator-proposal": "Moderator proposal",
+  operator: "Operator plan",
+  publisher: "Publisher",
+  "moderator-assessment": "Moderator semantic assessment",
+  "publisher-selection": "Publisher selection profile V3",
+  guardian: "Guardian synthetic reference",
+};
+
+async function postEvaluation(
+  input: NpAgentEvaluationWorkbenchRequestV1 | NpAgentEvaluationReportInputV2,
   signal?: AbortSignal,
-): Promise<NpAgentEvaluationWorkbenchResultV1> {
-  const body = JSON.stringify(npRequireAgentEvaluationWorkbenchRequestV1(input));
+): Promise<Response> {
+  const body = JSON.stringify(input);
   if (new TextEncoder().encode(body).length > npAgentEvaluationWorkbenchRequestMaxBytesV1)
     throw new Error("Imported files and labels together must fit within 4 MiB.");
   const response = await npFetch("/api/admin/agents/evaluations", {
@@ -25,6 +48,14 @@ export async function processAgentEvaluationWorkbench(
     signal,
   });
   if (!response.ok) throw await responseError(response);
+  return response;
+}
+
+export async function processAgentEvaluationWorkbench(
+  input: NpAgentEvaluationWorkbenchRequestV1,
+  signal?: AbortSignal,
+): Promise<NpAgentEvaluationWorkbenchResultV1> {
+  const response = await postEvaluation(npRequireAgentEvaluationWorkbenchRequestV1(input), signal);
   try {
     const result = npRequireAgentEvaluationWorkbenchResultV1(await response.json());
     if (result.recipe !== input.recipe) throw new Error("Recipe mismatch.");
@@ -38,6 +69,50 @@ export async function processAgentEvaluationWorkbench(
   }
 }
 
+export async function generateAgentEvaluationReport(
+  input: NpAgentEvaluationReportInputV2,
+  signal: AbortSignal,
+): Promise<NpAgentEvaluationWorkbenchReportV2> {
+  const response = await postEvaluation(input, signal);
+  try {
+    return npRequireAgentEvaluationWorkbenchReportV2(await response.json());
+  } catch {
+    throw new AgentStudioApiError(
+      "The evaluation report could not be validated.",
+      502,
+      "STUDIO_CONTRACT_ERROR",
+    );
+  }
+}
+
+export async function readEvaluationArtifact(
+  file: File,
+): Promise<{ name: string; value: unknown }> {
+  if (file.size > npAgentEvaluationWorkbenchRequestMaxBytesV1)
+    throw new Error("This file exceeds the 4 MiB limit.");
+  const content = await file.text();
+  if (new TextEncoder().encode(content).length > npAgentEvaluationWorkbenchRequestMaxBytesV1)
+    throw new Error("This file exceeds the 4 MiB limit.");
+  const value: unknown = JSON.parse(content);
+  if (value === null) throw new Error("Select an evaluation artifact JSON file.");
+  return { name: file.name, value };
+}
+
+export function downloadEvaluationArtifact(name: string, content: string, urls: Set<string>): void {
+  const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+  urls.add(url);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+    urls.delete(url);
+  }, 0);
+}
+
 export interface EvaluationReviewDraft {
   outcome: NpAgentEvaluationWorkbenchOutcomeV1 | "";
   reviewer: string;
@@ -49,6 +124,38 @@ function object(value: unknown): Record<string, unknown> | null {
     ? Object.fromEntries(Object.entries(value))
     : null;
 }
+
+/** Workbench embeds the exact server-validated evaluation, applied review and baseline. */
+export function evaluationWorkbenchReportEntry(
+  result: NpAgentEvaluationWorkbenchResultV1,
+): NpAgentEvaluationReportInputV1["entries"][number] {
+  const report = object(JSON.parse(result.reportArtifactJson));
+  const input = object(report?.input);
+  const entries: unknown = input?.entries;
+  if (
+    report?.schemaVersion !== "np.agent-eval-report.v1" ||
+    input?.schemaVersion !== "np.agent-eval-report-input.v1" ||
+    !Array.isArray(entries) ||
+    entries.length !== 1
+  )
+    throw new Error("The validated report entry is unavailable.");
+
+  const entry = object(entries[0]);
+  if (entry?.recipe !== result.recipe)
+    throw new Error("The validated report entry is unavailable.");
+  const evidence = (value: unknown) => {
+    const pair = object(value);
+    if (!pair || !object(pair.evaluation) || (pair.review !== null && !object(pair.review)))
+      throw new Error("The validated report entry is unavailable.");
+    return { evaluation: pair.evaluation, review: pair.review };
+  };
+  return {
+    recipe: result.recipe,
+    current: evidence(entry.current),
+    baseline: entry.baseline === null ? null : evidence(entry.baseline),
+  };
+}
+
 export function evaluationReviewDraft(
   entry: NpAgentEvaluationWorkbenchCaseV1,
 ): EvaluationReviewDraft {
