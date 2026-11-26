@@ -40,6 +40,7 @@ import {
   npAgentEvaluationReportMaxBytesV1,
   npAgentEvaluationReportMaxEntriesV2,
   npAgentEvaluationReportRecipesV1,
+  npReadAgentEvaluationReportDatasetV2,
   type NpAgentEvaluationReportRecipeV1,
   type NpAgentEvaluationReportEvidenceV1,
   type NpAgentEvaluationReportInputV1,
@@ -127,14 +128,7 @@ type ValidatedEntry = {
 function datasetIdentity(
   evaluation: NpAgentEvaluationReportEvidenceV1["evaluation"],
 ): NonNullable<NpAgentEvaluationReportRowV2["dataset"]> {
-  if (evaluation.schemaVersion === "np.agent-eval.v1")
-    return { id: evaluation.suite.id, version: evaluation.suite.version };
-  if (evaluation.schemaVersion === "np.agent-guardian-eval.v1")
-    return { id: evaluation.corpus.id, version: evaluation.corpus.version };
-  return {
-    id: evaluation.dataset,
-    version: Number(evaluation.dataset.slice("moderator.v".length)),
-  };
+  return npReadAgentEvaluationReportDatasetV2(evaluation) ?? fail();
 }
 async function validateEntries(
   value: unknown,

@@ -3,6 +3,8 @@ import {
   npAgentEvaluationReportMaxEntriesV2,
   npAgentEvaluationReportRecipesV1,
   npAgentEvaluationWorkbenchRequestMaxBytesV1,
+  npReadAgentEvaluationReportDatasetV2,
+  type NpAgentEvaluationReportInputV1,
   type NpAgentEvaluationReportRecipeV1,
   type NpAgentEvaluationWorkbenchReportV2,
 } from "@nexpress/core/agent-contract";
@@ -34,12 +36,31 @@ interface Dataset {
   files: Record<EvaluationFileField, ReportFile>;
 }
 
+type ReportEntry = NpAgentEvaluationReportInputV1["entries"][number];
+export interface EvaluationReportPanelActions {
+  addValidatedEvaluation: (entry: ReportEntry) => void;
+  cancelTransfer: () => void;
+}
+
 const initialDataset = (id: number): Dataset => ({
   id,
   recipe: "moderator-assessment",
   files: { evaluation: null, review: null, baseline: null, baselineReview: null },
 });
 const artifact = (file: ReportFile) => (file?.state === "ready" ? file.value : null);
+const fileBytes = (file: ReportFile | undefined) => (file && "bytes" in file ? file.bytes : 0);
+const datasetBytes = (dataset: Dataset) =>
+  Object.values(dataset.files).reduce((total, file) => total + fileBytes(file), 0);
+const fromWorkbench = (name: string, value: unknown): ReportFile =>
+  value === null || value === undefined
+    ? null
+    : {
+        state: "ready",
+        name,
+        value,
+        bytes: new TextEncoder().encode(JSON.stringify(value)).length,
+      };
+const focusCancelButton = (button: HTMLButtonElement | null) => button?.focus();
 
 function ReportFileField({
   field,
@@ -95,12 +116,21 @@ function ReportFileField({
 
 export function AgentEvaluationReportPanel({
   onAccessLost,
+  ref,
 }: {
   onAccessLost: (error: AgentStudioApiError) => void;
+  ref?: React.Ref<EvaluationReportPanelActions>;
 }) {
   const [datasets, setDatasets] = React.useState(() => [initialDataset(1)]);
+  const [replacement, setReplacement] = React.useState<{
+    targetId: number;
+    dataset: Dataset;
+    description: string;
+  } | null>(null);
+  const [transferStatus, setTransferStatus] = React.useState("");
   const nextId = React.useRef(2);
   const focusDataset = React.useRef<number>(null);
+  const details = React.useRef<HTMLDetailsElement>(null);
   const [result, setResult] = React.useState<NpAgentEvaluationWorkbenchReportV2 | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<unknown>();
@@ -134,20 +164,90 @@ export function AgentEvaluationReportPanel({
     setBusy(false);
     setResult(null);
     setError(null);
+    setReplacement(null);
+    setTransferStatus("");
   }
+
+  function placeDataset(dataset: Dataset, targetId: number | undefined, message: string) {
+    invalidate();
+    focusDataset.current = dataset.id;
+    setDatasets((current) =>
+      targetId === undefined
+        ? [...current, dataset]
+        : current.map((entry) => (entry.id === targetId ? dataset : entry)),
+    );
+    setTransferStatus(message);
+  }
+
+  function addValidatedEvaluation(entry: ReportEntry) {
+    if (details.current) details.current.open = true;
+    setReplacement(null);
+    setError(null);
+    setTransferStatus("");
+    const identity = npReadAgentEvaluationReportDatasetV2(entry.current.evaluation);
+    if (!identity) {
+      setError("The validated dataset identity could not be read.");
+      return;
+    }
+    const matches = datasets.filter(({ recipe, files }) => {
+      if (recipe !== entry.recipe) return false;
+      const existing = npReadAgentEvaluationReportDatasetV2(artifact(files.evaluation));
+      return existing?.id === identity.id && existing.version === identity.version;
+    });
+    if (matches.length > 1) {
+      setError("Remove duplicate entries for this dataset before adding the validated evaluation.");
+      return;
+    }
+    const target =
+      matches[0] ??
+      datasets.find(({ files }) => Object.values(files).every((file) => file === null));
+    if (!target && datasets.length >= npAgentEvaluationReportMaxEntriesV2) {
+      setError("Remove a dataset to make room for this evaluation.");
+      return;
+    }
+    const dataset: Dataset = {
+      id: nextId.current++,
+      recipe: entry.recipe,
+      files: {
+        evaluation: fromWorkbench("Validated evaluation", entry.current.evaluation),
+        review: fromWorkbench("Validated current review", entry.current.review),
+        baseline: fromWorkbench("Validated baseline evaluation", entry.baseline?.evaluation),
+        baselineReview: fromWorkbench("Validated baseline review", entry.baseline?.review),
+      },
+    };
+    const bytes = datasets.reduce(
+      (total, item) => total + (item.id === target?.id ? 0 : datasetBytes(item)),
+      datasetBytes(dataset),
+    );
+    if (bytes > npAgentEvaluationWorkbenchRequestMaxBytesV1) {
+      setError("All files and evaluations together must fit within 4 MiB.");
+      return;
+    }
+    if (matches[0]) {
+      setReplacement({
+        targetId: matches[0].id,
+        dataset,
+        description: `${identity.id}, version ${identity.version}`,
+      });
+      return;
+    }
+    placeDataset(dataset, target?.id, "Validated evaluation added.");
+  }
+
+  React.useImperativeHandle(ref, () => ({
+    addValidatedEvaluation,
+    cancelTransfer: () => setReplacement(null),
+  }));
 
   async function importFile(id: number, field: EvaluationFileField, file: File | undefined) {
     invalidate();
     let pending: ReportFile = null;
     if (file) {
-      let bytes = file.size;
-      for (const dataset of datasets) {
-        for (const key of evaluationFileFields) {
-          if (dataset.id === id && key === field) continue;
-          const imported = dataset.files[key];
-          if (imported && "bytes" in imported) bytes += imported.bytes;
-        }
-      }
+      const bytes = datasets.reduce(
+        (total, dataset) =>
+          total + datasetBytes(dataset) - (dataset.id === id ? fileBytes(dataset.files[field]) : 0),
+        file.size,
+      );
       pending =
         bytes > npAgentEvaluationWorkbenchRequestMaxBytesV1
           ? { state: "invalid", message: "All files together must fit within 4 MiB." }
@@ -176,7 +276,7 @@ export function AgentEvaluationReportPanel({
   }
 
   async function generate() {
-    if (!complete || busy || retryBlocked) return;
+    if (!complete || busy || retryBlocked || replacement) return;
     const controller = requests.current.begin();
     setBusy(true);
     setError(null);
@@ -215,7 +315,7 @@ export function AgentEvaluationReportPanel({
   }
 
   return (
-    <details className="rounded-xl border">
+    <details ref={details} className="rounded-xl border">
       <summary className="cursor-pointer rounded-xl p-4 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[var(--np-color-brand-ring)]">
         Build a multi-dataset report
       </summary>
@@ -229,6 +329,39 @@ export function AgentEvaluationReportPanel({
             failure instanceof AgentStudioApiError && failure.status === 429 ? failure : undefined
           }
         >
+          {replacement ? (
+            <div className="space-y-2 rounded-lg border p-3 text-sm">
+              <p id={`${prefix}-replacement`}>
+                {replacement.description} is already in the report. Replace its evaluation, review
+                and baseline with the validated result?
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  ref={focusCancelButton}
+                  variant="outline"
+                  aria-describedby={`${prefix}-replacement`}
+                  onClick={() => {
+                    focusDataset.current = replacement.targetId;
+                    setReplacement(null);
+                  }}
+                >
+                  Keep existing dataset
+                </Button>
+                <Button
+                  aria-describedby={`${prefix}-replacement`}
+                  onClick={() =>
+                    placeDataset(
+                      replacement.dataset,
+                      replacement.targetId,
+                      "Dataset replaced with the validated evaluation.",
+                    )
+                  }
+                >
+                  Replace dataset
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {datasets.map((dataset, index) => (
             <fieldset
               key={dataset.id}
@@ -308,7 +441,9 @@ export function AgentEvaluationReportPanel({
               Add dataset
             </Button>
             <Button
-              disabled={!complete || busy || retryBlocked || result !== null}
+              disabled={
+                !complete || busy || retryBlocked || result !== null || replacement !== null
+              }
               onClick={() => void generate()}
             >
               Generate V2 report
@@ -336,7 +471,7 @@ export function AgentEvaluationReportPanel({
               ? "Reading files…"
               : result
                 ? "V2 report ready to download."
-                : ""}
+                : transferStatus}
         </p>
         {error ? (
           <p role="alert" className="text-sm text-red-700 dark:text-red-300">

@@ -117,7 +117,7 @@ async function downloadJson(
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-test("evaluation workspace builds and downloads a report for three Moderator datasets", async ({
+test("evaluation workspace transfers reviewed results and downloads a report for three Moderator datasets", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -161,13 +161,14 @@ test("evaluation workspace builds and downloads a report for three Moderator dat
   const add = page.getByRole("button", { name: "Add dataset", exact: true });
   const generate = page.getByRole("button", { name: "Generate V2 report", exact: true });
   const download = page.getByRole("button", { name: "Download V2 report JSON", exact: true });
+  const transfer = page.getByRole("button", { name: "Add to V2 report", exact: true });
+  const replace = page.getByRole("button", { name: "Replace dataset", exact: true });
   const dataset = (index: number) =>
     page.getByRole("group", { name: `Dataset ${index}`, exact: true });
   await add.click();
-  await add.click();
-  await expect(dataset(3)).toBeFocused();
+  await expect(dataset(2)).toBeFocused();
   await expect(generate).toBeDisabled();
-  for (const [index, source] of [member, semantic, segmented].entries()) {
+  for (const [index, source] of [member, segmented].entries()) {
     await importArtifact(
       dataset(index + 1),
       "Dataset evaluation artifact (required)",
@@ -206,11 +207,59 @@ test("evaluation workspace builds and downloads a report for three Moderator dat
     member,
   );
   await importArtifact(
-    dataset(3),
+    dataset(2),
     "Dataset baseline evaluation artifact (optional)",
     "incompatible-semantic-baseline.json",
     semantic,
   );
+
+  await page.getByLabel("Recipe", { exact: true }).selectOption("moderator-assessment");
+  await importArtifact(page, "Evaluation artifact (required)", "semantic-workbench.json", semantic);
+  await recompute(page, "Validate imports");
+  await transfer.click();
+  await expect(dataset(3)).toBeFocused();
+  await expect(dataset(3).getByText("Validated evaluation", { exact: true })).toBeVisible();
+
+  await importArtifact(page, "Evaluation artifact (required)", "member-workbench.json", member);
+  await expect(transfer).toHaveCount(0);
+  await importArtifact(
+    page,
+    "Baseline evaluation artifact (optional)",
+    "baseline-workbench.json",
+    member,
+  );
+  await importArtifact(
+    page,
+    "Baseline review artifact (optional)",
+    "baseline-review-workbench.json",
+    review,
+  );
+  await recompute(page, "Validate imports");
+  await page.getByLabel("Outcome", { exact: true }).selectOption("accept");
+  const reviewer = page.getByLabel("Reviewer (self-reported)", { exact: true });
+  await reviewer.fill("workbench-direct-review");
+  await expect(transfer).toBeDisabled();
+  const applied = await recompute(page, "Apply and recompute");
+
+  await transfer.click();
+  const keep = page.getByRole("button", { name: "Keep existing dataset", exact: true });
+  await expect(keep).toBeFocused();
+  await keep.click();
+  await expect(dataset(1).getByText("member-reviewed.json", { exact: true })).toBeVisible();
+  await expect(dataset(1)).toBeFocused();
+
+  await transfer.click();
+  await expect(replace).toBeVisible();
+  await reviewer.fill("unapplied-review");
+  await expect(replace).toHaveCount(0);
+  await expect(transfer).toBeDisabled();
+  await page.getByRole("button", { name: "Discard draft", exact: true }).click();
+  await transfer.click();
+  await replace.click();
+  await expect(dataset(1)).toBeFocused();
+  await expect(dataset(1).getByText("Validated current review", { exact: true })).toBeVisible();
+  await expect(dataset(4)).toHaveCount(0);
+
   const responsePromise = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/admin/agents/evaluations" &&
@@ -244,6 +293,9 @@ test("evaluation workspace builds and downloads a report for three Moderator dat
   expect(report.rows.find((row) => row.dataset?.id === segmented.suite.id)).toMatchObject({
     evaluationComparison: { result: { comparable: false, reason: "SUITE_MISMATCH" } },
   });
+  const memberEntry = report.input.entries[0];
+  expect(memberEntry.current.review).toEqual(JSON.parse(applied.reviewArtifactJson!));
+  expect(memberEntry.baseline).toEqual({ evaluation: member, review });
 
   await dataset(2).getByRole("button", { name: "Remove dataset 2", exact: true }).click();
   await expect(download).toHaveCount(0);

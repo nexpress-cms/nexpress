@@ -11,7 +11,10 @@ import {
 } from "@nexpress/core/agent-contract";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentEvaluationHistoryPanel } from "./agent-evaluation-history-panel.js";
-import { AgentEvaluationReportPanel } from "./agent-evaluation-report-panel.js";
+import {
+  AgentEvaluationReportPanel,
+  type EvaluationReportPanelActions,
+} from "./agent-evaluation-report-panel.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { useAgentRetryBlocked } from "./agent-recovery.js";
 import {
@@ -21,6 +24,7 @@ import {
   evaluationFileLabels as fileLabels,
   evaluationRecipeLabels as recipeLabels,
   evaluationReviewDraft,
+  evaluationWorkbenchReportEntry,
   evaluationWorkbenchLabels,
   processAgentEvaluationWorkbench,
   readEvaluationArtifact,
@@ -79,6 +83,7 @@ export function AgentEvaluationWorkbenchView({
   const [failure, setFailure] = React.useState<unknown>();
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState("Choose local JSON artifacts, then validate them.");
+  const reportPanel = React.useRef<EvaluationReportPanelActions>(null);
   const requests = React.useRef(new EvaluationWorkbenchRequests());
   const reads = React.useRef<Record<FileField, number>>({
     evaluation: 0,
@@ -96,6 +101,8 @@ export function AgentEvaluationWorkbenchView({
   const retryBlocked = useAgentRetryBlocked(failure);
   const entry = result?.cases.find((item) => caseKey(item) === selected) ?? null;
   const segments = entry ? segmentedAssessment(entry.predictionJson) : null;
+  const exportReady =
+    result !== null && !dirty && !busy && !error && !reading.length && !retryBlocked;
 
   React.useEffect(() => {
     const requestOwner = requests.current;
@@ -110,6 +117,7 @@ export function AgentEvaluationWorkbenchView({
   }, []);
 
   const invalidate = (clearLabels = true) => {
+    reportPanel.current?.cancelTransfer();
     if (clearLabels) setWorkingLabels(null);
     requests.current.cancel();
     setBusy(false);
@@ -167,6 +175,7 @@ export function AgentEvaluationWorkbenchView({
 
   const process = async (labels: unknown[] | null) => {
     if (!files.evaluation || busy || reading.length || invalidFiles.length || retryBlocked) return;
+    reportPanel.current?.cancelTransfer();
     const previousResult = result;
     const controller = requests.current.begin();
     setBusy(true);
@@ -225,17 +234,27 @@ export function AgentEvaluationWorkbenchView({
       const labels = evaluationWorkbenchLabels(result, entry, remove ? null : draft);
       void process(labels);
     } catch (caught) {
+      reportPanel.current?.cancelTransfer();
       setError(caught instanceof Error ? caught.message : "Review labels could not be prepared.");
     }
   };
   const changeDraft = (patch: Partial<EvaluationReviewDraft>) => {
+    reportPanel.current?.cancelTransfer();
     setDraft((current) => ({ ...current, ...patch }));
     setDirty(true);
     setError(null);
   };
   const download = (kind: "labels" | "review" | "report", content: string | null) => {
-    if (!content || !result || dirty || busy || error || reading.length) return;
+    if (!content || !exportReady) return;
     downloadEvaluationArtifact(`${recipe}-${kind}.json`, content, urls.current);
+  };
+  const addToReport = () => {
+    if (!result || !exportReady) return;
+    try {
+      reportPanel.current?.addValidatedEvaluation(evaluationWorkbenchReportEntry(result));
+    } catch {
+      setError("The validated evaluation could not be added to the report. Validate it again.");
+    }
   };
 
   return (
@@ -249,7 +268,11 @@ export function AgentEvaluationWorkbenchView({
           current authenticated decision below.
         </p>
       </div>
-      <AgentEvaluationReportPanel key={reportKey} onAccessLost={clearOnAccessLoss} />
+      <AgentEvaluationReportPanel
+        key={reportKey}
+        ref={reportPanel}
+        onAccessLost={clearOnAccessLoss}
+      />
       <Card>
         <CardHeader>
           <CardTitle className="text-[15px]">Import evaluation artifacts</CardTitle>
@@ -600,24 +623,27 @@ export function AgentEvaluationWorkbenchView({
             <CardContent className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                disabled={dirty || busy || !!error || result.labelsJson === null}
+                disabled={!exportReady || result.labelsJson === null}
                 onClick={() => download("labels", result.labelsJson)}
               >
                 Download labels JSON
               </Button>
               <Button
                 variant="outline"
-                disabled={dirty || busy || !!error || result.reviewArtifactJson === null}
+                disabled={!exportReady || result.reviewArtifactJson === null}
                 onClick={() => download("review", result.reviewArtifactJson)}
               >
                 Download review JSON
               </Button>
               <Button
                 variant="outline"
-                disabled={dirty || busy || !!error}
+                disabled={!exportReady}
                 onClick={() => download("report", result.reportArtifactJson)}
               >
                 Download report JSON
+              </Button>
+              <Button variant="outline" disabled={!exportReady} onClick={addToReport}>
+                Add to V2 report
               </Button>
             </CardContent>
           </Card>

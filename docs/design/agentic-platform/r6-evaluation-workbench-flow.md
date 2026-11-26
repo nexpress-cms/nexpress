@@ -109,8 +109,14 @@ V2 report. Add a dataset for each current evaluation and select its recipe.
 For example, use **Moderator semantic assessment** for the Member report,
 V1 semantic and V2 segmented evaluation artifacts. Each entry accepts its own
 current review, baseline evaluation and baseline review. A baseline review
-requires its baseline evaluation. Download reviewed artifacts from the
-individual case workspace before adding them to the report.
+requires its baseline evaluation.
+
+After validating an individual evaluation, use **Add to V2 report** to copy
+its evaluation, applied review and baseline into the report. Apply or discard
+review drafts first. When the recipe, dataset ID and version already appear
+in the report, choose **Replace dataset** to update that entry or **Keep
+existing dataset** to keep its current inputs. Later case edits reach the report
+when you apply them, add the result again and confirm replacement.
 
 **Generate V2 report** submits the uploaded JSON to the same bounded
 staff-only endpoint. The server reuses the
