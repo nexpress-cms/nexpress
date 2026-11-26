@@ -7,6 +7,7 @@ import {
   EvaluationWorkbenchRequests,
   evaluationReviewDraft,
   evaluationWorkbenchLabels,
+  evaluationWorkbenchReportEntry,
   processAgentEvaluationWorkbench,
 } from "./agent-evaluation-workbench-api.js";
 
@@ -67,6 +68,34 @@ const reviewedAt = "2026-10-08T00:00:00.000Z";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("evaluation workbench client transport", () => {
+  it("takes only the workbench report's validated entry and refuses other recipes or cohorts", () => {
+    const result = fixture();
+    const entry = {
+      recipe: result.recipe,
+      current: { evaluation: { artifact: "validated" }, review: { labels: ["applied"] } },
+      baseline: { evaluation: { artifact: "baseline" }, review: null },
+    };
+    const reportArtifactJson = (entries: unknown[]) =>
+      JSON.stringify({
+        schemaVersion: "np.agent-eval-report.v1",
+        input: { schemaVersion: "np.agent-eval-report-input.v1", entries },
+      });
+    expect(
+      evaluationWorkbenchReportEntry({
+        ...result,
+        reportArtifactJson: reportArtifactJson([entry]),
+      }),
+    ).toEqual(entry);
+    for (const entries of [[{ ...entry, recipe: "operator" }], [entry, entry]]) {
+      expect(() =>
+        evaluationWorkbenchReportEntry({
+          ...result,
+          reportArtifactJson: reportArtifactJson(entries),
+        }),
+      ).toThrow();
+    }
+  });
+
   it("binds Guardian synthetic support labels without edits or approval outcomes", async () => {
     const result = fixture();
     result.recipe = "guardian";

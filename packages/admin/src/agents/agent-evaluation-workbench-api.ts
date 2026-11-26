@@ -8,6 +8,7 @@ import {
   type NpAgentEvaluationWorkbenchResultV1,
   type NpAgentEvaluationWorkbenchOutcomeV1,
   type NpAgentEvaluationWorkbenchReportV2,
+  type NpAgentEvaluationReportInputV1,
   type NpAgentEvaluationReportInputV2,
   type NpAgentEvaluationReportRecipeV1,
 } from "@nexpress/core/agent-contract";
@@ -123,6 +124,38 @@ function object(value: unknown): Record<string, unknown> | null {
     ? Object.fromEntries(Object.entries(value))
     : null;
 }
+
+/** Workbench embeds the exact server-validated evaluation, applied review and baseline. */
+export function evaluationWorkbenchReportEntry(
+  result: NpAgentEvaluationWorkbenchResultV1,
+): NpAgentEvaluationReportInputV1["entries"][number] {
+  const report = object(JSON.parse(result.reportArtifactJson));
+  const input = object(report?.input);
+  const entries: unknown = input?.entries;
+  if (
+    report?.schemaVersion !== "np.agent-eval-report.v1" ||
+    input?.schemaVersion !== "np.agent-eval-report-input.v1" ||
+    !Array.isArray(entries) ||
+    entries.length !== 1
+  )
+    throw new Error("The validated report entry is unavailable.");
+
+  const entry = object(entries[0]);
+  if (entry?.recipe !== result.recipe)
+    throw new Error("The validated report entry is unavailable.");
+  const evidence = (value: unknown) => {
+    const pair = object(value);
+    if (!pair || !object(pair.evaluation) || (pair.review !== null && !object(pair.review)))
+      throw new Error("The validated report entry is unavailable.");
+    return { evaluation: pair.evaluation, review: pair.review };
+  };
+  return {
+    recipe: result.recipe,
+    current: evidence(entry.current),
+    baseline: entry.baseline === null ? null : evidence(entry.baseline),
+  };
+}
+
 export function evaluationReviewDraft(
   entry: NpAgentEvaluationWorkbenchCaseV1,
 ): EvaluationReviewDraft {

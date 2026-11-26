@@ -144,8 +144,12 @@ export interface NpAgentEvaluationReportV1 {
   limitations: string[];
   artifactHash: string;
 }
+export interface NpAgentEvaluationReportDatasetV2 {
+  id: string;
+  version: number;
+}
 export interface NpAgentEvaluationReportRowV2 extends NpAgentEvaluationReportRowV1 {
-  dataset: { id: string; version: number } | null;
+  dataset: NpAgentEvaluationReportDatasetV2 | null;
 }
 export interface NpAgentEvaluationReportV2 extends Omit<
   NpAgentEvaluationReportV1,
@@ -171,6 +175,36 @@ export interface NpAgentEvaluationReportCommandResult extends Omit<
 > {
   artifact: NpAgentEvaluationReportV1 | NpAgentEvaluationReportV2 | null;
 }
+
+const ownValue = (value: unknown, key: string): unknown =>
+  value && typeof value === "object"
+    ? Object.getOwnPropertyDescriptor(value, key)?.value
+    : undefined;
+
+/** Reads dataset identity for grouping. The owning evaluator validates the complete artifact. */
+export function npReadAgentEvaluationReportDatasetV2(
+  evaluation: unknown,
+): NpAgentEvaluationReportDatasetV2 | null {
+  const schema = ownValue(evaluation, "schemaVersion");
+  if (schema === "np.agent-eval.v1" || schema === "np.agent-guardian-eval.v1") {
+    const suite = ownValue(evaluation, schema === "np.agent-eval.v1" ? "suite" : "corpus");
+    const id = ownValue(suite, "id");
+    const version = ownValue(suite, "version");
+    return typeof id === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}$/u.test(id) &&
+      typeof version === "number" &&
+      Number.isSafeInteger(version) &&
+      version >= 1
+      ? { id, version }
+      : null;
+  }
+  const detector =
+    typeof schema === "string" && /^np\.agent-moderator-eval\.v([123])$/u.exec(schema);
+  if (!detector) return null;
+  const id = `moderator.v${detector[1]}`;
+  return ownValue(evaluation, "dataset") === id ? { id, version: Number(detector[1]) } : null;
+}
+
 const fail = (): never => {
   throw new Error("Invalid bounded Agent evaluation report manifest.");
 };
