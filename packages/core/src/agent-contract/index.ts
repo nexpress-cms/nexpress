@@ -128,6 +128,10 @@ export * from "./incident-member-report-contract.js";
 export * from "./moderator-member-report-contract.js";
 
 export * from "./moderator-assessment-evaluation-contract.js";
+export {
+  npRequireAgentModeratorSegmentedEvaluationResultV2,
+  type NpAgentModeratorSegmentedEvaluationResultV2,
+} from "./moderator-segmented-evaluation-contract.js";
 
 export * from "./operator-review-contract.js";
 

@@ -44,6 +44,7 @@ import {
   npCreateAgentPublisherEvaluationSuiteV1,
   npCreateAgentPublisherEvaluationSuiteV2,
   npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentModeratorSegmentedEvaluationSuiteV2,
   npCreateAgentMemberReportEvaluationSuiteV1,
   npCreateAgentPublisherSelectionEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
@@ -89,6 +90,7 @@ pnpm agent:evaluate --dataset moderator.v2 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v3 --out <artifact> --json
 pnpm agent:evaluate --dataset guardian.v1 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator-member-report.v1 --out <artifact> --json
+pnpm agent:evaluate --dataset moderator-assessment.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v3 --out <artifact> --json
@@ -115,6 +117,7 @@ moderator-proposal.v3 adds exact document/comment targets to synthetic document-
 publisher.v2 preserves all V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile; V1 artifacts remain unchanged.
 publisher.v3 checks bounded multi-document selection with the explicit V3 instruction.
 moderator-assessment.v1 checks the explicit read-only semantic profile on versioned bilingual fixtures.
+moderator-assessment.v2 replays synthetic segment evidence and classifications through the V2 coverage and aggregation rules.
 moderator-member-report.v1 scores synthetic Member claims and eligibility for human review using local deterministic facts.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
@@ -249,25 +252,27 @@ export async function runAgentEvaluateProcessV1(
     const artifact = await npRequireAgentEvaluationArtifactV1(
       await runAgentEvaluationV1({
         suite:
-          input.dataset === "moderator-member-report.v1"
-            ? await npCreateAgentMemberReportEvaluationSuiteV1()
-            : input.dataset === "publisher.v3"
-              ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
-              : input.dataset === "moderator-assessment.v1"
-                ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
-                : input.dataset === "publisher.v2"
-                  ? await npCreateAgentPublisherEvaluationSuiteV2()
-                  : input.dataset === "publisher.v1"
-                    ? await npCreateAgentPublisherEvaluationSuiteV1()
-                    : input.dataset === "operator-plan.v1"
-                      ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-                      : input.dataset === "moderator-proposal.v3"
-                        ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-                        : input.dataset === "moderator-proposal.v2"
-                          ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                          : input.dataset === "moderator-proposal.v1"
-                            ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                            : await npCreateAgentOperatorEvaluationSuiteV1(),
+          input.dataset === "moderator-assessment.v2"
+            ? await npCreateAgentModeratorSegmentedEvaluationSuiteV2()
+            : input.dataset === "moderator-member-report.v1"
+              ? await npCreateAgentMemberReportEvaluationSuiteV1()
+              : input.dataset === "publisher.v3"
+                ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
+                : input.dataset === "moderator-assessment.v1"
+                  ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+                  : input.dataset === "publisher.v2"
+                    ? await npCreateAgentPublisherEvaluationSuiteV2()
+                    : input.dataset === "publisher.v1"
+                      ? await npCreateAgentPublisherEvaluationSuiteV1()
+                      : input.dataset === "operator-plan.v1"
+                        ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+                        : input.dataset === "moderator-proposal.v3"
+                          ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                          : input.dataset === "moderator-proposal.v2"
+                            ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                            : input.dataset === "moderator-proposal.v1"
+                              ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                              : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,

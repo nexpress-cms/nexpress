@@ -16,6 +16,7 @@ import {
   runAgentModeratorEvaluationV2,
   runAgentModeratorEvaluationV3,
   npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentModeratorSegmentedEvaluationSuiteV2,
   npCreateAgentMemberReportEvaluationSuiteV1,
   npCreateAgentPublisherSelectionEvaluationSuiteV1,
 } from "@nexpress/core/agents";
@@ -477,6 +478,13 @@ for (const [dataset, recipe, createSuite, editableField, bucket] of [
     null,
     156,
   ],
+  [
+    "moderator-assessment.v2",
+    "moderator-assessment",
+    npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+    null,
+    144,
+  ],
 ] as const) {
   test(`${dataset} imports and reviews the explicit new profile without live execution`, async ({
     page,
@@ -487,8 +495,14 @@ for (const [dataset, recipe, createSuite, editableField, bucket] of [
     );
     await signInAsE2EAdmin(page);
     const suite = await createSuite();
+    const cases =
+      dataset === "moderator-assessment.v2"
+        ? suite.cases.filter((entry) =>
+            ["complete-disagreement", "missing-tail"].includes(entry.id),
+          )
+        : suite.cases.slice(0, 2);
     const source = await runAgentEvaluationV1({
-      suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases: suite.cases.slice(0, 2) }),
+      suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases }),
       mode: "fake",
       providerId: "fake",
       model: "deterministic-v1",
@@ -519,10 +533,25 @@ for (const [dataset, recipe, createSuite, editableField, bucket] of [
       expect(edited).toHaveProperty(editableField);
     } else {
       expect(entry.allowedOutcomes).toEqual(["accept", "reject"]);
-      expect(JSON.parse(entry.predictionJson)).toMatchObject({
-        actions: [],
-        memberReport: { classification: "unverified-claim", disposition: "human-review" },
-      });
+      if (dataset === "moderator-assessment.v2") {
+        await expect(
+          page.getByText("2 / 2 segments · 11 / 11 targets · Complete", { exact: true }),
+        ).toBeVisible();
+        await expect(page.getByText("uncertain", { exact: true })).toBeVisible();
+        await page.getByLabel("Case", { exact: true }).selectOption("missing-tail@1");
+        await expect(
+          page.getByText("1 / 2 segments · 10 / 11 targets · Incomplete", { exact: true }),
+        ).toBeVisible();
+        await expect(page.getByText("Withheld · awaiting segments", { exact: true })).toBeVisible();
+        await page
+          .getByLabel("Case", { exact: true })
+          .selectOption(`${entry.caseId}@${entry.caseVersion}`);
+      } else {
+        expect(JSON.parse(entry.predictionJson)).toMatchObject({
+          actions: [],
+          memberReport: { classification: "unverified-claim", disposition: "human-review" },
+        });
+      }
       await expect(
         page.getByLabel("Outcome", { exact: true }).locator('option[value="edit"]'),
       ).toHaveCount(0);
