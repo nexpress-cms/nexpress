@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpValidationError,
@@ -35,7 +36,7 @@ import { ensureFor } from "../../../../lib/init-core";
  *     a per-site operation; it strikes the row from the registry.
  */
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianGET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianPATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -91,7 +92,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 }
 
-export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianDELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -128,3 +132,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const PATCH = npWithAgentGuardianHttpResponseV1("admin", npGuardianPATCH);
+export const DELETE = npWithAgentGuardianHttpResponseV1("admin", npGuardianDELETE);

@@ -8,6 +8,7 @@ export {
   getAllPluginIds,
   getPluginDiscoveryItems,
   getPluginDiscoveryDiagnostics,
+  npProjectPluginDeclarationDiscoveryV1,
   getPluginAdminExtension,
   getPluginAdminActionDiagnostics,
   getRegisteredPluginActions,
@@ -184,7 +185,6 @@ export {
   setPluginConfig,
   pluginConfigCacheTag,
   applyPluginConfigMigration,
-  isVersionedPluginConfig,
 } from "./config.js";
 
 export type { NpPluginConfigResult, NpVersionedPluginConfig } from "./config.js";

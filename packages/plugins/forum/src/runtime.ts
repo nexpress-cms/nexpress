@@ -1,4 +1,9 @@
-import { findDocuments, getDocumentById, getMemberProfiles } from "@nexpress/core";
+import {
+  findDocuments,
+  getDocumentById,
+  getMemberProfiles,
+  type NpCollectionDocumentReader,
+} from "@nexpress/core";
 import { npCanReadCommunityDocument, npListContentEngagement } from "@nexpress/core/community";
 import { npRequireCommunityDocumentAudience } from "@nexpress/core/community-contract";
 import { getCurrentLocale, t } from "@nexpress/core/i18n";
@@ -325,8 +330,12 @@ export async function findForumBoardById(
   runtime: NpForumRuntime,
   id: string,
   memberId: string | null = null,
+  readDocument?: NpCollectionDocumentReader,
 ): Promise<NpForumBoard | null> {
-  const board = await getDocumentById<ForumBoardDocument>(runtime.collections.boards, id);
+  const board = await (readDocument ?? getDocumentById)<ForumBoardDocument>(
+    runtime.collections.boards,
+    id,
+  );
   return board && (await canReadForumBoard(runtime, board, memberId))
     ? normalizeForumBoard(board)
     : null;
@@ -336,8 +345,12 @@ export async function findForumBoardById(
 export async function getForumBoardById(
   runtime: NpForumRuntime,
   id: string,
+  readDocument?: NpCollectionDocumentReader,
 ): Promise<NpForumBoard | null> {
-  const board = await getDocumentById<ForumBoardDocument>(runtime.collections.boards, id);
+  const board = await (readDocument ?? getDocumentById)<ForumBoardDocument>(
+    runtime.collections.boards,
+    id,
+  );
   return board ? normalizeForumBoard(board) : null;
 }
 

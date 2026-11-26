@@ -3,6 +3,7 @@ import { npBuildAgentRuntimeDefinitionInputV1 } from "../../../packages/core/src
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from "vitest";
+import { createSite, grantSiteMembership } from "@nexpress/core";
 import {
   ensureMigrated,
   registerTestCollections,
@@ -18,6 +19,7 @@ import {
   siteId,
 } from "./agent-runtime-service-fixture.js";
 import { createAgentRuntimeEventServiceV1 } from "../../../packages/core/src/agent/runtime-event-service.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import {
   npAgentRuns,
   npAgentEvents,
@@ -119,6 +121,44 @@ describe.skipIf(skipIfNoTestDb())("Runtime durable event dispatch", () => {
       .where(eq(npAgentRuns.id, result.runIds[0]!));
     expect(run?.triggerId).toBe(f.trigger.id);
     expect(run?.eventRef?.eventId).toBe(first.eventId);
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(63),
+      now: f.options.now,
+    });
+    const detail = await activity.getRun({ siteId, actor: f.actor.actor, id: result.runIds[0]! });
+    expect(detail).toMatchObject({
+      runtimeDiagnostics: {
+        trigger: {
+          id: f.trigger.id,
+          kind: "event",
+          eventKind: f.trigger.eventKind,
+          scheduledFor: null,
+        },
+        retryAt: null,
+        providerCalls: [],
+        moreProviderCalls: false,
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain(first.eventId);
+    const query = { agentId: f.runInput.agentId, triggerKind: "event", limit: 1 };
+    const staff = { siteId, actor: f.actor.actor };
+    const page = await activity.listRuns({ ...staff, query });
+    expect(page.items.map(({ run }) => run.id)).toEqual(result.runIds);
+    expect(page.nextCursor).toBeTruthy();
+    expect(
+      await activity.listRuns({ ...staff, query: { ...query, cursor: page.nextCursor } }),
+    ).toMatchObject({ items: [], nextCursor: null });
+    for (const filters of [{ triggerKind: "manual" }, { agentId: randomUUID() }]) {
+      const changed = { ...query, ...filters };
+      expect((await activity.listRuns({ ...staff, query: changed })).items).toEqual([]);
+      await expect(
+        activity.listRuns({ ...staff, query: { ...changed, cursor: page.nextCursor } }),
+      ).rejects.toMatchObject({ code: "ACTIVITY_CURSOR_INVALID" });
+    }
+    const otherSite = "activity-event-other";
+    await createSite({ id: otherSite, name: "Other Activity site" });
+    await grantSiteMembership(otherSite, staff.actor.user.id, "admin");
+    expect((await activity.listRuns({ ...staff, siteId: otherSite, query })).items).toEqual([]);
     expect((await f.events.dispatch({ siteId, eventId: first.eventId })).replayed).toBe(true);
   });
   it("leaves dispatch pending when live admission pauses", async () => {
@@ -179,6 +219,13 @@ describe.skipIf(skipIfNoTestDb())("Runtime durable event dispatch", () => {
       .from(npAgentRuns)
       .where(eq(npAgentRuns.id, result.runIds[0]!));
     expect(run?.eventRef?.scheduledFor).toBeTypeOf("string");
+    const activity = createAgentActivityServiceV1({ cursorHmacKey: new Uint8Array(32).fill(63) });
+    const page = await activity.listRuns({
+      siteId,
+      actor: f.actor.actor,
+      query: { triggerKind: "schedule" },
+    });
+    expect(page.items.map((item) => item.run.id)).toEqual(result.runIds);
   });
   it("serializes concurrent records and dispatches into one durable Run", async () => {
     const f = await setup();

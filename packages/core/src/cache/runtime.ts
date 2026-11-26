@@ -57,7 +57,13 @@ export async function npRunCacheInvalidation(
   request: NpCacheInvalidationRequest,
 ): Promise<NpCacheInvalidationResult> {
   npAssertAgentPreviewEffectsAllowed();
-  const normalized = npNormalizeCacheInvalidationRequest(request);
+  return runNormalizedInvalidation(candidate, npNormalizeCacheInvalidationRequest(request));
+}
+
+async function runNormalizedInvalidation(
+  candidate: NpCacheInvalidationAdapter,
+  normalized: NpNormalizedCacheInvalidationRequest,
+): Promise<NpCacheInvalidationResult> {
   const current = npRequireCacheInvalidationAdapter(candidate);
   let rawResult: unknown;
   try {
@@ -97,7 +103,7 @@ export async function npInvalidateCache(
     npRecordCacheInvalidationResult(result);
     return result;
   }
-  return npRunCacheInvalidation(current, normalized);
+  return runNormalizedInvalidation(current, normalized);
 }
 
 export async function npShutdownCacheInvalidationAdapter(): Promise<void> {

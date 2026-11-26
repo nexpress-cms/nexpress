@@ -78,6 +78,7 @@ export function LanguagePicker({
           <Link
             key={locale}
             href={href}
+            prefetch={false}
             className="np-language-picker-link"
             hrefLang={locale}
             aria-current={isActive ? "true" : undefined}

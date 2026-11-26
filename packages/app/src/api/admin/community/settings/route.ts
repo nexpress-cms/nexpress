@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import { getCommunitySettings, updateCommunitySettings } from "@nexpress/core/community";
 import {
@@ -18,7 +19,7 @@ import { npRequireCommunityRequest } from "../../../../lib/community-contract";
  * the active policy ("registration is closed; manual provisioning
  * required"); only admins can write.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -49,3 +50,6 @@ export async function PUT(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("admin", npGuardianPUT);

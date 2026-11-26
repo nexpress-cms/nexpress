@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -17,13 +18,11 @@ import {
   npRequireCancelJobWire,
   npRequireEnqueueJobWire,
   npRequireJobListWire,
-  npRequireJobLogsWire,
   npRequireJobsHealthWire,
   npRequireRetryAllJobsWire,
   npRequireRetryJobWire,
   npRequireScheduleListWire,
-  type NpJobLogWireEntry,
-  type NpJobState,
+  type NpEnqueueJobWire,
   type NpJobSummary,
   type NpJobsHealthWire,
   type NpRecentJobFailure,
@@ -35,6 +34,15 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { PageHeader } from "../layout/page-header.js";
+import { JobLogsSection } from "./job-logs-section.js";
+import {
+  JOB_STATE_BUCKETS,
+  jobListUrls,
+  jobsLocationUrl,
+  parseJobsLocation,
+  type JobsLocation,
+  type JobsStateTab,
+} from "./jobs-query.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -45,13 +53,10 @@ import { PageHeader } from "../layout/page-header.js";
  * 24 h") on the state tabs so operators can spot recent
  * incidents without paging through history.
  *
- * The endpoint reports a `supported: false` flag when the
- * site runs without pg-boss (NP_ENABLE_JOBS=0); the UI shows
- * an empty-state in that case rather than 500ing on every
- * tab fetch.
+ * Optional listing support is reported by the active adapter;
+ * unsupported observations do not establish whether jobs are enabled.
  */
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 type WindowMode = "all" | "24h";
 
 type ScheduleSummary = NpScheduleSummary;
@@ -59,22 +64,8 @@ type JobSummary = NpJobSummary;
 type StuckJobsBlock = NonNullable<NpJobsHealthWire["stuck"]>;
 type WorkerHealthResponse = NpJobsHealthWire;
 type RecentJobFailure = NpRecentJobFailure;
-type JobLogEntry = NpJobLogWireEntry;
-
-type StateTab = "pending" | "active" | "completed" | "failed" | "archive";
+type StateTab = JobsStateTab;
 type Tab = StateTab | "scheduled";
-
-const STATE_BUCKETS: Record<StateTab, NpJobState[]> = {
-  pending: ["created", "retry"],
-  active: ["active"],
-  completed: ["completed"],
-  failed: ["failed", "cancelled", "expired"],
-  // Phase 20.4 — Archive: rolled-out rows in pgboss.archive. The
-  // bucket spans every state because pg-boss archives completed
-  // jobs alongside failed ones; the `source=archive` query
-  // narrows to the `pgboss.archive` table.
-  archive: ["completed", "failed", "cancelled", "expired"],
-};
 
 const STATE_TABS: StateTab[] = ["pending", "active", "completed", "failed", "archive"];
 
@@ -83,153 +74,264 @@ function isStateTab(tab: Tab): tab is StateTab {
 }
 
 export interface JobsViewProps {
+  queueName?: string;
   searchCollections?: readonly { slug: string; label: string }[];
 }
 
-export function JobsView({ searchCollections = [] }: JobsViewProps) {
-  const [tab, setTab] = useState<Tab>("pending");
+export function JobsView(props: JobsViewProps) {
+  const searchParams = useSearchParams();
+  let location: JobsLocation;
+  try {
+    location = parseJobsLocation(new URLSearchParams(searchParams.toString()));
+    // Hosts may supply a queue directly; browser navigation always serializes it.
+    location.queueName ??= props.queueName;
+  } catch {
+    return (
+      <section className="space-y-4">
+        <PageHeader title="Jobs" />
+        <p role="alert">The investigation link is invalid. No jobs were requested.</p>
+        <a className="text-sm underline" href="/admin/jobs">
+          Reset investigation
+        </a>
+      </section>
+    );
+  }
+  return <JobsViewContent key={location.queueName ?? ""} {...props} location={location} />;
+}
+
+function JobsViewContent({
+  searchCollections = [],
+  location,
+}: JobsViewProps & { location: JobsLocation }) {
+  const { tab, windowMode, queueName, offset, now, state: selectedState } = location;
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
+  const [reportedTotal, setReportedTotal] = useState(0);
   const [supported, setSupported] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [busyJobId, setBusyJobId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ context: string; message: string } | null>(null);
+  const [loadedContext, setLoadedContext] = useState<string | null>(null);
+  const mutationLock = useRef(false);
+  const [pendingMutation, setPendingMutation] = useState<{ label: string; jobId?: string } | null>(
+    null,
+  );
+  const mutationBusy = pendingMutation !== null;
+  const busyJobId = pendingMutation?.jobId ?? null;
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [windowMode, setWindowMode] = useState<WindowMode>("all");
   const [schedules, setSchedules] = useState<ScheduleSummary[] | null>(null);
   const [handlers, setHandlers] = useState<string[]>([]);
   const [schedulesSupported, setSchedulesSupported] = useState<boolean>(true);
 
-  useEffect(() => {
-    if (tab === "scheduled") {
-      void loadSchedules();
-    } else {
-      void load(tab, windowMode);
-    }
-  }, [tab, windowMode]);
-
-  async function load(activeTab: StateTab, mode: WindowMode) {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const states = STATE_BUCKETS[activeTab];
-      const sinceParam =
-        mode === "24h"
-          ? `&since=${encodeURIComponent(new Date(Date.now() - ONE_DAY_MS).toISOString())}`
-          : "";
-      // Phase 20.4 — Archive tab pins `source=archive`; other tabs
-      // pin `source=live` so finished rows that pg-boss has
-      // already rolled out of `pgboss.job` don't double up under
-      // both Failed (live) and Archive.
-      const sourceParam = activeTab === "archive" ? "&source=archive" : "&source=live";
-      // Fetch each state in this bucket and merge — pg-boss
-      // doesn't have a single "any-of-these-states" filter, so
-      // we round-trip per state. Buckets have 1-3 states max.
-      const results = await Promise.all(
-        states.map(async (state) => {
-          const res = await npFetch(
-            `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}${sourceParam}`,
-          );
-          const body = await readResponseJson(res);
-          if (!res.ok) throw new Error(readApiError(body, "Unable to load jobs."));
-          return npRequireJobListWire(body);
-        }),
-      );
-      const supportedFlags = results.map((result) => result.supported);
-      setSupported(supportedFlags.every(Boolean));
-      const merged = results.flatMap((result) => result.jobs);
-      // Sort newest first across the merged buckets.
-      merged.sort((a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime());
-      setJobs(merged);
-    } catch {
-      setError("Unable to load jobs.");
-    } finally {
-      setRefreshing(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const filterContext = JSON.stringify([tab, windowMode, queueName ?? null]);
+  const pageState = selectedState === "all" ? undefined : selectedState;
+  function navigate(next: JobsLocation, replace = false) {
+    const url = jobsLocationUrl(next);
+    // Next's native history integration updates search params without remounting
+    // the shared mutation lock or fetching a new server component tree.
+    if (replace) window.history.replaceState(null, "", url);
+    else window.history.pushState(null, "", url);
+  }
+  const refresh = () => {
+    navigate({ ...location, offset: 0, now: Date.now() }, true);
+    setRefreshKey((value) => value + 1);
+  };
+  const retryPage = () => setRefreshKey((value) => value + 1);
+  function changeWindow(mode: WindowMode) {
+    navigate({ ...location, windowMode: mode, offset: 0, now: Date.now() });
+  }
+  const context = JSON.stringify([filterContext, selectedState, offset, now, refreshKey]);
+  const visit = useRef(0);
+  const activeContext = useRef<string | null>(context);
+  useLayoutEffect(() => {
+    visit.current += 1;
+    activeContext.current = context;
+    return () => {
+      activeContext.current = null;
+    };
+  }, [context]);
+  const currentSnapshot = loadedContext === context;
+  const error = failure?.context === context ? failure.message : null;
+  function setError(message: string | null) {
+    if (activeContext.current === context) {
+      setFailure(message === null ? null : { context, message });
     }
   }
 
-  async function loadSchedules() {
-    setRefreshing(true);
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const frame = window.requestAnimationFrame(() => {
+      setRefreshing(true);
+      setFailure(null);
+      setJobs(null);
+      setSchedules(null);
+      setHandlers([]);
+      void (async () => {
+        try {
+          if (tab === "scheduled") {
+            const res = await npFetch("/api/admin/jobs/schedules", { signal });
+            const body = await readResponseJson(res);
+            if (!res.ok) throw new Error(readApiError(body, "Unable to load schedules."));
+            const result = npRequireScheduleListWire(body);
+            if (signal.aborted) return;
+            setSchedulesSupported(result.supported);
+            setSchedules(
+              result.schedules.filter((entry) => !queueName || entry.name === queueName),
+            );
+            setHandlers(result.handlers.filter((name) => !queueName || name === queueName));
+          } else {
+            const results = await Promise.all(
+              jobListUrls(
+                tab,
+                windowMode,
+                queueName,
+                now,
+                pageState ? { state: pageState, offset } : undefined,
+              ).map(async (url) => {
+                const res = await npFetch(url, { signal });
+                const body = await readResponseJson(res);
+                if (!res.ok) throw new Error(readApiError(body, "Unable to load jobs."));
+                const result = npRequireJobListWire(body);
+                const requestedState = new URL(url, "https://jobs.invalid").searchParams.get(
+                  "state",
+                );
+                if (
+                  result.jobs.length > 100 ||
+                  result.jobs.some(
+                    (job) => job.state !== requestedState || (queueName && job.name !== queueName),
+                  )
+                ) {
+                  throw new Error("Invalid job page");
+                }
+                return result;
+              }),
+            );
+            if (signal.aborted) return;
+            setSupported(results.every((result) => result.supported));
+            const merged = results.flatMap((result) => result.jobs);
+            merged.sort(
+              (a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime(),
+            );
+            setJobs(merged);
+            setReportedTotal(results.reduce((total, result) => total + result.total, 0));
+          }
+          setLoadedContext(context);
+        } catch {
+          if (!signal.aborted) {
+            setFailure({
+              context,
+              message: tab === "scheduled" ? "Unable to load schedules." : "Unable to load jobs.",
+            });
+          }
+        } finally {
+          if (!signal.aborted) setRefreshing(false);
+        }
+      })();
+    });
+    return () => {
+      controller.abort();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [tab, windowMode, queueName, refreshKey, context, now, pageState, offset]);
+
+  async function mutate<T>({
+    url,
+    body = {},
+    parse,
+    label,
+    fallback,
+    jobId,
+  }: {
+    url: string;
+    body?: unknown;
+    parse: (value: unknown) => T;
+    label: string;
+    fallback: string;
+    jobId?: string;
+  }): Promise<T | undefined> {
+    // The ref also blocks a second event before React commits the disabled controls.
+    if (mutationLock.current) return;
+    const startedVisit = visit.current;
+    const isCurrentVisit = () =>
+      visit.current === startedVisit && activeContext.current === context;
+    mutationLock.current = true;
+    setPendingMutation({ label, jobId });
     setError(null);
     try {
-      const res = await npFetch("/api/admin/jobs/schedules");
-      const body = await readResponseJson(res);
-      if (!res.ok) throw new Error(readApiError(body, "Unable to load schedules."));
-      const schedules = npRequireScheduleListWire(body);
-      setSchedulesSupported(schedules.supported);
-      setSchedules(schedules.schedules);
-      setHandlers(schedules.handlers);
+      const response = await npFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const responseBody = await readResponseJson(response);
+      if (!isCurrentVisit()) return;
+      if (!response.ok) {
+        setError(
+          response.status >= 500
+            ? "The request result could not be confirmed. Refresh and inspect jobs before submitting again."
+            : readApiError(responseBody, fallback),
+        );
+        return;
+      }
+      const result = parse(responseBody);
+      if (isCurrentVisit()) return result;
     } catch {
-      setError("Unable to load schedules.");
+      if (!isCurrentVisit()) return;
+      setError(
+        "The request result could not be confirmed. Refresh and inspect jobs before submitting again.",
+      );
     } finally {
-      setRefreshing(false);
+      mutationLock.current = false;
+      if (activeContext.current !== null) setPendingMutation(null);
     }
   }
 
   async function retry(id: string) {
-    setBusyJobId(id);
-    setError(null);
-    try {
-      const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(id)}/retry`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Unable to retry job."));
-        return;
-      }
-      npRequireRetryJobWire(body);
-      if (isStateTab(tab)) await load(tab, windowMode);
-    } catch {
-      setError("Unable to retry job.");
-    } finally {
-      setBusyJobId(null);
-    }
+    const result = await mutate({
+      url: `/api/admin/jobs/${encodeURIComponent(id)}/retry`,
+      parse: npRequireRetryJobWire,
+      label: `Retrying job ${id}…`,
+      fallback: "Unable to retry job.",
+      jobId: id,
+    });
+    if (result && activeContext.current === context) refresh();
   }
 
   async function cancel(id: string) {
-    setBusyJobId(id);
-    setError(null);
-    try {
-      const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(id)}/cancel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Unable to cancel job."));
-        return;
-      }
-      npRequireCancelJobWire(body);
-      if (isStateTab(tab)) await load(tab, windowMode);
-    } catch {
-      setError("Unable to cancel job.");
-    } finally {
-      setBusyJobId(null);
-    }
+    const result = await mutate({
+      url: `/api/admin/jobs/${encodeURIComponent(id)}/cancel`,
+      parse: npRequireCancelJobWire,
+      label: `Cancelling job ${id}…`,
+      fallback: "Unable to cancel job.",
+      jobId: id,
+    });
+    if (result && activeContext.current === context) refresh();
   }
 
   async function retryAllFailed() {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await npFetch("/api/admin/jobs/retry-all?state=failed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Bulk retry failed."));
-        return;
-      }
-      npRequireRetryAllJobsWire(body);
-      if (isStateTab(tab)) await load(tab, windowMode);
-    } catch {
-      setError("Bulk retry failed.");
-    } finally {
-      setRefreshing(false);
+    const result = await mutate({
+      url: "/api/admin/jobs/retry-all?state=failed",
+      parse: npRequireRetryAllJobsWire,
+      label: "Retrying all failed jobs…",
+      fallback: "Bulk retry failed.",
+    });
+    if (result && activeContext.current === context) refresh();
+  }
+
+  async function enqueue(type: string, data: unknown) {
+    const result = await mutate({
+      url: "/api/admin/jobs/enqueue",
+      body: { type, data },
+      parse: (value) => {
+        const result = npRequireEnqueueJobWire(value);
+        if (result.type !== type) throw new Error("Mismatched enqueue result");
+        return result;
+      },
+      label: `Enqueuing ${type}…`,
+      fallback: "Enqueue failed.",
+    });
+    if (result && activeContext.current === context) {
+      refresh();
+      return result;
     }
   }
 
@@ -248,7 +350,7 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
               <div className="col-span-2 inline-flex min-h-12 min-w-0 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1 sm:min-h-0 sm:h-8">
                 <button
                   type="button"
-                  onClick={() => setWindowMode("all")}
+                  onClick={() => changeWindow("all")}
                   aria-pressed={windowMode === "all"}
                   className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "all"
@@ -260,7 +362,7 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWindowMode("24h")}
+                  onClick={() => changeWindow("24h")}
                   aria-pressed={windowMode === "24h"}
                   className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "24h"
@@ -276,14 +378,8 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
               variant="outline"
               size="sm"
               className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-              onClick={() => {
-                if (tab === "scheduled") {
-                  void loadSchedules();
-                } else {
-                  void load(tab, windowMode);
-                }
-              }}
-              disabled={refreshing}
+              onClick={refresh}
+              disabled={refreshing || mutationBusy}
             >
               {refreshing ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -296,27 +392,71 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
         }
       />
 
-      {!supported ? (
+      {isStateTab(tab) && windowMode === "24h" ? (
+        <p className="min-w-0 break-words text-sm text-muted-foreground">
+          Created since{" "}
+          <time dateTime={new Date(now - 86_400_000).toISOString()}>
+            {new Date(now - 86_400_000).toISOString()}
+          </time>
+          . Refresh to update this cutoff.
+        </p>
+      ) : null}
+
+      {queueName ? (
+        <p className="min-w-0 break-words text-sm text-muted-foreground">
+          Queue: <code className="break-all">{queueName}</code>. Job lists and registered schedules
+          are filtered to this queue.{" "}
+          <a href="/admin/jobs" className="underline">
+            Show all queues
+          </a>
+        </p>
+      ) : null}
+
+      {isStateTab(tab) && currentSnapshot && !supported ? (
         <Card className="min-w-0 border-amber-500/30/60 bg-amber-500/10">
           <CardContent className="break-words text-[13px] text-amber-900 dark:text-amber-100">
-            <strong className="font-semibold">Background jobs disabled.</strong> This site is
-            running without pg-boss. Set <code>NP_ENABLE_JOBS=1</code> and restart the worker to
-            surface queued jobs here.
+            <strong className="font-semibold">Job listing unavailable.</strong> The active queue
+            adapter does not expose job listings.
           </CardContent>
         </Card>
       ) : null}
 
+      {pendingMutation ? (
+        <p role="status" className="break-words text-sm text-muted-foreground">
+          {pendingMutation.label}
+        </p>
+      ) : null}
       {error ? (
         <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
+          <p role="alert">{error}</p>
+          {!currentSnapshot && isStateTab(tab) ? (
+            <Button variant="outline" size="sm" className="mt-2 min-h-10" onClick={retryPage}>
+              Retry page
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
-      <WorkerHealthCard />
+      <div className="min-w-0 space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Worker health covers all queues on this host.
+        </p>
+        <WorkerHealthCard />
+      </div>
 
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as Tab)}
+        onValueChange={(value) => {
+          const nextTab = value as Tab;
+          const states = isStateTab(nextTab) ? JOB_STATE_BUCKETS[nextTab] : [];
+          navigate({
+            ...location,
+            tab: nextTab,
+            state: states.length === 1 ? states[0] : "all",
+            offset: 0,
+            now: Date.now(),
+          });
+        }}
         className="min-w-0 space-y-6"
       >
         <TabsList className="grid h-auto w-full grid-cols-3 items-stretch gap-2 md:h-9 md:w-auto md:grid-cols-6 md:items-center">
@@ -330,13 +470,91 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
 
         {STATE_TABS.map((key) => (
           <TabsContent key={key} value={key} className="min-w-0 space-y-3">
-            {key === "failed" && jobs && jobs.length > 0 ? (
-              <div className="flex min-w-0 justify-end">
+            {JOB_STATE_BUCKETS[key].length > 1 ? (
+              <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                Job state
+                <select
+                  className="min-h-10 max-w-full rounded-md border border-border bg-background px-3"
+                  value={selectedState}
+                  onChange={(event) => {
+                    const state = event.target.value;
+                    const selected =
+                      state === "all"
+                        ? "all"
+                        : JOB_STATE_BUCKETS[key].find((entry) => entry === state);
+                    if (selected) {
+                      navigate({
+                        ...location,
+                        state: selected,
+                        offset: 0,
+                        now: Date.now(),
+                      });
+                    }
+                  }}
+                >
+                  <option value="all">All states (latest)</option>
+                  {JOB_STATE_BUCKETS[key].map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {pageState ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="Job pages">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10"
+                  disabled={
+                    offset === 0 ||
+                    (!currentSnapshot && !error) ||
+                    mutationBusy ||
+                    busyJobId !== null
+                  }
+                  onClick={() => navigate({ ...location, offset: Math.max(0, offset - 100) })}
+                >
+                  Previous jobs
+                </Button>
+                <span className="text-sm" role="status">
+                  Page {offset / 100 + 1}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10"
+                  disabled={
+                    !currentSnapshot ||
+                    !supported ||
+                    jobs?.length !== 100 ||
+                    offset + 100 >= reportedTotal ||
+                    offset >= 100_000 ||
+                    mutationBusy ||
+                    busyJobId !== null
+                  }
+                  onClick={() => navigate({ ...location, offset: offset + 100 })}
+                >
+                  Next jobs
+                </Button>
+                {offset === 100_000 ? (
+                  <p className="w-full text-xs text-muted-foreground">
+                    The job navigation limit has been reached.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {key === "failed" && !queueName && currentSnapshot && jobs && jobs.length > 0 ? (
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Bulk retry covers all failed jobs across queues and time ranges, including jobs
+                  not shown here.
+                </p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                  disabled={refreshing}
+                  disabled={refreshing || mutationBusy}
                   onClick={() => void retryAllFailed()}
                 >
                   <Play className="size-3" />
@@ -346,30 +564,33 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
             ) : null}
             {key === "archive" ? (
               <p className="break-words text-xs text-muted-foreground">
-                Rows pg-boss has rolled out of <code>pgboss.job</code> after their{" "}
-                <code>keepUntil</code> window. Read-only — retrying an archived job re-enqueues a
-                fresh row in <code>pgboss.job</code>.
+                Retained completed, failed, cancelled, and expired jobs. This tab is read-only; use
+                Failed to retry eligible jobs.
               </p>
             ) : null}
-            <JobList
-              jobs={jobs}
-              tab={key}
-              busyJobId={busyJobId}
-              onRetry={(id) => void retry(id)}
-              onCancel={(id) => void cancel(id)}
-            />
+            {!error && (!currentSnapshot || supported) ? (
+              <JobList
+                jobs={currentSnapshot ? jobs : null}
+                reportedTotal={reportedTotal}
+                paged={pageState !== undefined}
+                tab={key}
+                busyJobId={busyJobId}
+                mutationBusy={mutationBusy}
+                onRetry={(id) => void retry(id)}
+                onCancel={(id) => void cancel(id)}
+              />
+            ) : null}
           </TabsContent>
         ))}
 
         <TabsContent value="scheduled" className="min-w-0 space-y-4">
           <SchedulesPanel
-            supported={schedulesSupported}
-            schedules={schedules}
-            handlers={handlers}
+            supported={!currentSnapshot || schedulesSupported}
+            schedules={currentSnapshot ? schedules : null}
+            handlers={currentSnapshot ? handlers : []}
             searchCollections={searchCollections}
-            onEnqueued={() => {
-              void loadSchedules();
-            }}
+            onEnqueue={enqueue}
+            mutationBusy={mutationBusy}
           />
         </TabsContent>
       </Tabs>
@@ -377,49 +598,105 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
   );
 }
 
-/**
- * Phase 20.4 — small worker liveness card surfaced above the
- * tabs. Polls `/api/admin/jobs/health` once on mount and on
- * Refresh; not a live socket because the heartbeat tick is
- * 30 s — refresh-on-demand is plenty.
- */
+/** Explicit read observations; retained values never imply a fresh heartbeat. */
 function WorkerHealthCard() {
-  const [data, setData] = useState<WorkerHealthResponse | null>(null);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [renderedAt, setRenderedAt] = useState<number>(() => Date.now());
+  const [request, setRequest] = useState(0);
+  const [result, setResult] = useState<
+    | { request: number; kind: "loaded"; data: WorkerHealthResponse; receivedAt: number }
+    | { request: number; kind: "error"; message: string }
+    | null
+  >(null);
+  const refreshing = result?.request !== request;
+  const observation = result?.kind === "loaded" ? result : null;
+  const error = !refreshing && result?.kind === "error" ? result.message : null;
 
-  async function load() {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await npFetch("/api/admin/jobs/health");
-      if (!res.ok) {
-        // editor-gated route; non-200 means no role or no queue.
-        setError("Worker health unavailable.");
-        setData(null);
-        return;
-      }
-      setData(npRequireJobsHealthWire(await readResponseJson(res)));
-      setRenderedAt(Date.now());
-    } catch {
-      setError("Worker health unavailable.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  // The lint rule wants external-system sync; this is a fetch-on-
-  // mount → setState pattern, which is the canonical client-
-  // component shape until we move to Suspense + a data layer.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, []);
+    const controller = new AbortController();
+    const { signal } = controller;
+    void (async () => {
+      try {
+        const response = await npFetch("/api/admin/jobs/health", { signal });
+        if (!response.ok) {
+          if (!signal.aborted)
+            setResult({
+              request,
+              kind: "error",
+              message:
+                response.status === 401 || response.status === 403
+                  ? "Access to worker health is unavailable."
+                  : "Worker health unavailable.",
+            });
+          return;
+        }
+        const data = npRequireJobsHealthWire(await readResponseJson(response));
+        if (!signal.aborted) setResult({ request, kind: "loaded", data, receivedAt: Date.now() });
+      } catch {
+        if (!signal.aborted)
+          setResult({ request, kind: "error", message: "Worker health unavailable." });
+      }
+    })();
+    return () => controller.abort();
+  }, [request]);
 
-  if (error || !data) {
-    return null;
-  }
+  return (
+    <section aria-label="Worker health" className="min-w-0">
+      <Card className="min-w-0">
+        <CardContent className="min-w-0 space-y-3 p-4 text-sm">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <h2 className="font-medium">Worker health</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-10"
+              disabled={refreshing}
+              onClick={() => setRequest((value) => value + 1)}
+            >
+              {refreshing ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3 w-3" aria-hidden />
+              )}
+              {error ? "Retry worker health" : "Refresh worker health"}
+            </Button>
+          </div>
+          {refreshing ? (
+            <p role="status" className="break-words text-xs text-muted-foreground">
+              {observation
+                ? "Previously received data — refresh in progress."
+                : "Loading worker health…"}
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="break-words text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {observation ? (
+            <>
+              <p className="break-words text-xs text-muted-foreground">
+                Received{" "}
+                <time dateTime={new Date(observation.receivedAt).toISOString()}>
+                  {new Date(observation.receivedAt).toISOString()}
+                </time>{" "}
+                (browser time). Heartbeat age is measured at receipt. These observations do not
+                establish current worker progress. Refresh to check again.
+              </p>
+              <WorkerHealthSnapshot data={observation.data} renderedAt={observation.receivedAt} />
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function WorkerHealthSnapshot({
+  data,
+  renderedAt,
+}: {
+  data: WorkerHealthResponse;
+  renderedAt: number;
+}) {
   const alive = data.aliveCount;
   const total = data.totalCount;
   const newest = data.newestHeartbeat ? new Date(data.newestHeartbeat) : null;
@@ -433,83 +710,67 @@ function WorkerHealthCard() {
   const recentFailures = data.recentFailures.slice(0, 3);
 
   return (
-    <Card className="min-w-0">
-      <CardContent className="min-w-0 p-4 text-sm">
-        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <span
-              className={`inline-flex h-2.5 w-2.5 rounded-full ${
-                alive > 0 ? "bg-emerald-500" : "bg-rose-500"
-              }`}
-              aria-hidden
-            />
-            <div className="min-w-0">
-              <p className="break-words font-medium text-foreground">
-                Workers: {alive} alive / {total} total
-              </p>
-              <p className="break-words text-xs text-muted-foreground">
-                {newest
-                  ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
-                  : "No heartbeats recorded yet."}
-              </p>
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
-            {paused ? (
-              <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
-                Queue paused
-              </span>
-            ) : null}
-            {showStuckWarning && stuck ? (
-              <span
-                className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
-                title={stuckTooltip(stuck)}
-              >
-                <AlertTriangle className="h-3 w-3" aria-hidden />
-                <span className="min-w-0 break-words">
-                  {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
-                </span>
-              </span>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Refresh worker health"
-              className="min-h-10 min-w-10 sm:min-h-0 sm:min-w-0"
-              onClick={() => void load()}
-              disabled={refreshing}
-            >
-              {refreshing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3" />
-              )}
-            </Button>
+    <div className="min-w-0">
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={`inline-flex h-2.5 w-2.5 rounded-full ${
+              alive > 0 ? "bg-emerald-500" : "bg-rose-500"
+            }`}
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <p className="break-words font-medium text-foreground">
+              Workers: {alive} alive / {total} total
+            </p>
+            <p className="break-words text-xs text-muted-foreground">
+              {newest
+                ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
+                : "No heartbeats recorded yet."}
+            </p>
           </div>
         </div>
-        {recentFailures.length > 0 ? (
-          <div className="mt-3 min-w-0 border-t border-border/60 pt-3">
-            <p className="break-words text-xs font-medium text-muted-foreground">Recent failures</p>
-            <ul className="mt-2 min-w-0 space-y-2">
-              {recentFailures.map((failure) => (
-                <li key={failure.id} className="min-w-0 space-y-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <StateBadge state={failure.state} />
-                    <code className="min-w-0 break-all font-mono text-xs">{failure.name}</code>
-                    <span className="break-words text-[11px] text-muted-foreground">
-                      {failure.logCount.toString()} log{failure.logCount === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <p className="min-w-0 break-words text-xs text-muted-foreground">
-                    {recentFailureSummary(failure)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+          {paused ? (
+            <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
+              Queue paused
+            </span>
+          ) : null}
+          {showStuckWarning && stuck ? (
+            <span
+              className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
+              title={stuckTooltip(stuck)}
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+              <span className="min-w-0 break-words">
+                {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
+              </span>
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {recentFailures.length > 0 ? (
+        <div className="mt-3 min-w-0 border-t border-border/60 pt-3">
+          <p className="break-words text-xs font-medium text-muted-foreground">Recent failures</p>
+          <ul className="mt-2 min-w-0 space-y-2">
+            {recentFailures.map((failure) => (
+              <li key={failure.id} className="min-w-0 space-y-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <StateBadge state={failure.state} />
+                  <code className="min-w-0 break-all font-mono text-xs">{failure.name}</code>
+                  <span className="break-words text-[11px] text-muted-foreground">
+                    {failure.logCount.toString()} log{failure.logCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <p className="min-w-0 break-words text-xs text-muted-foreground">
+                  {recentFailureSummary(failure)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -550,13 +811,15 @@ function SchedulesPanel({
   supported,
   schedules,
   handlers,
-  onEnqueued,
+  onEnqueue,
+  mutationBusy,
   searchCollections,
 }: {
   supported: boolean;
   schedules: ScheduleSummary[] | null;
   handlers: string[];
-  onEnqueued: () => void;
+  onEnqueue: (type: string, data: unknown) => Promise<NpEnqueueJobWire | undefined>;
+  mutationBusy: boolean;
   searchCollections: readonly { slug: string; label: string }[];
 }) {
   return (
@@ -664,7 +927,8 @@ function SchedulesPanel({
 
       <EnqueuePanel
         handlers={handlers}
-        onEnqueued={onEnqueued}
+        onEnqueue={onEnqueue}
+        mutationBusy={mutationBusy}
         searchCollections={searchCollections}
       />
     </div>
@@ -701,23 +965,32 @@ function scheduleKind(schedule: ScheduleSummary): {
 
 function EnqueuePanel({
   handlers,
-  onEnqueued,
+  onEnqueue,
+  mutationBusy,
   searchCollections,
 }: {
   handlers: string[];
-  onEnqueued: () => void;
+  onEnqueue: (type: string, data: unknown) => Promise<NpEnqueueJobWire | undefined>;
+  mutationBusy: boolean;
   searchCollections: readonly { slug: string; label: string }[];
 }) {
   const [type, setType] = useState<string>("");
   const [dataText, setDataText] = useState<string>("{}");
   const [searchCollection, setSearchCollection] = useState<string>("");
-  const [busy, setBusy] = useState<boolean>(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isSearchReindex = type === "search:reindex";
 
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   async function submit() {
-    setBusy(true);
+    if (mutationBusy || !handlers.includes(type)) return;
     setMessage(null);
     setError(null);
     let data: unknown = isSearchReindex ? { collection: searchCollection } : {};
@@ -726,29 +999,11 @@ function EnqueuePanel({
         data = JSON.parse(dataText);
       } catch {
         setError("Payload is not valid JSON.");
-        setBusy(false);
         return;
       }
     }
-    try {
-      const res = await npFetch("/api/admin/jobs/enqueue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, data }),
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Enqueue failed."));
-        return;
-      }
-      const result = npRequireEnqueueJobWire(body);
-      setMessage(`Enqueued (job id ${result.id}).`);
-      onEnqueued();
-    } catch {
-      setError("Enqueue failed.");
-    } finally {
-      setBusy(false);
-    }
+    const result = await onEnqueue(type, data);
+    if (mounted.current && result) setMessage(`Enqueued ${type} (job id ${result.id}).`);
   }
 
   return (
@@ -773,6 +1028,7 @@ function EnqueuePanel({
               Handler
             </label>
             <select
+              disabled={mutationBusy}
               id="np-job-enqueue-type"
               value={type}
               onChange={(event) => {
@@ -807,9 +1063,14 @@ function EnqueuePanel({
                 Searchable collection
               </label>
               <select
+                disabled={mutationBusy}
                 id="np-job-reindex-collection"
                 value={searchCollection}
-                onChange={(event) => setSearchCollection(event.target.value)}
+                onChange={(event) => {
+                  setSearchCollection(event.target.value);
+                  setMessage(null);
+                  setError(null);
+                }}
                 className="flex h-10 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:h-8 sm:px-2.5"
               >
                 <option value="">
@@ -836,9 +1097,14 @@ function EnqueuePanel({
                 Payload (JSON)
               </label>
               <textarea
+                disabled={mutationBusy}
                 id="np-job-enqueue-data"
                 value={dataText}
-                onChange={(event) => setDataText(event.target.value)}
+                onChange={(event) => {
+                  setDataText(event.target.value);
+                  setMessage(null);
+                  setError(null);
+                }}
                 rows={3}
                 spellCheck={false}
                 className="min-h-28 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 py-2.5 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:min-h-0 sm:px-2.5 sm:py-2"
@@ -847,18 +1113,26 @@ function EnqueuePanel({
             </div>
           )}
         </div>
-        {error ? <p className="break-words text-xs text-destructive">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="break-words text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
         {message ? (
-          <p className="break-words text-xs text-emerald-700 dark:text-emerald-400">{message}</p>
+          <p role="status" className="break-words text-xs text-emerald-700 dark:text-emerald-400">
+            {message}
+          </p>
         ) : null}
         <div className="flex min-w-0 justify-end">
           <Button
             size="sm"
             className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-            disabled={busy || !type || (isSearchReindex && !searchCollection)}
+            disabled={
+              mutationBusy || !handlers.includes(type) || (isSearchReindex && !searchCollection)
+            }
             onClick={() => void submit()}
           >
-            {busy ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+            <Play className="size-3" />
             Enqueue
           </Button>
         </div>
@@ -869,14 +1143,20 @@ function EnqueuePanel({
 
 function JobList({
   jobs,
+  reportedTotal,
+  paged,
   tab,
   busyJobId,
+  mutationBusy,
   onRetry,
   onCancel,
 }: {
   jobs: JobSummary[] | null;
-  tab: keyof typeof STATE_BUCKETS;
+  reportedTotal: number;
+  paged: boolean;
+  tab: StateTab;
   busyJobId: string | null;
+  mutationBusy: boolean;
   onRetry: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
@@ -890,23 +1170,26 @@ function JobList({
       </Card>
     );
   }
-  if (jobs.length === 0) {
-    return (
-      <Card className="min-w-0 border-dashed border-border/60 bg-muted/20">
-        <CardContent className="break-words text-center text-[13px] text-muted-foreground">
-          No jobs in this bucket.
-        </CardContent>
-      </Card>
-    );
-  }
   return (
     <Card className="min-w-0">
       <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">
-          {jobs.length} job{jobs.length === 1 ? "" : "s"}
+          Showing {jobs.length} of {reportedTotal} reported matches
         </CardTitle>
+        <p className="break-words text-xs text-muted-foreground">
+          {paged
+            ? "Up to 100 jobs per page, newest first, for the selected state, queue and creation-time window."
+            : "Up to 100 newest jobs per state for the selected queue and creation-time window. Select a job state to browse older jobs."}{" "}
+          Counts and rows are sampled separately. New jobs, state changes and retention can shift
+          pages. Refresh returns to the first page and renews the time window.
+        </p>
       </CardHeader>
       <CardContent className="min-w-0 divide-y divide-border/60 p-0">
+        {jobs.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            {reportedTotal === 0 ? "No jobs in this bucket." : "No rows returned in this response."}
+          </p>
+        ) : null}
         {jobs.map((job) => (
           <div key={job.id} className="min-w-0 space-y-2 px-5 py-4">
             <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
@@ -923,9 +1206,21 @@ function JobList({
                 <p className="break-all font-mono text-[11px] text-muted-foreground">{job.id}</p>
                 <p className="break-words text-[11px] text-muted-foreground">
                   Created {new Date(job.createdOn).toLocaleString()}
-                  {job.completedOn
-                    ? ` · Finished ${new Date(job.completedOn).toLocaleString()}`
-                    : null}
+                  {job.state === "created" || job.state === "retry" ? (
+                    <span className="block">
+                      {job.state === "retry" ? "Retry not before" : "Scheduled not before"}{" "}
+                      {job.startAfter ? new Date(job.startAfter).toLocaleString() : "Unknown"}
+                    </span>
+                  ) : null}
+                  <span className="block">
+                    Last started{" "}
+                    {job.startedOn ? new Date(job.startedOn).toLocaleString() : "Not recorded"}
+                  </span>
+                  {job.completedOn ? (
+                    <span className="block">
+                      Finished {new Date(job.completedOn).toLocaleString()}
+                    </span>
+                  ) : null}
                 </p>
               </div>
               <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
@@ -934,7 +1229,7 @@ function JobList({
                     size="sm"
                     variant="outline"
                     className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                    disabled={busyJobId === job.id}
+                    disabled={mutationBusy}
                     onClick={() => onRetry(job.id)}
                   >
                     {busyJobId === job.id ? (
@@ -950,7 +1245,7 @@ function JobList({
                     size="sm"
                     variant="outline"
                     className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                    disabled={busyJobId === job.id}
+                    disabled={mutationBusy}
                     onClick={() => onCancel(job.id)}
                   >
                     {busyJobId === job.id ? (
@@ -976,128 +1271,11 @@ function JobList({
                 {JSON.stringify(job.data, null, 2)}
               </pre>
             </details>
-            <JobLogsSection jobId={job.id} />
+            <JobLogsSection key={job.id} jobId={job.id} />
           </div>
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-/**
- * Phase 20.3b — collapsible logs panel per job. Lazy-fetches
- * `/api/admin/jobs/{id}/logs` only when the operator expands the
- * row, so the jobs list itself stays cheap. Reuses the pattern of
- * the existing "Payload" details element above so the row's
- * visual weight stays consistent.
- *
- * Each entry renders as `[HH:mm:ss.SSS] [level] message`. Context
- * payloads (when present) collapse into a nested `<details>`
- * summary so wide objects don't blow out the row's width.
- */
-function JobLogsSection({ jobId }: { jobId: string }) {
-  const [open, setOpen] = useState(false);
-  const [state, setState] = useState<
-    | { kind: "idle" }
-    | { kind: "loading" }
-    | { kind: "loaded"; total: number; entries: JobLogEntry[] }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
-
-  useEffect(() => {
-    if (!open || state.kind !== "idle") return;
-    let cancelled = false;
-    const frame = window.requestAnimationFrame(() => {
-      setState({ kind: "loading" });
-      void (async () => {
-        try {
-          const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-          }
-          const data = npRequireJobLogsWire(await readResponseJson(res));
-          if (!cancelled) {
-            setState({ kind: "loaded", total: data.total, entries: data.entries });
-          }
-        } catch (err) {
-          if (!cancelled) {
-            setState({
-              kind: "error",
-              message: err instanceof Error ? err.message : "Failed to load logs",
-            });
-          }
-        }
-      })();
-    });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-    };
-  }, [open, jobId, state.kind]);
-
-  return (
-    <details
-      className="min-w-0 text-[11px]"
-      open={open}
-      onToggle={(event) => {
-        const nowOpen = event.currentTarget.open;
-        setOpen(nowOpen);
-        // Self-review fix — reset to idle on collapse so the next
-        // expand re-fetches. Without this, a still-running job's
-        // log stream stays frozen at the first-expand snapshot.
-        if (!nowOpen && state.kind !== "idle") {
-          setState({ kind: "idle" });
-        }
-      }}
-    >
-      <summary className="inline-flex min-h-10 cursor-pointer items-center break-words text-muted-foreground hover:text-foreground sm:min-h-0">
-        Logs
-        {state.kind === "loaded" ? (
-          <span className="ml-2 text-[10px] opacity-70">
-            ({state.total}
-            {state.entries.length < state.total ? ` · showing ${state.entries.length}` : ""})
-          </span>
-        ) : null}
-      </summary>
-      <div className="mt-1 min-w-0">
-        {state.kind === "loading" ? (
-          <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
-            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-            Loading logs…
-          </div>
-        ) : state.kind === "error" ? (
-          <div className="break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
-            {state.message}
-          </div>
-        ) : state.kind === "loaded" ? (
-          state.entries.length === 0 ? (
-            <div className="break-words rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
-              No log entries for this job.
-            </div>
-          ) : (
-            <ol className="max-h-64 min-w-0 space-y-1 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3 font-mono text-[11px]">
-              {state.entries.map((entry) => (
-                <li key={entry.id} className="flex min-w-0 flex-wrap items-baseline gap-2">
-                  <span className="shrink-0 opacity-60">{formatLogTime(entry.createdAt)}</span>
-                  <LogLevelBadge level={entry.level} />
-                  <span className="min-w-0 whitespace-pre-wrap break-words">{entry.message}</span>
-                  {entry.context && Object.keys(entry.context).length > 0 ? (
-                    <details className="ml-0 min-w-0 w-full sm:ml-6">
-                      <summary className="inline-flex min-h-10 cursor-pointer items-center opacity-70 hover:opacity-100 sm:min-h-0">
-                        context
-                      </summary>
-                      <pre className="mt-1 overflow-auto whitespace-pre-wrap break-words rounded border border-border/40 bg-background/40 p-2 text-[10px]">
-                        {JSON.stringify(entry.context, null, 2)}
-                      </pre>
-                    </details>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-          )
-        ) : null}
-      </div>
-    </details>
   );
 }
 
@@ -1114,36 +1292,6 @@ function readApiError(value: unknown, fallback: string): string {
   const error = value.error;
   if (typeof error !== "object" || error === null || !("message" in error)) return fallback;
   return typeof error.message === "string" && error.message.length > 0 ? error.message : fallback;
-}
-
-const LOG_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  fractionalSecondDigits: 3,
-  hour12: false,
-});
-
-function formatLogTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return LOG_TIME_FORMATTER.format(date);
-}
-
-function LogLevelBadge({ level }: { level: JobLogEntry["level"] }) {
-  const tone =
-    level === "error"
-      ? "bg-destructive/10 text-destructive"
-      : level === "warn"
-        ? "bg-amber-500/15 text-amber-900 dark:text-amber-100"
-        : level === "debug"
-          ? "bg-muted text-muted-foreground"
-          : "bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100";
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${tone}`}>
-      {level}
-    </span>
-  );
 }
 
 function StateBadge({ state }: { state: JobSummary["state"] }) {

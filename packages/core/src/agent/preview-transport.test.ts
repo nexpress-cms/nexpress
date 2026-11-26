@@ -160,7 +160,15 @@ describe("purpose-separated preview cryptography", () => {
     ])
       expect(verified(token)).toBeNull();
     const token = npSignAgentPreviewTokenV1(claims, keys);
-    expect(verified(`${token.slice(0, -3)}AAA`)).toBeNull();
+    const segments = token.split(".");
+    const signature = Buffer.from(segments[2], "base64url");
+    const tamperedSignature = Buffer.from(signature);
+    tamperedSignature[0] = tamperedSignature[0] ^ 1;
+    expect(tamperedSignature.equals(signature)).toBe(false);
+    const tampered = `${segments[0]}.${segments[1]}.${tamperedSignature.toString("base64url")}`;
+    expect(tampered).not.toBe(token);
+    expect(verified(token)).not.toBeNull();
+    expect(verified(tampered)).toBeNull();
     expect(() =>
       npSignAgentPreviewTokenV1(claims, {
         active: { id: "rsa", ...generateKeyPairSync("rsa", { modulusLength: 2048 }) },

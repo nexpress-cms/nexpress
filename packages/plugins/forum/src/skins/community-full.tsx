@@ -306,7 +306,7 @@ function Pagination(props: NpForumPostListSkinProps) {
 
 function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinProps) {
   return (
-    <main
+    <div
       className="np-forum np-forum-community"
       data-np-forum-skin="community-full"
       data-np-forum-surface="board-index"
@@ -350,7 +350,7 @@ function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinP
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }
 
@@ -360,7 +360,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
     props.query.search !== null || props.query.category !== null || props.query.showMine;
   const firstNumber = props.totalPosts - (props.query.page - 1) * board.pageSize;
   return (
-    <main
+    <div
       className="np-forum np-forum-community"
       data-np-forum-skin="community-full"
       data-np-forum-surface="post-list"
@@ -527,7 +527,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
       ) : null}
 
       <Pagination {...props} />
-    </main>
+    </div>
   );
 }
 
@@ -536,7 +536,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
   const category = categoryLabel(board, post.category);
   const updated = post.updatedAt.getTime() > post.createdAt.getTime();
   return (
-    <main
+    <div
       className="np-forum np-forum-community"
       data-np-forum-skin="community-full"
       data-np-forum-surface="post-detail"
@@ -608,7 +608,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
           <BoardPolicy board={board} messages={messages} compact />
         </footer>
       </article>
-    </main>
+    </div>
   );
 }
 
@@ -621,7 +621,7 @@ function formatFileSize(bytes: number, locale: string): string {
 
 function renderPostComposer(props: NpForumPostComposerSkinProps) {
   return (
-    <main
+    <div
       className="np-forum np-forum-community np-forum-community-composer"
       data-np-forum-skin="community-full"
       data-np-forum-surface="composer"
@@ -638,7 +638,7 @@ function renderPostComposer(props: NpForumPostComposerSkinProps) {
         <BoardPolicy board={props.board} messages={props.messages} />
       </header>
       <section className="np-forum-community-composer-panel">{props.content}</section>
-    </main>
+    </div>
   );
 }
 

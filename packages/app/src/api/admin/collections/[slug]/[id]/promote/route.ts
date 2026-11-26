@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, promoteMemberDocument, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -15,7 +16,7 @@ import { npSerializeCollectionDocumentForApi } from "../../../../../../lib/colle
  * moderator-gated — same surface that handles report resolution and
  * staff hide / restore on comments.
  */
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   context: { params: Promise<{ slug: string; id: string }> },
 ) {
@@ -33,3 +34,5 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

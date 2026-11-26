@@ -1,3 +1,5 @@
+import { npRequireAgentRuntimeRecipeEvidenceV1 } from "./runtime-recipe-evidence.js";
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
 import {
   npIsAgentRuntimeManualRecipeSupportedV1,
   npRequireAgentRuntimeManualInputV1,
@@ -10,7 +12,10 @@ import {
 import { npBuildAgentRuntimeDefinitionBytesV1 } from "../agent-contract/runtime-studio-contract.js";
 import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
 import type { NpAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
+import type { NpAgentGuardianSecurityObservationServiceV1 } from "./guardian-security-observation.js";
+import type { NpAgentSecurityPolicyStateV1 } from "../agent-contract/guardian-security-contract.js";
 import {
+  canonicalBodyEnum,
   canonicalBodyRecord,
   canonicalBodyUuid,
 } from "../agent-contract/canonical-body-validation.js";
@@ -35,6 +40,7 @@ import {
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import { npDeriveAgentRuntimeAdmissionSourceRefsV1 } from "./runtime-admission-sources.js";
 import { npMeasureAgentRuntimeBudgetV1 } from "./runtime-budget.js";
 import {
@@ -44,10 +50,7 @@ import {
   npRequireAgentRuntimeAdmissionSourcesV1,
   type NpAgentRuntimeAdmissionSourcesV1,
 } from "../agent-contract/runtime-contract.js";
-import {
-  npRequireAgentRecipeRegistryCanonical,
-  npDigestAgentRecipeRegistryCanonical,
-} from "../agent-contract/canonical-recipe-registry.js";
+import { npRequireAgentRecipeRegistryCanonical } from "../agent-contract/canonical-recipe-registry.js";
 import {
   npRequireAgentPolicyCanonical,
   npDigestAgentPolicyCanonical,
@@ -150,16 +153,17 @@ function definitionFromRow(agent: Agent, version: Version): NpAgentConfiguration
   });
 }
 
-async function configEvidence(
+function configEvidence(
   definition: NpAgentConfigurationDefinitionV1,
-  registry: NpAgentRecipeRegistryCanonicalV1,
+  recipes: ReturnType<typeof npRequireAgentRuntimeRecipeEvidenceV1>,
 ) {
   const selected = [];
   for (const branch of definition.settings) {
-    const recipe = registry.recipes.find(
-      (entry) => entry.id === branch.recipeId && entry.version === branch.recipeVersion,
+    const entry = recipes.definitions.find(
+      ({ recipe }) => recipe.id === branch.recipeId && recipe.version === branch.recipeVersion,
     );
-    if (!recipe || !recipe.allowedTemplates.includes(definition.template))
+    const recipe = entry?.recipe;
+    if (!entry || !recipe || !recipe.allowedTemplates.includes(definition.template))
       safeError("RUNTIME_RECIPE_UNAVAILABLE");
     npRequireAgentProviderSchemaValueV1(
       recipe.settingsSchema,
@@ -169,19 +173,13 @@ async function configEvidence(
     selected.push({
       id: recipe.id,
       version: recipe.version,
-      fingerprint: await npDigestAgentRecipeRegistryCanonical(
-        { ...registry, projection: "definition", recipes: [recipe] },
-        registry.recipes,
-      ),
+      fingerprint: entry.fingerprint,
     });
   }
   const { name: _label, ...versionFields } = definition;
   return {
     configHash: hash("np.agent-runtime-config.v1", { definition: versionFields, selected }),
-    recipeRegistryFingerprint: await npDigestAgentRecipeRegistryCanonical(
-      registry,
-      registry.recipes,
-    ),
+    recipeRegistryFingerprint: recipes.registryFingerprint,
   };
 }
 
@@ -225,9 +223,9 @@ export async function npRequireAgentRuntimeVersionV1(input: {
     .limit(1);
   if (!version) safeError("RUNTIME_RESOURCE_UNAVAILABLE", 404);
   const definition = definitionFromRow(agent, version);
-  const registry = npRequireAgentRecipeRegistryCanonical(version.recipeRegistryBody);
-  if (registry.projection !== "registry") safeError("RUNTIME_DEFINITION_INVALID");
-  const evidence = await configEvidence(definition, registry);
+  const recipes = npRequireAgentRuntimeRecipeEvidenceV1(version.recipeRegistryBody);
+  const registry = recipes.registry;
+  const evidence = configEvidence(definition, recipes);
   if (
     evidence.configHash !== version.configHash ||
     evidence.recipeRegistryFingerprint !== version.recipeRegistryFingerprint
@@ -471,6 +469,10 @@ export interface NpAgentRuntimeServiceOptionsV1 extends NpAgentAdminAdmissionOpt
   recipes: NpAgentRecipeRegistryCanonicalV1;
   admission?: NpAgentRuntimeAdmissionV1;
   events?: Pick<NpAgentRuntimeEventServiceV1, "registerTriggerInTransaction">;
+  securityObservations?: Pick<
+    NpAgentGuardianSecurityObservationServiceV1,
+    "preparePolicy" | "recordPolicy"
+  >;
   deploymentAuthority: { policyId: string; fingerprint: string; scopes: NpAgentScope[] };
   controls: NpAgentRuntimeControlsV1;
   deploymentBudget: NpAgentBudgetV1;
@@ -529,6 +531,7 @@ export function createAgentRuntimeServiceV1(
   if (!Number.isSafeInteger(frameworkPolicy.version) || frameworkPolicy.version < 1)
     safeError("RUNTIME_CONFIGURATION_INVALID");
   const executableOperations = new Set<string>(npAgentRuntimeAdminOperationIdsV1);
+  const securityObservations = options.securityObservations;
   const admit = createAgentAdminAdmissionV1(options);
   const nowFn = options.now ?? (() => new Date());
   async function validateActivation(
@@ -562,7 +565,7 @@ export function createAgentRuntimeServiceV1(
       npResolveAgentBudgetV1(deploymentBudget, [settings.budgetCeiling]),
       definition.budget,
     );
-    const calculated = await configEvidence(definition, registry);
+    const calculated = configEvidence(definition, npRequireAgentRuntimeRecipeEvidenceV1(registry));
     if (calculated.configHash !== version.configHash || !definition.scopes.includes("site:read"))
       safeError("RUNTIME_DEFINITION_STALE");
     const authorization = await npResolveAgentStaffSessionAuthorizationV1(
@@ -741,6 +744,15 @@ export function createAgentRuntimeServiceV1(
         input.siteId,
         async ({ db: tx, settings, revision }) => {
           const db = tx;
+          if (
+            securityObservations &&
+            [
+              "agents.policies.create",
+              "agents.policies.update",
+              "agents.policies.activate",
+            ].includes(input.operationId)
+          )
+            await securityObservations.preparePolicy({ db, siteId: input.siteId });
           return admit({
             ...input,
             db,
@@ -806,6 +818,34 @@ export function createAgentRuntimeServiceV1(
                 );
               }
               if (operation.startsWith("agents.policies.")) {
+                const recordTransition = async (previous: Policy | null, current: Policy) => {
+                  if (!securityObservations) return;
+                  const state = (policy: Policy): NpAgentSecurityPolicyStateV1 => ({
+                    version: policy.version,
+                    rowVersion: policy.rowVersion,
+                    contentHash: policy.contentHash,
+                    status: canonicalBodyEnum(
+                      policy.status,
+                      "agent.runtime.policy.status",
+                      new Set(["draft", "active", "retired"] as const),
+                    ),
+                  });
+                  await securityObservations.recordPolicy({
+                    db,
+                    siteId: input.siteId,
+                    actorUserId: input.actor.user.id,
+                    invocationId,
+                    transitionId: randomUUID(),
+                    occurredAt: now,
+                    transition: {
+                      kind: "agent-policy",
+                      policyId: current.id,
+                      agentId: current.agentId,
+                      previous: previous ? state(previous) : null,
+                      current: state(current),
+                    },
+                  });
+                };
                 const [row] = input.targetId
                   ? await db
                       .select()
@@ -867,12 +907,15 @@ export function createAgentRuntimeServiceV1(
                     contentHash,
                   };
                   let id = row?.id;
-                  if (row)
-                    await db
+                  if (row) {
+                    const [updated] = await db
                       .update(npAgentPolicies)
                       .set({ ...values, rowVersion: row.rowVersion + 1 })
-                      .where(eq(npAgentPolicies.id, row.id));
-                  else {
+                      .where(eq(npAgentPolicies.id, row.id))
+                      .returning();
+                    if (!updated) safeError("RUNTIME_VERSION_CONFLICT");
+                    await recordTransition(row, updated);
+                  } else {
                     const [latest] = await db
                       .select({ version: npAgentPolicies.version })
                       .from(npAgentPolicies)
@@ -887,16 +930,21 @@ export function createAgentRuntimeServiceV1(
                       .orderBy(desc(npAgentPolicies.version))
                       .limit(1);
                     id = randomUUID();
-                    await db.insert(npAgentPolicies).values({
-                      id,
-                      siteId: input.siteId,
-                      agentId: definition.agentId,
-                      version: (latest?.version ?? 0) + 1,
-                      status: "draft",
-                      createdBy: input.actor.user.id,
-                      createdAt: now,
-                      ...values,
-                    });
+                    const [created] = await db
+                      .insert(npAgentPolicies)
+                      .values({
+                        id,
+                        siteId: input.siteId,
+                        agentId: definition.agentId,
+                        version: (latest?.version ?? 0) + 1,
+                        status: "draft",
+                        createdBy: input.actor.user.id,
+                        createdAt: now,
+                        ...values,
+                      })
+                      .returning();
+                    if (!created) safeError("RUNTIME_VERSION_CONFLICT");
+                    await recordTransition(null, created);
                   }
                   return result(id, {
                     id: id,
@@ -949,22 +997,33 @@ export function createAgentRuntimeServiceV1(
                 if (operation !== "agents.policies.activate")
                   safeError("RUNTIME_OPERATION_UNAVAILABLE", 404);
                 if (row.status !== "draft") safeError("RUNTIME_VERSION_CONFLICT");
-                await db
+                const activeWhere = and(
+                  eq(npAgentPolicies.siteId, input.siteId),
+                  eq(npAgentPolicies.status, "active"),
+                  row.agentId === null
+                    ? isNull(npAgentPolicies.agentId)
+                    : eq(npAgentPolicies.agentId, row.agentId),
+                );
+                const previousActive = securityObservations
+                  ? await db.select().from(npAgentPolicies).where(activeWhere).for("update")
+                  : [];
+                const retired = await db
                   .update(npAgentPolicies)
                   .set({ status: "retired", rowVersion: sql`${npAgentPolicies.rowVersion} + 1` })
-                  .where(
-                    and(
-                      eq(npAgentPolicies.siteId, input.siteId),
-                      eq(npAgentPolicies.status, "active"),
-                      row.agentId === null
-                        ? isNull(npAgentPolicies.agentId)
-                        : eq(npAgentPolicies.agentId, row.agentId),
-                    ),
-                  );
-                await db
+                  .where(activeWhere)
+                  .returning();
+                for (const current of retired) {
+                  const previous = previousActive.find((policy) => policy.id === current.id);
+                  if (securityObservations && !previous) safeError("RUNTIME_VERSION_CONFLICT");
+                  if (previous) await recordTransition(previous, current);
+                }
+                const [activated] = await db
                   .update(npAgentPolicies)
                   .set({ status: "active", activatedAt: now, rowVersion: row.rowVersion + 1 })
-                  .where(eq(npAgentPolicies.id, row.id));
+                  .where(eq(npAgentPolicies.id, row.id))
+                  .returning();
+                if (!activated) safeError("RUNTIME_VERSION_CONFLICT");
+                await recordTransition(row, activated);
                 return result(row.id, {
                   id: row.id,
                   rowVersion: row.rowVersion + 1,
@@ -982,7 +1041,10 @@ export function createAgentRuntimeServiceV1(
                   raw.definitionHash
                 )
                   safeError("RUNTIME_DEFINITION_INVALID");
-                const evidence = await configEvidence(definition, registry);
+                const evidence = configEvidence(
+                  definition,
+                  npRequireAgentRuntimeRecipeEvidenceV1(registry),
+                );
                 const id = randomUUID(),
                   versionId = randomUUID(),
                   principalId = randomUUID();
@@ -1137,7 +1199,9 @@ export function createAgentRuntimeServiceV1(
                 );
                 if (
                   !recipe ||
-                  recipe.task !== "interactive-capability" ||
+                  (recipe.task !== "interactive-capability" &&
+                    !npIsAgentModeratorAssessmentProfileV1(recipe) &&
+                    !npIsAgentGuardianAssessmentRecipeV1(recipe)) ||
                   !recipe.triggerKinds.includes("manual") ||
                   !npIsAgentRuntimeManualRecipeSupportedV1(recipe) ||
                   !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id)
@@ -1206,7 +1270,10 @@ export function createAgentRuntimeServiceV1(
                     raw.definitionHash
                 )
                   safeError("RUNTIME_DEFINITION_INVALID");
-                const evidence = await configEvidence(definition, registry);
+                const evidence = configEvidence(
+                  definition,
+                  npRequireAgentRuntimeRecipeEvidenceV1(registry),
+                );
                 let draftVersionId = agent.draftVersionId;
                 if (draftVersionId && version?.status === "draft")
                   await db

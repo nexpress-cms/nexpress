@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   can,
   NpForbiddenError,
@@ -43,7 +44,7 @@ import { npParseEmptyJobQuery, npRequireJobApiResponse } from "../../../../lib/j
 const DEFAULT_FAILED_THRESHOLD = 10;
 const DEFAULT_EXPIRED_THRESHOLD = 50;
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     // Health includes queue state counts and recent failures, so the same
     // producer adapter used by the jobs list must be initialized first.
@@ -102,3 +103,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

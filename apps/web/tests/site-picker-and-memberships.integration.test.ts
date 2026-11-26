@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   buildRequest,
@@ -52,23 +52,13 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
       tokenVersion: row.tokenVersion,
     };
   }
-  beforeEach(async () => {
-    await truncateAll();
-    const { listSites, deleteSite } = await import("@nexpress/core");
-    const sites = await listSites();
-    for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
-    }
-  });
-  afterEach(async () => {
-    const { listSites, deleteSite } = await import("@nexpress/core");
-    const sites = await listSites();
-    for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
-    }
-  });
+  beforeEach(truncateAll);
   afterAll(async () => {
-    await closeTestDb();
+    try {
+      await truncateAll();
+    } finally {
+      await closeTestDb();
+    }
   });
 
   // ============== /api/admin/sites/accessible ==============
@@ -209,58 +199,31 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
   // request scope — vitest's direct route-handler invocation
   // doesn't set that scope up, so we can't pin the full
   // resolver behavior end-to-end here. The actual decision
-  // function (`canActorUseSite`) lives behind a clean predicate
-  // contract; we unit-test it directly so the rule itself is
-  // pinned (super-admin / membership / default-site fallback /
-  // anonymous-rejection) without relying on the request scope.
-  it("Issue #221 — canActorUseSite: super-admin is allowed on any site", async () => {
-    const user = await seedUser({ role: "viewer" });
-    const { setSuperAdmin, createSite } = await import("@nexpress/core");
-    await setSuperAdmin(user.userId, true);
-    await createSite({ id: "alpha", name: "Alpha" });
-    const actor = await asActorForUser(user);
+  // function (`canActorUseSite`) is exercised here against persisted grants.
+  it("canActorUseSite requires an existing site and honors persisted grants and default fallback", async () => {
+    const { setSuperAdmin, createSite, grantSiteMembership } = await import("@nexpress/core");
     const { canActorUseSite } = await import("@nexpress/next");
-    expect(await canActorUseSite(actor, "alpha")).toBe(true);
-    expect(await canActorUseSite(actor, "default")).toBe(true);
-    expect(await canActorUseSite(actor, "non-existent-site")).toBe(false);
-  });
-
-  it("Issue #221 — canActorUseSite: explicit membership grants access to that site only", async () => {
-    const user = await seedUser({ role: "editor" });
-    const { createSite, grantSiteMembership } = await import("@nexpress/core");
     await createSite({ id: "alpha", name: "Alpha" });
     await createSite({ id: "beta", name: "Beta" });
-    await grantSiteMembership("alpha", user.userId, "admin");
-    const actor = await asActorForUser(user);
-    const { canActorUseSite } = await import("@nexpress/next");
-    expect(await canActorUseSite(actor, "alpha")).toBe(true);
-    expect(await canActorUseSite(actor, "beta")).toBe(false);
-  });
+    const superAdmin = await seedUser({ role: "viewer" });
+    await setSuperAdmin(superAdmin.userId, true);
+    const member = await seedUser({ role: "editor" });
+    await grantSiteMembership("alpha", member.userId, "admin");
+    const admin = await seedUser({ role: "admin" });
+    const viewer = await seedUser({ role: "viewer" });
 
-  it("Issue #221 — canActorUseSite: global admin keeps default-site fallback", async () => {
-    const user = await seedUser({ role: "admin" });
-    const actor = await asActorForUser(user);
-    const { canActorUseSite } = await import("@nexpress/next");
-    expect(await canActorUseSite(actor, "default")).toBe(true);
-  });
-
-  it("Issue #221 — canActorUseSite: plain admin without membership is rejected on a non-default site", async () => {
-    const user = await seedUser({ role: "admin" });
-    const { createSite } = await import("@nexpress/core");
-    await createSite({ id: "alpha", name: "Alpha" });
-    const actor = await asActorForUser(user);
-    const { canActorUseSite } = await import("@nexpress/next");
-    expect(await canActorUseSite(actor, "alpha")).toBe(false);
-  });
-
-  it("Issue #221 — canActorUseSite: viewer uses global fallback only on default", async () => {
-    const user = await seedUser({ role: "viewer" });
-    const { createSite } = await import("@nexpress/core");
-    await createSite({ id: "alpha", name: "Alpha" });
-    const actor = await asActorForUser(user);
-    const { canActorUseSite } = await import("@nexpress/next");
-    expect(await canActorUseSite(actor, "alpha")).toBe(false);
-    expect(await canActorUseSite(actor, "default")).toBe(true);
+    const probes = [
+      ["super-admin", superAdmin, { alpha: true, default: true, "non-existent-site": false }],
+      ["explicit member", member, { alpha: true, beta: false }],
+      ["global admin", admin, { default: true, alpha: false }],
+      ["viewer", viewer, { alpha: false, default: true }],
+    ] as const;
+    for (const [role, session, expectedBySite] of probes) {
+      const actor = await asActorForUser(session);
+      for (const [siteId, allowed] of Object.entries(expectedBySite)) {
+        expect.soft(await canActorUseSite(actor, siteId), `${role} on ${siteId}`).toBe(allowed);
+      }
+    }
   });
 
   // ============== /api/admin/sites/active ==============

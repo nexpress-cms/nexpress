@@ -1186,8 +1186,11 @@ trusted instructions, approval UI, capability metadata, or executor authority.
 - the same UUID under `staff`, `member`, and `agent-gateway` produces three
   distinct principal subject keys; `network-address` and `login-identifier`
   cannot collide or substitute;
-- actor-bucket golden vectors bind domain/u32 framing, site, purpose,
-  projection version/fingerprint, key id, and normalized bytes and require
+- actor-bucket golden vectors bind the exact registered encoding: the shipped
+  Guardian observation-v1 canonical-JSON named fields and domain are preserved;
+  any future u32-framed profile requires a distinct version/fingerprint and
+  its own vectors. Include Unicode/delimiter inputs, site, purpose, projection
+  version/fingerprint, key id and normalized bytes, and require
   exactly 43 unpadded base64url characters; wrong length, alphabet, padding,
   purpose, key, site, or projection fails;
 - proxy restart reconstructs the current plus every active historical
@@ -1315,7 +1318,108 @@ changed in prompts.
 
 ## 10. Provider evaluation runner
 
-An opt-in command emits this exact artifact:
+The [Operator evaluation implementation](r6-operator-evaluation-flow.md) currently
+ships a narrower `ops` / `en` / `ko` synthetic slice: at most 100 cases, empty
+`expectedSignals`, eight built-in cases and no automatic-action enablement.
+It adds `mode`, embedded `suite`, `budget` and `caseResults` to the artifact
+below for independent recomputation. Unknown usage and corresponding means
+are nullable. Provider categories beyond `ops`, `ops-plan`, `moderator-proposal` and the bounded `publisher` slice, production
+signal gates and model-usefulness acceptance described here remain planned.
+
+The [Publisher proposal evaluation and review implementation](r6-publisher-evaluation-flow.md)
+adds `publisher.v1`: twelve bilingual synthetic content cases, ChangeSet-shaped
+proposals and deterministic source/patch/evidence checks. Offline human
+accept/edit/reject labels bind the exact source, case and prediction hashes;
+unreviewed proposals stay separate. Review comparisons use the same matched
+reviewed case/prediction cohort and report unmatched coverage explicitly.
+Self-reported review labels grant no live approval and do not change the source
+artifact's `ok`. These extractive synthetic checks do not close AP-606 or the
+real-model usefulness gate.
+
+The [2026-10-15 user-delegated AI acceptance](r6-delegated-acceptance-review.md)
+adds actual provider responses, explicitly attributed AI review and the existing
+operating evidence for the implemented reference/scaffold recipe slice. The
+[original-goal audit](r6-goal-gap-audit.md) records additional implementation and
+evaluation gaps; this bounded review does not close the whole R6 goal. It does
+not infer production usefulness from synthetic checks, assert independent human
+labels or relax section 9.3's separate automatic-action enablement gates. The
+offline report still cannot establish those claims automatically.
+
+`publisher.v2` retains the twelve V1 cases and adds six completeness-priority
+controls. It uses an explicitly selected Publisher uncertainty instruction
+(template version two, recipe wire version one) and an ordered benchmark with
+unchanged decision/proposal rules. Dispatch and reconstruction share its pure
+profile resolver. V1 suite, instruction and policy hashes remain frozen; V2 has
+its own suite/policy hashes, the same gate hash and `SUITE_MISMATCH` cross-version
+comparison when provider/model identity matches. No failed model prediction is
+normalized into a passing result.
+
+The [Moderator offline evaluation flow](r6-moderator-evaluation-flow.md) adds
+`moderator.v1` as a separate deterministic detector artifact. It replays 22
+synthetic bilingual cases through the actual repeated-link detector, independently
+checks expected signals and reports fixture-authored classification outcomes.
+Exact-bound offline `confirmed-spam`/`false-positive` reviews preserve unreviewed
+coverage and compare only matched reviewed predictions. Neither authored labels
+nor self-reported feedback constitute production precision or authorization.
+The fixed installed-version verifier does not accept historical changed detector
+predictions; longitudinal model/detector comparison remains open.
+
+The [document/comment detector extension](r6-moderator-content-evaluation-flow.md)
+adds `moderator.v3`: 32 bilingual cases through the same actual v1 detector,
+including mixed thresholds, target-kind separation, duplicate filing/observation
+facts, author independence and newest edits/rejections. V1/V2 hashes remain
+unchanged. The fixed independent oracle, synthetic legitimate false positives
+and exact offline review/report bindings do not establish production quality.
+
+The [Moderator recipe response evaluation](r6-moderator-proposal-evaluation-flow.md)
+adds sixteen bilingual `moderator-proposal.v1` synthetic metadata cases through the
+actual recipe instruction/schema. Exact candidate selection and required abstention
+are scored separately from detector conformance; self-reported accept/edit/reject
+reviews include parsed abstentions. This does not establish production spam
+precision, arbitrary prose truth or automatic-action readiness.
+
+`moderator-proposal.v2` adds twenty-four bilingual synthetic report/mixed source
+cases while freezing the v1 suite hash. Exact unverified report target counts,
+current candidate grounding and handled/changed/missing/incomplete-source
+abstention use the existing owners. CLI child selection is bound to the requested
+version; cross-version baselines remain `SUITE_MISMATCH`. Offline review/report
+and Workbench exports retain their exact source/case/prediction bindings. These
+availability labels do not reproduce real report resolution or Runtime
+attestation and do not count as production spam quality or automatic-action gates.
+
+The [content proposal extension](r6-moderator-content-proposal-evaluation-flow.md)
+adds `moderator-proposal.v3` with a separate v2 facts envelope for exact document
+and comment targets. Both earlier suite hashes and strict V1 evidence helpers
+remain unchanged. The shared recipe response, offline review/report and Admin
+workspace preserve target kinds, current synthetic availability and exact source
+bindings without adding live approval or detector/model-quality evidence.
+
+The [Operator diagnosis and plan evaluation](r6-operator-plan-evaluation-flow.md)
+adds sixteen bilingual `operator-plan.v1` cases with bounded diagnosis statements,
+actual plan-input validation and exact-bound offline review. The
+[unified report and operating guide](r6-evaluation-report-flow.md) adds
+`--report <manifest.json>` to combine validated recipe artifacts and their review
+coverage without pooling their unlike rates. It preserves missing/failed
+evidence and comparison reasons, independently recomputes derived fields, and
+always leaves full R6 and model usefulness unestablished. Report command success
+means the report was generated, not that acceptance gates passed.
+
+The versioned `moderator-assessment.v1` dataset uses eight bilingual synthetic
+semantic cases with the read-only classification response. `publisher.v3` uses
+eleven bilingual bounded selection cases with the actual V3 structured response,
+current document bases and content/schema bindings. Both run through the same
+opt-in runner/CLI, offline review/report and Admin Workbench. Their new review
+artifact is `np.agent-profile-eval-review.v1`; edits contain the full structured
+prediction and grant no approval authority. Existing dataset hashes and earlier
+review formats remain unchanged. Explicit empty provider output is invalid;
+only an explicitly selected fake run synthesizes baseline answers. Fixture
+labels stay out of provider requests. These source-grounded synthetic checks do
+not establish arbitrary prose truth, multilingual model accuracy or editorial
+usefulness. Semantic binary precision/recall measure harmful-versus-benign
+classification, not spam-only precision, and cannot satisfy automatic quarantine
+enablement. See the [integrated corrections](r6-goal-gap-audit.md#authorized-integrated-path-corrections).
+
+The target opt-in command artifact has these shared fields:
 
 ```ts
 interface NpAgentEvaluationMetricsV1 {
@@ -1336,9 +1440,9 @@ interface NpAgentEvaluationMetricsV1 {
   policyBlocked: number;
   meanCallsMicros: number;
   p95Calls: number;
-  meanInputTokensMicros: number;
-  meanOutputTokensMicros: number;
-  meanCostMicros: number;
+  meanInputTokensMicros: number | null;
+  meanOutputTokensMicros: number | null;
+  meanCostMicros: number | null;
   p95LatencyMs: number;
 }
 
@@ -1374,9 +1478,9 @@ interface NpAgentEvaluationArtifactV1 {
   usage: {
     costCurrency: "USD";
     calls: number;
-    inputTokens: number;
-    outputTokens: number;
-    costMicros: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    costMicros: number | null;
   };
   ok: boolean;
 }
@@ -1428,10 +1532,12 @@ only this monorepo. Its suite must cover:
   cache receipt are hash-bound; an arbitrary image, cross-direction receipt,
   missing, expired, overwritten, symlinked, or byte/source mismatch
   invalidates selection. The unsigned receipt alone never establishes trust;
-- sealing independently rerenders every final montage in a fresh sandbox and
-  requires canonical byte equality plus recomputed source/receipt/file/set
-  digests. Missing second render, nondeterminism, or receipt-only/offline
-  success cannot produce a final DirectionSet;
+- accepting a sealed set for selection or generation independently rerenders
+  every final montage in a fresh sandbox and requires canonical byte equality
+  plus recomputed source/receipt/file/set digests. As specified in the direction
+  workflow, `direction render` seals the first observation; `direction validate`
+  and generation perform the fresh acceptance check. Missing second render,
+  nondeterminism, or receipt-only/offline success cannot pass that check;
 - collection/page/navigation/block/theme/plugin references reparsed against
   live discovery contracts before any file edit;
 - selected-direction id/hash/catalog fingerprint and independently recomputed
@@ -1447,8 +1553,12 @@ only this monorepo. Its suite must cover:
 - every blueprint write confined to the resolved project root, with absolute
   paths, `..`, symlink escapes, duplicate destinations, case-folding
   collisions, and reserved paths rejected;
-- create/update preconditions checked with absent/current source hashes and
-  failed atomically when the worktree changed after planning;
+- create/update preconditions checked with absent/current source hashes;
+  preflight rejection writes no original source. The same-principal FD/CAS
+  profile does not promise atomic protection from an uncooperative process or
+  a multi-file transaction: partial publication is reported without automatic
+  rollback. Reexecution reports exact planned-file precondition conflicts and
+  never turns matching final bytes into fresh verification authority;
 - the closed command-template registry rejects arbitrary argv, shell
   metacharacters, environment assignment, package-script substitution, and
   commands not fingerprinted by the blueprint;
@@ -1460,18 +1570,26 @@ only this monorepo. Its suite must cover:
   remains confined to the repository plan;
 - generated collection changes produce schema output and a reviewable
   migration plan, enumerate every command-owned generated path/final hash, and
-  never apply a database migration;
+  never apply a migration to the original or production database; reviewed
+  migrations may run against disposable synthetic preview PostgreSQL;
 - environment requirements remain owner/source placeholders and no provider,
   deployment, database, or runtime secret appears in files, logs, fixtures, or
   blueprint artifacts;
 - seed data has explicit demo provenance and no live PII; only digest/MIME/size
   verified staged media ids can populate media fields, while licensed
   references/placeholders remain non-materialized;
+- ordinary caller-transaction seeds can create a relationship target and its
+  dependent document, replay without extra revisions, and roll back documents,
+  theme, navigation and deferred effects after a later failure. Existing ACLs
+  still reject closed Forum boards. Callback-scoped by-id reads preserve the
+  actor, tenant boundary, read ACL and hooks, and cannot return a pending read
+  after that callback has ended;
 - command/check ids and references are closed, prerequisites are acyclic and
   canonically topologically sorted, review checks point to one observed
   verification-result manifest rather than predeclared output hashes,
-  verification artifact branches obey their discriminants, and any unplanned
-  tracked write fails with the source snapshot restored;
+  verification artifact branches obey their discriminants, and an unplanned
+  candidate source write fails and discards the owned private copy, preserving
+  the original project and any concurrent operator changes;
 - the preview command copies all route/page/locale/audience/fixture tuples,
   produces two screenshots per route plus one report inside a single bounded
   manifest, and remains valid for 200 pages without exceeding the 64-check
@@ -1486,16 +1604,41 @@ only this monorepo. Its suite must cover:
   blueprint, and render-environment fingerprint produce identical files,
   checks, manifest, and artifact hashes; changing browser/font/canonicalizer
   changes the fingerprint and invalidates comparison rather than silently
-  drifting;
-- generated source passes format, typecheck, lint, unit tests, build, Doctor,
-  `pnpm verify`, and the existing packed-scaffold acceptance workflow;
+  drifting. Actual start/finish timestamps, measured durations, and bounded
+  command-output artifacts remain in separately hash-linked audit observations;
+  they are not normalized or fixed to obtain equal manifests. Rehash both the
+  stable result and its observed outputs before accepting handoff evidence;
+- generated source passes the installed project's format, typecheck, lint,
+  unit-test, build and Doctor owners; the framework passes `pnpm verify` and
+  the existing packed-scaffold acceptance workflow. The ordinary generated
+  project need not invent a monorepo `verify` package script;
 - desktop/mobile preview artifacts correspond to the selected exact tokens,
-  patterns, blocks, and repository commit.
+  patterns, blocks and observed source manifest, with the Git baseline recorded
+  separately when available.
 
 The external coding agent remains outside the trusted generator. Adversarial
 prompt text may change the proposed brief or blueprint only after schema
 validation; it cannot add a command, bypass a source precondition, or widen
 filesystem authority.
+
+The [completed local acceptance evidence](build-agent-and-site-blueprint.md#current-local-implementation)
+records the final 113-task `verify`, 41-task lint, CLI 809 passes plus five
+native opt-in skips, and separately executed 18-case PostgreSQL seed/Forum
+regression. Community public dry-run/execute and Editorial final ten-command
+validation preserve their distinct immutable package epochs. Ordinary browser
+continuation proves real staff editing, persisted readback, CSRF rejection and
+anonymous/member isolation; its seven-row wrapper explicitly reuses two closed
+proofs rather than claiming seven fresh executions. Final privacy classification
+retains the original ten-profile findings and narrowly identifies exact public
+example values; generic-pattern coverage does not claim actual session-literal
+absence. Original screenshots received separate visual privacy review.
+
+Retained broader PostgreSQL, Redis, theme, native, production-browser and
+packed-scaffold results keep their actual scopes, corrected attempts and skips.
+A prior package graph's passed gate is not a fresh result for changed
+dependencies. Launchpad remains a separate
+[defer decision](r8-launchpad-evaluation.md), with no hosted deployment or
+provider call needed for the local R8 outcome.
 
 ## 12. Performance and capacity
 

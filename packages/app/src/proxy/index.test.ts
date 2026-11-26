@@ -16,7 +16,35 @@ async function loadModules() {
 }
 
 describe("shared application proxy rate limiting", () => {
+  it("observes only its own final CSRF 403 without changing that response or claiming downstream status", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const onResponse = vi.fn().mockRejectedValue(new Error("Synthetic observation failure"));
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: {
+        kind: "redis",
+        check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+      },
+      onResponse,
+    });
+    const denied = new NextRequest("http://localhost/api/admin/private", { method: "POST" });
+    const response = await handler(denied);
+    expect(response.status).toBe(403);
+    expect(onResponse).toHaveBeenCalledExactlyOnceWith({
+      request: denied,
+      status: 403,
+      routeFamily: "admin",
+    });
+    expect((await response.json()).error.code).toBe("CSRF_INVALID");
+    expect((await handler(request("/api/admin/private"))).status).toBe(200);
+    expect(
+      (await handler(new NextRequest("http://localhost/api/unclassified", { method: "POST" })))
+        .status,
+    ).toBe(403);
+    expect(onResponse).toHaveBeenCalledTimes(1);
+  });
   afterEach(async () => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     const core = await import("@nexpress/core/rate-limit");
     core.setRateLimiter(null);
@@ -38,6 +66,80 @@ describe("shared application proxy rate limiting", () => {
       status: 429,
     });
     expect(check).toHaveBeenCalledWith(expect.any(String), 10, 60_000);
+  });
+
+  it("enforces an explicit temporary Guardian denial before counting ordinary requests", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    const onRateLimited = vi.fn();
+    const onGuardianRequest = vi.fn().mockResolvedValue({
+      schemaVersion: "np.agent-guardian-request-denial.v1",
+      restrictionId: "00000000-0000-4000-8000-000000000001",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onRateLimited,
+      onGuardianRequest,
+    });
+    const req = request();
+    const response = await handler(req);
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(Number(response.headers.get("Retry-After"))).toBeLessThanOrEqual(60);
+    expect(onGuardianRequest).toHaveBeenCalledExactlyOnceWith(req);
+    expect(check).not.toHaveBeenCalled();
+    expect(onRateLimited).not.toHaveBeenCalled();
+    expect(await response.text()).not.toContain("00000000");
+  });
+
+  it("falls back to ordinary controls for unavailable, malformed and expired Guardian decisions", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 17 });
+    const onGuardianRequest = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("unavailable"))
+      .mockResolvedValueOnce({
+        schemaVersion: "np.agent-guardian-request-denial.v1",
+        restrictionId: "arbitrary",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        schemaVersion: "np.agent-guardian-request-denial.v1",
+        restrictionId: "00000000-0000-4000-8000-000000000001",
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onGuardianRequest,
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await handler(request());
+      expect(response.status).toBe(429);
+      expect(response.headers.get("Retry-After")).toBe("17");
+    }
+    expect(check).toHaveBeenCalledTimes(3);
+    await handler(request("/en"));
+    expect(onGuardianRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds a stalled explicit Guardian guard and resumes ordinary rate limiting", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    vi.useFakeTimers();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 19 });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onGuardianRequest: () => new Promise(() => undefined),
+    });
+    const pending = handler(request());
+    await vi.advanceTimersByTimeAsync(500);
+    const response = await pending;
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("19");
+    expect(check).toHaveBeenCalledOnce();
   });
 
   it("rejects a custom adapter when runtime intent still says memory", async () => {
@@ -81,6 +183,64 @@ describe("shared application proxy rate limiting", () => {
     expect(() => proxyModule.npCreateProxy(Object.create({ rateLimiter }) as never)).toThrow(
       /exact \{ rateLimiter \}/u,
     );
+    for (const onRateLimited of [null, undefined, {}, "observer"]) {
+      expect(() => proxyModule.npCreateProxy({ rateLimiter, onRateLimited } as never)).toThrow(
+        /exact \{ rateLimiter \}/u,
+      );
+    }
+    expect(() =>
+      proxyModule.npCreateProxy({ rateLimiter, onRateLimited: vi.fn(), extra: true } as never),
+    ).toThrow(/exact \{ rateLimiter \}/u);
+  });
+
+  it("observes only enforced decisions with the fixed first-match family and contains observer failure", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 17 });
+    const onRateLimited = vi.fn().mockRejectedValue(new Error("observation unavailable"));
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "redis", check },
+      onRateLimited,
+    });
+    const req = request("/api/admin/jobs/secret-job/retry?token=private");
+    const response = await handler(req);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("17");
+    expect(check).toHaveBeenCalledExactlyOnceWith(
+      "203.0.113.8:^\\/api\\/admin\\/jobs\\/[^/]+\\/retry",
+      30,
+      60_000,
+    );
+    expect(onRateLimited).toHaveBeenCalledExactlyOnceWith({
+      request: req,
+      routeFamily: "job-retry",
+    });
+    check.mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    expect((await handler(request())).status).toBe(200);
+    expect((await handler(request("/api/unknown"))).status).toBe(200);
+    expect(onRateLimited).toHaveBeenCalledOnce();
+    expect(check).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps private plugin paths out of the bounded observer family", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 5 });
+    const onRateLimited = vi.fn();
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "memory", check },
+      onRateLimited,
+    });
+    for (const [path, routeFamily, limit] of [
+      ["/api/plugins/private-plugin/webhooks/private-id", "plugin-public", 30],
+      ["/api/plugins/private-plugin/actions/private-action", "plugins", 60],
+      ["/api/auth/login", "staff-auth", 10],
+    ] as const) {
+      const req = request(path);
+      expect((await handler(req)).status).toBe(429);
+      expect(onRateLimited).toHaveBeenLastCalledWith({ request: req, routeFamily });
+      expect(check).toHaveBeenLastCalledWith(expect.any(String), limit, 60_000);
+    }
   });
 
   it("fails closed when custom runtime intent has no proxy-local adapter", async () => {
@@ -200,6 +360,8 @@ describe("shared application proxy rate limiting", () => {
     });
     for (const [path, status] of [
       ["/api/agent/v1/invocations", 200],
+      ["/api/agents/security/sentry", 200],
+      ["/api/agents/security/sentry/extra", 403],
       ["/api/agent/v1/invocations/extra", 403],
       ["/api/agent/v1/capabilities", 403],
       ["/api/admin/agents/gateway/principals", 403],

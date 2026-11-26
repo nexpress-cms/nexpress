@@ -17,7 +17,8 @@ export default defineConfig([
     entry: ["src/index.ts"],
     format: ["esm"],
     dts: true,
-    clean: true,
+    // Clean once in the build script so parallel entries retain their declarations.
+    clean: false,
     sourcemap: true,
     external: [
       "react",

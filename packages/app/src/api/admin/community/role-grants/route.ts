@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import { grantMemberRole, listMemberRoleGrants } from "@nexpress/core/community";
 import {
@@ -23,7 +24,7 @@ import { npRequireCommunityRequest } from "../../../../lib/community-contract";
  * other accounts.
  */
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -83,3 +84,6 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("admin", npGuardianPOST);

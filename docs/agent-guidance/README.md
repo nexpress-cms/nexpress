@@ -17,12 +17,17 @@ Dated inventory and test counts are evidence of a checkpoint, not live state.
 
 ## Preserved history and guidance
 
-The four original files were split at their first operational section on
-2026-09-14. Their content was retained, with resolvable Markdown links rebased.
-The compact AGENTS.md files provide common rules; applicable detailed rules in
-these references still need to be read before modifying their area. Current user
-instructions take precedence, and current feature contracts supersede older
-implementation-status statements.
+The four original files were split on 2026-09-14. Their history pages now retain
+decisions, compatibility boundaries and links to the owning feature documents.
+Git history preserves the chronological implementation logs and old test totals.
+The compact AGENTS.md files provide common rules; read the relevant detailed
+reference before modifying an area. Current user instructions take precedence,
+and current feature contracts supersede historical status statements.
+
+Keep one authoritative contract or flow per feature. Record only the outcome,
+meaningful evidence and unresolved limits there; link it from handoffs and other
+guides. Do not duplicate successive test inventories, temporary paths, command
+transcripts or per-file change lists across documents.
 
 | Original                 | Implementation history            | Detailed guidance                     |
 | ------------------------ | --------------------------------- | ------------------------------------- |
@@ -34,8 +39,9 @@ implementation-status statements.
 ## Starting the next task
 
 Finish a coherent bundle, then update the [current handoff](current-handoff.md)
-using the [template](handoff-template.md). Keep detailed results in the feature
-flow document and link them. Replace stale handoff fields instead of appending a
+using the [template](handoff-template.md). Keep essential results and unresolved
+limits in the feature flow document and link them. Replace stale handoff fields
+instead of appending a
 chronological log. Do not include secrets, raw logs, full diffs or conversation
 transcripts.
 

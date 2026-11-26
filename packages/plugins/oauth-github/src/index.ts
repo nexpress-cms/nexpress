@@ -8,39 +8,13 @@ import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
 /**
- * @nexpress/plugin-oauth-github — adds "Sign in with GitHub" via
- * the plugin lifecycle.
- *
- * Credentials can come from EITHER environment variables OR the
- * admin auto-form (G.1):
- *
- *   1. `NP_OAUTH_GITHUB_CLIENT_ID` + `NP_OAUTH_GITHUB_CLIENT_SECRET`
- *      env vars (12-factor; recommended for production secret
- *      management — works with Doppler / 1Password CLI / AWS
- *      Secrets Manager / Kubernetes secrets).
- *   2. The admin form at `/admin/plugins/oauth-github` (operator
- *      self-service; values persist to `np_settings`).
- *
- * **Env wins on a tie** — the admin form acts as a fallback so
- * existing deployments stay unchanged after upgrading. Empty env
- * with a populated admin form opts into DB-stored credentials.
- *
- * The Authorization callback URL registered in a GitHub OAuth App
- * must match the configured audience: `${SITE_URL}/api/auth/oauth/github/callback`
- * for staff, or `${SITE_URL}/api/members/oauth/github/callback`
- * for members. GitHub OAuth Apps accept one callback URL, so this
- * bundled provider defaults to staff-only visibility; switch the
- * `audience` setting to `member` if the GitHub app is registered for
- * the member callback instead.
- *
- * Admin-form config is resolved inside the current site scope for every OAuth
- * request. Credential, scope, audience, and activation changes therefore do
- * not require a plugin reload and cannot bleed across sites.
+ * Environment credentials take precedence as a complete pair. Site config is
+ * resolved per request so credential, scope, audience and activation changes
+ * stay scoped. GitHub allows one callback per OAuth app, so the configured
+ * audience must match it; registration instructions live in ../README.md.
  */
 
-// Re-exports kept for back-compat with sites that imported the
-// factory from this package before the @nexpress/oauth-providers
-// split. New code should import from @nexpress/oauth-providers.
+// Preserve the original package imports; new consumers use @nexpress/oauth-providers.
 export { createGitHubOAuthProvider, fetchGitHubProfile, type GitHubOAuthOptions };
 
 const configSchema = z.object({
@@ -92,13 +66,7 @@ export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
   },
   configSchema,
   setup: (ctx) => {
-    // G.2.2 — credentials must come from a single source. Mixing
-    // env-managed clientId with DB-stored clientSecret (or vice
-    // versa) is almost always a misconfiguration — typically a
-    // half-finished migration between env and admin form. Treat
-    // partial-env as an explicit error so the operator notices,
-    // rather than silently registering a Frankenstein credential
-    // pair that's hard to audit later.
+    // Reject partial environment credentials rather than mixing env and site config.
     const envId = process.env.NP_OAUTH_GITHUB_CLIENT_ID;
     const envSecret = process.env.NP_OAUTH_GITHUB_CLIENT_SECRET;
     const envHasAny = Boolean(envId || envSecret);

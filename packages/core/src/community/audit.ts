@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, type SQL } from "drizzle-orm";
 
 import {
   npRequireAuditEventRow,
@@ -96,7 +96,7 @@ export async function listAuditEvents(
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 
-  const filters = [];
+  const filters: SQL[] = [];
   if (options.targetType) filters.push(eq(npAuditEvents.targetType, options.targetType));
   if (options.targetId) filters.push(eq(npAuditEvents.targetId, options.targetId));
   if (options.actorUserId) filters.push(eq(npAuditEvents.actorUserId, options.actorUserId));

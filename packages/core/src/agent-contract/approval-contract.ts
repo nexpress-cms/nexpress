@@ -1,4 +1,24 @@
 import {
+  npRequireAgentApprovalGuardianSessionActionReviewV1,
+  npAgentGuardianSessionTargetSchemaV1,
+  type NpAgentApprovalGuardianSessionActionReviewV1,
+} from "./guardian-session-contract.js";
+import {
+  npRequireAgentApprovalGuardianResponseActionReviewV1,
+  npAgentGuardianResponseOperationSchemaV1,
+  type NpAgentApprovalGuardianResponseActionReviewV1,
+} from "./guardian-response-contract.js";
+import {
+  npRequireAgentOpsPlanInputV1,
+  npAgentOpsPlanInputSchemaV1,
+  type NpAgentExecutableOpsPlanInputV1,
+} from "./operator-capability-contract.js";
+import {
+  npRequireAgentApprovalMemberResponseActionReviewV1,
+  npAgentMemberResponseOperationSchemaV1,
+  type NpAgentApprovalMemberResponseActionReviewV1,
+} from "./member-response-contract.js";
+import {
   npRequireAgentRollbackDetailV1,
   type NpAgentRollbackDetailV1,
 } from "./rollback-contract.js";
@@ -112,6 +132,134 @@ export interface NpAgentApprovalDetailV1 {
   item: NpAgentApprovalListItemV1;
   review: NpAgentChangeSetReviewV1 | null;
   rollbackReview: NpAgentRollbackDetailV1 | null;
+  actionReview?: NpAgentApprovalActionReviewV1;
+}
+export interface NpAgentApprovalModerationActionReviewV1 {
+  actionId: string;
+  proposalHash: string;
+  capabilityId: "moderation.quarantine" | "moderation.restore";
+  target: { kind: "comment" | "document"; collection: string; id: string };
+  expectedVersionDigest: string;
+  containmentId: string | null;
+  incidentId: string | null;
+  reasonCode: string | null;
+}
+export interface NpAgentApprovalOpsActionReviewV1 {
+  actionId: string;
+  proposalHash: string;
+  capabilityId: "ops.execute";
+  planId: string;
+  planDigest: string;
+  operation: NpAgentExecutableOpsPlanInputV1;
+  expiresAt: string;
+  checks: Array<{ id: string; status: "pass" | "warn" | "fail" }>;
+}
+export type NpAgentApprovalActionReviewV1 =
+  | NpAgentApprovalModerationActionReviewV1
+  | NpAgentApprovalOpsActionReviewV1
+  | NpAgentApprovalMemberResponseActionReviewV1
+  | NpAgentApprovalGuardianResponseActionReviewV1
+  | NpAgentApprovalGuardianSessionActionReviewV1;
+function actionReview(value: unknown): NpAgentApprovalActionReviewV1 {
+  const p = "agent.approval.actionReview";
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    value.capabilityId === "security.revokeSessions"
+  )
+    return npRequireAgentApprovalGuardianSessionActionReviewV1(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    (value.capabilityId === "security.limitActor" ||
+      value.capabilityId === "security.removeActorLimit")
+  )
+    return npRequireAgentApprovalGuardianResponseActionReviewV1(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    (value.capabilityId === "moderation.member.restrict" ||
+      value.capabilityId === "moderation.member.revoke")
+  )
+    return npRequireAgentApprovalMemberResponseActionReviewV1(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    value.capabilityId === "ops.execute"
+  ) {
+    const r = record(value, p, [
+      "actionId",
+      "proposalHash",
+      "capabilityId",
+      "planId",
+      "planDigest",
+      "operation",
+      "expiresAt",
+      "checks",
+    ]);
+    const operation = npRequireAgentOpsPlanInputV1(r.operation);
+    if (
+      operation.action !== "cache.revalidate" &&
+      operation.action !== "agent.run.retry" &&
+      operation.action !== "agent.run.cancel"
+    )
+      return failCanonicalBody(
+        "invalid-field",
+        p,
+        "Operator execution review requires executable action",
+      );
+    if (!Array.isArray(r.checks) || r.checks.length < 1 || r.checks.length > 128)
+      return failCanonicalBody("invalid-field", p, "Invalid Operator review checks");
+    const ids = new Set<string>();
+    const checks = r.checks.map((value) => {
+      const check = record(value, p + ".checks", ["id", "status"]);
+      const id = canonicalRuntimeText(check.id, p, 128);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/u.test(id) || ids.has(id))
+        failCanonicalBody("invalid-field", p, "Invalid Operator review check id");
+      ids.add(id);
+      return { id, status: enumeration(check.status, p, ["pass", "warn", "fail"] as const) };
+    });
+    return {
+      actionId: canonicalBodyUuid(r.actionId, p),
+      proposalHash: canonicalBodySha256Digest(r.proposalHash, p),
+      capabilityId: "ops.execute",
+      planId: canonicalBodyUuid(r.planId, p),
+      planDigest: canonicalBodySha256Digest(r.planDigest, p),
+      operation,
+      expiresAt: canonicalBodyUtc(r.expiresAt, p),
+      checks,
+    };
+  }
+
+  const r = record(value, p, [
+    "actionId",
+    "proposalHash",
+    "capabilityId",
+    "target",
+    "expectedVersionDigest",
+    "containmentId",
+    "incidentId",
+    "reasonCode",
+  ]);
+  const target = record(r.target, p + ".target", ["kind", "collection", "id"]);
+  return {
+    actionId: canonicalBodyUuid(r.actionId, p),
+    proposalHash: canonicalBodySha256Digest(r.proposalHash, p),
+    capabilityId: enumeration(r.capabilityId, p, ["moderation.quarantine", "moderation.restore"]),
+    target: {
+      kind: enumeration(target.kind, p, ["comment", "document"]),
+      collection: canonicalRuntimeText(target.collection, p, 128),
+      id: canonicalRuntimeText(target.id, p, 128),
+    },
+    expectedVersionDigest: canonicalBodySha256Digest(r.expectedVersionDigest, p),
+    containmentId: r.containmentId === null ? null : canonicalBodyUuid(r.containmentId, p),
+    incidentId: r.incidentId === null ? null : canonicalBodyUuid(r.incidentId, p),
+    reasonCode: r.reasonCode === null ? null : canonicalRuntimeText(r.reasonCode, p, 64),
+  };
 }
 export interface NpAgentApprovalPageV1 {
   schemaVersion: "np.agent-approval-page.v1";
@@ -177,7 +325,16 @@ function analyze<T>(
       maximumObjectProperties: 10000,
       maximumStringCharacters: 1_000_000,
     });
-    return parse(record(copy, name, keys), name);
+    return parse(
+      canonicalBodyRecord(
+        copy,
+        name,
+        keys,
+        keys.filter((key) => key !== "actionReview"),
+        state(),
+      ),
+      name,
+    );
   });
 }
 export function npAnalyzeAgentChangeSetRequestApprovalInputV1(v: unknown) {
@@ -452,6 +609,31 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
     v,
     (r, p): NpAgentApprovalDetailV1 => {
       const item = npRequireAgentApprovalListItemV1(r.item);
+      const action = r.actionReview === undefined ? undefined : actionReview(r.actionReview);
+      if (
+        item.target.kind === "action"
+          ? !action ||
+            action.actionId !== item.target.actionId ||
+            action.proposalHash !== item.target.proposalHash ||
+            action.capabilityId !== item.capabilityId
+          : action !== undefined
+      )
+        failCanonicalBody("invalid-field", p, "Action review must match target");
+      if (
+        action &&
+        (action.capabilityId === "moderation.member.restrict" ||
+          action.capabilityId === "moderation.member.revoke") &&
+        (item.target.kind !== "action" ||
+          item.target.runId !== null ||
+          item.target.agentId !== null ||
+          item.policyHashes.length !== 1 ||
+          item.policyHashes[0] !== action.policyDigest)
+      )
+        failCanonicalBody(
+          "invalid-field",
+          p,
+          "Member response review must match its staff target and policy",
+        );
       const review = r.review === null ? null : npRequireAgentChangeSetReviewV1(r.review);
       const rollbackReview =
         r.rollbackReview === null ? null : npRequireAgentRollbackDetailV1(r.rollbackReview);
@@ -475,9 +657,10 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
         item,
         review,
         rollbackReview,
+        ...(action ? { actionReview: action } : {}),
       };
     },
-    ["schemaVersion", "item", "review", "rollbackReview"],
+    ["schemaVersion", "item", "review", "rollbackReview", "actionReview"],
   );
 }
 export const npRequireAgentApprovalDetailV1 = (v: unknown) =>
@@ -749,7 +932,85 @@ const approvalDetailSchemaSource = JSON.parse(
       item: approvalItemSchema,
       review: nullable({ $ref: "#/$defs/approvalReview" }),
       rollbackReview: nullable({ $ref: "#/$defs/rollbackDetail" }),
+      actionReview: {
+        oneOf: [
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { const: "security.revokeSessions" },
+            incidentId: approvalUuidSchema,
+            expectedTargetVersionDigest: digest,
+            target: npAgentGuardianSessionTargetSchemaV1(),
+            policyDigest: digest,
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { enum: ["security.limitActor", "security.removeActorLimit"] },
+            incidentId: approvalUuidSchema,
+            expectedTargetVersionDigest: digest,
+            operation: npAgentGuardianResponseOperationSchemaV1(),
+            policyDigest: digest,
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { enum: ["moderation.member.restrict", "moderation.member.revoke"] },
+            incidentId: approvalUuidSchema,
+            memberId: approvalUuidSchema,
+            expectedMemberVersionDigest: digest,
+            operation: npAgentMemberResponseOperationSchemaV1(),
+            policyDigest: digest,
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { enum: ["moderation.quarantine", "moderation.restore"] },
+            target: schema({
+              kind: { enum: ["comment", "document"] },
+              collection: { type: "string", minLength: 1, maxLength: 128 },
+              id: { type: "string", minLength: 1, maxLength: 128 },
+            }),
+            expectedVersionDigest: digest,
+            containmentId: nullable(approvalUuidSchema),
+            incidentId: nullable(approvalUuidSchema),
+            reasonCode: nullable({ type: "string", minLength: 1, maxLength: 64 }),
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { const: "ops.execute" },
+            planId: approvalUuidSchema,
+            planDigest: digest,
+            operation: {
+              oneOf: [
+                (npAgentOpsPlanInputSchemaV1.oneOf as unknown[])[0],
+                schema({
+                  action: { enum: ["agent.run.retry", "agent.run.cancel"] },
+                  target: schema({ kind: { const: "run" }, runId: approvalUuidSchema }),
+                }),
+              ],
+            },
+            expiresAt: utc,
+            checks: {
+              type: "array",
+              minItems: 1,
+              maxItems: 128,
+              items: schema({
+                id: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 128,
+                  pattern: "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$",
+                },
+                status: { enum: ["pass", "warn", "fail"] },
+              }),
+            },
+          }),
+        ],
+      },
     }),
+    required: ["schemaVersion", "item", "review", "rollbackReview"],
     $schema: approvalReviewDialect,
     $defs: {
       ...(approvalReviewDefinitions as Record<string, unknown>),
@@ -760,4 +1021,12 @@ const approvalDetailSchemaSource = JSON.parse(
 
 // Reuse repeated schema nodes through local refs so composing the existing full review
 // remains within the unchanged framework schema node bound.
-export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(approvalDetailSchemaSource);
+export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(
+  approvalDetailSchemaSource,
+  {
+    factorShortConstraints: true,
+    simplifyStringEnums: true,
+    simplifyClosedRequiredObjects: true,
+    inlineSingleUseDefinitions: true,
+  },
+);

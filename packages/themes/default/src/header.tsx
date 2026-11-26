@@ -74,7 +74,7 @@ export async function DefaultHeader() {
   return (
     <header className="np-site-header">
       <div className="np-site-header-inner">
-        <Link href="/" className="np-site-logo">
+        <Link href="/" prefetch={false} className="np-site-logo">
           <span className="np-site-logo-mark" aria-hidden="true" />
           <span>{siteName}</span>
         </Link>
@@ -82,13 +82,21 @@ export async function DefaultHeader() {
           <ul className="np-site-nav">
             {headerNav.map((item: NpResolvedNavItem, index: number) => (
               <li key={`nav-${index.toString()}`} className="np-site-nav-item">
-                {item.url ? <Link href={item.url}>{item.label}</Link> : <span>{item.label}</span>}
+                {item.url ? (
+                  <Link href={item.url} prefetch={false}>
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span>{item.label}</span>
+                )}
                 {item.children && item.children.length > 0 ? (
                   <ul className="np-site-subnav">
                     {item.children.map((child: NpResolvedNavItem, childIndex: number) => (
                       <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
                         {child.url ? (
-                          <Link href={child.url}>{child.label}</Link>
+                          <Link href={child.url} prefetch={false}>
+                            {child.label}
+                          </Link>
                         ) : (
                           <span>{child.label}</span>
                         )}
@@ -129,7 +137,7 @@ export async function DefaultHeader() {
             <kbd>⌘K</kbd>
           </form>
           <SearchKeyboardShortcut targetId="np-site-search-input" />
-          <Link href="/subscribe" className="np-site-cta">
+          <Link href="/subscribe" prefetch={false} className="np-site-cta">
             Subscribe
           </Link>
           {showLanguagePicker && i18n ? (

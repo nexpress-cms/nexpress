@@ -34,3 +34,4 @@ export {
   type NpPatternDefinitionIssueCode,
   type NpPatternDefinitionValidationResult,
 } from "./pattern-contract.js";
+export { npApplyPatternOverridesV1, type NpPatternOverridesV1 } from "./pattern-overrides.js";

@@ -517,7 +517,7 @@ export class PgBossAdapter implements NpJobQueue {
     // public source discriminator remains a logical lifecycle projection.
     const listSql = `
       SELECT id, name, state::text AS state, data, retry_count,
-             output::text AS output, created_on, started_on, completed_on,
+             output::text AS output, created_on, start_after, started_on, completed_on,
              CASE WHEN state::text IN ('created','retry','active') THEN 'live' ELSE 'archive' END AS source
         FROM pgboss.job
         ${whereSql}
@@ -901,6 +901,7 @@ interface PgBossRow {
   retry_count: number;
   output: string | null;
   created_on: Date | string;
+  start_after: Date | string | null;
   started_on: Date | string | null;
   completed_on: Date | string | null;
   /** Logical active or retained terminal lifecycle partition. */
@@ -950,6 +951,7 @@ function rowToSummary(row: PgBossRow): NpJobSummary {
     retryCount: row.retry_count,
     output: row.output,
     createdOn: requireIso(row.created_on, "job.createdOn"),
+    startAfter: nullableIso(row.start_after, "job.startAfter"),
     startedOn: nullableIso(row.started_on, "job.startedOn"),
     completedOn: nullableIso(row.completed_on, "job.completedOn"),
     source: row.source,

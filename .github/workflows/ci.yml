@@ -33,8 +33,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Classify changes and validate documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Classify the complete PR diff
+        id: scope
+        run: node scripts/ci-scope.mjs "$RUNNER_TEMP/np-doc-files.json"
+      - uses: pnpm/action-setup@v6.1.0
+        if: steps.scope.outputs.docs_only == 'true'
+        with:
+          version: 10.33.0
+          run_install: false
+      - name: Install locked formatter without lifecycle scripts
+        if: steps.scope.outputs.docs_only == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate changed documentation
+        if: steps.scope.outputs.docs_only == 'true'
+        run: |
+          node scripts/ci-scope.mjs format "$RUNNER_TEMP/np-doc-files.json"
+          pnpm test:repo
+
   checks:
-    name: typecheck + build + test
+    name: Build + typecheck + runtime smoke
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -81,8 +115,34 @@ jobs:
       - name: Typecheck (tsc --noEmit per package)
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+  unit-tests:
+    name: Unit tests + package builds
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_build
+      NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      SITE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.33.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test with required package builds
+        # Turbo builds package outputs before each consumer test;
+        # this job needs neither another job's artifacts nor a production Web build.
+        # Each Vitest package already runs files in parallel. Bound the workspace
+        # fan-out as in local verify so competing pools do not consume deadlines.
+        run: pnpm test --concurrency=2
 
   # #275 — the critical write path (pipeline.ts at 2,185 lines and
   # everything around it) is exercised primarily by `pnpm test:integration`
@@ -91,6 +151,8 @@ jobs:
   # interactions, so a green `pnpm test` was misleading. This job runs the
   # integration suite against a Postgres service container.
   integration-partitions:
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
     name: PostgreSQL partition ${{ matrix.partition }}/2
     strategy:
       fail-fast: false
@@ -103,7 +165,7 @@ jobs:
 
     services:
       redis:
-        image: redis:7-alpine
+        image: ${{ matrix.partition == 2 && 'redis:7-alpine' || '' }}
         ports:
           - 6379:6379
         options: >-
@@ -128,7 +190,7 @@ jobs:
     env:
       DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
       TEST_DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
-      # Same `next build` project-config validation as the checks job.
+      # Vitest loads the reference project config.
       NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
       SITE_URL: http://localhost:3000
 
@@ -148,12 +210,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Build integration test dependencies
+        run: pnpm build --filter '@nexpress/web^...' --filter @nexpress/core
 
       - name: Run assigned integration tests
         env:
-          TEST_REDIS_URL: redis://127.0.0.1:6379
+          TEST_REDIS_URL: ${{ matrix.partition == 2 && 'redis://127.0.0.1:6379' || '' }}
         run: node scripts/integration-partitions.mjs ${{ matrix.partition }} --output "$RUNNER_TEMP/np-integration"
 
       - name: Upload successful coverage inventory
@@ -166,10 +228,11 @@ jobs:
           retention-days: 7
 
   # Preserve the context consumed by branch rules, Version PR bridging and the
-  # Dependabot merge helper. Missing/skipped/cancelled partitions must fail it.
+  # Dependabot merge helper. Full runs still require exact partition coverage;
+  # only successfully validated documentation may intentionally skip partitions.
   integration:
     name: integration tests (Postgres)
-    needs: [integration-partitions]
+    needs: [scope, integration-partitions]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -177,18 +240,19 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Require every partition to succeed
-        env:
-          PARTITION_RESULT: ${{ needs.integration-partitions.result }}
-        run: test "$PARTITION_RESULT" = success
-
       - uses: actions/checkout@v7
-
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Require validated docs or every partition
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.integration-partitions.result }}
+        run: node scripts/ci-scope.mjs gate
 
       - name: Download and verify exact coverage
+        if: needs.scope.outputs.docs_only != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -210,8 +274,9 @@ jobs:
   # merge group / squash-and-rebase changes the diff post-merge
   # enough to warrant verification, flip this back to unconditional.
   e2e:
-    name: E2E (Playwright)
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: Full E2E (Playwright)
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -271,6 +336,11 @@ jobs:
           NP_TEST_PREVIEW_BROWSER: "1"
         run: pnpm --filter @nexpress/web exec vitest run tests/agent-preview-browser.integration.test.ts
 
+      - name: CLI browser transport fixture
+        env:
+          NP_BUILD_REQUIRE_CHROMIUM: "1"
+        run: pnpm --filter @nexpress/cli exec vitest run src/site-build/chromium-render.test.ts
+
       - name: E2E tests
         run: pnpm --filter @nexpress/web test:e2e
 
@@ -303,7 +373,9 @@ jobs:
   # vs. tarball, which is the only safe difference until the
   # packages are published).
   scaffold-smoke:
-    name: scaffold smoke (fresh scaffold journey)
+    name: Full scaffold smoke (fresh scaffold journey)
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -397,6 +469,11 @@ jobs:
           pnpm exec tsc --showConfig \
             | jq -e '.files | any(. == "./src/nexpress.config.ts")' >/dev/null
 
+      - name: Evaluation report smoke — installed CLI output
+        run: |
+          node "$GITHUB_WORKSPACE/.github/scripts/check-scaffold-evaluation-report.mjs" \
+            "$RUNNER_TEMP/scaffold/smoke-app"
+
       - name: Generate + apply fresh scaffold Agent foundation
         run: |
           cd "$RUNNER_TEMP/scaffold/smoke-app"
@@ -480,3 +557,60 @@ jobs:
             exit 1
           fi
           echo "✓ pnpm-lock.yaml clean"
+
+  checks-gate:
+    name: typecheck + build + test
+    needs: [scope, checks, unit-tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require validated docs or both build and unit jobs
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.checks.result }}
+          UNIT_RESULT: ${{ needs.unit-tests.result }}
+        run: |
+          node scripts/ci-scope.mjs gate
+          FULL_RESULT="$UNIT_RESULT" node scripts/ci-scope.mjs gate
+
+  e2e-gate:
+    name: E2E (Playwright)
+    needs: [scope, e2e]
+    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require validated docs or full check
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.e2e.result }}
+        run: node scripts/ci-scope.mjs gate
+
+  scaffold-smoke-gate:
+    name: scaffold smoke (fresh scaffold journey)
+    needs: [scope, scaffold-smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require validated docs or full check
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.scaffold-smoke.result }}
+        run: node scripts/ci-scope.mjs gate

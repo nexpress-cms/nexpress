@@ -5,6 +5,81 @@ pure contracts, PostgreSQL integration for persistence and transaction behavior,
 browser tests for rendering and interaction, and packed scaffolds for consumer
 installation and generated-project behavior.
 
+## Verification scope and completion
+
+The R8 acceptance work exposed avoidable delays from growing evidence-management
+procedures and repairing QA helpers during expensive runs. Apply these rules:
+
+- Define the required checks, their scope and the completion criteria before
+  expensive acceptance work. Do not expand the gate merely to collect more
+  evidence after those criteria pass.
+- Reuse passed results when their covered source, dependencies and environment
+  remain applicable. After a change or failure, rerun the affected checks and
+  required final gates. Broaden only to resolve a concrete remaining concern;
+  preserve the scope, skips and reused status of earlier observations.
+- Keep one compact evidence index pointing to existing command results and logs.
+  Add hashes or extra receipts only when needed for a concrete reproducibility,
+  integrity or security requirement. Evidence organization alone does not justify
+  another application build or browser journey.
+- Check a QA helper's preconditions and smallest representative path before
+  launching a long suite. Distinguish helper failures from product regressions,
+  and preserve a successful user edit when repairing the verification path.
+- Before restarting Docker, inspect the owned test database's mounts and
+  persistence. Container identity does not prove retained data: tmpfs is lost
+  on restart. Check actual readiness and database existence afterward; rebuild
+  only the owned disposable fixture through its normal migration and seed owners
+  when necessary, without resetting unrelated or production data.
+- Stop implementation work when the required checks and self-review pass, and
+  report remaining limitations. Documentation or evidence-only edits need their
+  relevant checks, not another full application acceptance cycle.
+
+## Documentation-only PR checks
+
+CI still starts for every pull request and preserves the required check names.
+A classifier reads the complete merge-base-to-head Git diff, without the changed
+files API's pagination limit. Only regular, non-executable Markdown under `docs/`
+and root `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` or `AGENTS.md` use the
+fast path. Renames are evaluated as deletion plus addition. Package/scaffold
+Markdown, changesets, scripts, workflows, configuration, symlinks and executable
+mode changes require full CI. Empty diffs, missing history, ambiguous merge bases
+and invalid event data also select full CI. Manual dispatch and push runs retain
+full verification; existing push-to-main path exclusions are unchanged.
+
+The documentation path installs frozen dependencies with lifecycle scripts
+disabled, checks retained changed Markdown with the locked Prettier version, and
+runs `pnpm test:repo`. This preserves documentation-currentness and release
+contract checks without building packages, starting databases or running browser
+and scaffold suites. Deleted documents still undergo repository contract checks.
+
+The four existing result names report success only after documentation validation
+or all their corresponding full jobs succeed. The build/typecheck result requires
+both the build/runtime job and the independent unit-test job. Scope/validation
+failure or cancellation cannot become a green required check. Full PostgreSQL runs still require both
+partitions and exact coverage receipts; only a validated documentation-only PR
+may intentionally skip them. Gate logs explicitly distinguish these paths.
+Version PR dispatch and Dependabot's named-result checks retain their contracts.
+
+Repository tests use real Git fixtures for scope classification and reject
+ambiguous scope, missing work, failed statuses and invalid coverage receipts.
+They also run after a frozen `--ignore-scripts` install without build output.
+
+### Hosted route verification
+
+After changing CI routing, verify both outcomes on a documentation-only PR:
+
+- An intentional formatting error must fail documentation validation and every required result gate, while application jobs remain skipped.
+- Correct the same change and require all named gates to succeed before merging the evidence update.
+
+[Verification PR #1494](https://github.com/nexpress-cms/nexpress/pull/1494)
+exercised both paths after the classifier shipped:
+
+- [Intentional format failure](https://github.com/nexpress-cms/nexpress/actions/runs/36236749703): all required result gates failed while application jobs stayed skipped.
+- [Corrected document](https://github.com/nexpress-cms/nexpress/actions/runs/36236831760): documentation validation and all required gates passed while application jobs stayed skipped.
+
+The corrected run took 40 seconds versus
+[17 minutes 3 seconds for the preceding full-pipeline docs PR](https://github.com/nexpress-cms/nexpress/actions/runs/36208290554).
+This single hosted comparison includes scheduling/setup and is not a latency guarantee.
+
 ## Unit tests (`pnpm test`)
 
 Live next to the source they test as `<name>.test.ts`. Run with `pnpm test`
@@ -23,6 +98,18 @@ while paying for one fixture. Record registered cases, exercised inputs, and
 fixture work separately when comparing changes.
 
 ## Keeping tests useful
+
+On hosts with many logical CPUs, bound both workspace fan-out and Vitest file
+workers when running the combined gate:
+
+```bash
+VITEST_MAX_WORKERS=2 pnpm verify --concurrency=2
+```
+
+Turbo passes this test-runner setting through without incorporating it into
+application configuration. The CLI suite also defaults to at most two file
+workers because it owns filesystem capsules and child-process fixtures. These
+limits keep existing assertions, fixture cardinalities and deadlines unchanged.
 
 - Assert observable results and effects. Source-text checks belong only to
   contracts that are themselves structural, such as browser-safe entrypoints,
@@ -76,6 +163,62 @@ transaction would make those paths look cleaner than production. Per-worker
 databases plus truncate cleanup are a little heavier, but they match the app
 runtime more closely.
 
+The reset locks the complete current foreign-key/inheritance closure before
+inspecting storage. It omits a heap from `TRUNCATE` only when its physical main
+fork has zero bytes. Row-count estimates, RLS-filtered reads and a remembered
+"tables touched" list cannot prove this. Deleted or rolled-back tuples still
+occupy heap pages and are truncated. Owned sequences always retain
+`RESTART IDENTITY`; unknown storage kinds stay included. A custom `ON TRUNCATE`
+trigger selects the original complete command and trigger order. Dependency
+discovery repeats after lock acquisition so a concurrently added descendant
+cannot escape cleanup. Site cleanup shares the same command transaction.
+This preserves ordinary PostgreSQL durability and multi-connection behavior.
+
+Suites that already reset in `afterEach` need one initial reset in `beforeAll`,
+not a second reset before every case. The initial reset protects against a prior
+file retaining its last fixture; per-case teardown still drains owned work and
+clears data before the next case or file. Restore mocks and collection/theme
+registries in their existing hooks. Suites without per-case teardown keep their
+existing `beforeEach` reset.
+
+A successful maintenance fixture must establish its own lock precondition when
+the real owner deliberately uses `NOWAIT`. The Moderator flood fixture acquires
+the existing source-release fence before waiting at most five seconds for its
+settings share lock, within the same transaction. The owner still uses `NOWAIT`;
+a separate two-connection regression checks denial without mutation under both
+a writer lock and a VACUUM-class lock. A database- and blocker-scoped `pg_locks`
+barrier proves the fixture waits for release. Do not replace contention checks
+with retries, disable VACUUM or raise the existing case deadlines. The
+[October cleanup evidence](agent-guidance/history/test-cleanup-2026-10.md#moderator-retention-lock-follow-up)
+records the actual VACUUM reproduction and the limit of CI attribution.
+
+Async journeys that can outlive a test timeout use the private Core integration
+work scope. Track the whole test body, including its final database assertions;
+an executor's cancellation request alone is not a drain. Closing the scope stops
+its executors, awaits the body, then disposes fixtures and restores test state.
+The shared `truncateAll()` and `closeTestDb()` wait for registered scopes before
+acquiring database locks or closing connections. A failed cleanup keeps the reset
+barrier closed; it cannot turn the original timeout into a passing test. The six
+R6 unattended journeys use this ownership explicitly. Other suites must opt in
+when they own asynchronous work; the barrier cannot discover unregistered promises.
+
+A same-configuration PostgreSQL 16 comparison used 17 Web files / 150 identical
+registered cases with two forks. Both runs passed. Reset calls fell from 253 to
+161; overlapping worker reset aggregates fell from 121,970 to 65,275 ms. Command
+wall time was 158.341 and 127.349 seconds. These are observed local measurements,
+not a hosted-CI or whole-suite speedup. The
+[October cleanup evidence](agent-guidance/history/test-cleanup-2026-10.md) records
+method, validation and corrected-run limits. PostgreSQL 16 separately checks
+empty-parent descendants, deleted tuples/old snapshots, owned sequences,
+inheritance, trigger order, concurrent writes/DDL and atomic failure/quoting.
+
+Independent protocol-test databases can share that cleanup ownership by
+including the exact `_${NP_TEST_DB_RUN_ID}_` namespace in a validated database
+name within PostgreSQL's 63-character limit. Close their clients in `afterAll`
+and let existing global teardown drop the databases after all workers stop.
+Dropping a database mid-run can wait for a cluster-wide checkpoint while other
+workers write, exceeding the normal hook budget even when no client leaked.
+
 The `apps/web` integration global setup also creates a disposable local-media
 root under the operating-system temp directory. Each Vitest worker receives a
 separate subdirectory through `NP_STORAGE_DIR`, regardless of storage settings
@@ -89,15 +232,40 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
 ### CI integration partitions
 
 CI keeps the local `pnpm test:integration` command unchanged. Its PostgreSQL
-coverage runs on two independent runners, each with its own PostgreSQL 16 and
-Redis 7 containers. After the usual full build, `scripts/integration-partitions.mjs`
-uses Vitest's configured file discovery and splits Web files by descending
-historical duration, assigning each next file to the lighter group. The timing
-seed in `scripts/integration-durations.json` comes from PR #1455; it is a weight,
-not an allowlist or a wall-time prediction. New files use the median known weight,
-and removed files are ignored. Core runs once in partition 1 and Redis once in
-partition 2. Worker isolation, fixture cleanup, timeouts and native-preview gating
-remain unchanged; the E2E job still explicitly enables native preview.
+coverage runs on two independent runners, each with its own PostgreSQL 16
+container. Partition 2 also starts Redis 7 for the live adapter tests. The
+partitions build Web's workspace dependencies, including Core. The Redis
+tests import the adapter source. The workspace build and Playwright jobs build
+the reference app.
+
+`scripts/integration-partitions.mjs` uses Vitest's configured file discovery
+and splits Web files by descending historical duration, assigning each next
+file to the lighter group. The timing
+seed in `scripts/integration-durations.json` uses the median file duration across
+three successful partition pairs covering all 243 discovered files. Reassigning
+those same measurements reduced the difference between summed file times in each
+pair. Runner wall time also depends on build, DB setup and execution conditions.
+See [PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/43855261528),
+[main CI](https://github.com/nexpress-cms/nexpress/actions/runs/43858848258) and
+[Version PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/43859025269).
+New files use the median known weight, and removed files are ignored.
+Four opt-in Guardian/native-preview files were discovered but skipped in all
+three runs and retain zero measured weight; their enabled
+acceptance is separate. Core runs once in partition 1 and Redis once in
+partition 2. Each Web partition runs at most two forks, matching the complete
+local acceptance configuration. This bounds contention between CPU-heavy recipe
+journeys and other DB/contract files without extending their deadlines. Worker
+isolation, fixture cleanup, timeouts and native-preview gating remain unchanged;
+the E2E job still explicitly enables native preview.
+
+Partition runs enable `NP_TEST_DB_TIMINGS=1`. The shared harness emits
+`[integration-db]` aggregates for template preparation, worker setup, async drain,
+table reset, connection close and final database drop. Counts, total and maximum
+milliseconds contain no connection strings or fixture data. Worker setup includes
+reuse checks; file summaries and database timings are separate measurements and
+must not be added as independent wall times. Local per-package runs can enable the same flag
+to distinguish SQL/reset work from post-test filesystem cleanup. The measurements
+do not disable durability, constraints or per-test isolation.
 
 The runner requires database settings (and Redis for partition 2), rejects new
 unassigned integration package owners, and verifies that Vitest's actual file
@@ -115,38 +283,27 @@ Inspect the plan without database connections:
 node scripts/integration-partitions.mjs --plan
 ```
 
-To reproduce a partition locally, build dependencies first and set `DATABASE_URL`,
+To reproduce a partition locally, build the same dependencies and set `DATABASE_URL`,
 `TEST_DATABASE_URL`, `NP_SECRET`, `SITE_URL`, `TEST_REDIS_URL` (partition 2), and
-`GITHUB_SHA` to the tested commit. Use a disposable database for each partition:
+`GITHUB_SHA` to the tested commit.
+
+Set `SITE_URL=http://localhost:3000`, matching CI and the sitemap assertions.
+Preview/browser helper ports are separate from this integration fixture.
+
+Use a disposable database for each partition:
 
 ```bash
+pnpm build --filter '@nexpress/web^...' --filter @nexpress/core
 node scripts/integration-partitions.mjs 1 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs 2 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs --check-results /tmp/np-integration-results
 ```
 
-The original PR #1455 integration job took 28m14s, including 4m56s before tests;
-Web tests took 1,322.69s. The initial partition plan covers 163 files (83/80), with
-summed historical weights of 1,932,441/1,932,474ms. Two runners repeat the build,
-trading additional setup minutes for a shorter critical path. Actual hosted-run
-improvement must be measured after this workflow change runs in CI.
-
-Local acceptance on 2026-09-18 used the actual runner twice against separate
-throwaway databases on the same local PostgreSQL server, sequentially to avoid
-adding storage contention. Partition 1 passed Core 64 and Web 665 cases (82 files,
-plus the expected native-preview skip); partition 2 passed Web 784 cases (80 files)
-and Redis 16. The aggregate accepted all 163 Web files exactly once and each other
-package once. Web elapsed times were 360.40s and 325.29s; these local figures are
-not a hosted-CI speedup measurement. Native preview, production browser and packed
-scaffold jobs were unchanged and were not needlessly rerun for this CI-only change.
-
-The four runner regression tests passed, including incomplete/duplicate coverage,
-wrong commits/package ownership, unsuccessful statuses, missing database settings,
-and child failure/termination. Repository checks passed 59 tests; workspace
-verification reused all 113 unchanged application task results; lint reused all
-41 task results. Workflow YAML, formatting and diff checks passed. Self-review
-fixed artifact replacement for job reruns. Logs and receipts are under
-`/tmp/np-ci-partition-*` and `/tmp/np-ci-partitions-*`.
+Historical durations balance work; they do not establish a hosted-CI speedup.
+Initial local acceptance used separate disposable databases and verified complete,
+non-overlapping coverage, with Redis and native-preview gating handled explicitly.
+Regression tests protect receipt completeness, commit/package ownership, required
+settings, child failures and rerun artifact replacement.
 
 ### One-time setup
 
@@ -225,49 +382,21 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 
 ### Current integration coverage
 
-> **Catalog drift warning.** The tables below were accurate through
-> Phase 13. Phases 14–19 added more integration files (worker
-> heartbeat, plugin schedules, site-scoped community/audit/storage,
-> notification preferences, etc.) that are NOT enumerated here. For
-> the live list, run `ls packages/core/src/integration/` and
-> `ls apps/web/tests/`. The categories (pipeline / CLI / API) still
-> describe the structure — it's only the per-file detail that drifts.
+Use the source inventory instead of a manually maintained per-file count:
 
-**Core pipeline (`packages/core/src/integration/`):**
+```bash
+rg --files packages/core/src/integration apps/web/tests -g '*.integration.test.ts' -g '*.integration.test.tsx'
+node scripts/integration-partitions.mjs --plan
+```
 
-| File                                         | Covers                                                                                                                                                                                                                               |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `plugin-storage.integration.test.ts`         | ctx.storage lifecycle, plugin/prefix isolation, append ordering, fractional TTL persistence and expiry via `np_plugin_storage`                                                                                                       |
-| `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence                                                                                                                                                                     |
-| `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                                                                                                      |
-| `pipeline.integration.test.ts`               | saveDocument create/partial-update, exact storage hydration, site-stamped save/delete follow-up jobs, monotonic revision pruning, findDocuments round-trip, and transactional document/revision deletion                             |
-| `scheduled.integration.test.ts` (8)          | pipeline coerces published+future → scheduled; framework-managed `publishedAt` columns participate in scheduling; publishScheduledDocuments scopes hooks and exact follow-up payloads to each document site, then remains idempotent |
-| `search-reindex.integration.test.ts`         | 101-row fixture crosses the fixed 100-row keyset boundary for both Postgres-vector and external-reference scans without whole-collection materialization                                                                             |
-| `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                                                                                                       |
-
-**CLI templates (`packages/cli/src/templates.test.ts`):**
-
-Guards the structural invariants verified by manually scaffolding +
-typechecking + `next build`. Tests catch regressions like the stub
-`generated/collections.ts` going missing, the worker template's
-top-level narrowing creeping back, or the admin login `onSubmit`
-losing its void wrapper. The generated tsconfig must declare consumer-local
-source roots, and `typecheck` / `build` must run schema codegen first so an
-ignored `src/db/generated/*.ts` file cannot disappear in a clean clone.
-
-**API routes (`apps/web/tests/`):**
-
-| File                                                    | Covers                                                                                                                                                                                              |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                                                                                                                         |
-| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                                                                                                                           |
-| `collections.integration.test.ts`                       | Collection CRUD plus exact revision/autosave wire contracts, partial validation, concurrency, and OpenAPI schemas                                                                                   |
-| `import-export.integration.test.ts` (18)                | exact v3 full/partial export, auth/query failures, definition-owned media, dry-run/projection, UUID idempotency, relationship ordering, atomic rollback, plugin cache, malformed state, and OpenAPI |
-| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                                                                                                               |
-| `member-attachment.integration.test.ts` (5)             | signature validation, exact wire/OpenAPI, owner access/delete, public post visibility, reference deletion guard, and forum board/uploader policy                                                    |
-| `media-site-ownership.integration.test.ts` (3)          | site-stamped uploads/storage keys, cross-site read/list/delete/folder isolation, exact usage/cascade behavior, and doctor ownership diagnostics                                                     |
-| `member-profile-activity.integration.test.ts` (4)       | explicit collection opt-in, public member state, public/site visibility, stable exact document pagination, comment target anchors, and matching PII-free profile/activity HTTP wires                |
-| `community-realtime.integration.test.ts` (6)            | site/target/member-isolated invalidation outbox, monotonic sequence resume, foreign/malformed cursor containment, PII-free event projection, and bounded retention pruning                          |
+- **Core persistence and pipeline:** real storage/expiry, transactional content
+  writes, scheduling, search indexing and service lifecycle behavior.
+- **Shared-app API and domain flows:** direct route calls over PostgreSQL, including
+  authentication, ACLs, site isolation, revisions, import/export, media, community,
+  commerce and Agent lifecycle contracts.
+- **CLI templates and packed scaffolds:** template unit tests protect source roots,
+  generated-code wiring and dependency contracts; the packed journey proves fresh
+  consumer installation, migrations, module loading, extension lifecycle and build.
 
 The unit suites in `@nexpress/core`, `@nexpress/next`, and `@nexpress/app`
 also verify the exact bounded API error envelope, known code/status mapping,
@@ -369,18 +498,86 @@ allowed overflow.
 Publish flow, theme switching, and plugin config regression coverage
 are now part of the Playwright suite.
 
+## R8 Build workflow acceptance
+
+Use the [Build completion sequence](design/agentic-platform/build-agent-and-site-blueprint.md#15-r8-completion-sequence)
+and [generation test matrix](design/agentic-platform/testing-and-evaluation.md#11-build-plane-generation-tests)
+for local R8 acceptance. Framework `verify` and lint do not replace actual
+packed-project commands, native direction rerendering, selected previews,
+schema/SQL review or ordinary Admin/member continuation. Keep each result bound
+to its observed package/source/environment graph and report opt-in skips.
+
+The ordinary seed regression uses the real reference bootstrap and isolated
+PostgreSQL harness. It covers direct facade commits, dependent Forum saves and
+replay in one caller transaction, late-failure rollback and closed-board 403.
+After its per-case truncate, the existing `reloadPlugins()` owner restores the
+configured plugin registration inventory; ACLs and block validation stay active.
+Run affected Core/Forum builds before this consumer check:
+
+```bash
+pnpm --filter @nexpress/web exec vitest run --config vitest.config.ts tests/site-build-seed.integration.test.ts tests/forum-board-policy.integration.test.ts
+```
+
+Set the isolated `TEST_DATABASE_URL` explicitly as described above. Keep
+paid/provider tests, real credentials and Runtime activation outside this local
+acceptance profile. The flow records the actual executed scope and limitations.
+
+The CLI's POSIX publication helpers compile with the same `-Wall -Werror`
+settings on macOS Clang and Linux GCC. Keep embedded C statements unambiguously
+indented for both compilers. The optional native Chromium transport fixture
+uses discovered macOS Playwright browsers or an explicit
+`NP_BUILD_CHROMIUM_EXECUTABLE`; automatic discovery selects Playwright's
+headless shell on macOS and Linux, not an OS Chromium launcher or the separate
+headed browser. CI executes that fixture in the E2E job using the headless shell
+already installed there, with `NP_BUILD_REQUIRE_CHROMIUM=1` preventing a missing
+browser from silently skipping. An explicitly configured missing browser also
+fails. This fixture does not replace the separate R8 native sandbox acceptance.
+Timeout diagnostics assert the actual timeout outcome, wait phase, pending
+requests, timing consistency and cleanup. Avoid millisecond equality between
+wall-clock scheduling and rounded monotonic telemetry.
+
+Web integration files share bootstrap within a worker (`isolate:false`). A suite
+must close its own DB harness without calling terminal `shutdownBootstrap()`;
+later files still use that bootstrap. A focused lifecycle regression can force
+seed tests before existing Guardian/Forum suites in one worker while retaining
+their normal assertions and setup.
+
 ## CI
+
+Full verification runs build/typecheck/runtime smoke and unit tests on independent
+runners. The first job keeps full formatting, production build, script-runtime
+smoke and workspace typechecks. The second runs the existing
+`pnpm test --concurrency=2`, including repository tests. Package tests wait for
+their own build, which also builds dependencies; self-imports of published
+subpaths therefore resolve on a clean checkout. The reference Web unit tests
+use source aliases and only need dependency builds, so their task retains
+`^build` without a production Web build. No build artifacts pass between runners.
+The required `typecheck + build + test` gate waits for both jobs and
+requires each to succeed.
+Validated documentation-only PRs intentionally skip both jobs; missing, failed or
+cancelled results still fail the gate.
+
+This separation repeats required library builds on the unit runner in exchange
+for independent execution and reruns. It preserves test assertions, fixture sizes,
+per-test deadlines and package ownership. A shorter hosted critical path must be
+measured on successful CI runs; local caches and historical partition weights
+alone do not demonstrate a hosted speedup.
 
 `.github/workflows/ci.yml` runs on every pull request, manual
 `workflow_dispatch`, and selected `push: main` changes (docs-only and
-changeset-only pushes are ignored on `main`). It defines four jobs on Ubuntu
-(Node 22, pnpm 10.33):
+changeset-only pushes are ignored on `main`). It preserves four required result
+names; documentation-only validation or the corresponding full jobs satisfy them.
+Full jobs use Ubuntu, Node 22 and pnpm 10.33:
 
-1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
-2. `integration tests (Postgres)` — boots a Postgres 16 service container, sets
-   `TEST_DATABASE_URL=postgres://nexpress:nexpress@localhost:5432/nexpress_test`,
-   and runs `pnpm test:integration` (#275). Covers the pipeline /
-   write-path code that mock-based unit tests can't.
+1. `typecheck + build + test` — aggregates independent build/runtime/typecheck
+   and unit-test jobs. The unit job runs `pnpm test --concurrency=2`: workspace
+   packages share a bounded fan-out while each retains its existing file parallelism.
+   This avoids overlapping Vitest pools consuming test deadlines; test counts,
+   assertions and timeout values are unchanged.
+2. `integration tests (Postgres)` — validates both PostgreSQL partition results
+   and their exact coverage receipts. Each runner uses isolated service containers
+   and the [partition runner](#ci-integration-partitions); persisted writes and
+   transaction behavior run against real PostgreSQL.
 3. `E2E (Playwright)` — separate Postgres service container (DB
    `nexpress_e2e`), `playwright install --with-deps chromium`,
    `pnpm build`, then `pnpm --filter @nexpress/web test:e2e` with

@@ -10,7 +10,7 @@ import {
   runOpsMigrateApply,
   type OpsMigrateMode,
 } from "./ops-migrate-core.js";
-import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
+import { readCommandOption, normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 const RAW_ARGV = process.argv.slice(2);
 const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
@@ -50,15 +50,6 @@ function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
 }
 
-function readStringArg(name: string): string | null {
-  for (let i = 0; i < ARGV.length; i += 1) {
-    const arg = ARGV[i];
-    if (arg === name) return ARGV[i + 1] ?? null;
-    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
-  }
-  return null;
-}
-
 async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
@@ -79,8 +70,8 @@ async function main(): Promise<void> {
     const report = await runOpsMigrateApply({
       safe: ARGV.includes("--safe"),
       execute: ARGV.includes("--execute"),
-      approve: readStringArg("--approve"),
-      out: readStringArg("--out"),
+      approve: readCommandOption(ARGV, "--approve"),
+      out: readCommandOption(ARGV, "--out"),
     });
     if (JSON_MODE) {
       console.log(JSON.stringify(report, null, 2));

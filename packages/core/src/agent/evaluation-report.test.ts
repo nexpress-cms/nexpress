@@ -1,0 +1,526 @@
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  npBuildAgentEvaluationReportV1,
+  npBuildAgentEvaluationReportV2,
+  npRequireAgentEvaluationReportV1,
+  npRequireAgentEvaluationReportV2,
+} from "./evaluation-report.js";
+import {
+  npAgentEvaluationReportMaxEntriesV2,
+  npFormatAgentEvaluationReport,
+  npFormatAgentEvaluationReportV1,
+  npRequireAgentEvaluationReportManifest,
+  npRequireAgentEvaluationReportManifestV1,
+  type NpAgentEvaluationReportInputV1,
+  type NpAgentEvaluationReportInputV2,
+  type NpAgentEvaluationReportRecipeV1,
+} from "../agent-contract/evaluation-report-contract.js";
+import { runAgentEvaluationV1 } from "./evaluation.js";
+import {
+  runAgentModeratorEvaluationV1,
+  npBuildAgentModeratorEvaluationReviewArtifactV1,
+} from "./moderator-evaluation.js";
+import { npCreateAgentOperatorPlanEvaluationSuiteV1 } from "./operator-plan-evaluation-fixtures.js";
+import { npCreateAgentPublisherEvaluationSuiteV1 } from "./publisher-evaluation-fixtures.js";
+import { npCreateAgentOperatorEvaluationSuiteV1 } from "./operator-evaluation-fixtures.js";
+import {
+  npBuildAgentEvaluationArtifactV1,
+  npDigestAgentEvaluationValueV1,
+  type NpAgentEvaluationArtifactV1,
+} from "../agent-contract/evaluation-contract.js";
+import { npBuildAgentOperatorPlanEvaluationReviewArtifactV1 } from "../agent-contract/operator-plan-evaluation-review-contract.js";
+import { npBuildAgentEvaluationReviewArtifactV1 } from "../agent-contract/evaluation-review-contract.js";
+import { npCreateAgentModeratorProposalEvaluationSuiteV1 } from "./moderator-proposal-evaluation-fixtures.js";
+import { npBuildAgentModeratorProposalEvaluationReviewArtifactV1 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
+import { npBuildAgentProfileEvaluationReviewArtifactV1 } from "../agent-contract/profile-evaluation-review-contract.js";
+import { npCreateAgentMemberReportEvaluationSuiteV1 } from "./member-report-evaluation-fixtures.js";
+import { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
+import { npCreateAgentModeratorSegmentedEvaluationSuiteV2 } from "./moderator-segmented-evaluation-fixtures.js";
+
+const budget = {
+  maxCalls: 100,
+  maxInputTokens: 100_000,
+  maxOutputTokens: 100_000,
+  maxCostMicros: 0,
+  timeoutMs: 5000,
+};
+let operator: NpAgentEvaluationArtifactV1;
+let publisher: NpAgentEvaluationArtifactV1;
+const input = (
+  entries: NpAgentEvaluationReportInputV1["entries"],
+): NpAgentEvaluationReportInputV1 => ({
+  schemaVersion: "np.agent-eval-report-input.v1",
+  entries: JSON.parse(JSON.stringify(entries)),
+});
+const entry = (
+  recipe: NpAgentEvaluationReportRecipeV1,
+  evaluation: unknown,
+  review: unknown = null,
+  baseline: NpAgentEvaluationReportInputV1["entries"][number]["baseline"] = null,
+) => ({ recipe, current: { evaluation, review }, baseline });
+const inputV2 = (
+  entries: NpAgentEvaluationReportInputV2["entries"],
+): NpAgentEvaluationReportInputV2 => ({
+  ...input(entries),
+  schemaVersion: "np.agent-eval-report-input.v2",
+});
+const rebuild = (
+  a: NpAgentEvaluationArtifactV1,
+  overrides: Partial<NpAgentEvaluationArtifactV1> = {},
+) => {
+  const value = { ...a, ...overrides };
+  return npBuildAgentEvaluationArtifactV1({
+    mode: value.mode,
+    suite: value.suite,
+    provider: value.provider,
+    model: value.model,
+    startedAt: value.startedAt,
+    finishedAt: value.finishedAt,
+    budget: value.budget,
+    caseResults: value.caseResults,
+  });
+};
+beforeAll(async () => {
+  operator = await runAgentEvaluationV1({
+    suite: await npCreateAgentOperatorPlanEvaluationSuiteV1(),
+    mode: "fake",
+    providerId: "fake",
+    model: "deterministic-v1",
+    budget,
+  });
+  publisher = await runAgentEvaluationV1({
+    suite: await npCreateAgentPublisherEvaluationSuiteV1(),
+    mode: "fake",
+    providerId: "fake",
+    model: "deterministic-v1",
+    budget,
+  });
+});
+// Full artifact replay and review comparisons exercise multiple owners per workflow.
+// Scoped timeouts allow hosted CI scheduling; they do not change evaluator limits.
+describe("unified offline evaluation evidence", () => {
+  it("keeps recipe gates, modes and missing review coverage distinct without readiness", async () => {
+    const moderator = await runAgentModeratorEvaluationV1();
+    const provider = await rebuild(publisher, {
+      mode: "provider",
+      provider: "local-stub",
+      model: "test-model",
+    });
+    const failedResults = structuredClone(operator.caseResults);
+    failedResults[0].prediction = null;
+    failedResults[0].error = "STRUCTURED_OUTPUT_INVALID";
+    const failed = await rebuild(operator, { caseResults: failedResults });
+    const report = await npBuildAgentEvaluationReportV1(
+      input([
+        entry("publisher", provider),
+        entry("moderator", moderator),
+        entry("operator", failed),
+      ]),
+    );
+    expect(report.rows.map((r) => [r.recipe, r.mode, r.fixtureGate])).toEqual([
+      ["moderator", "deterministic-offline", "passed"],
+      ["moderator-proposal", null, "missing"],
+      ["operator", "fake", "failed"],
+      ["publisher", "provider", "passed"],
+    ]);
+    expect(report.rows[3].review).toMatchObject({
+      status: "missing",
+      summary: { reviewed: 0, unreviewed: expect.any(Number), acceptBasisPoints: null },
+    });
+    expect(report.input.entries[2].current.review).toBeNull();
+    expect(report).toMatchObject({
+      fullR6: "not-established",
+      modelUsefulness: "not-established",
+      authority: "offline-evidence-no-approval",
+    });
+    expect(report).not.toHaveProperty("ok");
+    expect(await npRequireAgentEvaluationReportV1(report)).toEqual(report);
+    expect(npFormatAgentEvaluationReportV1(report)).toContain("fixture/schema gate=failed");
+    const missing = await npBuildAgentEvaluationReportV1(input([]));
+    expect(missing.rows).toHaveLength(4);
+    expect(
+      missing.rows.every(
+        (r) => r.status === "missing" && r.cases === null && r.review.summary === null,
+      ),
+    ).toBe(true);
+  }, 20_000);
+  it("independently validates saved legacy three-row reports without hiding required proposal rows", async () => {
+    const report = await npBuildAgentEvaluationReportV1(input([entry("operator", operator)]));
+    const { artifactHash, ...body } = report;
+    expect(artifactHash).toBeTruthy();
+    const legacyBody = {
+      ...body,
+      rows: body.rows.filter((row) => row.recipe !== "moderator-proposal"),
+      limitations: body.limitations.map((value) =>
+        value.startsWith("Moderator detector artifacts")
+          ? "Moderator artifacts require the installed deterministic implementation; historical changed predictions are unsupported."
+          : value,
+      ),
+    };
+    const legacy = {
+      ...legacyBody,
+      artifactHash: await npDigestAgentEvaluationValueV1(legacyBody),
+    };
+    expect(await npRequireAgentEvaluationReportV1(legacy)).toEqual(legacy);
+    const forged = structuredClone(legacy);
+    forged.rows[1].fixtureGate = "passed";
+    forged.rows[1].cases = 999;
+    const { artifactHash: forgedHash, ...forgedBody } = forged;
+    expect(forgedHash).toBeTruthy();
+    forged.artifactHash = await npDigestAgentEvaluationValueV1(forgedBody);
+    await expect(npRequireAgentEvaluationReportV1(forged)).rejects.toThrow();
+  });
+  it("uses owner comparisons for incompatible baselines, absent reviews and empty matched cohorts", async () => {
+    const review = await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(operator);
+    const changedMode = await rebuild(operator, { mode: "provider", provider: "local-stub" });
+    const incompatible = await npBuildAgentEvaluationReportV1(
+      input([
+        entry("operator", operator, review, {
+          evaluation: changedMode,
+          review: await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(changedMode),
+        }),
+      ]),
+    );
+    expect(incompatible.rows[2].evaluationComparison.result).toEqual({
+      comparable: false,
+      reason: "MODE_MISMATCH",
+    });
+    expect(incompatible.rows[2].reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "MODE_MISMATCH",
+      acceptBasisPointsDelta: null,
+    });
+    const empty = await npBuildAgentEvaluationReportV1(
+      input([entry("operator", operator, review, { evaluation: operator, review })]),
+    );
+    expect(empty.rows[2].reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "NO_MATCHED_REVIEW_COHORT",
+      matchedCaseKeys: [],
+      acceptBasisPointsDelta: null,
+    });
+    for (const [currentReview, baselineReview, status] of [
+      [null, review, "missing-current-review"],
+      [review, null, "missing-baseline-review"],
+    ] as const) {
+      const report = await npBuildAgentEvaluationReportV1(
+        input([
+          entry("operator", operator, currentReview, {
+            evaluation: operator,
+            review: baselineReview,
+          }),
+        ]),
+      );
+      expect(report.rows[2].reviewComparison).toEqual({ status, result: null });
+    }
+  }, 20_000);
+  it("preserves exact-bound offline human feedback and rejects valid reviews for another source", async () => {
+    const template = await npBuildAgentEvaluationReviewArtifactV1(publisher);
+    const eligible = template.entries.find((e) => e.eligible)!;
+    const review = await npBuildAgentEvaluationReviewArtifactV1(publisher, [
+      {
+        caseId: eligible.caseId,
+        caseHash: eligible.caseHash,
+        predictionHash: eligible.predictionHash,
+        sourceHash: eligible.sourceHash,
+        outcome: "accept",
+        reviewer: "local-reviewer",
+        reviewedAt: "2026-10-07T00:00:00.000Z",
+        notes: "Synthetic review",
+        editedProposal: null,
+      },
+    ]);
+    const report = await npBuildAgentEvaluationReportV1(
+      input([entry("publisher", publisher, review, { evaluation: publisher, review })]),
+    );
+    expect(report.rows[3].review.summary).toMatchObject({ reviewed: 1, accepted: 1 });
+    expect(report.rows[3].reviewComparison.result).toMatchObject({
+      comparable: true,
+      matchedCaseKeys: [`${eligible.caseId}@${eligible.caseVersion}`],
+      acceptBasisPointsDelta: 0,
+    });
+    const other = await rebuild(publisher, {
+      finishedAt: new Date(Date.parse(publisher.finishedAt) + 1000).toISOString(),
+    });
+    await expect(
+      npBuildAgentEvaluationReportV1(input([entry("publisher", other, review)])),
+    ).rejects.toThrow();
+    const moderator = await runAgentModeratorEvaluationV1();
+    const moderatorReview = await npBuildAgentModeratorEvaluationReviewArtifactV1(moderator);
+    const modReport = await npBuildAgentEvaluationReportV1(
+      input([
+        entry("moderator", moderator, moderatorReview, {
+          evaluation: moderator,
+          review: moderatorReview,
+        }),
+      ]),
+    );
+    expect(modReport.rows[0].reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "NO_MATCHED_REVIEW_COHORT",
+    });
+  }, 20_000);
+  it("reports Moderator detector and proposal evidence independently, including abstention review and exact source binding", async () => {
+    const proposal = await runAgentEvaluationV1({
+      suite: await npCreateAgentModeratorProposalEvaluationSuiteV1(),
+      mode: "fake",
+      providerId: "fake",
+      model: "deterministic-v1",
+      budget,
+    });
+    const template = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(proposal);
+    const abstention = template.entries.find((e) => e.response?.decision.kind === "complete")!;
+    const review = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(proposal, [
+      {
+        caseId: abstention.caseId,
+        caseHash: abstention.caseHash,
+        predictionHash: abstention.predictionHash,
+        sourceHash: abstention.sourceHash,
+        outcome: "accept",
+        reviewer: "local-reviewer",
+        reviewedAt: "2026-10-08T00:00:00.000Z",
+        notes: "Reviewed synthetic abstention",
+        editedProposal: null,
+      },
+    ]);
+    const report = await npBuildAgentEvaluationReportV1(
+      input([
+        entry("moderator", await runAgentModeratorEvaluationV1()),
+        entry("moderator-proposal", proposal, review, { evaluation: proposal, review }),
+      ]),
+    );
+    expect(report.rows[0]).toMatchObject({ recipe: "moderator", mode: "deterministic-offline" });
+    expect(report.rows[1]).toMatchObject({
+      recipe: "moderator-proposal",
+      mode: "fake",
+      fixtureGate: "passed",
+      review: { status: "present", summary: { accepted: 1, reviewed: 1 } },
+      reviewComparison: { result: { comparable: true, acceptBasisPointsDelta: 0 } },
+    });
+    expect(await npRequireAgentEvaluationReportV1(report)).toEqual(report);
+    expect(npFormatAgentEvaluationReportV1(report)).toContain(
+      "Synthetic proposal/abstention conformance:",
+    );
+    expect(npFormatAgentEvaluationReportV1(report)).toContain(
+      "fixtureDecisionPrecisionBasisPoints=",
+    );
+    await expect(
+      npBuildAgentEvaluationReportV1(input([entry("moderator-proposal", publisher)])),
+    ).rejects.toThrow();
+    const other = await rebuild(proposal, {
+      finishedAt: new Date(Date.parse(proposal.finishedAt) + 1000).toISOString(),
+    });
+    await expect(
+      npBuildAgentEvaluationReportV1(input([entry("moderator-proposal", other, review)])),
+    ).rejects.toThrow();
+    const manifest = {
+      schemaVersion: "np.agent-eval-report-manifest.v1",
+      entries: ["moderator", "moderator-proposal", "operator", "publisher"].map((recipe) => ({
+        recipe,
+        evaluation: `${recipe}.json`,
+        review: null,
+        baseline: null,
+      })),
+    };
+    expect(npRequireAgentEvaluationReportManifestV1(manifest)).toEqual(manifest);
+  }, 20_000);
+  it("rejects derived-data forgery, wrong recipes, legacy Operator, duplicate input and aggregate excess before getters", async () => {
+    const report = await npBuildAgentEvaluationReportV1(input([entry("operator", operator)]));
+    for (const forged of [
+      { ...report, authority: "approval" },
+      { ...report, fullR6: "established" },
+      { ...report, ok: true },
+      { ...report, rows: [] },
+      { ...report, artifactHash: "forged" },
+    ])
+      await expect(npRequireAgentEvaluationReportV1(forged)).rejects.toThrow();
+    await expect(
+      npBuildAgentEvaluationReportV1(input([entry("operator", publisher)])),
+    ).rejects.toThrow();
+    const legacy = await runAgentEvaluationV1({
+      suite: await npCreateAgentOperatorEvaluationSuiteV1(),
+      mode: "fake",
+      providerId: "fake",
+      model: "deterministic-v1",
+      budget,
+    });
+    await expect(
+      npBuildAgentEvaluationReportV1(input([entry("operator", legacy)])),
+    ).rejects.toThrow();
+    await expect(
+      npBuildAgentEvaluationReportV1(
+        input([entry("operator", operator), entry("operator", operator)]),
+      ),
+    ).rejects.toThrow();
+    await expect(npBuildAgentEvaluationReportV1({ ...input([]), unknown: true })).rejects.toThrow();
+    await expect(
+      npBuildAgentEvaluationReportV1(input([entry("operator", "x".repeat(4 * 1024 * 1024))])),
+    ).rejects.toThrow();
+    const getter = vi.fn(() => []);
+    await expect(
+      npBuildAgentEvaluationReportV1(
+        Object.defineProperty({ schemaVersion: "np.agent-eval-report-input.v1" }, "entries", {
+          enumerable: true,
+          get: getter,
+        }),
+      ),
+    ).rejects.toThrow();
+    expect(getter).not.toHaveBeenCalled();
+  });
+  it("parses only exact bounded local manifest fields without invoking getters", () => {
+    const manifest = {
+      schemaVersion: "np.agent-eval-report-manifest.v1",
+      entries: [
+        {
+          recipe: "operator",
+          evaluation: "data/eval.json",
+          review: null,
+          baseline: { evaluation: "baseline.json", review: "review.json" },
+        },
+      ],
+    };
+    expect(npRequireAgentEvaluationReportManifestV1(manifest)).toEqual(manifest);
+    for (const invalid of [
+      { ...manifest, ready: true },
+      { ...manifest, entries: [...manifest.entries, ...manifest.entries] },
+      { ...manifest, entries: [{ ...manifest.entries[0], evaluation: "\u0000" }] },
+      { ...manifest, entries: [{ recipe: "operator", evaluation: "a.json" }] },
+    ])
+      expect(() => npRequireAgentEvaluationReportManifestV1(invalid)).toThrow();
+    const multiple = {
+      schemaVersion: "np.agent-eval-report-manifest.v2",
+      entries: [
+        manifest.entries[0],
+        { ...structuredClone(manifest.entries[0]), evaluation: "other.json" },
+      ],
+    };
+    expect(npRequireAgentEvaluationReportManifest(multiple)).toEqual(multiple);
+    expect(() => npRequireAgentEvaluationReportManifestV1(multiple)).toThrow();
+    expect(() =>
+      npRequireAgentEvaluationReportManifest({
+        ...multiple,
+        entries: Array.from({ length: npAgentEvaluationReportMaxEntriesV2 + 1 }, () =>
+          structuredClone(manifest.entries[0]),
+        ),
+      }),
+    ).toThrow();
+  });
+
+  it("projects three Moderator datasets with independent reviews and baseline compatibility", async () => {
+    const [semantic, segmented, member] = await Promise.all(
+      [
+        npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+        npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+        npCreateAgentMemberReportEvaluationSuiteV1,
+      ].map(async (suite) =>
+        runAgentEvaluationV1({
+          suite: await suite(),
+          mode: "fake",
+          providerId: "fake",
+          model: "deterministic-v1",
+          budget,
+        }),
+      ),
+    );
+    const memberTemplate = await npBuildAgentProfileEvaluationReviewArtifactV1(member);
+    const { caseId, caseHash, predictionHash, sourceHash } = memberTemplate.entries[0];
+    const memberReview = await npBuildAgentProfileEvaluationReviewArtifactV1(member, [
+      {
+        caseId,
+        caseHash,
+        predictionHash,
+        sourceHash,
+        outcome: "accept",
+        reviewer: "synthetic-test",
+        reviewedAt: "2026-11-26T00:00:00.000Z",
+        notes: "",
+        editedProposal: null,
+      },
+    ]);
+    const segmentedReview = await npBuildAgentProfileEvaluationReviewArtifactV1(segmented);
+    const entries = [
+      entry("moderator-assessment", semantic),
+      entry("moderator-assessment", segmented, segmentedReview, {
+        evaluation: member,
+        review: memberReview,
+      }),
+      entry("moderator-assessment", member, memberReview, {
+        evaluation: member,
+        review: memberReview,
+      }),
+    ];
+    const report = await npBuildAgentEvaluationReportV2(inputV2(entries));
+    const assessments = report.rows.filter((row) => row.recipe === "moderator-assessment");
+    expect(
+      assessments.map((row) => [row.dataset, row.cases, row.review.summary?.reviewed]),
+    ).toEqual([
+      [{ id: "moderator-member-report", version: 1 }, member.caseResults.length, 1],
+      [{ id: "moderator-segmented-assessment", version: 2 }, segmented.caseResults.length, 0],
+      [{ id: "moderator-semantic-assessment", version: 1 }, semantic.caseResults.length, 0],
+    ]);
+    expect(assessments[0].evaluationComparison.result).toMatchObject({ comparable: true });
+    expect(assessments[0].reviewComparison.result).toMatchObject({
+      comparable: true,
+      matchedCaseKeys: [`${caseId}@${memberTemplate.entries[0].caseVersion}`],
+      acceptBasisPointsDelta: 0,
+    });
+    expect(assessments[1].evaluationComparison.result).toEqual({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+    expect(assessments[1].reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+      matchedCaseKeys: [],
+      acceptBasisPointsDelta: null,
+    });
+    expect(assessments[2].evaluationComparison.status).toBe("missing-baseline");
+    expect(report.rows.find((row) => row.recipe === "operator")).toMatchObject({
+      dataset: null,
+      status: "missing",
+    });
+    expect(report.fullR6).toBe("not-established");
+    expect(npFormatAgentEvaluationReport(report)).toContain(
+      "moderator-assessment [moderator-segmented-assessment, version 2]: present",
+    );
+    expect(await npBuildAgentEvaluationReportV2(inputV2([...entries].reverse()))).toEqual(report);
+    expect(await npRequireAgentEvaluationReportV2(report)).toEqual(report);
+    await expect(
+      npBuildAgentEvaluationReportV2(
+        inputV2([entry("moderator-assessment", segmented, memberReview)]),
+      ),
+    ).rejects.toThrow();
+  }, 20_000);
+
+  it("checks suite identity, including version, and rejects a rehashed dataset claim", async () => {
+    const suite = { ...publisher.suite, version: publisher.suite.version + 1 };
+    const next = await rebuild(publisher, { suite });
+    const original = entry("publisher", publisher);
+    const newer = entry("publisher", next, null, { evaluation: publisher, review: null });
+    const report = await npBuildAgentEvaluationReportV2(inputV2([newer, original]));
+    expect(
+      report.rows.filter((row) => row.recipe === "publisher").map((row) => row.dataset),
+    ).toEqual([
+      { id: suite.id, version: publisher.suite.version },
+      { id: suite.id, version: suite.version },
+    ]);
+    expect(report.rows.at(-1)?.evaluationComparison.result).toEqual({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+    const drifted = await rebuild(publisher, {
+      suite: { ...publisher.suite, cases: publisher.suite.cases.slice(1) },
+      caseResults: publisher.caseResults.slice(1),
+    });
+    expect(drifted.suiteHash).not.toBe(publisher.suiteHash);
+    await expect(
+      npBuildAgentEvaluationReportV2(inputV2([original, entry("publisher", drifted)])),
+    ).rejects.toThrow();
+
+    const { artifactHash: originalHash, ...body } = report;
+    body.rows.at(-1)!.dataset!.id = "unbound";
+    const artifactHash = await npDigestAgentEvaluationValueV1(body);
+    expect(artifactHash).not.toBe(originalHash);
+    await expect(npRequireAgentEvaluationReportV2({ ...body, artifactHash })).rejects.toThrow();
+  }, 20_000);
+});

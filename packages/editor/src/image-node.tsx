@@ -4,7 +4,6 @@ import {
   $applyNodeReplacement,
   DecoratorNode,
   type EditorConfig,
-  type LexicalNode,
   type NodeKey,
   type SerializedLexicalNode,
 } from "lexical";
@@ -92,8 +91,4 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
 export function $createImageNode(src: string, altText: string): ImageNode {
   return $applyNodeReplacement(new ImageNode(src, altText));
-}
-
-export function $isImageNode(node: LexicalNode | null | undefined): node is ImageNode {
-  return node instanceof ImageNode;
 }

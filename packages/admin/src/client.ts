@@ -46,6 +46,7 @@ export { LinkedIdentitiesPanel } from "./auth/linked-identities-panel.js";
 export type { LinkedIdentity } from "./auth/linked-identities-panel.js";
 
 export { JobsView } from "./jobs/jobs-view.js";
+export { AgentEvaluationWorkbenchView } from "./agents/agent-evaluation-workbench-view.js";
 export { AgentStudioView } from "./agents/agent-studio-view.js";
 export { AgentConnectionCreateView } from "./agents/agent-connection-create-view.js";
 export { AgentConnectionDetailView } from "./agents/agent-connection-detail-view.js";
@@ -146,3 +147,5 @@ export {
   AgentPolicyDetailView,
 } from "./agents/agent-policy-view.js";
 export { AgentBudgetView } from "./agents/agent-budget-view.js";
+
+export { AgentIncidentListView, AgentIncidentDetailView } from "./agents/agent-incident-view.js";

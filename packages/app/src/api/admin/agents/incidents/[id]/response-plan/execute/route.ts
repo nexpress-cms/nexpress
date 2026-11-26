@@ -1,0 +1,7 @@
+import type { NextRequest } from "next/server";
+import { handleAgentIncidentAdminRequest } from "../../../../../../../lib/agents/incident-admin";
+
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  return handleAgentIncidentAdminRequest(request, "response-execute", (await context.params).id);
+}
+export const dynamic = "force-dynamic";

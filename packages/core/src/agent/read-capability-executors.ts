@@ -1,3 +1,17 @@
+import { createAgentChangeSetValidationResourceServiceV1 } from "./changeset-validation-resources.js";
+import { npRequireAgentRecipeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import {
+  NP_AGENT_PUBLISHER_PAYLOAD_BYTES,
+  NP_AGENT_PUBLISHER_DOCUMENT_BYTES,
+  npAnalyzeAgentPublisherContentV1,
+  npCreateAgentPublisherSelectionReceiptV1,
+  npRankAgentPublisherCandidatesV1,
+  npRequireAgentPublisherRouteInventoryV1,
+  type NpAgentPublisherCandidatesV1,
+  type NpAgentPublisherCandidateV1,
+  type NpAgentPublisherRouteInventoryV1,
+} from "./publisher-content.js";
+import type { NpAgentIncidentServiceV1 } from "./incident-service.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import {
@@ -44,6 +58,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getCollectionTable,
+  npAssertCollectionReadAccess,
   type NpTransaction,
 } from "../collections/index.js";
 import type { NpAuthUser, NpCollectionConfig, NpFieldConfig } from "../config/types.js";
@@ -78,6 +93,14 @@ type ReadContext = Pick<
 type NamedField = Exclude<NpFieldConfig, { type: "row" } | { type: "collapsible" }>;
 
 export interface NpAgentCoreReadCapabilityOptionsV1 {
+  /** Explicit host installation; absent services leave Incident capabilities unavailable. */
+  incidentService?: NpAgentIncidentServiceV1;
+  /** Explicit host-owned, site-authorized and redacted operational status collector. */
+  opsStatus?: NpAgentReadCapabilityExecutorsV1["ops.status"];
+  /** Site-authorized canonical public routes. Absence/partial coverage never proves a broken link. */
+  publisherRouteInventory?: (
+    context: NpAgentRuntimeRunContextV1,
+  ) => Promise<NpAgentPublisherRouteInventoryV1>;
   cursorHmacKey: { id: string; key: Uint8Array };
   resolveUser: (userId: string) => NpAuthUser | null | Promise<NpAuthUser | null>;
   resolveBlockSchemas: (
@@ -85,6 +108,13 @@ export interface NpAgentCoreReadCapabilityOptionsV1 {
   ) =>
     | readonly { type: string; schema: NpAgentJsonSchema }[]
     | Promise<readonly { type: string; schema: NpAgentJsonSchema }[]>;
+  /** Actual current block field declarations; absent/unknown nonempty block sources fail closed. */
+  resolveBlockFields?: (
+    siteId: string,
+    transaction?: NpTransaction,
+  ) =>
+    | readonly { type: string; fields: readonly NpFieldConfig[] }[]
+    | Promise<readonly { type: string; fields: readonly NpFieldConfig[] }[]>;
   resolveGatewaySettings?: (
     siteId: string,
   ) => NpAgentGatewaySettingsV1 | Promise<NpAgentGatewaySettingsV1>;
@@ -603,12 +633,82 @@ interface JsonProjectionState {
   nodes: number;
 }
 
+type BlockFields = ReadonlyMap<string, readonly NpFieldConfig[]>;
+async function exactBlockFields(
+  siteId: string,
+  resolver: NpAgentCoreReadCapabilityOptionsV1["resolveBlockFields"],
+  transaction?: NpTransaction,
+): Promise<BlockFields> {
+  const rows = resolver ? await resolver(siteId, transaction) : [];
+  if (!Array.isArray(rows) || rows.length > MAX_BLOCK_SCHEMAS)
+    throw new Error("Agent block field declarations are unavailable.");
+  const result = new Map<string, readonly NpFieldConfig[]>();
+  for (const row of rows) {
+    if (!BLOCK_TYPE_PATTERN.test(row.type) || !Array.isArray(row.fields) || result.has(row.type))
+      throw new Error("Agent block field declarations are unavailable.");
+    result.set(row.type, row.fields);
+  }
+  return result;
+}
+
+function publisherBlockSchemas(
+  blocks: readonly { type: string; schema: NpAgentJsonSchema }[],
+  declarations: BlockFields,
+): ReadonlyMap<string, NpAgentJsonSchema> {
+  // The host's generic schemas need not carry hidden-field semantics. Derive
+  // Publisher's read-only prop shape from actual declarations instead.
+  return new Map(
+    blocks.map(({ type }) => {
+      const fields = safeFieldEntries(declarations.get(type) ?? []);
+      return [
+        type,
+        jsonSchema(
+          {
+            id: { type: "string", maxLength: 128 },
+            type: { const: type },
+            props: {
+              type: "object",
+              additionalProperties: false,
+              properties: Object.fromEntries(
+                fields.map((field) => [field.name, fieldSchema(field, new Map())]),
+              ),
+              required: [],
+            },
+            layout: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                colSpan: { type: "integer", minimum: 1, maximum: 12 },
+                mdColSpan: { type: "integer", minimum: 1, maximum: 12 },
+                lgColSpan: { type: "integer", minimum: 1, maximum: 12 },
+              },
+              required: ["colSpan"],
+            },
+            children: {
+              type: "array",
+              maxItems: MAX_PROJECTED_ARRAY_ITEMS,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                patternProperties: { ".*": {} },
+              },
+            },
+          },
+          ["id", "type", "props"],
+        ),
+      ];
+    }),
+  );
+}
+
 function toJson(
   value: unknown,
   path: string,
   state: JsonProjectionState = { seen: new WeakSet<object>(), nodes: 0 },
   depth = 0,
   fields?: readonly NpFieldConfig[],
+  blockFields: BlockFields = new Map(),
+  blocks = false,
 ): NpAgentJsonValue {
   state.nodes += 1;
   if (state.nodes > MAX_PROJECTED_NODES || depth > MAX_PROJECTED_DEPTH) {
@@ -634,9 +734,81 @@ function toJson(
       if (!descriptor || !("value" in descriptor)) {
         throw new Error(`Content field ${path} contains a sparse or computed array value.`);
       }
-      projected.push(
-        toJson(descriptor.value, `${path}[${index.toString()}]`, state, depth + 1, fields),
-      );
+      if (!blocks) {
+        projected.push(
+          toJson(
+            descriptor.value,
+            `${path}[${index.toString()}]`,
+            state,
+            depth + 1,
+            fields,
+            blockFields,
+          ),
+        );
+        continue;
+      }
+      const block: unknown = descriptor.value;
+      if (
+        !block ||
+        typeof block !== "object" ||
+        Array.isArray(block) ||
+        Object.getPrototypeOf(block) !== Object.prototype
+      )
+        throw new Error("Agent block content is unavailable.");
+      const descriptors = Object.getOwnPropertyDescriptors(block);
+      if (
+        Object.keys(descriptors).some(
+          (key) => !["id", "type", "props", "children", "layout"].includes(key),
+        ) ||
+        Object.values(descriptors).some((entry) => !("value" in entry))
+      )
+        throw new Error("Agent block content is unavailable.");
+      const type: unknown = descriptors.type?.value;
+      const id: unknown = descriptors.id?.value;
+      const props: unknown = descriptors.props?.value;
+      if (
+        typeof type !== "string" ||
+        typeof id !== "string" ||
+        !BLOCK_TYPE_PATTERN.test(type) ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(id) ||
+        !blockFields.has(type) ||
+        !props ||
+        typeof props !== "object" ||
+        Array.isArray(props)
+      )
+        throw new Error("Agent block field declarations are unavailable.");
+      const item: NpAgentJsonObject = {
+        id,
+        type,
+        props: toJson(
+          props,
+          `${path}[${index}].props`,
+          state,
+          depth + 1,
+          blockFields.get(type),
+          blockFields,
+        ),
+      };
+      if (descriptors.layout)
+        item.layout = toJson(
+          descriptors.layout.value,
+          `${path}[${index}].layout`,
+          state,
+          depth + 1,
+          undefined,
+          blockFields,
+        );
+      if (descriptors.children)
+        item.children = toJson(
+          descriptors.children.value,
+          `${path}[${index}].children`,
+          state,
+          depth + 1,
+          undefined,
+          blockFields,
+          true,
+        );
+      projected.push(item);
     }
     return projected;
   }
@@ -679,6 +851,8 @@ function toJson(
             state,
             depth + 1,
             field?.type === "group" || field?.type === "array" ? field.fields : undefined,
+            blockFields,
+            field?.type === "blocks",
           ),
         });
       }
@@ -718,6 +892,7 @@ async function queryContent(
   input: NpAgentContentQueryInputV1,
   context: ReadContext,
   options: NpAgentCoreReadCapabilityOptionsV1,
+  selectedCount?: (count: number) => void,
 ): Promise<NpAgentContentQueryOutputV1> {
   const config = getCollectionConfig(input.collection);
   const table = getCollectionTable(input.collection) as PgTable;
@@ -786,6 +961,7 @@ async function queryContent(
     .limit(input.limit + 1)
     .offset(offset)) as Array<{ id: string }>;
   const selected = rows.slice(0, input.limit);
+  selectedCount?.(selected.length);
   const ids = selected.map((row) => row.id);
   let docs: ContentRow[] = [];
   if (ids.length > 0) {
@@ -811,7 +987,21 @@ async function queryContent(
       return doc ? [doc] : [];
     });
   }
-  const items = docs.map((doc) => {
+  const readable: ContentRow[] = [];
+  for (const doc of docs) {
+    try {
+      await npAssertCollectionReadAccess(config, input.collection, user ?? null, doc);
+      readable.push(doc);
+    } catch {
+      // A denied/currently unavailable row contributes no identity or ACL detail.
+    }
+  }
+  const blockFields = await exactBlockFields(
+    context.siteId,
+    options.resolveBlockFields,
+    context.transaction as unknown as NpTransaction | undefined,
+  );
+  const items = readable.map((doc) => {
     const data = Object.fromEntries(
       input.fields.flatMap((field) => {
         const descriptor = Object.getOwnPropertyDescriptor(doc, field);
@@ -833,6 +1023,8 @@ async function queryContent(
                   definition?.type === "group" || definition?.type === "array"
                     ? definition.fields
                     : undefined,
+                  blockFields,
+                  definition?.type === "blocks",
                 ),
               ],
             ];
@@ -880,6 +1072,7 @@ async function queryContent(
 }
 
 export interface NpAgentRuntimeDocumentEvidenceReaderV1 {
+  publisherCandidates(context: NpAgentRuntimeRunContextV1): Promise<NpAgentPublisherCandidatesV1>;
   read(
     context: NpAgentRuntimeRunContextV1,
     request: Extract<NpAgentEvidenceRequest, { kind: "document" }>,
@@ -902,6 +1095,230 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
 ): NpAgentRuntimeDocumentEvidenceReaderV1 {
   createAgentCoreReadCapabilityExecutorsV1(options);
   const reader: NpAgentRuntimeDocumentEvidenceReaderV1 = {
+    async publisherCandidates(context) {
+      const unavailable = (): never => {
+        throw new NpNotFoundError("publisher-candidates", "unavailable");
+      };
+      const { principal, definition } = context.evidence;
+      const user = context.staffUser;
+      if (
+        context.run.recipeId !== "publisher.stale-content" ||
+        !user ||
+        principal.authorityKind !== "user" ||
+        principal.authorityUserId !== user.id ||
+        !["content:read", "content:draft", "schema:read"].every((scope) =>
+          definition.scopes.includes(scope as "content:read" | "content:draft" | "schema:read"),
+        ) ||
+        !context.policy.effective.capabilityModes.some(
+          (entry) => entry.capabilityId === "content.query",
+        )
+      )
+        unavailable();
+      const settings = npRequireAgentRecipeSettingsV1(
+        definition.settings.find(
+          (entry) =>
+            entry.recipeId === "publisher.stale-content" &&
+            entry.recipeVersion === context.run.recipeVersion,
+        ),
+      );
+      if (settings.recipeId !== "publisher.stale-content") return unavailable();
+      const collections = context.policy.effective.resources.collections;
+      if (
+        settings.collectionSlugs.some((slug) => collections !== null && !collections.includes(slug))
+      )
+        unavailable();
+      const observedAt = context.run.queuedAt.toISOString(),
+        cutoff = new Date(
+          context.run.queuedAt.getTime() - settings.staleAfterDays * 86400000,
+        ).toISOString();
+      const readContext: ReadContext = {
+        siteId: context.siteId,
+        principal: {
+          kind: "runtime",
+          siteId: context.siteId,
+          principalId: principal.id,
+          runId: context.run.id,
+          authority: { kind: "user", userId: user!.id },
+          scopes: definition.scopes,
+        },
+        requestedAt: observedAt,
+        transaction: context.db,
+        staffUser: user,
+      };
+      const inventory = options.publisherRouteInventory
+        ? npRequireAgentPublisherRouteInventoryV1(
+            await options.publisherRouteInventory(context),
+            context.siteId,
+          )
+        : null;
+      const blocks = await exactBlockSchemas(context.siteId, options.resolveBlockSchemas);
+      const blockFields = await exactBlockFields(
+        context.siteId,
+        options.resolveBlockFields,
+        context.db as unknown as NpTransaction,
+      );
+      const validationResources = createAgentChangeSetValidationResourceServiceV1();
+      const candidates: NpAgentPublisherCandidateV1[] = [];
+      let remaining = settings.candidateLimit,
+        scanned = 0,
+        truncated = false,
+        excludedUnavailable = 0,
+        excludedOversized = 0;
+      for (const [index, collection] of settings.collectionSlugs.entries()) {
+        if (remaining === 0) {
+          truncated = true;
+          break;
+        }
+        const config = getCollectionConfig(collection);
+        if (config.timestamps === false) unavailable();
+        const fields = safeFieldEntries(config.fields)
+          .map((field) => field.name)
+          .sort();
+        if (fields.length > 32) unavailable();
+        if (config.access?.read && !(await config.access.read({ user: user! }))) unavailable();
+        const schema = collectionSchema(config, publisherBlockSchemas(blocks, blockFields));
+        let examinedSlots = 0;
+        const output = await queryContent(
+          {
+            collection,
+            filter: { op: "lt", field: "updatedAt", value: cutoff },
+            fields,
+            audience: "public",
+            status: "published",
+            sort: [{ field: "updatedAt", direction: "asc" }],
+            limit: remaining,
+            cursor: null,
+          },
+          readContext,
+          options,
+          (count) => {
+            remaining -= count;
+            examinedSlots = count;
+          },
+        );
+        scanned += output.items.length;
+        // Hydration can remove rows after the bounded query. Do not reveal their
+        // number or identities: only mark the already bounded sample partial.
+        truncated ||= output.nextCursor !== null || examinedSlots !== output.items.length;
+        for (const item of output.items) {
+          if (item.status !== "published" || item.updatedAt >= cutoff) {
+            truncated = true;
+            excludedUnavailable += 1;
+            continue;
+          }
+          try {
+            const current = await validationResources.readDocumentBase({
+              tx: context.db as unknown as NpTransaction,
+              siteId: context.siteId,
+              user: user!,
+              collection,
+              documentId: item.id,
+            });
+            if (
+              current.document.siteId !== context.siteId ||
+              current.document.status !== "published" ||
+              current.document.visibility !== "public" ||
+              dateIso(current.document.updatedAt) !== item.updatedAt
+            ) {
+              truncated = true;
+              excludedUnavailable += 1;
+              continue;
+            }
+            const currentContent = Object.fromEntries(
+              safeFieldEntries(config.fields).flatMap((field) => {
+                const value = current.document[field.name];
+                return value === undefined
+                  ? []
+                  : [
+                      [
+                        field.name,
+                        toJson(
+                          value,
+                          `content.${field.name}`,
+                          undefined,
+                          0,
+                          field.type === "group" || field.type === "array"
+                            ? field.fields
+                            : undefined,
+                          blockFields,
+                          field.type === "blocks",
+                        ),
+                      ],
+                    ];
+              }),
+            );
+            if (
+              serializeAgentCanonicalJson(currentContent) !== serializeAgentCanonicalJson(item.data)
+            ) {
+              truncated = true;
+              excludedUnavailable += 1;
+              continue;
+            }
+            const candidate: NpAgentPublisherCandidateV1 = {
+              collection,
+              documentId: item.id,
+              base: current.base,
+              updatedAt: item.updatedAt,
+              locale: item.locale,
+              findings: npAnalyzeAgentPublisherContentV1({
+                fields: config.fields,
+                content: item.data,
+                cutoff,
+                inventory,
+              }),
+              // Canonical evidence rejects shared object identities, including
+              // one collection schema reused by multiple selected documents.
+              schema: structuredClone(schema),
+              content: item.data,
+            };
+            if (
+              Buffer.byteLength(
+                serializeAgentCanonicalJson({ schema, content: item.data }),
+                "utf8",
+              ) > NP_AGENT_PUBLISHER_DOCUMENT_BYTES
+            ) {
+              truncated = true;
+              excludedOversized += 1;
+              continue;
+            }
+            candidates.push(candidate);
+          } catch {
+            truncated = true;
+            excludedUnavailable += 1;
+          }
+        }
+        if (remaining === 0 && index < settings.collectionSlugs.length - 1) truncated = true;
+      }
+      const ranked = npRankAgentPublisherCandidatesV1(candidates);
+      const selected = ranked.slice(0, settings.batchSize);
+      const selectionReceipt = npCreateAgentPublisherSelectionReceiptV1({
+        observedAt,
+        collectionSlugs: settings.collectionSlugs,
+        staleBefore: cutoff,
+        candidateLimit: settings.candidateLimit,
+        batchSize: settings.batchSize,
+        partial: truncated || ranked.length > selected.length,
+        inventory,
+        scanned,
+        admitted: ranked.length,
+        selected: selected.length,
+        unavailable: excludedUnavailable,
+        oversized: excludedOversized,
+      });
+      const result = {
+        observedAt,
+        scanned,
+        truncated: truncated || ranked.length > selected.length,
+        candidates: selected,
+        selectionReceipt,
+      };
+      if (
+        Buffer.byteLength(serializeAgentCanonicalJson(result), "utf8") >
+        NP_AGENT_PUBLISHER_PAYLOAD_BYTES
+      )
+        unavailable();
+      return result;
+    },
     projectText(collection, data) {
       const config = getCollectionConfig(collection);
       const fields = safeFieldEntries(config.fields);
@@ -1079,5 +1496,12 @@ export function createAgentCoreReadCapabilityExecutorsV1(
       } satisfies NpAgentSchemaGetOutputV1;
     },
     "content.query": (input, context) => queryContent(input, context, runtimeOptions),
+    ...(runtimeOptions.opsStatus ? { "ops.status": runtimeOptions.opsStatus } : {}),
+    ...(runtimeOptions.incidentService
+      ? {
+          "incident.get": runtimeOptions.incidentService.get.bind(runtimeOptions.incidentService),
+          "incident.list": runtimeOptions.incidentService.list.bind(runtimeOptions.incidentService),
+        }
+      : {}),
   };
 }

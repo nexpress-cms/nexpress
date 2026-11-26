@@ -173,9 +173,12 @@ async function addMedia(siteId = "default") {
   return row!.id;
 }
 describe.skipIf(skipIfNoTestDb())("ChangeSet consistent-transaction resource validation", () => {
-  beforeAll(ensureMigrated);
-  beforeEach(async () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    // The previous file may retain its final fixture; afterEach owns every later reset.
     await truncateAll();
+  });
+  beforeEach(async () => {
     registerTestCollections();
     registerThemes([defaultTheme]);
   });

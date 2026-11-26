@@ -130,6 +130,16 @@ related rows before `beforeRead`/`afterRead`; every hook result is revalidated
 before it is returned or persisted. Collection `afterCreate`, `afterUpdate`,
 `beforeDelete`, and `afterDelete` hooks run alongside plugin lifecycle hooks.
 
+For a batch using `saveDocument(..., { tx })`, create/update access callbacks
+and collection `beforeCreate`/`beforeUpdate` hooks receive an optional
+`readDocument(collection, id)` function. Await it within that callback to read
+earlier pending documents through the caller's transaction. It keeps the
+current actor, site boundary, read ACL, hydration, and read hooks. Ordinary
+lookup helpers keep their existing behavior; this does not make every hook
+query transactional. The function expires when the callback returns and is
+absent from post-commit hooks. Wrap the outer transaction in
+`withDeferredPostCommit` so rollback also discards deferred effects.
+
 `pnpm run doctor` reports `collections.contract` by inspecting every collection
 table's canonical system envelope and flags legacy `_status` columns. Live
 health reports any contained hydration, hook-result, or serialization failure

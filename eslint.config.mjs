@@ -116,17 +116,31 @@ export default tseslint.config(
     plugins: {
       "import-x": importPlugin,
     },
+    settings: {
+      // Keep workspace imports internal even when linked through node_modules.
+      "import-x/internal-regex": "^(?:@nexpress/|(?:create-nexpress|nexpress)(?:/|$))",
+      // Compare linked workspace modules with their physical lint filenames.
+      "import-x/resolver": { node: { preserveSymlinks: false } },
+    },
     rules: {
-      "import-x/no-cycle": "error",
+      // Vendor internals are outside this repository's cycle check. Traversing
+      // Next/React/Drizzle from thin wrappers can exhaust the lint process;
+      // relative, aliased and cross-workspace imports remain cycle-checked.
+      "import-x/no-cycle": ["error", { ignoreExternal: true }],
       "import-x/no-self-import": "error",
     },
   },
 
   {
-    files: ["apps/web/src/nexpress.config.ts"],
+    files: [
+      "apps/web/src/nexpress.config.ts",
+      "packages/app/src/config-defaults/index.ts",
+      "packages/app/src/lib/site-build-catalog.test.ts",
+      "packages/app/src/lib/site-build-preview-config.test.ts",
+    ],
     rules: {
-      // This composition root intentionally imports every bundled plugin and
-      // theme. Walking those package graphs from this one file makes
+      // These composition roots and the catalog/preview composition fixtures intentionally
+      // import every bundled plugin/theme. Walking all package graphs from them makes
       // import-x/no-cycle consume unbounded memory; each package remains
       // cycle-checked by its own lint task.
       "import-x/no-cycle": "off",

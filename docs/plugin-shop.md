@@ -1,45 +1,20 @@
 # Shop plugin and Storefront theme
 
-`@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
-It owns product, category, promotion, local shipping-policy, and verified-purchase review data, inventory projection, public catalog
-routes, bounded guest/member carts, checkout intents, private order drafts,
-durable orders, transaction-safe inventory reservations, local or optional
-external provider-neutral shipping quotes and selected delivery snapshots, an optional
-provider-neutral additional-tax quote and frozen tax snapshot, an optional
-provider-neutral payment initiation and verified-event boundary, revision-safe
-fulfillment operations, optional provider-neutral carrier booking,
-revision-safe PII-free fulfillment parcel snapshots,
-optional read-only outbound and replacement packaging proposals,
-optional durable outbound and replacement packing-work intents,
-durable provider-neutral shipping-label purchase/regeneration/voiding with transient retrieval,
-provider-neutral carrier pickup scheduling and cancellation,
-verified or reconciled carrier tracking events and owner-visible delivery state,
-provider-neutral full refunds with safe inventory
-compensation, owner-scoped item return intake with audited receipt inventory,
-provider-neutral partial refunds linked to received returns with optional
-quote-backed merchant/customer return-postage settlement,
-optional owner-scoped return shipment/drop-off or pickup creation with transient labels,
-member-owned saved products over the shared follow graph, independent one-shot
-restock and catalog price-drop alerts, Admin collection
-forms and health actions, blocks, and skins.
+`@nexpress/plugin-shop` owns commerce: catalog, carts and checkout, durable orders,
+inventory, optional payment and carrier adapters, fulfillment, returns, member
+alerts and reviews. The sections below define each lifecycle and its limits.
 
-`@nexpress/theme-storefront` is a separate brand/content theme. It works with
-ordinary pages and posts when Shop is absent. When both packages are active,
-the theme enhances Shop through documented CSS variables, classes, data
-attributes, and optional page blocks; neither package imports the other.
+`@nexpress/theme-storefront` is an independent brand/content theme that also works
+with ordinary pages and posts. When Shop is active, it enhances the plugin through
+public CSS variables, classes, data attributes and optional blocks; neither package
+imports the other.
 
-The cart, checkout intent, and order draft are deliberately **pre-order
-state**. Intent and draft creation leave the cart intact. The first commit of a
-durable `pending-payment` order atomically consumes that exact source cart and
-reserves tracked product or variant inventory for its 24-hour lifetime. An
-optional build-time adapter may prepare a provider handoff, confirm the
-browser return on the server, authenticate an external callback, and project
-the exact provider-neutral event that moves that order to `paid` or
-`payment-failed`. A refund-capable adapter may also cancel one entire provider
-payment or one exact amount linked to a received physical return. Shop owns attempts, order/refund transitions, fulfillment and return
-state, carrier booking/pickup/tracking/return-logistics receipts, and local compensation, but does not choose a provider protocol, remit
-or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-choose label billing, paper layout, or void/refund policy, schedule recurring pickups, implement a provider protocol, or decide jurisdiction-specific return eligibility.
+Carts, checkout intents and private drafts are pre-order state. Only the first
+durable pending-order commit consumes the exact source cart and reserves inventory.
+Shop owns commercial transitions and provider receipts; optional adapters supply
+provider protocols. Tax filing, physical fulfillment and jurisdiction-specific
+policy remain outside these contracts. See [order persistence](#durable-pending-order-and-pii-separation)
+and [future boundaries](#next-commerce-slices).
 
 ## Default setup
 
@@ -2800,7 +2775,8 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 
 Future transaction work should remain separable from this foundation:
 
-1. additional provider packages for Stripe or KG Inicis;
+1. additional provider packages beyond the bundled Toss and Stripe adapters,
+   such as KG Inicis;
 2. authorization/capture, settlement corrections, dispute evidence submission,
    liability/chargeback automation, and initiating repeated or non-return
    partial-refund contracts;

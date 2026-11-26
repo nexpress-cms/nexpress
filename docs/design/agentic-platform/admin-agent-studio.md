@@ -882,6 +882,10 @@ bundles, not only through color or icon.
    a linked incident according to correlation policy; the client never changes
    a terminal state itself.
 
+An authorized staff member may explicitly raise an active Incident’s severity
+with a bounded human reason. This leaves status and response authority unchanged;
+see the [manual severity flow](r6-incident-severity-flow.md).
+
 Guardian pages always include:
 
 > Guardian correlates NexPress application signals. It does not replace your
@@ -976,6 +980,8 @@ The API error body remains the shipped exact `{ error, status }` envelope.
 Client copy branches on stable safe codes, not provider message strings.
 Optional [Studio diagnostic headers](agent-error-diagnostics.md) carry separately
 versioned support references and recovery declarations without changing that body.
+[Read observation](studio-read-observation.md) distinguishes browser receipt and
+existing server projection times without inventing freshness or cache-age evidence.
 
 ### 13.2 Surface-specific empty states
 
@@ -1057,35 +1063,38 @@ operations aggregates. The tables below also retain proposed future dependencies
 
 ### 15.1 Read dependencies
 
-| Method and proposed path                                                            | Schema family                    | Used by                                                          |
-| ----------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
-| `GET /api/admin/agents/overview`                                                    | `np.agent-overview.v1`           | Overview cards and authorized attention counts                   |
-| `GET /api/admin/agents/connections`                                                 | `np.agent-connection.v1` list    | Connection list                                                  |
-| `GET /api/admin/agents/connections/{id}`                                            | `np.agent-connection.v1`         | Connection detail/dependencies                                   |
-| `GET /api/admin/agents/adapters`                                                    | `np.agent-adapter.v1`            | Connection wizard provider/auth/model/config inventory           |
-| `GET /api/admin/agents/gateway/settings`                                            | `np.agent-gateway-settings.v1`   | Deployment ceiling, site ceiling, effective modes, route posture |
-| `GET /api/admin/agents/gateway/oauth-clients`                                       | `np.agent-oauth-client.v1` list  | Pre-registered client metadata and redirect inventory            |
-| `GET /api/admin/agents/gateway/principals`                                          | `np.agent-principal.v1` list     | Gateway access tab                                               |
-| `GET /api/admin/agents/gateway/principals/{id}`                                     | `np.agent-principal.v1`          | Principal/grant/token detail                                     |
-| `GET /api/admin/agents/configurations`                                              | `np.agent-configuration.v1` list | Agent list                                                       |
-| `GET /api/admin/agents/configurations/{id}`                                         | `np.agent-configuration.v1`      | Agent editor/detail                                              |
-| `GET /api/admin/agents/configurations/{id}/effective`                               | `np.agent-effective-config.v1`   | Server review/blockers before activation                         |
-| `GET /api/admin/agents/capabilities`                                                | `np.agent-runtime-catalog.v1`    | Exact scope/risk/approval/reversibility inventory                |
-| `GET /api/admin/agents/triggers`                                                    | `np.agent-triggers-page.v1`      | Registered immutable trigger definitions and schedule metadata   |
-| `GET /api/admin/agents/policies`                                                    | `np.agent-policy.v1` list        | Policy list                                                      |
-| `GET /api/admin/agents/policies/{id}`                                               | `np.agent-policy.v1`             | Policy detail/version diff                                       |
-| `GET /api/admin/agents/activity`                                                    | `np.agent-run.v1` list           | Run list                                                         |
-| `GET /api/admin/agents/activity/{id}`                                               | `np.agent-run-detail.v1`         | Run header/timeline/action pages                                 |
-| `GET /api/admin/agents/approvals`                                                   | `np.agent-approval.v1` list      | Approval queue/history                                           |
-| `GET /api/admin/agents/approvals/{id}`                                              | `np.agent-approval-detail.v1`    | Decision facts and current actor permissions                     |
-| `GET /api/admin/agents/changesets`                                                  | `np.agent-changeset.v1` list     | Authorized ChangeSet history/filtering                           |
-| `GET /api/admin/agents/changesets/{id}`                                             | `np.agent-changeset.v1`          | ChangeSet stages/diff/results                                    |
-| `GET /api/admin/agents/changesets/{id}/preview`                                     | `np.agent-preview.v1`            | Authorized artifact metadata; not unrestricted draft content     |
-| `GET /api/admin/agents/changesets/{id}/previews/{previewId}/artifacts/{artifactId}` | private artifact bytes           | Reauthorize site/target/digest/expiry then no-store stream       |
-| `GET /api/admin/agents/incidents`                                                   | `np.agent-incident.v1` list      | Incident queue                                                   |
-| `GET /api/admin/agents/incidents/{id}`                                              | `np.agent-incident-detail.v1`    | Incident evidence/timeline/actions                               |
-| `GET /api/admin/agents/budgets`                                                     | `np.agent-runtime-budget.v1`     | Site and Agent ceilings/usage                                    |
-| `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-overview.v1`   | Worker, emergency pause, quota, vault, adapter posture           |
+| Method and proposed path                                                            | Schema family                        | Used by                                                          |
+| ----------------------------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| `GET /api/admin/agents/overview`                                                    | `np.agent-overview.v1`               | Overview cards and authorized attention counts                   |
+| `GET /api/admin/agents/connections`                                                 | `np.agent-connection.v1` list        | Connection list                                                  |
+| `GET /api/admin/agents/connections/{id}`                                            | `np.agent-connection.v1`             | Connection detail/dependencies                                   |
+| `GET /api/admin/agents/adapters`                                                    | `np.agent-adapter.v1`                | Connection wizard provider/auth/model/config inventory           |
+| `GET /api/admin/agents/gateway/settings`                                            | `np.agent-gateway-settings.v1`       | Deployment ceiling, site ceiling, effective modes, route posture |
+| `GET /api/admin/agents/gateway/oauth-clients`                                       | `np.agent-oauth-client.v1` list      | Pre-registered client metadata and redirect inventory            |
+| `GET /api/admin/agents/gateway/principals`                                          | `np.agent-principal.v1` list         | Gateway access tab                                               |
+| `GET /api/admin/agents/gateway/principals/{id}`                                     | `np.agent-principal.v1`              | Principal/grant/token detail                                     |
+| `GET /api/admin/agents/configurations`                                              | `np.agent-configuration.v1` list     | Agent list                                                       |
+| `GET /api/admin/agents/configurations/{id}`                                         | `np.agent-configuration.v1`          | Agent editor/detail                                              |
+| `GET /api/admin/agents/configurations/{id}/effective`                               | `np.agent-effective-config.v1`       | Server review/blockers before activation                         |
+| `GET /api/admin/agents/capabilities`                                                | `np.agent-runtime-catalog.v1`        | Exact scope/risk/approval/reversibility inventory                |
+| `GET /api/admin/agents/triggers`                                                    | `np.agent-triggers-page.v1`          | Registered immutable trigger definitions and schedule metadata   |
+| `GET /api/admin/agents/policies`                                                    | `np.agent-policy.v1` list            | Policy list                                                      |
+| `GET /api/admin/agents/policies/{id}`                                               | `np.agent-policy.v1`                 | Policy detail/version diff                                       |
+| `GET /api/admin/agents/activity`                                                    | `np.agent-run.v1` list               | Run list                                                         |
+| `GET /api/admin/agents/activity/{id}`                                               | `np.agent-run-detail.v1`             | Run header/timeline/action pages                                 |
+| `GET /api/admin/agents/approvals`                                                   | `np.agent-approval.v1` list          | Approval queue/history                                           |
+| `GET /api/admin/agents/approvals/{id}`                                              | `np.agent-approval-detail.v1`        | Decision facts and current actor permissions                     |
+| `GET /api/admin/agents/changesets`                                                  | `np.agent-changeset.v1` list         | Authorized ChangeSet history/filtering                           |
+| `GET /api/admin/agents/changesets/{id}`                                             | `np.agent-changeset.v1`              | ChangeSet stages/diff/results                                    |
+| `GET /api/admin/agents/changesets/{id}/preview`                                     | `np.agent-preview.v1`                | Authorized artifact metadata; not unrestricted draft content     |
+| `GET /api/admin/agents/changesets/{id}/previews/{previewId}/artifacts/{artifactId}` | private artifact bytes               | Reauthorize site/target/digest/expiry then no-store stream       |
+| `GET /api/admin/agents/incidents`                                                   | `np.agent-incident.v1` list          | Incident queue                                                   |
+| `GET /api/admin/agents/incidents/{id}`                                              | `np.agent-incident-detail.v1`        | Incident evidence/timeline/actions                               |
+| `GET /api/admin/agents/incidents/{id}/evidence`                                     | `np.agent-incident-evidence.v1`      | Bounded comment observation/current-state evidence               |
+| `GET /api/admin/agents/incidents/notifications`                                     | `np.agent-incident-notifications.v1` | Authorized local Incident notification feed                      |
+| `GET /api/admin/agents/incidents/{id}/assignment`                                   | `np.agent-incident-assignment.v1`    | Current assigned Agent and eligible candidates                   |
+| `GET /api/admin/agents/budgets`                                                     | `np.agent-runtime-budget.v1`         | Site and Agent ceilings/usage                                    |
+| `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-overview.v1`       | Worker, emergency pause, quota, vault, adapter posture           |
 
 The artifact GET is a safe read, not AP-001 mutation admission: it requires a
 current staff session/site/capability, every ChangeSet target still visible,
@@ -1112,7 +1121,7 @@ floor; and audit/redaction policy. Route registration, OpenAPI, Admin client,
 invocation admission, Doctor, and tests consume that map. An unmapped row is a
 startup/build error and must not be implemented ad hoc.
 
-`@nexpress/core/agent-contract` now implements that AP-001 boundary for all 55
+`@nexpress/core/agent-contract` now implements that AP-001 boundary for all 59
 rows. The registry composes existing JSON Schema, human capability, effect
 profile, API error, route-path, canonical JSON/digest, and invocation-request
 primitives instead of defining parallel versions. Its exhaustive analyzer,
@@ -1145,6 +1154,7 @@ a new generation with a new key and invalidate or supersede the old verifier.
 
 | Method and proposed path                                                                  | Purpose                                                                                               |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `POST /api/admin/agents/incidents/{id}/severity`                                          | Raise severity with a version-bound human reason; preserve status and authority                       |
 | `POST /api/admin/agents/connections`                                                      | Create write-only connection metadata/secret                                                          |
 | `PATCH /api/admin/agents/connections/{id}`                                                | Validate and stage/activate exact non-secret config with version/hash precondition                    |
 | `POST /api/admin/agents/connections/{id}/oauth/start`                                     | Create state/PKCE-bound provider authorization and return its trusted URL                             |
@@ -1195,7 +1205,9 @@ a new generation with a new key and invalidate or supersede the old verifier.
 | `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/request-approval` | Request approval for exact rollback id/hash                                                           |
 | `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/execute`          | Execute only the exact approved rollback plan                                                         |
 | `POST /api/admin/agents/incidents/{id}/transitions`                                       | Authorized exact state transition and human note                                                      |
+| `POST /api/admin/agents/incidents/{id}/assignment`                                        | Explicit same-site configured Agent assignment or removal                                             |
 | `POST /api/admin/agents/incidents/{id}/response-plan`                                     | Create deterministic response plan/approval                                                           |
+| `POST /api/admin/agents/incidents/{id}/response-plan/execute`                             | Execute the exact approved quarantine plan                                                            |
 | `POST /api/admin/agents/incidents/{id}/restore`                                           | Restore exact reversible containment                                                                  |
 | `PATCH /api/admin/agents/budgets`                                                         | Update site/per-Agent ceilings with expected version                                                  |
 | `POST /api/admin/agents/runtime/pause`                                                    | Emergency stop for new runtime admission                                                              |

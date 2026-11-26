@@ -27,7 +27,7 @@ import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js
  *    bypass the DB entirely.
  */
 
-const DEFAULT_TTL_MS = 5_000;
+const TTL_MS = 5_000;
 
 interface CacheEntry {
   enabled: boolean;
@@ -51,7 +51,6 @@ const inflight = new Map<string, Promise<boolean>>();
  * writing; if they disagree, A drops its result.
  */
 const generation = new Map<string, number>();
-let ttlMs = DEFAULT_TTL_MS;
 
 function cacheKey(siteId: string, pluginId: string): string {
   return `${siteId}\u0000${pluginId}`;
@@ -112,7 +111,7 @@ export async function isPluginEnabled(pluginId: string, siteId?: string): Promis
   const promise = fetchEnabled(resolvedSiteId, pluginId)
     .then((enabled) => {
       if (currentGeneration(key) === fetchGeneration) {
-        cache.set(key, { enabled, expiresAt: Date.now() + ttlMs });
+        cache.set(key, { enabled, expiresAt: Date.now() + TTL_MS });
       }
       return enabled;
     })
@@ -160,13 +159,7 @@ export function resetEnabledGate(): void {
   cache.clear();
   inflight.clear();
   generation.clear();
-  ttlMs = DEFAULT_TTL_MS;
   fetchOverride = null;
-}
-
-/** Test-only: tighten the TTL so cache-expiry behavior is observable. */
-export function setEnabledGateTtlForTest(ms: number): void {
-  ttlMs = ms;
 }
 
 /**

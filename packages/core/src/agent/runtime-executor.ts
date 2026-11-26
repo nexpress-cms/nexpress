@@ -1,3 +1,5 @@
+import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
+import type { NpAgentGuardianIncidentAssessmentServiceV1 } from "./guardian-incident-assessment-service.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import {
   canonicalBodyRecord,
@@ -23,6 +25,8 @@ import type { NpAgentRuntimeExecutionStoreV1 } from "./runtime-execution-store.j
 import type { NpAgentRuntimeContextV1 } from "./runtime-context.js";
 import type { NpAgentRuntimeUsageV1 } from "./runtime-usage.js";
 import type { NpAgentRuntimeBreakersV1 } from "./runtime-breakers.js";
+import type { NpAgentIncidentAssessmentServiceV1 } from "./incident-assessment-service.js";
+import { npIsAgentModeratorAssessmentProfileV1 } from "../agent-contract/moderator-assessment-recipe-contract.js";
 import type { NpAgentProviderInferenceRuntimeV1 } from "./provider-inference.js";
 import {
   npParseAgentStoredProviderConnectionConfigV1,
@@ -33,6 +37,11 @@ import {
   npRequireAgentRuntimeProviderDecisionV1,
   npRequireAgentRuntimeProviderFailureV1,
 } from "./runtime-provider-evidence.js";
+import {
+  npCreateAgentRuntimeTerminalObservationV1,
+  npReadAgentRuntimeScopeDeniedV1,
+  type NpAgentGuardianRuntimeTerminalObservationV1,
+} from "./guardian-runtime-observer.js";
 
 type Identity = { siteId: string; runId: string };
 type Call = typeof npAgentProviderCalls.$inferSelect;
@@ -45,6 +54,8 @@ export interface NpAgentRuntimeExecutorOptionsV1 {
   vault: Pick<NpAgentVaultServiceV1, "leaseProviderCredential">;
   capabilities: NpAgentCapabilityAdmissionServiceV1;
   breakers: NpAgentRuntimeBreakersV1;
+  incidentAssessments?: NpAgentIncidentAssessmentServiceV1;
+  guardianIncidentAssessments?: NpAgentGuardianIncidentAssessmentServiceV1;
   now?: () => Date;
 }
 function fail(code: string): never {
@@ -139,9 +150,12 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
     signal: AbortSignal,
   ) {
     let claim = initialClaim;
+    let observation: NpAgentGuardianRuntimeTerminalObservationV1 | undefined;
+    let proposedCall: Call | undefined;
     // The canonical Run maximum is authoritative; this separate loop bound also contains corrupted journals.
     try {
       for (let step = 0; step < 1000; step++) {
+        proposedCall = undefined;
         if (closed || signal.aborted) return options.store.cancel(identity);
         claim = await options.store.renew({ ...identity, claim });
         const claimed = { ...identity, claim };
@@ -166,7 +180,18 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
           for (const call of calls)
             if (["failed", "cancelled"].includes(call.state))
               await npRequireAgentRuntimeProviderFailureV1({ db: context.db, call });
-          return { calls, limits: context.limits };
+          const recipe = calls.some((call) => call.state === "succeeded")
+            ? context.evidence.registry.recipes.find(
+                (entry) =>
+                  entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+              )
+            : undefined;
+          return {
+            calls,
+            limits: context.limits,
+            assessment: npIsAgentModeratorAssessmentProfileV1(recipe),
+            guardianAssessment: npIsAgentGuardianAssessmentRecipeV1(recipe),
+          };
         });
         // Retained approval requests never authorize another provider turn by themselves.
         // This also fences a crash after the explicit resume claim but before execution.
@@ -199,6 +224,18 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         for (const call of history.calls) {
           if (call.state !== "succeeded") continue;
           const output = await npRequireAgentRuntimeProviderDecisionV1(call);
+          if (
+            history.assessment &&
+            output.task === "moderation-classification" &&
+            output.decision.kind === "classification"
+          )
+            continue;
+          if (
+            history.guardianAssessment &&
+            output.task === "guardian-assessment" &&
+            output.decision.kind === "assessment"
+          )
+            continue;
           if (output.task !== "interactive-capability")
             fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
           if (output.decision.kind === "request-evidence") {
@@ -211,102 +248,152 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         if (evidence.length > 32) fail("RUNTIME_EVIDENCE_LIMIT");
         if (latest?.state === "succeeded") {
           const output = await npRequireAgentRuntimeProviderDecisionV1(latest);
-          if (output.task !== "interactive-capability")
-            fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
-          const decision = output.decision;
-          if (decision.kind === "complete")
-            return options.store.transition({ ...claimed, state: "succeeded" });
-          if (decision.kind === "propose-capability") {
-            const proposal = serializeAgentCanonicalJson({
-              capabilityId: decision.capabilityId,
-              arguments: decision.arguments,
-            });
-            for (const prior of history.calls.slice(0, -1)) {
-              if (prior.state !== "succeeded") continue;
-              const previous = await npRequireAgentRuntimeProviderDecisionV1(prior);
-              if (
-                previous.task === "interactive-capability" &&
-                previous.decision.kind === "propose-capability" &&
-                serializeAgentCanonicalJson({
-                  capabilityId: previous.decision.capabilityId,
-                  arguments: previous.decision.arguments,
-                }) === proposal
-              )
-                fail("RUNTIME_REPEATED_PROPOSAL");
-            }
-            const request = npRequireAgentInstalledCapabilityInvocationRequestV1({
-              schemaVersion: "np.agent-invocation-request.v1",
-              capabilityId: decision.capabilityId,
-              arguments: {
-                input: decision.arguments,
-                idempotencyKey: npAgentReadCapabilityIdsV1.some(
-                  (id) => id === decision.capabilityId,
-                )
-                  ? null
-                  : key(identity.runId, latest.sequence, "action"),
-              },
-            });
-            const actionSequence = await options.store.withClaim(claimed, async ({ db, run }) => {
-              const actions = await db
-                .select({
-                  sequence: npAgentActions.sequence,
-                  capabilityId: npAgentActions.capabilityId,
-                  input: npAgentActions.inputCanonical,
-                  idempotencyKey: npAgentInvocations.idempotencyKey,
-                })
-                .from(npAgentActions)
-                .innerJoin(
-                  npAgentInvocations,
-                  and(
-                    eq(npAgentInvocations.id, npAgentActions.invocationId),
-                    eq(npAgentInvocations.siteId, npAgentActions.siteId),
-                  ),
-                )
-                .where(and(eq(npAgentActions.siteId, run.siteId), eq(npAgentActions.runId, run.id)))
-                .limit(1001);
-              if (actions.length > 1000) fail("RUNTIME_ACTION_UNRESOLVED");
-              const matching = actions.filter(
-                (action) =>
-                  action.capabilityId === request.capabilityId &&
-                  (request.arguments.idempotencyKey !== null
-                    ? action.idempotencyKey === request.arguments.idempotencyKey
-                    : serializeAgentCanonicalJson(action.input) ===
-                      serializeAgentCanonicalJson(request.arguments.input)),
-              );
-              if (matching.length > 1) fail("RUNTIME_ACTION_UNRESOLVED");
-              return (
-                matching[0]?.sequence ??
-                Math.max(0, ...actions.map((action) => action.sequence)) + 1
-              );
-            });
-            await options.capabilities.invokeRuntime({
-              ...claimed,
-              sequence: actionSequence,
-              request,
-              abortSignal: signal,
-            });
-            const pending = await options.store.withClaim(claimed, async ({ db }) =>
-              db
-                .select({ state: npAgentActions.state })
-                .from(npAgentActions)
-                .where(
-                  and(
-                    eq(npAgentActions.siteId, identity.siteId),
-                    eq(npAgentActions.runId, identity.runId),
-                    eq(npAgentActions.sequence, actionSequence),
-                  ),
-                )
-                .limit(1),
+          if (
+            history.assessment &&
+            output.task === "moderation-classification" &&
+            output.decision.kind === "classification"
+          ) {
+            if (!options.incidentAssessments) fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+            const recorded = await options.store.withClaim(claimed, (context) =>
+              options.incidentAssessments!.record(context, { providerCallId: latest.id }),
             );
-            if (pending.some((action) => ["approval_pending", "approved"].includes(action.state))) {
-              const receipts = await approvalStatus(claimed);
-              if (receipts.some((receipt) => receipt.status !== "completed"))
-                return options.store.transition({ ...claimed, state: "waiting_approval" });
-            } else if (
-              pending.length !== 1 ||
-              !["succeeded", "compensated"].includes(pending[0].state)
-            )
-              fail("RUNTIME_ACTION_UNRESOLVED");
+            if (recorded.complete !== false)
+              return options.store.transition({ ...claimed, state: "succeeded" });
+          } else if (
+            history.guardianAssessment &&
+            output.task === "guardian-assessment" &&
+            output.decision.kind === "assessment"
+          ) {
+            const assessments = options.guardianIncidentAssessments;
+            if (!assessments) fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+            await options.store.withClaim(claimed, (context) =>
+              assessments.record(context, { providerCallId: latest.id }),
+            );
+            return options.store.transition({ ...claimed, state: "succeeded" });
+          } else {
+            if (output.task !== "interactive-capability")
+              fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+            const decision = output.decision;
+            if (decision.kind === "complete")
+              return options.store.transition({ ...claimed, state: "succeeded" });
+            if (decision.kind === "propose-capability") {
+              proposedCall = latest;
+              const proposal = serializeAgentCanonicalJson({
+                capabilityId: decision.capabilityId,
+                arguments: decision.arguments,
+              });
+              for (const prior of history.calls.slice(0, -1)) {
+                if (prior.state !== "succeeded") continue;
+                const previous = await npRequireAgentRuntimeProviderDecisionV1(prior);
+                if (
+                  previous.task === "interactive-capability" &&
+                  previous.decision.kind === "propose-capability" &&
+                  serializeAgentCanonicalJson({
+                    capabilityId: previous.decision.capabilityId,
+                    arguments: previous.decision.arguments,
+                  }) === proposal
+                ) {
+                  if (!prior.responseDigest || !latest.responseDigest)
+                    fail("RUNTIME_PROVIDER_EVIDENCE_INVALID");
+                  observation = npCreateAgentRuntimeTerminalObservationV1({
+                    kind: "proposal-repeated",
+                    capabilityId: decision.capabilityId,
+                    proposalDigest: `cj1:sha256:${createHash("sha256").update(proposal).digest("base64url")}`,
+                    responses: [
+                      {
+                        providerCallId: prior.id,
+                        sequence: prior.sequence,
+                        responseDigest: prior.responseDigest,
+                      },
+                      {
+                        providerCallId: latest.id,
+                        sequence: latest.sequence,
+                        responseDigest: latest.responseDigest,
+                      },
+                    ],
+                  });
+                  fail("RUNTIME_REPEATED_PROPOSAL");
+                }
+              }
+              const request = npRequireAgentInstalledCapabilityInvocationRequestV1({
+                schemaVersion: "np.agent-invocation-request.v1",
+                capabilityId: decision.capabilityId,
+                arguments: {
+                  input: decision.arguments,
+                  idempotencyKey:
+                    npAgentReadCapabilityIdsV1.some((id) => id === decision.capabilityId) ||
+                    decision.capabilityId === "changeset.get" ||
+                    decision.capabilityId === "changeset.list"
+                      ? null
+                      : key(identity.runId, latest.sequence, "action"),
+                },
+              });
+              const actionSequence = await options.store.withClaim(claimed, async ({ db, run }) => {
+                const actions = await db
+                  .select({
+                    sequence: npAgentActions.sequence,
+                    capabilityId: npAgentActions.capabilityId,
+                    input: npAgentActions.inputCanonical,
+                    idempotencyKey: npAgentInvocations.idempotencyKey,
+                  })
+                  .from(npAgentActions)
+                  .innerJoin(
+                    npAgentInvocations,
+                    and(
+                      eq(npAgentInvocations.id, npAgentActions.invocationId),
+                      eq(npAgentInvocations.siteId, npAgentActions.siteId),
+                    ),
+                  )
+                  .where(
+                    and(eq(npAgentActions.siteId, run.siteId), eq(npAgentActions.runId, run.id)),
+                  )
+                  .limit(1001);
+                if (actions.length > 1000) fail("RUNTIME_ACTION_UNRESOLVED");
+                const matching = actions.filter(
+                  (action) =>
+                    action.capabilityId === request.capabilityId &&
+                    (request.arguments.idempotencyKey !== null
+                      ? action.idempotencyKey === request.arguments.idempotencyKey
+                      : serializeAgentCanonicalJson(action.input) ===
+                        serializeAgentCanonicalJson(request.arguments.input)),
+                );
+                if (matching.length > 1) fail("RUNTIME_ACTION_UNRESOLVED");
+                return (
+                  matching[0]?.sequence ??
+                  Math.max(0, ...actions.map((action) => action.sequence)) + 1
+                );
+              });
+              await options.capabilities.invokeRuntime({
+                ...claimed,
+                sequence: actionSequence,
+                request,
+                abortSignal: signal,
+              });
+              const pending = await options.store.withClaim(claimed, async ({ db }) =>
+                db
+                  .select({ state: npAgentActions.state })
+                  .from(npAgentActions)
+                  .where(
+                    and(
+                      eq(npAgentActions.siteId, identity.siteId),
+                      eq(npAgentActions.runId, identity.runId),
+                      eq(npAgentActions.sequence, actionSequence),
+                    ),
+                  )
+                  .limit(1),
+              );
+              if (
+                pending.some((action) => ["approval_pending", "approved"].includes(action.state))
+              ) {
+                const receipts = await approvalStatus(claimed);
+                if (receipts.some((receipt) => receipt.status !== "completed"))
+                  return options.store.transition({ ...claimed, state: "waiting_approval" });
+              } else if (
+                pending.length !== 1 ||
+                !["succeeded", "compensated"].includes(pending[0].state)
+              )
+                fail("RUNTIME_ACTION_UNRESOLVED");
+            }
           }
         }
         let retryOfId: string | null = null;
@@ -336,6 +423,17 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         }
         if (history.calls.length >= history.limits.maxProviderCalls)
           fail("RUNTIME_PROVIDER_CALL_LIMIT");
+        await options.store.withClaim(claimed, (context) => {
+          const recipe = context.evidence.registry.recipes.find(
+            (entry) =>
+              entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+          );
+          if (npIsAgentModeratorAssessmentProfileV1(recipe) && !options.incidentAssessments)
+            fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+          if (npIsAgentGuardianAssessmentRecipeV1(recipe) && !options.guardianIncidentAssessments)
+            fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+          return Promise.resolve();
+        });
         const sequence = (latest?.sequence ?? 0) + 1;
         const request = await options.context.prepare({
           ...claimed,
@@ -408,6 +506,17 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
       }
       fail("RUNTIME_STEP_LIMIT");
     } catch (error) {
+      const denied = npReadAgentRuntimeScopeDeniedV1(error);
+      if (denied && proposedCall?.responseDigest)
+        observation = npCreateAgentRuntimeTerminalObservationV1({
+          kind: "scope-denied",
+          ...denied,
+          response: {
+            providerCallId: proposedCall.id,
+            sequence: proposedCall.sequence,
+            responseDigest: proposedCall.responseDigest,
+          },
+        });
       const code = error instanceof NpAgentGatewayError ? error.code : "RUNTIME_EXECUTION_FAILED";
       const state = /BUDGET|CALL_LIMIT|EVIDENCE_LIMIT/.test(code)
         ? "budget_blocked"
@@ -415,7 +524,10 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
           ? "policy_blocked"
           : "failed";
       try {
-        return await options.store.transition({ ...identity, claim, state, errorCode: code });
+        return await options.store.transition(
+          { ...identity, claim, state, errorCode: code },
+          observation,
+        );
       } catch {
         throw new NpAgentGatewayError(code, 409, "Agent runtime execution is unavailable.");
       }

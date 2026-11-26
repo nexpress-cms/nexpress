@@ -10,6 +10,7 @@ import {
   npBuildAgentHttpInvocationSchemasV1,
   npRequireAgentHttpCapabilitiesV1,
   npAnalyzeAgentReadCapabilityInvocationResultV1,
+  npRequireAgentInstalledCapabilityInvocationResultV1,
 } from "./agent-http-contract.js";
 import {
   npAgentReadCapabilityDescriptorsV1,
@@ -41,12 +42,14 @@ describe("Agent HTTP closed descriptor contract", () => {
         });
       }
     }
-    expect(JSON.stringify(schemas.request)).toContain("#/$defs/capability8/$defs/filter");
+    expect(JSON.stringify(schemas.request)).toContain(
+      `#/$defs/capability${npAgentInstalledCapabilityIdsV1.indexOf("content.query")}/$defs/filter`,
+    );
     expect(
       createHash("sha256")
         .update(JSON.stringify({ routes: npAgentHttpRoutesV1, schemas }))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"13f892f339b95648763c03d9229eafa5b57e72e215047f6adc1bdb579672a302"`);
+    ).toMatchInlineSnapshot(`"28a649cd6792b51c2264f628571c55d56aa85c499120b9860a2a64735980bc2a"`);
   });
   it("rejects modified, duplicate and unshipped capability descriptors", () => {
     const capabilities = npAgentReadCapabilityIdsV1.map(
@@ -144,4 +147,32 @@ describe("Agent HTTP closed descriptor contract", () => {
       "x-nexpress-minimum-gateway-exposure": "approved-execute",
     });
   });
+});
+
+it("preserves a genuine queued audit without accepting fabricated completed evidence", () => {
+  const queued = {
+    schemaVersion: "np.agent-operator-invocation-result.v1",
+    invocationId: "01990000-0000-7000-8000-000000000002",
+    capabilityId: "audit.run",
+    output: {
+      schemaVersion: "np.agent-audit.v1",
+      auditId: "01990000-0000-7000-8000-000000000005",
+      state: "queued",
+      checks: [],
+      digest: null,
+    },
+  };
+  expect(npRequireAgentInstalledCapabilityInvocationResultV1(queued)).toEqual(queued);
+  expect(() =>
+    npRequireAgentInstalledCapabilityInvocationResultV1({
+      ...queued,
+      output: { ...queued.output, state: "completed" },
+    }),
+  ).toThrow();
+  expect(() =>
+    npRequireAgentInstalledCapabilityInvocationResultV1({
+      ...queued,
+      output: { ...queued.output, locator: "/private/audit" },
+    }),
+  ).toThrow();
 });

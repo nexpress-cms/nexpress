@@ -1,4 +1,5 @@
 export * from "../jobs-contract/index.js";
+export { npCollectAgentQueueBacklogV1 } from "./agent-queue-backlog.js";
 export * from "./handlers.js";
 export {
   NpJobPayloadValidationError,
@@ -55,3 +56,14 @@ export {
   type NpRecentJobFailuresOptions,
   type NpRecentJobFailuresResult,
 } from "./job-diagnostics.js";
+
+export {
+  npCollectOperatorJobsObservationV1,
+  NP_OPERATOR_SITE_JOB_QUEUES_V1,
+  type NpOperatorJobsObservationV1,
+} from "./operator-observation.js";
+export {
+  npCollectOperatorProgressObservationV1,
+  type NpOperatorProgressObservationV1,
+  type NpOperatorProgressScopeV1,
+} from "./operator-progress-observation.js";

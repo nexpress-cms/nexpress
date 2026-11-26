@@ -1,6 +1,7 @@
 export { generateThemeCss } from "./generate-css.js";
 export { NpThemeStyle } from "./provider.js";
 export { NpColorSchemeScript } from "./color-scheme-script.js";
+export { npCreateSeedRichText } from "./seed-rich-text.js";
 export {
   COLOR_SCHEME_COOKIE,
   COLOR_SCHEME_STORAGE_KEY,

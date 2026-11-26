@@ -4,9 +4,7 @@ import { CommunityMobileNav, type CommunityNavItem } from "./components/mobile-n
 import { resolveCommunitySettings } from "./settings-helpers.js";
 
 function isCurrent(itemUrl: string, pathname: string | null): boolean {
-  if (!pathname) return false;
-  if (itemUrl === pathname) return true;
-  return itemUrl !== "/" && pathname.startsWith(`${itemUrl}/`);
+  return pathname !== null && itemUrl === pathname;
 }
 
 export async function CommunityHeader() {
@@ -25,7 +23,12 @@ export async function CommunityHeader() {
   const mobileItems: CommunityNavItem[] = items.map((item) => ({
     label: item.label,
     url: item.url,
-    children: item.children?.map((child) => ({ label: child.label, url: child.url })),
+    current: isCurrent(item.url, pathname),
+    children: item.children?.map((child) => ({
+      label: child.label,
+      url: child.url,
+      current: isCurrent(child.url, pathname),
+    })),
   }));
 
   return (

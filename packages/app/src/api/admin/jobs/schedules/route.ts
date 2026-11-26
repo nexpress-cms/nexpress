@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, getKnownJobTypes, getOptionalJobQueue, can } from "@nexpress/core";
 import { npRequireScheduleListWire } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
@@ -23,7 +24,7 @@ import { npParseEmptyJobQuery, npRequireJobApiResponse } from "../../../../lib/j
  * admin UI can render an empty-state without 500ing on every
  * tab visit.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -51,3 +52,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

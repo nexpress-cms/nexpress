@@ -1,4 +1,5 @@
 import { and, eq, lt } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import type { NpFieldConfig } from "../config/types.js";
@@ -11,7 +12,9 @@ import {
   npGetPersistedCollectionDocumentById,
   npRunCollectionDocumentResultHooks,
   runPostCommit,
+  type NpTransaction,
 } from "./pipeline.js";
+import { npGetCollectionMutationObserverV1 } from "./mutation-observer.js";
 import { getDb } from "../db/runtime.js";
 
 function hasPublishedAtField(fields: NpFieldConfig[]): boolean {
@@ -47,10 +50,13 @@ export interface PublishScheduledResult {
  *
  * Safe to call repeatedly (idempotent once a doc is published) and cheap —
  * each UPDATE runs against an indexed status column and no-ops when empty.
+ * When a mutation observer is installed, each collection UPDATE and its
+ * source-only receipts commit together; lifecycle follow-ups stay post-commit.
  */
 export async function publishScheduledDocuments(
   atTime: Date = new Date(),
 ): Promise<PublishScheduledResult> {
+  const mutationObserver = npGetCollectionMutationObserverV1();
   const byCollection: Record<string, string[]> = {};
   let published = 0;
 
@@ -65,11 +71,30 @@ export async function publishScheduledDocuments(
     const db = getDb();
     // `.returning()` without args gives every column so plugin hooks get the
     // full doc they'd see from a normal update, not just { id }.
-    const rows = (await db
-      .update(table)
-      .set({ status: "published", updatedAt: atTime })
-      .where(and(eq(statusCol, "scheduled"), lt(publishedAtCol, atTime)))
-      .returning()) as Array<Record<string, unknown>>;
+    const publish = async (tx: Pick<typeof db, "update">): Promise<Record<string, unknown>[]> => {
+      const rows = (await tx
+        .update(table)
+        .set({ status: "published", updatedAt: atTime })
+        .where(and(eq(statusCol, "scheduled"), lt(publishedAtCol, atTime)))
+        .returning()) as Array<Record<string, unknown>>;
+      if (mutationObserver)
+        for (const row of rows) {
+          if (!npIsCanonicalSiteId(row.siteId) || typeof row.id !== "string")
+            throw new Error(`Scheduled ${slug} document is missing its canonical identity.`);
+          await mutationObserver.record({
+            db: tx as unknown as NpTransaction,
+            siteId: row.siteId,
+            collection: slug,
+            documentId: row.id,
+            writeId: randomUUID(),
+            occurredAt: new Date(),
+            actor: { kind: "system", component: "content.publish-scheduled" },
+            fact: { kind: "scheduled-publish", revision: null },
+          });
+        }
+      return rows;
+    };
+    const rows = mutationObserver ? await db.transaction(publish) : await publish(db);
 
     const ids = rows.map((row) => row.id as string);
     byCollection[slug] = ids;

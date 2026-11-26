@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpNotFoundError,
@@ -17,7 +18,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { getDb } from "../../../lib/db";
 import { ensureFor } from "../../../lib/init-core";
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     // Folder structure is admin-library state — same gate as the
     // media listing (#73).
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
@@ -89,3 +90,6 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);
+export const POST = npWithAgentGuardianHttpResponseV1("cms", npGuardianPOST);

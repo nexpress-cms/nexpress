@@ -120,6 +120,64 @@ function hidden(element: Element): boolean {
   }
   return false;
 }
+const accessibilityCheckIds = [
+  "html.lang",
+  "image.alt",
+  "control.name",
+  "link.name",
+  "id.unique",
+] as const;
+export interface NpAgentRenderedAccessibilityReportV1 {
+  schemaVersion: "np.agent-operator-static-accessibility.v1";
+  htmlDigest: string;
+  checks: Array<{
+    id: (typeof accessibilityCheckIds)[number];
+    status: "pass" | "fail";
+  }>;
+}
+/** Shared visitor preserves preview finding order and its exact offending elements. */
+function inspectAccessibility(
+  dom: Element[],
+  issue: (id: (typeof accessibilityCheckIds)[number], element: Element) => void,
+) {
+  const ids = new Map<string, Element>(),
+    labels = new Set<string>();
+  for (const e of dom) {
+    const id = attr(e, "id");
+    if (id) {
+      if (ids.has(id)) issue("id.unique", e);
+      ids.set(id, e);
+    }
+    if (e.tagName === "label" && attr(e, "for") && textContent(e)) labels.add(attr(e, "for")!);
+  }
+  for (const e of dom) {
+    if (hidden(e)) continue;
+    if (e.tagName === "html" && !attr(e, "lang")?.trim()) issue("html.lang", e);
+    else if (e.tagName === "img" && attr(e, "alt") === undefined) issue("image.alt", e);
+    else if (
+      ["input", "select", "textarea", "button"].includes(e.tagName) &&
+      attr(e, "type") !== "hidden" &&
+      !hasName(e, ids, labels)
+    )
+      issue("control.name", e);
+    else if (e.tagName === "a" && attr(e, "href") !== undefined && !hasName(e, ids, labels))
+      issue("link.name", e);
+  }
+}
+/** Actual bounded HTML static checks only. No browser execution, network, preview identity or AT claim. */
+export function npInspectAgentRenderedAccessibilityV1(
+  html: string,
+): NpAgentRenderedAccessibilityReportV1 {
+  const failed = new Set<(typeof accessibilityCheckIds)[number]>();
+  inspectAccessibility(elements(html), (id) => failed.add(id));
+  return {
+    schemaVersion: "np.agent-operator-static-accessibility.v1",
+    htmlDigest: `cj1:sha256:${createHash("sha256")
+      .update(`np.agent-operator-rendered-html.v1\0${serializeAgentCanonicalJson(html)}`)
+      .digest("base64url")}`,
+    checks: accessibilityCheckIds.map((id) => ({ id, status: failed.has(id) ? "fail" : "pass" })),
+  };
+}
 function validStructuredData(value: unknown): boolean {
   const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
   let count = 0;
@@ -322,28 +380,9 @@ export async function runAgentPreviewChecksV1(
         issue("structured-data", "STRUCTURED_DATA_INVALID", e);
       }
     }
-    const ids = new Map<string, Element>(),
-      labels = new Set<string>();
-    for (const e of dom) {
-      const id = attr(e, "id");
-      if (id) {
-        if (ids.has(id)) issue("accessibility", "ACCESSIBILITY_VIOLATION", e);
-        ids.set(id, e);
-      }
-      if (e.tagName === "label" && attr(e, "for") && textContent(e)) labels.add(attr(e, "for")!);
-    }
-    for (const e of dom) {
-      if (hidden(e)) continue;
-      if (
-        (e.tagName === "html" && !attr(e, "lang")?.trim()) ||
-        (e.tagName === "img" && attr(e, "alt") === undefined) ||
-        (["input", "select", "textarea", "button"].includes(e.tagName) &&
-          attr(e, "type") !== "hidden" &&
-          !hasName(e, ids, labels)) ||
-        (e.tagName === "a" && attr(e, "href") !== undefined && !hasName(e, ids, labels))
-      )
-        issue("accessibility", "ACCESSIBILITY_VIOLATION", e);
-    }
+    inspectAccessibility(dom, (_id, element) =>
+      issue("accessibility", "ACCESSIBILITY_VIOLATION", element),
+    );
     if ((manifests.get(key(route)) ?? 0) > 1) issue("route-collision", "ROUTE_COLLISION");
     const seen = new Set<string>();
     for (const e of dom.filter((e) => ["a", "area"].includes(e.tagName))) {

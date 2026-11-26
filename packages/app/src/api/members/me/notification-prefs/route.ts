@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   getMemberNotificationPrefs,
   listNotificationKinds,
@@ -26,7 +27,7 @@ import { requireMember } from "../../../../lib/member-auth-helpers";
  *         write (member session).
  */
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("read");
     const member = await requireMember(request);
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
@@ -56,3 +57,6 @@ export async function PUT(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("community", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("community", npGuardianPUT);

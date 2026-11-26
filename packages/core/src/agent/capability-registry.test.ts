@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { npAgentReadCapabilityDescriptorsV1 } from "../agent-contract/index.js";
+import { NpAgentContractError } from "../agent-contract/contract.js";
+import {
+  npCreateAgentCapabilityRegistryValidatorV1,
+  npFreezeAgentCapabilityEntryV1,
+} from "./capability-registry-validation.js";
 import {
   NpAgentCapabilityRegistryError,
   createAgentReadCapabilityRegistryV1,
@@ -41,6 +46,35 @@ const executors = {
 };
 
 describe("Agent capability registry", () => {
+  it("reuses one immutable assembly and revalidates changed or custom entries", async () => {
+    const registry = await createAgentReadCapabilityRegistryV1(executors);
+    const entries = registry.ids.map((id) => registry.get(id));
+    const validate = npCreateAgentCapabilityRegistryValidatorV1();
+    const installed = validate(entries);
+    expect(installed).toEqual(registry.canonical);
+    expect(validate([...entries])).toBe(installed);
+    expect(validate(entries.slice(0, -1)).capabilities).toEqual(
+      installed.capabilities.slice(0, -1),
+    );
+    validate(entries);
+    expect(() => validate([...entries].reverse())).toThrow(NpAgentContractError);
+    expect(() => validate([...entries, registry.get("site.inspect")])).toThrow(
+      NpAgentContractError,
+    );
+
+    const site = registry.get("site.inspect");
+    const shallow = Object.freeze(structuredClone(site.canonical));
+    const frozen = npFreezeAgentCapabilityEntryV1({ canonical: shallow });
+    expect(Reflect.set(frozen.canonical.descriptor.requiredScopes, 0, "changeset:apply")).toBe(
+      false,
+    );
+    const custom = Object.freeze({ ...site, canonical: structuredClone(site.canonical) });
+    const customAssembly = [registry.get("content.query"), registry.get("schema.get"), custom];
+    expect(validate(customAssembly)).toEqual(installed);
+    custom.canonical.implementationVersion = 0;
+    expect(() => validate(customAssembly)).toThrow(NpAgentContractError);
+  });
+
   it("freezes the exact installed registry and stable per-definition fingerprints", async () => {
     const first = await createAgentReadCapabilityRegistryV1(executors);
     const second = await createAgentReadCapabilityRegistryV1({
@@ -63,6 +97,74 @@ describe("Agent capability registry", () => {
         first.get("schema.get").definition as { implementationVersion: number }
       ).implementationVersion = 2;
     }).toThrow(TypeError);
+  });
+
+  it("advertises Incident reads only after explicit executor installation", async () => {
+    const disabled = await createAgentReadCapabilityRegistryV1(executors);
+    expect(() => disabled.get("incident.get")).toThrow(NpAgentCapabilityRegistryError);
+    const enabled = await createAgentReadCapabilityRegistryV1({
+      ...executors,
+      "incident.get": () => {
+        throw new Error("Not executed by discovery");
+      },
+      "incident.list": () => ({
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [],
+        nextCursor: null,
+      }),
+    });
+    expect(enabled.ids).toEqual([
+      "content.query",
+      "incident.get",
+      "incident.list",
+      "schema.get",
+      "site.inspect",
+    ]);
+    expect(enabled.registryFingerprint).not.toBe(disabled.registryFingerprint);
+    expect(enabled.get("content.query").capabilityFingerprint).toBe(
+      disabled.get("content.query").capabilityFingerprint,
+    );
+    expect(enabled.get("incident.get").definition.descriptor.requiredScopes).toEqual([
+      "incident:read",
+    ]);
+    expect(() =>
+      enabled.get("incident.get").definition.parseInput({ incidentId: "bad" }),
+    ).toThrow();
+    expect(() =>
+      enabled.get("incident.list").definition.parseOutput({
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [],
+        nextCursor: null,
+        evidence: {},
+      }),
+    ).toThrow();
+  });
+
+  it("keeps operational status disabled until its host collector is installed", async () => {
+    const disabled = await createAgentReadCapabilityRegistryV1(executors);
+    expect(() => disabled.get("ops.status")).toThrow(NpAgentCapabilityRegistryError);
+    const enabled = await createAgentReadCapabilityRegistryV1({
+      ...executors,
+      "ops.status": () => {
+        throw new Error("Discovery cannot run host collectors");
+      },
+    });
+    expect(enabled.ids).toContain("ops.status");
+    expect(enabled.get("ops.status").definition.descriptor).toMatchObject({
+      requiredScopes: ["ops:read"],
+      scopeDerivation: "ops-selection",
+      execution: "inline",
+      idempotency: "none",
+      risk: "read",
+    });
+    expect(enabled.registryFingerprint).not.toBe(disabled.registryFingerprint);
+    expect(enabled.get("content.query").capabilityFingerprint).toBe(
+      disabled.get("content.query").capabilityFingerprint,
+    );
+    expect(() => enabled.get("ops.status").definition.parseInput({ families: [] })).toThrow();
+    expect(() =>
+      enabled.get("ops.status").definition.parseInput({ families: ["jobs"], siteId: "other" }),
+    ).toThrow();
   });
 
   it("fails closed for unavailable capability ids", async () => {

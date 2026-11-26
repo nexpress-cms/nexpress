@@ -1,6 +1,11 @@
+import type { NpAgentGuardianHttpEventPayloadV1 } from "./guardian-http-contract.js";
+import type { NpAgentGuardianRuntimeEventPayloadV1 } from "./guardian-runtime-contract.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import type { NpNavigationItems } from "../navigation/types.js";
 import type { NpThemeTokensOverlay } from "../theme/types.js";
+import type { NpAgentGuardianRouteFamilyV1 } from "./guardian-contract.js";
+import type { NpAgentGuardianContentEventPayloadV1 } from "./guardian-content-contract.js";
+import type { NpAgentSecurityTransitionPayloadV1 } from "./guardian-security-contract.js";
 
 export type NpAgentJsonPrimitive = string | number | boolean | null;
 export type NpAgentJsonValue =
@@ -660,8 +665,17 @@ export interface NpAgentBudgetSnapshotCanonicalV1 {
   reservation: NpAgentBudgetSnapshotReservationV1;
 }
 
-export const npAgentActorBucketPurposesV1 = ["login-identifier", "network-address"] as const;
+export const npAgentActorBucketPurposesV1 = [
+  "login-identifier",
+  "network-address",
+  "staff-principal",
+] as const;
 export type NpAgentActorBucketPurposeV1 = (typeof npAgentActorBucketPurposesV1)[number];
+/** Observation-only identities never expand the executable restriction vocabulary. */
+export const npAgentRestrictionActorBucketPurposesV1 = [
+  "login-identifier",
+  "network-address",
+] as const;
 
 export const npAgentActorRestrictionScopes = [
   "auth.staff",
@@ -844,6 +858,7 @@ export type NpAgentActorSubjectV1 =
 
 export type NpAgentTargetRef =
   | { kind: "document"; collection: string; documentId: string }
+  | { kind: "comment"; collection: string; commentId: string }
   | { kind: "media"; mediaId: string }
   | { kind: "navigation"; location: string }
   | { kind: "theme_tokens"; themeId: string }
@@ -1044,6 +1059,15 @@ export const npAgentIncidentSeverityRank = {
 } as const satisfies Record<NpAgentIncidentSeverity, number>;
 
 export type NpAgentEventPayload =
+  | NpAgentGuardianHttpEventPayloadV1
+  | NpAgentGuardianRuntimeEventPayloadV1
+  | NpAgentGuardianContentEventPayloadV1
+  | NpAgentSecurityTransitionPayloadV1
+  | {
+      kind: "api.rate-limited";
+      routeFamily: NpAgentGuardianRouteFamilyV1;
+      ipBucket: NpAgentActorBucketRefV1 & { purpose: "network-address" };
+    }
   | {
       kind: "auth.login.failed";
       audience: "staff" | "member";
@@ -1089,7 +1113,13 @@ export type NpAgentEventPayload =
       collection: string;
       authorMemberId: string | null;
       verdictCode: NpAgentStableCode | null;
-      status: "visible" | "quarantined" | "hidden" | "deleted";
+      status: "visible" | "pending" | "quarantined" | "hidden" | "deleted";
+    }
+  | {
+      kind: "community.member.reported";
+      memberId: string;
+      memberStatus: "active";
+      claim: "unverified";
     }
   | {
       kind: "content.document.changed" | "content.document.published";
@@ -1151,9 +1181,13 @@ export type NpAgentEventPayload =
 
 export type NpAgentEventKind = NpAgentEventPayload["kind"];
 export const npAgentEventKinds = [
+  "api.rate-limited",
   "agent.action.changed",
   "agent.policy.blocked",
+  "agent.policy.changed",
   "agent.run.changed",
+  "agent.runtime.activity.observed",
+  "http.response.observed",
   "auth.login.failed",
   "auth.login.succeeded",
   "auth.session.revoked",
@@ -1162,7 +1196,9 @@ export const npAgentEventKinds = [
   "community.content.created",
   "community.content.moderated",
   "community.content.reported",
+  "community.member.reported",
   "content.document.changed",
+  "content.activity.observed",
   "content.document.published",
   "jobs.backlog.threshold",
   "jobs.handler.failed",
@@ -1172,6 +1208,9 @@ export const npAgentEventKinds = [
   "ops.check.changed",
   "security.edge.signal",
   "security.error.signal",
+  "security.authority.changed",
+  "security.credential.changed",
+  "security.plugin.changed",
 ] as const satisfies readonly NpAgentEventKind[];
 
 export interface NpAgentEventCanonicalV1 {
@@ -1675,6 +1714,21 @@ interface NpAgentSourceReleaseBaseV1 {
 export type NpAgentSourceReleaseCanonicalV1 = NpAgentSourceReleaseBaseV1 &
   (
     | {
+        kind: "guardian-event";
+        family: "requests" | "security-transitions" | "content" | "sentry" | "runtime" | "http";
+        eventKind: NpAgentEventKind;
+        sourceComponent: string;
+        namespaceDigest: string;
+        deliveryKeyDigest: string;
+        eventHash: string;
+        sourceProofDigest: string;
+        closureDigest: string;
+        closedBefore: string;
+        occurredAt: string;
+        recordedAt: string;
+        retentionEligibleAt: string;
+      }
+    | {
         kind: "runtime-run";
         principalId: string;
         agentId: string;
@@ -1900,7 +1954,10 @@ export const npAgentCapabilityIds = [
   "incident.list",
   "moderation.quarantine",
   "moderation.restore",
+  "moderation.member.restrict",
+  "moderation.member.revoke",
   "security.limitActor",
+  "security.removeActorLimit",
   "security.revokeSessions",
 ] as const;
 
@@ -2095,7 +2152,10 @@ export const npAgentCapabilityScopeDerivations = {
   "incident.list": "incident-target",
   "moderation.quarantine": "moderation-target",
   "moderation.restore": "moderation-target",
+  "moderation.member.restrict": "incident-target",
+  "moderation.member.revoke": "incident-target",
   "security.limitActor": "security-target",
+  "security.removeActorLimit": "security-target",
   "security.revokeSessions": "security-target",
 } as const satisfies Record<NpAgentCapabilityId, NpAgentScopeDerivation>;
 

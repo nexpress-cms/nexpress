@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { PgTransaction } from "drizzle-orm/pg-core";
 import {
   npCreateDisabledAgentRuntimeSettingsV1,
   npRequireAgentRuntimeSettingsV1,
@@ -26,6 +27,7 @@ import { npAuditEvents } from "../db/schema/community.js";
 import { npSettings, npSites } from "../db/schema/system.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { npLockSiteQuotas } from "../sites/quotas.js";
+import { npLockSiteQuotasWithBudgetV1 } from "../sites/quota-lock.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 
 const SETTINGS_KEY = "agents.runtime";
@@ -82,11 +84,24 @@ export function npValidateAgentRuntimeControlStateV1(input: {
   try {
     const settings = npRequireAgentRuntimeSettingsV1(input.settings);
     const control = npRequireAgentRuntimeControlV1(input.control);
+    return validParsedState(input.siteId, settings, control);
+  } catch {
+    return false;
+  }
+}
+/** Only called with the closed parsers' results from this invocation. */
+function validParsedState(
+  siteId: string,
+  settings: NpAgentRuntimeSettingsV1,
+  control: NpAgentRuntimeControlV1,
+): boolean {
+  try {
+    if (!control.currentResumePlan && !control.lastResumeReceipt) return true;
     const settingsHash = digest("np.agent-runtime-settings.v1", settings);
     if (control.currentResumePlan) {
       const plan = checkedPlan(control.currentResumePlan);
       if (
-        plan.siteId !== input.siteId ||
+        plan.siteId !== siteId ||
         plan.settingsHash !== settingsHash ||
         !settings.enabled ||
         !settings.emergencyPause.paused
@@ -97,7 +112,7 @@ export function npValidateAgentRuntimeControlStateV1(input: {
       const receipt = control.lastResumeReceipt;
       const plan = checkedPlan(receipt.plan);
       if (
-        plan.siteId !== input.siteId ||
+        plan.siteId !== siteId ||
         receipt.revision !== control.revision ||
         receipt.settingsHash !== settingsHash ||
         settings.emergencyPause.paused
@@ -117,33 +132,110 @@ export interface NpAgentRuntimeControlContextV1 {
   control: NpAgentRuntimeControlV1;
 }
 
+// A same-transaction source may reuse its still-held control admission. Copies,
+// changed DB/site bindings or a completed callback never carry it.
+const liveControlContexts = new WeakMap<object, { db: ReturnType<typeof getDb>; siteId: string }>();
+/** Internal recorder seam, not a new admission or public authority token. */
+export function npIsLiveAgentRuntimeControlContextV1(
+  context: unknown,
+  db: ReturnType<typeof getDb>,
+  siteId: string,
+): boolean {
+  if (typeof context !== "object" || context === null) return false;
+  const actual = liveControlContexts.get(context);
+  return (
+    actual?.db === db &&
+    actual.siteId === siteId &&
+    "db" in context &&
+    context.db === db &&
+    "siteId" in context &&
+    context.siteId === siteId
+  );
+}
+
 /** Shared lock order for local controls, Admin admission and runtime admission. */
 export async function npWithAgentRuntimeControlTransactionV1<T>(
   siteId: string,
   operation: (context: NpAgentRuntimeControlContextV1) => Promise<T>,
   db?: ReturnType<typeof getDb>,
 ): Promise<T> {
+  return withControlSettings(siteId, [], operation, db);
+}
+/** Internal source read only: these rows were fetched under the same still-held
+ * site lock. Consume them before any host callback or write; never retain them. */
+export async function npWithAgentRuntimeControlSettingsTransactionV1<T>(
+  siteId: string,
+  settingKeys: readonly string[],
+  operation: (
+    context: NpAgentRuntimeControlContextV1,
+    rows: readonly { key: string; value: unknown }[],
+  ) => Promise<T>,
+  db: ReturnType<typeof getDb>,
+): Promise<T> {
+  return withControlSettings(siteId, settingKeys, operation, db, true);
+}
+async function withControlSettings<T>(
+  siteId: string,
+  settingKeys: readonly string[],
+  operation: (
+    context: NpAgentRuntimeControlContextV1,
+    rows: readonly { key: string; value: unknown }[],
+  ) => Promise<T>,
+  db?: ReturnType<typeof getDb>,
+  requestBudget = false,
+): Promise<T> {
   if (!npIsCanonicalSiteId(siteId)) fail("RUNTIME_ARGUMENT_INVALID");
   const run = async (tx: ReturnType<typeof getDb>): Promise<T> => {
-    await npLockSiteQuotas(tx as unknown as Parameters<typeof npLockSiteQuotas>[0], siteId);
-    const [site] = await tx
-      .select({ id: npSites.id })
-      .from(npSites)
-      .where(eq(npSites.id, siteId))
-      .for("share")
-      .limit(1);
-    const [deletion] = await tx
-      .select({ id: npAgentSiteDeletionSagas.id })
-      .from(npAgentSiteDeletionSagas)
-      .where(eq(npAgentSiteDeletionSagas.siteId, siteId))
-      .limit(1);
-    if (!site || deletion) fail("RUNTIME_SITE_UNAVAILABLE");
-    const rows = await tx
-      .select({ key: npSettings.key, value: npSettings.value })
-      .from(npSettings)
-      .where(
-        and(eq(npSettings.siteId, siteId), inArray(npSettings.key, [SETTINGS_KEY, CONTROL_KEY])),
-      );
+    if (requestBudget)
+      await npLockSiteQuotasWithBudgetV1(tx, siteId, { lockMs: 100, statementMs: 500 });
+    else await npLockSiteQuotas(tx as unknown as Parameters<typeof npLockSiteQuotas>[0], siteId);
+    let rows: { key: string; value: unknown }[];
+    if (settingKeys.length) {
+      // The held quota lock excludes current control/closure writers and legacy
+      // deleteSite. Materialize the same site lock, then read its marker and exact
+      // settings together. A future saga creator must share the quota lock too.
+      const keys = [SETTINGS_KEY, CONTROL_KEY, ...settingKeys];
+      const result = await tx.execute<{
+        id: string;
+        deletionId: string | null;
+        key: string | null;
+        value: unknown;
+      }>(sql`with guarded_site as materialized (
+        select ${npSites.id} as id from ${npSites}
+        where ${npSites.id}=${siteId} for share
+      ) select guarded_site.id as id, ${npAgentSiteDeletionSagas.id} as "deletionId",
+        ${npSettings.key} as key, ${npSettings.value} as value
+        from guarded_site
+        left join ${npAgentSiteDeletionSagas} on ${npAgentSiteDeletionSagas.siteId}=guarded_site.id
+        left join ${npSettings} on ${npSettings.siteId}=guarded_site.id
+          and ${inArray(npSettings.key, keys)}`);
+      if (!result.rows.length || result.rows.length > keys.length) fail("RUNTIME_SITE_UNAVAILABLE");
+      rows = result.rows.flatMap((row) => {
+        if (row.id !== siteId || row.deletionId !== null) fail("RUNTIME_SITE_UNAVAILABLE");
+        if (row.key === null) return [];
+        if (typeof row.key !== "string" || !keys.includes(row.key)) fail("RUNTIME_STATE_INVALID");
+        return [{ key: row.key, value: row.value }];
+      });
+    } else {
+      const [site] = await tx
+        .select({ id: npSites.id })
+        .from(npSites)
+        .where(eq(npSites.id, siteId))
+        .for("share")
+        .limit(1);
+      const [deletion] = await tx
+        .select({ id: npAgentSiteDeletionSagas.id })
+        .from(npAgentSiteDeletionSagas)
+        .where(eq(npAgentSiteDeletionSagas.siteId, siteId))
+        .limit(1);
+      if (!site || deletion) fail("RUNTIME_SITE_UNAVAILABLE");
+      rows = await tx
+        .select({ key: npSettings.key, value: npSettings.value })
+        .from(npSettings)
+        .where(
+          and(eq(npSettings.siteId, siteId), inArray(npSettings.key, [SETTINGS_KEY, CONTROL_KEY])),
+        );
+    }
     const settingsRow = rows.find((row) => row.key === SETTINGS_KEY);
     const controlRow = rows.find((row) => row.key === CONTROL_KEY);
     let settings: NpAgentRuntimeSettingsV1;
@@ -155,15 +247,18 @@ export async function npWithAgentRuntimeControlTransactionV1<T>(
       control = controlRow
         ? npRequireAgentRuntimeControlV1(controlRow.value)
         : { revision: 1, currentResumePlan: null, lastResumeReceipt: null };
-      if (control.currentResumePlan) checkedPlan(control.currentResumePlan);
-      if (control.lastResumeReceipt) checkedPlan(control.lastResumeReceipt.plan);
       if (!settingsRow && controlRow) fail("RUNTIME_STATE_INVALID");
-      if (!npValidateAgentRuntimeControlStateV1({ siteId, settings, control }))
-        fail("RUNTIME_STATE_INVALID");
+      if (!validParsedState(siteId, settings, control)) fail("RUNTIME_STATE_INVALID");
     } catch {
       return fail("RUNTIME_STATE_INVALID");
     }
-    return operation({ db: tx, siteId, settings, revision: control.revision, control });
+    const context = { db: tx, siteId, settings, revision: control.revision, control };
+    if (tx instanceof PgTransaction) liveControlContexts.set(context, { db: tx, siteId });
+    try {
+      return await operation(context, rows);
+    } finally {
+      liveControlContexts.delete(context);
+    }
   };
   return db ? run(db) : getDb().transaction((tx) => run(tx as ReturnType<typeof getDb>));
 }

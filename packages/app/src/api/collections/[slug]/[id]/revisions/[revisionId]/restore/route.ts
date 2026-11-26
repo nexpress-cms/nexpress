@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../../lib/agents/guardian-http-observer";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../../../../../lib/auth-helpers";
@@ -6,7 +7,7 @@ import { restoreDocumentRevision } from "../../../../../../../lib/revision-helpe
 import { revalidateCollection } from "../../../../../../../lib/revalidate";
 import { npSerializeCollectionDocumentForApi } from "../../../../../../../lib/collection-helpers";
 
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string; revisionId: string }> },
 ) {
@@ -23,3 +24,5 @@ export async function POST(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("collections", npGuardianPOST);

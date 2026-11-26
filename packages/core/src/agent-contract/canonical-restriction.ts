@@ -19,7 +19,7 @@ import { buildAgentCanonicalFoundationBytes } from "./canonical-foundation.js";
 import {
   NP_AGENT_ACTOR_RESTRICTION_TTL_MAX_SECONDS,
   NP_AGENT_ACTOR_RESTRICTION_TTL_MIN_SECONDS,
-  npAgentActorBucketPurposesV1,
+  npAgentRestrictionActorBucketPurposesV1,
   npAgentActorRestrictionScopes,
   npAgentRestrictionPrincipalKinds,
   type NpAgentActorBucketPurposeV1,
@@ -38,7 +38,7 @@ const SIGNED_32_BIT_MAXIMUM = 2_147_483_647;
 const PROJECTION_FINGERPRINT_CHARACTERS = 256;
 const ACTOR_BUCKET_PATTERN = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/u;
 const STABLE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/u;
-const ACTOR_BUCKET_PURPOSES = new Set<string>(npAgentActorBucketPurposesV1);
+const ACTOR_BUCKET_PURPOSES = new Set<string>(npAgentRestrictionActorBucketPurposesV1);
 const ACTION_SCOPES = new Set<string>(npAgentActorRestrictionScopes);
 const PRINCIPAL_KINDS = new Set<string>(npAgentRestrictionPrincipalKinds);
 const SUBJECT_KINDS = new Set<string>(["authenticated_principal", "opaque_actor_bucket"]);

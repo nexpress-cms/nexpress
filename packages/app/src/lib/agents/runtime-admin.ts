@@ -179,6 +179,7 @@ export async function handleAgentRuntimeAdminRequest(
       error,
       Object.hasOwn(readOutputs, operation) ? "read" : "mutation",
       { headers },
+      request,
     );
   }
 }

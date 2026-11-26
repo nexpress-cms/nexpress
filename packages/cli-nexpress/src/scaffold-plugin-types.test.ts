@@ -40,6 +40,26 @@ describe("non-block scaffold generators", () => {
       expect(result.kind).toBe(kind);
       expect(result.interactive).toBe(false);
       expect(result.packageDir.endsWith("my-demo")).toBe(true);
+      const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
+        dependencies: Record<string, string>;
+        files: string[];
+        engines: Record<string, string>;
+        exports: Record<string, { types: string; import: string }>;
+        peerDependencies: Record<string, string>;
+        scripts: Record<string, string>;
+      };
+      expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("workspace:*");
+      expect(pkg.dependencies["@nexpress/blocks"]).toBe("workspace:*");
+      expect(pkg.files).toEqual(["dist"]);
+      expect(pkg.engines.node).toBe(">=20.19.0");
+      expect(pkg.exports["."]).toEqual({ types: "./dist/index.d.ts", import: "./dist/index.js" });
+      expect(pkg.peerDependencies.react).toBe("^19.0.0");
+      expect(pkg.scripts).toEqual({
+        build: "tsup",
+        dev: "tsup --watch --no-clean",
+        clean: "rm -rf dist",
+        typecheck: "tsc --noEmit",
+      });
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/export const myDemoPlugin = definePlugin/);
       const readme = await readFile(join(result.packageDir, "README.md"), "utf-8");
@@ -197,31 +217,6 @@ describe("non-block scaffold generators", () => {
   });
 
   describe("package.json shape", () => {
-    it("each kind ships @nexpress/plugin-sdk + @nexpress/blocks deps and the standard scripts", async () => {
-      for (const generator of [
-        scaffoldHookPlugin,
-        scaffoldRoutePlugin,
-        scaffoldPagePlugin,
-        scaffoldAdminPlugin,
-        scaffoldScheduledPlugin,
-      ]) {
-        const result = await generator({
-          slug: `pkg-${Math.random().toString(16).slice(2, 8)}`,
-          outDir: workdir,
-        });
-        const pkg = JSON.parse(
-          await readFile(join(result.packageDir, "package.json"), "utf-8"),
-        ) as {
-          dependencies: Record<string, string>;
-          scripts: Record<string, string>;
-        };
-        expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("workspace:*");
-        expect(pkg.dependencies["@nexpress/blocks"]).toBe("workspace:*");
-        expect(pkg.scripts.build).toBe("tsup");
-        expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
-      }
-    });
-
     it("each kind can inherit framework dependency ranges from a project scaffold", async () => {
       for (const generator of [
         scaffoldHookPlugin,
@@ -246,46 +241,6 @@ describe("non-block scaffold generators", () => {
 
         expect(pkg.dependencies["@nexpress/blocks"]).toBe("file:/tmp/nexpress-blocks-0.4.0.tgz");
         expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("0.4.0");
-      }
-    });
-
-    it("keeps every non-block plugin package on the shared scaffold baseline", async () => {
-      const expectedScripts = {
-        build: "tsup",
-        dev: "tsup --watch --no-clean",
-        clean: "rm -rf dist",
-        typecheck: "tsc --noEmit",
-      };
-
-      for (const generator of [
-        scaffoldHookPlugin,
-        scaffoldRoutePlugin,
-        scaffoldPagePlugin,
-        scaffoldAdminPlugin,
-        scaffoldScheduledPlugin,
-      ]) {
-        const result = await generator({
-          slug: `baseline-${Math.random().toString(16).slice(2, 8)}`,
-          outDir: workdir,
-        });
-        const pkg = JSON.parse(
-          await readFile(join(result.packageDir, "package.json"), "utf-8"),
-        ) as {
-          files: string[];
-          engines: Record<string, string>;
-          exports: Record<string, { types: string; import: string }>;
-          peerDependencies: Record<string, string>;
-          scripts: Record<string, string>;
-        };
-
-        expect(pkg.files).toEqual(["dist"]);
-        expect(pkg.engines.node).toBe(">=20.19.0");
-        expect(pkg.exports["."]).toEqual({
-          types: "./dist/index.d.ts",
-          import: "./dist/index.js",
-        });
-        expect(pkg.peerDependencies.react).toBe("^19.0.0");
-        expect(pkg.scripts).toEqual(expectedScripts);
       }
     });
   });
