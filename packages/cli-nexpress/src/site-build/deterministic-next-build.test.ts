@@ -23,6 +23,7 @@ import { prepareSiteBuildPreviewConfigBuildV1 } from "./preview-config-build.js"
 import {
   createSiteBuildDeterministicNextContextV1,
   createSiteBuildDeterministicNextConfigV1,
+  isSiteBuildDeterministicNextOwnerVersionV1,
   prepareSiteBuildDeterministicNextBuildV1,
   requirePreparedSiteBuildDeterministicNextV1,
   type NpSiteBuildDeterministicNextBuildV1,
@@ -32,6 +33,14 @@ const sha = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).d
 const execute = promisify(execFile),
   roots: string[] = [];
 const realNext = fileURLToPath(new URL("../../../app/node_modules/next/", import.meta.url));
+const { version: nextVersion } = JSON.parse(
+  await readFile(join(realNext, "package.json"), "utf8"),
+) as {
+  version: string;
+};
+if (!isSiteBuildDeterministicNextOwnerVersionV1(nextVersion)) {
+  throw new Error(`Unrecognized installed Next version ${nextVersion}`);
+}
 const ownerPaths = [
   "dist/build/preview-key-utils.js",
   "dist/build/generate-build-id.js",
@@ -63,9 +72,10 @@ async function fixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "np-linux-project-")));
   roots.push(root);
   const project = join(root, "project"),
-    next = join(project, "node_modules/.pnpm/next@16.3.4/node_modules/next");
+    nextPath = `.pnpm/next@${nextVersion}/node_modules/next`,
+    next = join(project, "node_modules", nextPath);
   await mkdir(next, { recursive: true });
-  await symlink(".pnpm/next@16.3.4/node_modules/next", join(project, "node_modules/next"));
+  await symlink(nextPath, join(project, "node_modules/next"));
   await writeFile(join(project, "next.config.ts"), source, { mode: 0o640 });
   await writeFile(join(project, "package.json"), '{"name":"synthetic-private-next"}\n');
   await mkdir(join(project, "src"));
@@ -76,7 +86,10 @@ async function fixture() {
     await cp(join(realNext, path), join(next, path));
     files.push({ path, mode: "100644", sha256: sha(await readFile(join(next, path))) });
   }
-  await writeFile(join(next, "package.json"), '{"name":"next","version":"16.3.4"}\n');
+  await writeFile(
+    join(next, "package.json"),
+    JSON.stringify({ name: "next", version: nextVersion }),
+  );
   await mkdir(join(next, "dist/bin"), { recursive: true });
   // Same real shipped generatePreviewKeys function, with a tiny cache-dir fixture
   // selecting the Docker ephemeral branch. No compiler/native bindings/Next build.
@@ -98,10 +111,10 @@ if(process.env.NEXT_PRIVATE_TEST_FAILURE)process.exit(17);
   const observed: NpObservedBuildPackageV1 = {
     root: next,
     name: "next",
-    version: "16.3.4",
+    version: nextVersion,
     contentDigest: `npkg1:sha256:${"A".repeat(43)}`,
     files,
-    manifest: { name: "next", version: "16.3.4" },
+    manifest: { name: "next", version: nextVersion },
     dependencies: new Map(),
   };
   const packages = {
@@ -177,7 +190,7 @@ describe("finite deterministic Next preparation (no Next/Docker build)", () => {
     const first = await createSiteBuildDeterministicNextContextV1({
       ...input,
       packages: input.packages.packages,
-      nextVersion: "16.3.4",
+      nextVersion,
     });
     await mkdir(join(project, ".nexpress/site"), { recursive: true });
     await writeFile(join(project, ".nexpress/site/directions.json"), '{"authoring":"changed"}');
@@ -185,7 +198,7 @@ describe("finite deterministic Next preparation (no Next/Docker build)", () => {
       ...input,
       source: await readSiteSourceTreeV1(project),
       packages: input.packages.packages,
-      nextVersion: "16.3.4",
+      nextVersion,
     });
     expect(second).toEqual(first);
     await writeFile(join(project, "src/page.ts"), "changed source\n");
@@ -194,7 +207,7 @@ describe("finite deterministic Next preparation (no Next/Docker build)", () => {
         ...input,
         source: await readSiteSourceTreeV1(project),
         packages: input.packages.packages,
-        nextVersion: "16.3.4",
+        nextVersion,
       }),
     ).not.toEqual(first);
     expect(Object.keys(first)).toEqual([
@@ -211,7 +224,7 @@ describe("finite deterministic Next preparation (no Next/Docker build)", () => {
       createSiteBuildDeterministicNextContextV1({
         ...input,
         packages: input.packages.packages,
-        nextVersion: "16.3.4",
+        nextVersion,
         clock: { ...clock, randomSeed: "x" },
       }),
     ).rejects.toThrow();

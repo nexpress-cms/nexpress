@@ -448,6 +448,10 @@ function JobsViewContent({
         value={tab}
         onValueChange={(value) => {
           const nextTab = value as Tab;
+          // Pointer activation and automatic focus can notify Radix before
+          // useSearchParams sees the first history update.
+          const currentTab = new URLSearchParams(window.location.search).get("tab") ?? "pending";
+          if (nextTab === currentTab) return;
           const states = isStateTab(nextTab) ? JOB_STATE_BUCKETS[nextTab] : [];
           navigate({
             ...location,

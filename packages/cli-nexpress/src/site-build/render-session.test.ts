@@ -60,7 +60,7 @@ const renderer = {
     "react-dom",
   ]
     .map((name) => ({ name, version: "1.0.0", contentDigest: `npkg1:sha256:${"A".repeat(43)}` }))
-    .concat([{ name: "next", version: "16.4.2", contentDigest: `npkg1:sha256:${"A".repeat(43)}` }])
+    .concat([{ name: "next", version: "16.4.6", contentDigest: `npkg1:sha256:${"A".repeat(43)}` }])
     .sort((a, b) => Buffer.compare(Buffer.from(a.name), Buffer.from(b.name))),
 };
 const catalog = {
@@ -184,7 +184,7 @@ beforeEach(() => {
       },
       nextPreviewRuntime: {
         scope: "private-preview-next-isr-flush-to-disk-false",
-        owner: { name: "next", version: "16.4.2", contentDigest: `npkg1:sha256:${"A".repeat(43)}` },
+        owner: { name: "next", version: "16.4.6", contentDigest: `npkg1:sha256:${"A".repeat(43)}` },
         entry: { original: { sha256: hex }, derived: { sha256: "b".repeat(64) } },
         requiredServerFiles: { sha256: hex },
         evidence: [{ path: ".next/np-build-next-preview-runtime/manifest.json", sha256: hex }],
@@ -285,7 +285,7 @@ describe("explicit render session orchestration", () => {
     });
     expect(prepared.session.buildReceiptSummary?.nextPreviewRuntime).toEqual({
       scope: "private-preview-next-isr-flush-to-disk-false",
-      ownerVersion: "16.4.2",
+      ownerVersion: "16.4.6",
       ownerContentDigest: `npkg1:sha256:${"A".repeat(43)}`,
       originalEntrySha256: hex,
       derivedEntrySha256: "b".repeat(64),
