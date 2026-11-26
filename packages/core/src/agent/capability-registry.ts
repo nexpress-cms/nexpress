@@ -20,6 +20,10 @@ import {
   type NpAgentRecipeSettingsV1,
 } from "../agent-contract/index.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  npFreezeAgentCapabilityEntryV1,
+  npFreezeAgentCapabilityMetadataV1,
+} from "./capability-registry-validation.js";
 
 export interface NpAgentResolvedGatewayPrincipalV1 {
   kind: "service" | "oauth-user";
@@ -119,14 +123,6 @@ export class NpAgentCapabilityRegistryError extends Error {
     super(message);
     this.name = "NpAgentCapabilityRegistryError";
   }
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
-    Object.freeze(value);
-  }
-  return value;
 }
 
 function canonicalEntry(
@@ -334,11 +330,11 @@ export async function createAgentReadCapabilityRegistryV1(
       ) => mergedRequirements("ops.status", input, context, requirementResolvers["ops.status"]),
     });
   definitions.sort((a, b) => a.descriptor.id.localeCompare(b.descriptor.id));
-  definitions.forEach(deepFreeze);
+  definitions.forEach(npFreezeAgentCapabilityMetadataV1);
   const canonicalEntries = definitions.map((definitionValue) =>
-    deepFreeze(canonicalEntry(definitionValue)),
+    npFreezeAgentCapabilityMetadataV1(canonicalEntry(definitionValue)),
   );
-  const canonical = deepFreeze(
+  const canonical = npFreezeAgentCapabilityMetadataV1(
     npRequireAgentCapabilityRegistryCanonical({
       schemaVersion: "np.agent-capability-registry.v1",
       projection: "registry",
@@ -363,10 +359,10 @@ export async function createAgentReadCapabilityRegistryV1(
     );
     entries.set(
       definitionValue.descriptor.id as NpAgentReadCapabilityIdV1,
-      deepFreeze({
+      npFreezeAgentCapabilityEntryV1({
         definition: definitionValue,
         canonical: entry,
-        definitionCanonical: deepFreeze(npRequireAgentCapabilityRegistryCanonical(definitionBody)),
+        definitionCanonical: npRequireAgentCapabilityRegistryCanonical(definitionBody),
         capabilityFingerprint,
       }),
     );

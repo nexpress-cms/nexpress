@@ -2,6 +2,7 @@ import {
   npBuildAgentProfileEvaluationReviewArtifactV1,
   npRequireAgentProfileEvaluationReviewArtifactV1,
   npCompareAgentProfileEvaluationReviewArtifactsV1,
+  npIsAgentProfileEvaluationCategoryV1,
   type NpAgentProfileEvaluationReviewArtifactV1,
 } from "@nexpress/core/agent-contract";
 import {
@@ -22,8 +23,8 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { Writable } from "node:stream";
 import {
-  npBuildAgentEvaluationReportV1,
-  npReadAgentEvaluationReportInputV1,
+  npBuildAgentEvaluationReport,
+  npReadAgentEvaluationReportInput,
   npAssertAgentEvaluationReportOutputV1,
   runAgentModeratorEvaluationV1,
   runAgentModeratorEvaluationV2,
@@ -43,12 +44,14 @@ import {
   npCreateAgentPublisherEvaluationSuiteV1,
   npCreateAgentPublisherEvaluationSuiteV2,
   npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+  npCreateAgentMemberReportEvaluationSuiteV1,
   npCreateAgentPublisherSelectionEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
-  npFormatAgentEvaluationReportV1,
-  type NpAgentEvaluationReportCommandResultV1,
+  npFormatAgentEvaluationReport,
+  type NpAgentEvaluationReportCommandResult,
   npFormatAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationReviewCommandResult,
@@ -86,6 +89,8 @@ pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v2 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v3 --out <artifact> --json
 pnpm agent:evaluate --dataset guardian.v1 --out <artifact> --json
+pnpm agent:evaluate --dataset moderator-member-report.v1 --out <artifact> --json
+pnpm agent:evaluate --dataset moderator-assessment.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v3 --out <artifact> --json
@@ -99,8 +104,9 @@ nexpress agent evaluate --report <manifest.json> [--out <report.json>] [--json]
 
 Review labels are self-reported offline evaluation data, never live approvals.
 Without --reviews, review mode emits evidence/proposals and binding fields with no labels.
-Report inputs resolve relative to the manifest. Exit zero means a report was generated,
-including missing or failed evidence; it does not establish model usefulness or full R6 acceptance.
+Report inputs resolve relative to the manifest. A V2 manifest supports multiple datasets per recipe.
+Exit zero means a report was generated, including missing or failed evidence; it does not establish
+model usefulness or full R6 acceptance.
 
 moderator.v1 preserves the original observed-content detector fixtures.
 moderator.v2 adds unverified report and mixed facts to actual detector replay; report claims establish no spam verdict or approval authority.
@@ -112,6 +118,8 @@ moderator-proposal.v3 adds exact document/comment targets to synthetic document-
 publisher.v2 preserves all V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile; V1 artifacts remain unchanged.
 publisher.v3 checks bounded multi-document selection with the explicit V3 instruction.
 moderator-assessment.v1 checks the explicit read-only semantic profile on versioned bilingual fixtures.
+moderator-assessment.v2 replays synthetic segment evidence and classifications through the V2 coverage and aggregation rules.
+moderator-member-report.v1 scores synthetic Member claims and eligibility for human review using local deterministic facts.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
@@ -245,23 +253,27 @@ export async function runAgentEvaluateProcessV1(
     const artifact = await npRequireAgentEvaluationArtifactV1(
       await runAgentEvaluationV1({
         suite:
-          input.dataset === "publisher.v3"
-            ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
-            : input.dataset === "moderator-assessment.v1"
-              ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
-              : input.dataset === "publisher.v2"
-                ? await npCreateAgentPublisherEvaluationSuiteV2()
-                : input.dataset === "publisher.v1"
-                  ? await npCreateAgentPublisherEvaluationSuiteV1()
-                  : input.dataset === "operator-plan.v1"
-                    ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-                    : input.dataset === "moderator-proposal.v3"
-                      ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-                      : input.dataset === "moderator-proposal.v2"
-                        ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                        : input.dataset === "moderator-proposal.v1"
-                          ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                          : await npCreateAgentOperatorEvaluationSuiteV1(),
+          input.dataset === "moderator-assessment.v2"
+            ? await npCreateAgentModeratorSegmentedEvaluationSuiteV2()
+            : input.dataset === "moderator-member-report.v1"
+              ? await npCreateAgentMemberReportEvaluationSuiteV1()
+              : input.dataset === "publisher.v3"
+                ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
+                : input.dataset === "moderator-assessment.v1"
+                  ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+                  : input.dataset === "publisher.v2"
+                    ? await npCreateAgentPublisherEvaluationSuiteV2()
+                    : input.dataset === "publisher.v1"
+                      ? await npCreateAgentPublisherEvaluationSuiteV1()
+                      : input.dataset === "operator-plan.v1"
+                        ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+                        : input.dataset === "moderator-proposal.v3"
+                          ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                          : input.dataset === "moderator-proposal.v2"
+                            ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                            : input.dataset === "moderator-proposal.v1"
+                              ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                              : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,
@@ -355,9 +367,7 @@ async function runReview(
       return runModeratorProposalReview(input, output, evaluation);
     if (evaluation.suite.cases[0].category === "ops-plan")
       return runOperatorPlanReview(input, output, evaluation);
-    const profile = ["moderator-assessment", "publisher-selection"].includes(
-      evaluation.suite.cases[0].category,
-    );
+    const profile = npIsAgentProfileEvaluationCategoryV1(evaluation.suite.cases[0].category);
     artifact = await (
       profile
         ? npBuildAgentProfileEvaluationReviewArtifactV1
@@ -684,10 +694,10 @@ async function runReport(
   input: NpAgentEvaluateCliInputV1,
   output: Pick<Writable, "write">,
 ): Promise<number> {
-  let result: NpAgentEvaluationReportCommandResultV1;
+  let result: NpAgentEvaluationReportCommandResult;
   try {
-    const loaded = await npReadAgentEvaluationReportInputV1(input.reportPath!);
-    const artifact = await npBuildAgentEvaluationReportV1(loaded.input);
+    const loaded = await npReadAgentEvaluationReportInput(input.reportPath!);
+    const artifact = await npBuildAgentEvaluationReport(loaded.input);
     result = { schemaVersion: "np.agent-eval-report-command.v1", artifact, errorCode: null };
     if (input.outPath) {
       try {
@@ -709,7 +719,7 @@ async function runReport(
     };
   }
   output.write(
-    `${input.json ? JSON.stringify(result) : result.artifact ? npFormatAgentEvaluationReportV1(result.artifact) : `Evaluation report unavailable (${result.errorCode}).`}\n`,
+    `${input.json ? JSON.stringify(result) : result.artifact ? npFormatAgentEvaluationReport(result.artifact) : `Evaluation report unavailable (${result.errorCode}).`}\n`,
   );
   return result.errorCode ? 1 : 0;
 }

@@ -33,10 +33,8 @@ import { npAgentMcpToolDefinitionsV1 } from "../agent-contract/contract.js";
 import type { NpAgentMcpTaskV1 } from "../agent-contract/index.js";
 import type { NpAgentMcpTaskRequestV1 } from "./mcp-task-service.js";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  npDigestAgentCapabilityRegistryCanonical,
-  npRequireAgentCapabilityRegistryCanonical,
-} from "../agent-contract/canonical-capability-registry.js";
+import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
+import { npCreateAgentCapabilityRegistryValidatorV1 } from "./capability-registry-validation.js";
 import {
   npIsAgentChangeSetCapabilityIdV1,
   npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
@@ -47,6 +45,7 @@ import {
   type NpAgentChangeSetCapabilityInvocationRequestV1,
 } from "../agent-contract/installed-capability-contract.js";
 import type { NpAgentChangeSetCapabilityFacadeV1 } from "./changeset-capability.js";
+import { npGetAgentChangeSetCapabilityEntryJsonV1 } from "./changeset-capability-entry.js";
 import type { NpAgentModerationCapabilityFacadeV1 } from "./moderation-capability.js";
 import {
   npIsAgentModerationCapabilityIdV1,
@@ -551,6 +550,7 @@ async function assertCurrentAuthentication(
 export function createAgentCapabilityAdmissionServiceV1(
   options: NpAgentCapabilityAdmissionOptionsV1,
 ) {
+  const validateRegistry = npCreateAgentCapabilityRegistryValidatorV1();
   const runtimeScopeDenials = new WeakMap<object, Map<NpAgentCapabilityId, NpAgentScope[]>>();
   function runtimeUnavailable(
     context: NpAgentRuntimeRunContextV1,
@@ -1173,14 +1173,17 @@ export function createAgentCapabilityAdmissionServiceV1(
       if (!npIsAgentChangeSetCapabilityIdV1(id) || (index > 0 && facade!.ids[index - 1] >= id))
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       const expected = await expectedDefinition(id);
+      const immutableJson = npGetAgentChangeSetCapabilityEntryJsonV1(entry);
       if (
         !npIsAgentChangeSetCapabilityIdV1(id) ||
         (index > 0 && facade!.ids[index - 1] >= id) ||
-        serializeAgentCanonicalJson(entry.definitionCanonical) !== expected.canonical ||
-        serializeAgentCanonicalJson(entry.canonical) !==
-          serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
-        serializeAgentCanonicalJson(entry.definition) !==
-          serializeAgentCanonicalJson(entry.canonical) ||
+        (immutableJson ?? serializeAgentCanonicalJson(entry.definitionCanonical)) !==
+          expected.canonical ||
+        (immutableJson === undefined &&
+          (serializeAgentCanonicalJson(entry.canonical) !==
+            serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
+            serializeAgentCanonicalJson(entry.definition) !==
+              serializeAgentCanonicalJson(entry.canonical))) ||
         entry.capabilityFingerprint !== expected.fingerprint
       )
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
@@ -1233,7 +1236,68 @@ export function createAgentCapabilityAdmissionServiceV1(
     }
     return entries;
   }
+  // Keep live admission and complete contract validation common to discovery and
+  // invocation. Only discovery needs the full registry fingerprint.
+  async function projectCapabilities(input: { authentication: NpAgentCapabilityAuthenticationV1 }) {
+    const authentication = input.authentication;
+    const principal = resolvedPrincipal(authentication);
+    const settings = npRequireAgentGatewaySettings(
+      await options.resolveGatewaySettings(principal.siteId),
+    );
+    const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
+    if (settings[settingsKey] === "disabled") {
+      throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    }
+    await getDb().transaction(async (rawTx) => {
+      await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
+    });
+    const transport = descriptorTransport(authentication.authorizationContext.transport);
+    const extra = [
+      ...(await changeSetEntries()),
+      ...(await moderationEntries()),
+      ...(await operatorEntries()),
+    ];
+    const all = [...options.registry.ids.map((id) => options.registry.get(id)), ...extra].sort(
+      (a, b) => a.definition.descriptor.id.localeCompare(b.definition.descriptor.id),
+    );
+    const levels = { disabled: 0, read: 1, propose: 2, "approved-execute": 3 } as const;
+    const currentLevel = Math.min(
+      levels[settings[settingsKey]],
+      levels[authentication.authorizationContext.gatewayExposure ?? "disabled"],
+    );
+    const registry = validateRegistry(all);
+    return {
+      principal,
+      settings,
+      registry,
+      hasExtra: extra.length > 0,
+      entries: all.filter(
+        (entry) =>
+          entry.definition.descriptor.gateway?.transports.includes(transport) === true &&
+          entry.definition.descriptor.requiredScopes.every((scope) =>
+            authentication.scopes.includes(scope),
+          ) &&
+          (() => {
+            const tool = npAgentMcpToolDefinitionsV1.find((definition) =>
+              definition.capabilityIds.includes(entry.definition.descriptor.id),
+            );
+            return tool
+              ? levels[tool.listedFrom] <= currentLevel
+              : entry.definition.descriptor.effectProfiles.some(
+                  (profile) =>
+                    profile.minimumGatewayExposure !== null &&
+                    levels[profile.minimumGatewayExposure] <= currentLevel,
+                );
+          })(),
+      ),
+    };
+  }
   const service = {
+    /** Fresh admission projection without discovery's full registry fingerprint. */
+    async authorize(input: { authentication: NpAgentCapabilityAuthenticationV1 }) {
+      const { principal, settings, entries } = await projectCapabilities(input);
+      return { principal, settings, entries };
+    },
     async sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
       const deniedScopes = new Map<NpAgentCapabilityId, NpAgentScope[]>();
       runtimeScopeDenials.set(context, deniedScopes);
@@ -1835,62 +1899,14 @@ export function createAgentCapabilityAdmissionServiceV1(
       }
     },
     async project(input: { authentication: NpAgentCapabilityAuthenticationV1 }) {
-      const authentication = input.authentication;
-      const principal = resolvedPrincipal(authentication);
-      const settings = npRequireAgentGatewaySettings(
-        await options.resolveGatewaySettings(principal.siteId),
-      );
-      const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
-      if (settings[settingsKey] === "disabled") {
-        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
-      }
-      await getDb().transaction(async (rawTx) => {
-        await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
-      });
-      const transport = descriptorTransport(authentication.authorizationContext.transport);
-      const extra = [
-        ...(await changeSetEntries()),
-        ...(await moderationEntries()),
-        ...(await operatorEntries()),
-      ];
-      const all = [...options.registry.ids.map((id) => options.registry.get(id)), ...extra].sort(
-        (a, b) => a.definition.descriptor.id.localeCompare(b.definition.descriptor.id),
-      );
-      const levels = { disabled: 0, read: 1, propose: 2, "approved-execute": 3 } as const;
-      const currentLevel = Math.min(
-        levels[settings[settingsKey]],
-        levels[authentication.authorizationContext.gatewayExposure ?? "disabled"],
-      );
-      const registry = npRequireAgentCapabilityRegistryCanonical({
-        schemaVersion: "np.agent-capability-registry.v1",
-        projection: "registry",
-        capabilities: all.map((entry) => entry.canonical),
-      });
+      const { principal, settings, registry, hasExtra, entries } = await projectCapabilities(input);
       return {
         principal,
         settings,
-        registryFingerprint: extra.length
+        registryFingerprint: hasExtra
           ? await npDigestAgentCapabilityRegistryCanonical(registry, registry.capabilities)
           : options.registry.registryFingerprint,
-        entries: all.filter(
-          (entry) =>
-            entry.definition.descriptor.gateway?.transports.includes(transport) === true &&
-            entry.definition.descriptor.requiredScopes.every((scope) =>
-              authentication.scopes.includes(scope),
-            ) &&
-            (() => {
-              const tool = npAgentMcpToolDefinitionsV1.find((definition) =>
-                definition.capabilityIds.includes(entry.definition.descriptor.id),
-              );
-              return tool
-                ? levels[tool.listedFrom] <= currentLevel
-                : entry.definition.descriptor.effectProfiles.some(
-                    (profile) =>
-                      profile.minimumGatewayExposure !== null &&
-                      levels[profile.minimumGatewayExposure] <= currentLevel,
-                  );
-            })(),
-        ),
+        entries,
       };
     },
     async invoke<C extends NpAgentInstalledCapabilityIdV1>(input: {
@@ -1919,7 +1935,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
       if (npIsAgentOperatorCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveOperatorCapabilities?.();
-        const projection = await service.project({ authentication: input.authentication });
+        const projection = await projectCapabilities({ authentication: input.authentication });
         if (
           !facade ||
           (input.taskRequest && request.capabilityId !== "audit.run") ||
@@ -1940,7 +1956,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       }
       if (npIsAgentModerationCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveModerationCapabilities?.();
-        const projection = await service.project({ authentication: input.authentication });
+        const projection = await projectCapabilities({ authentication: input.authentication });
         if (
           !facade ||
           input.taskRequest ||
@@ -1960,7 +1976,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       }
       if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveChangeSetCapabilities?.();
-        const projection = await service.project({ authentication: input.authentication });
+        const projection = await projectCapabilities({ authentication: input.authentication });
         if (
           !facade ||
           !projection.entries.some(

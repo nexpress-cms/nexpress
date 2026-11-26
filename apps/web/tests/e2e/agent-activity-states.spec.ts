@@ -3,6 +3,8 @@ import {
   npRequireAgentContractResult,
   npAnalyzeAgentActivityRunsPageV1,
   npRequireAgentActivityActionDetailV1,
+  npRequireAgentActivityRunResourceV1,
+  type NpAgentActivityRuntimeOperationV1,
 } from "@nexpress/core/agent-contract";
 import { expect, test } from "@playwright/test";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -97,11 +99,85 @@ function makeRun(id: string, goal: string, origin: "gateway" | "runtime" = "gate
   };
 }
 
+test("Activity keeps Runtime Run filters across pagination and replaces the cursor on submit", async ({
+  page,
+}) => {
+  const run = makeRun("33333333-3333-4333-8333-333333333333", "Scheduled Runtime Run", "runtime");
+  const agentId = run.run.agent!.id;
+  await page.route(/\/api\/admin\/agents\/activity(?:\?|$)/, (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const match =
+      params.get("agentId") === agentId &&
+      params.get("q") === run.run.id &&
+      params.get("template") === "guardian" &&
+      params.get("triggerKind") === "schedule" &&
+      params.get("capabilityId") === "site.inspect";
+    const cursor = params.get("cursor");
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-runs.v1",
+        items: match && !cursor ? [run] : [],
+        nextCursor:
+          match && cursor !== "test-last-page"
+            ? cursor
+              ? "test-last-page"
+              : "test-next-page"
+            : null,
+      },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/activity?origin=runtime&agentId=${agentId}`);
+  await expect(page.getByLabel("Agent ID", { exact: true })).toHaveValue(agentId);
+  await page.getByLabel("Search by ID, recipe, or operation").fill(run.run.id);
+  await page.getByLabel("Agent template").selectOption("guardian");
+  await page.getByLabel("Trigger kind", { exact: true }).selectOption("schedule");
+  await page.getByLabel("Capability", { exact: true }).selectOption("site.inspect");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByRole("link", { name: "Scheduled Runtime Run" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Next page" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toBeVisible();
+  await expect(page.getByText("No visible results on this page.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Next page" })).toBeVisible();
+  const filters = Object.fromEntries(new URL(page.url()).searchParams);
+  expect(filters).toMatchObject({
+    origin: "runtime",
+    agentId,
+    q: run.run.id,
+    template: "guardian",
+    triggerKind: "schedule",
+    capabilityId: "site.inspect",
+    cursor: "test-next-page",
+  });
+  await expect(page.getByLabel("Trigger kind", { exact: true })).toHaveValue("schedule");
+
+  await page.getByLabel("Trigger kind", { exact: true }).selectOption("manual");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toHaveCount(0);
+  await expect(page.getByText("No Agent runs match these filters.")).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("cursor")).toBe(false);
+});
+
 test("Activity preserves read-only refresh facts and isolates failed run actions", async ({
   page,
 }, testInfo) => {
   const runId = "33333333-3333-4333-8333-333333333333";
   const actionId = "77777777-7777-4777-8777-777777777777";
+  const links = {
+    incidentIds: ["11111111-1111-4111-8111-111111111111"],
+    approvalIds: ["22222222-2222-4222-8222-222222222222"],
+    changeSetIds: ["44444444-4444-4444-8444-444444444444"],
+  };
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: async (text: string) => {
+          document.documentElement.dataset.copiedSupportBundle = text;
+        },
+      },
+    });
+  });
   const goal = "한국어 운영 기록과 검토가 필요한 긴 실행 설명 ".repeat(5).trim();
   const records = Array.from({ length: 50 }, (_, index) =>
     makeRun(`33333333-3333-4333-8333-${String(index).padStart(12, "0")}`, `${index + 1}. ${goal}`),
@@ -113,7 +189,7 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
       nextCursor: null,
     }),
   );
-  const run = makeRun(runId, goal);
+  const run = { ...makeRun(runId, goal), related: links };
   const action = expiredReadAction(actionId, "11111111-1111-4111-8111-111111111111", runId);
   npRequireAgentActivityActionDetailV1(action);
   let release = () => {};
@@ -121,6 +197,7 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
     release = resolve;
   });
   let actionFailure = true;
+  let runReadable = true;
   let runReads = 0;
   let actionReads = 0;
   await page.route("**/api/admin/agents/activity**", async (route) => {
@@ -144,6 +221,11 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
     }
     if (path.endsWith(`/${runId}`)) {
       runReads++;
+      if (!runReadable)
+        return route.fulfill({
+          status: 403,
+          json: { status: 403, error: { code: "FORBIDDEN", message: "Access denied." } },
+        });
       return route.fulfill({ json: run });
     }
     return route.fulfill({
@@ -196,6 +278,31 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
   await expect(page.getByRole("status").filter({ hasText: "Loading Run" })).toBeVisible();
   release();
   await expect(page.getByRole("heading", { name: goal.trim(), exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 900 });
+  for (const [name, path, id] of [
+    ["Incident", "incidents", links.incidentIds[0]],
+    ["Approval", "approvals", links.approvalIds[0]],
+    ["ChangeSet", "changesets", links.changeSetIds[0]],
+  ]) {
+    await expect(page.getByRole("link", { name: `${name} ${id}` })).toHaveAttribute(
+      "href",
+      `/admin/agents/${path}/${id}`,
+    );
+  }
+  const copy = page.getByRole("button", { name: "Copy support bundle" });
+  await copy.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Support bundle copied.")).toBeVisible();
+  const exported = await page.locator("html").getAttribute("data-copied-support-bundle");
+  expect(exported).toBeTruthy();
+  expect(JSON.parse(exported!)).toMatchObject({
+    schemaVersion: "np.agent-activity-run-support.v1",
+    runId,
+    state: "succeeded",
+  });
+  expect(exported).not.toContain(goal);
+  expect(exported).not.toContain(links.incidentIds[0]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByText("Run actions could not be loaded.", { exact: false })).toBeVisible();
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
     "The run actions read failed.",
@@ -214,6 +321,11 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
   await expect(page.getByRole("heading", { name: "Run identity", exact: true })).toBeVisible();
   release();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  runReadable = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(copy).toHaveCount(0);
+  await expect(page.getByRole("link", { name: `Incident ${links.incidentIds[0]}` })).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
   gate = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -229,4 +341,85 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
   await expect(page.getByRole("heading", { name: "Action facts", exact: true })).toBeVisible();
   release();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+});
+
+test("Runtime Activity follows an Operator approval to the verified retry Run", async ({
+  page,
+}) => {
+  const runId = "33333333-3333-4333-8333-333333333333";
+  const resultRunId = "66666666-6666-4666-8666-666666666666";
+  const approvalId = "22222222-2222-4222-8222-222222222222";
+  const actionId = "77777777-7777-4777-8777-777777777777";
+  const source = makeRun(runId, "Failed source Run", "runtime");
+  const failed = {
+    ...source,
+    run: {
+      ...source.run,
+      state: "failed",
+      errorCode: "RUN_FAILED",
+      errorMessage: "Run did not complete successfully.",
+    },
+  };
+  const retry = npRequireAgentActivityRunResourceV1({
+    ...makeRun(resultRunId, "Retried Runtime Run", "runtime"),
+    runtimeRetrySourceRunId: runId,
+  });
+  const request = {
+    operation: "agent.run.retry",
+    state: "pending",
+    approvalId,
+    expiresAt: "2026-09-01T00:10:00.000Z",
+  } as const;
+  let runtimeOperations: NpAgentActivityRuntimeOperationV1[] = [request];
+  await page.route("**/api/admin/agents/activity**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith(`/${runId}`)) {
+      return route.fulfill({
+        json: npRequireAgentActivityRunResourceV1({ ...failed, runtimeOperations }),
+      });
+    }
+    if (path.endsWith(`/${resultRunId}`)) return route.fulfill({ json: retry });
+    return route.fulfill({
+      json: { schemaVersion: "np.agent-activity-actions.v1", items: [], nextCursor: null },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  const review = page.getByRole("link", { name: "Review retry request" });
+  await expect(review).toHaveAttribute("href", `/admin/agents/approvals/${approvalId}`);
+  await expect(page.getByText("Awaiting human approval", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
+
+  runtimeOperations = [{ ...request, state: "approved" }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Approval recorded", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
+
+  runtimeOperations = [{ operation: "agent.run.retry", state: "unknown" }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Retry · Outcome unconfirmed")).toBeVisible();
+  await expect(review).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Review retry execution" })).toHaveCount(0);
+
+  runtimeOperations = [{ operation: "agent.run.retry", state: "conflicted", actionId }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Retry · Execution conflict")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toHaveCount(0);
+
+  runtimeOperations = [{ operation: "agent.run.retry", state: "succeeded", actionId, resultRunId }];
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Review retry execution" })).toHaveAttribute(
+    "href",
+    `/admin/agents/activity/actions/${actionId}`,
+  );
+  const openRetry = page.getByRole("link", { name: "Open retry Run" });
+  await openRetry.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Retried Runtime Run" })).toBeVisible();
+  const original = page.getByRole("link", { name: "Open original Run" });
+  await expect(original).toHaveAttribute("href", `/admin/agents/activity/${runId}`);
+  await original.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("link", { name: "Open retry Run" })).toBeVisible();
 });

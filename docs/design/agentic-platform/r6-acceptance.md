@@ -38,6 +38,22 @@ that preceding bundle. The subsequently authorized
 new implementation and separate verification. Actual model quality and automatic
 production enablement remain unestablished.
 
+The [unified V2 report](r6-evaluation-report-flow.md#include-multiple-datasets-for-one-recipe)
+and [Admin evaluation workspace](r6-evaluation-workbench-flow.md#build-a-multi-dataset-report)
+now bring Member report, V1 semantic assessment and V2 segmented assessment
+into one offline report. Staff can add a validated evaluation with its applied
+review and baseline directly from case review. Replacing an existing recipe,
+dataset and version requires confirmation. Dataset coverage and comparisons
+retain their own results, including incompatible baselines.
+
+Local verification for this reporting follow-up on 2026-11-26 KST passed
+2,864 Core and 214 Admin unit cases, type checks and lint, plus the App and
+reference production builds. All seven evaluation-workspace Playwright cases
+passed without retries against isolated PostgreSQL. The combined journey
+exercised manual import, direct transfer, keeping and replacing an entry, stale
+input and draft guards, and exact JSON download. These results cover the
+offline reporting flow and its existing case-review regressions.
+
 The reference app and fresh scaffold remain disabled by default. Existing
 installations are not migrated to a new profile or activated automatically.
 Previously admitted Runs retain their immutable definition snapshots; adopting

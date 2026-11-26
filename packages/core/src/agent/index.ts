@@ -134,7 +134,7 @@ export * from "./incident-assignment-service.js";
 
 export * from "./incident-notifications-service.js";
 export * from "./operator-service.js";
-export * from "./runtime-operator-controls.js";
+export { npCreateAgentRuntimeOperatorControlsV1 } from "./runtime-operator-controls.js";
 export * from "./operator-capability.js";
 
 export * from "./evaluation.js";
@@ -175,6 +175,8 @@ export * from "./moderator-member-report-source.js";
 export * from "./incident-member-report-evidence-service.js";
 
 export { npCreateAgentModeratorAssessmentEvaluationSuiteV1 } from "./moderator-assessment-evaluation-fixtures.js";
+export { npCreateAgentModeratorSegmentedEvaluationSuiteV2 } from "./moderator-segmented-evaluation-fixtures.js";
+export { npCreateAgentMemberReportEvaluationSuiteV1 } from "./member-report-evaluation-fixtures.js";
 
 export * from "./publisher-selection-evaluation-fixtures.js";
 export {

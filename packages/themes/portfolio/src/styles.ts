@@ -864,6 +864,15 @@ export const portfolioCss = `
 .np-portfolio-nav-drawer {
   position: fixed;
   inset: 0;
+  margin: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100dvh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  font: inherit;
   background: var(--np-color-background, #0a0a0a);
   color: var(--np-color-foreground, #f5f1ea);
   padding: 1.5rem 2rem;
@@ -874,6 +883,18 @@ export const portfolioCss = `
 }
 .np-portfolio-nav-drawer[data-open="true"] {
   display: flex;
+}
+.np-portfolio-nav-drawer:not([open]) { display: none; }
+.np-portfolio-nav-drawer::backdrop { background: rgba(0, 0, 0, 0.4); }
+.np-portfolio-nav-close {
+  align-self: flex-end;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
 }
 @media (min-width: 881px) {
   .np-portfolio-nav-drawer,

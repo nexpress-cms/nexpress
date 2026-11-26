@@ -3,8 +3,10 @@ import { open, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   npAgentEvaluationReportMaxBytesV1,
+  npRequireAgentEvaluationReportManifest,
   npRequireAgentEvaluationReportManifestV1,
   type NpAgentEvaluationReportInputV1,
+  type NpAgentEvaluationReportInputV2,
 } from "../agent-contract/evaluation-report-contract.js";
 
 /** Explicit local files only, with one aggregate byte budget for the whole report. */
@@ -12,6 +14,38 @@ export async function npReadAgentEvaluationReportInputV1(
   manifestPath: string,
   cwd = process.cwd(),
 ): Promise<{ input: NpAgentEvaluationReportInputV1; sourcePaths: string[] }> {
+  const { entries, sourcePaths } = await readReportFiles(
+    manifestPath,
+    cwd,
+    npRequireAgentEvaluationReportManifestV1,
+  );
+  return { input: { schemaVersion: "np.agent-eval-report-input.v1", entries }, sourcePaths };
+}
+
+export async function npReadAgentEvaluationReportInput(
+  manifestPath: string,
+  cwd = process.cwd(),
+): Promise<{
+  input: NpAgentEvaluationReportInputV1 | NpAgentEvaluationReportInputV2;
+  sourcePaths: string[];
+}> {
+  const { manifest, entries, sourcePaths } = await readReportFiles(
+    manifestPath,
+    cwd,
+    npRequireAgentEvaluationReportManifest,
+  );
+  const schemaVersion =
+    manifest.schemaVersion === "np.agent-eval-report-manifest.v2"
+      ? "np.agent-eval-report-input.v2"
+      : "np.agent-eval-report-input.v1";
+  return { input: { schemaVersion, entries }, sourcePaths };
+}
+
+async function readReportFiles(
+  manifestPath: string,
+  cwd: string,
+  parseManifest: typeof npRequireAgentEvaluationReportManifest,
+) {
   const sourcePaths: string[] = [];
   let remaining = npAgentEvaluationReportMaxBytesV1;
   async function read(path: string): Promise<unknown> {
@@ -35,7 +69,7 @@ export async function npReadAgentEvaluationReportInputV1(
     }
   }
   const path = resolve(cwd, manifestPath);
-  const manifest = npRequireAgentEvaluationReportManifestV1(await read(path));
+  const manifest = parseManifest(await read(path));
   const entries: NpAgentEvaluationReportInputV1["entries"] = [];
   for (const entry of manifest.entries) {
     const load = (file: string) => read(resolve(dirname(path), file));
@@ -54,7 +88,7 @@ export async function npReadAgentEvaluationReportInputV1(
             },
     });
   }
-  return { input: { schemaVersion: "np.agent-eval-report-input.v1", entries }, sourcePaths };
+  return { manifest, entries, sourcePaths };
 }
 
 /** Protect the manifest and every declared input, including existing hardlink aliases. */

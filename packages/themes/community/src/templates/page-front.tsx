@@ -17,7 +17,7 @@ export async function PageFrontTemplate({ doc, blockCtx }: NpTemplateRenderProps
   const blocks = page.blocks ?? [];
 
   return (
-    <main className="np-community-page np-community-home">
+    <div className="np-community-page np-community-home">
       <section className="np-community-home-intro">
         <div className="np-community-container np-community-home-intro-inner">
           <div>
@@ -52,6 +52,6 @@ export async function PageFrontTemplate({ doc, blockCtx }: NpTemplateRenderProps
         <CommunityPostList docs={hydratedDocs} heading="방금 올라온 이야기" home />
         <CommunitySideRail />
       </div>
-    </main>
+    </div>
   );
 }

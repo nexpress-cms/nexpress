@@ -12,6 +12,8 @@ import { npComments } from "../../../packages/core/src/db/schema/community.js";
 import { npSessions, npSiteMemberships } from "../../../packages/core/src/db/schema/system.js";
 import { grantSiteMembership } from "../../../packages/core/src/sites/memberships.js";
 import type { NpAgentAdminActorV1 } from "../../../packages/core/src/agent/admin-admission.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
+import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
 import type { NpAgentModerationCapabilityInvocationRequestV1 } from "../../../packages/core/src/agent-contract/moderation-capability-contract.js";
 import { moderationRuntimeFixture } from "./agent-moderation-runtime-fixture.js";
 import { siteId } from "./agent-runtime-service-fixture.js";
@@ -52,6 +54,80 @@ describe.skipIf(skipIfNoTestDb())("Human-approved Moderator Runtime continuation
     registerTestCollections();
   });
   afterAll(closeTestDb);
+
+  it("finds a Run through its verified containment Action only while the Incident is readable", async () => {
+    const f = await moderationRuntimeFixture({ documentTarget: true });
+    try {
+      const activity = createAgentActivityServiceV1({
+        cursorHmacKey: new Uint8Array(32).fill(61),
+        approvals: f.approvals,
+        now: f.options.now,
+      });
+      let allowedIncidentReads = Infinity;
+      const incidents = createAgentIncidentServiceV1({
+        cursorHmacKey: new Uint8Array(32).fill(62),
+        canReadIncident: () => false,
+        canReadStaffIncident: () => allowedIncidentReads-- > 0,
+        now: f.options.now,
+      });
+      const related = {
+        siteId,
+        actor: f.actor.actor,
+        query: { incidentId: f.incident.id },
+        readIncident: incidents.staff.get,
+      };
+      const pending = await wait(f);
+      expect((await activity.listRuns(related)).items).toEqual([]);
+      const detail = { ...related, id: pending.runId };
+      expect(await activity.getRun(detail)).toMatchObject({
+        related: { approvalIds: [pending.output.approvalId], incidentIds: [] },
+      });
+
+      await f.decide(pending.output.approvalId);
+      expect(
+        await f.executor.resumeApproval({
+          siteId,
+          runId: pending.runId,
+          requestActionId: pending.requestActionId,
+        }),
+      ).toEqual({ state: "succeeded" });
+      const page = await activity.listRuns(related);
+      expect(page.items.map(({ run }) => run.id)).toEqual([pending.runId]);
+      expect(await activity.getRun(detail)).toMatchObject({
+        related: { approvalIds: [pending.output.approvalId], incidentIds: [f.incident.id] },
+      });
+
+      const [containment] = await f.db.select().from(npAgentContainments);
+      const restore = await f.queue({
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: "moderation.restore",
+        arguments: {
+          idempotencyKey: randomUUID(),
+          input: {
+            mode: "propose",
+            proposal: {
+              containmentKind: "content_quarantine",
+              containmentId: containment.id,
+              expectedVersionDigest: containment.targetVersionDigest,
+            },
+          },
+        },
+      });
+      expect(await f.executor.process(restore)).toEqual({ state: "waiting_approval" });
+      const restorePending = await f.pending(restore.runId);
+      await f.decide(restorePending.output.approvalId);
+      expect(
+        await f.executor.resumeApproval({ ...restore, requestActionId: restorePending.action.id }),
+      ).toEqual({ state: "succeeded" });
+      expect(await activity.getRun({ ...detail, id: restore.runId })).toMatchObject({
+        related: { approvalIds: [restorePending.output.approvalId], incidentIds: [f.incident.id] },
+      });
+      allowedIncidentReads = 1; // The Incident becomes unavailable before returning the page.
+      expect(await activity.listRuns(related)).toMatchObject({ items: [], nextCursor: null });
+    } finally {
+      f.executor.shutdown();
+    }
+  });
 
   it("waits without effects, survives executor restart, quarantines and restores exactly once with safe result context", async () => {
     const f = await moderationRuntimeFixture();

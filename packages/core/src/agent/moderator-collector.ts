@@ -21,7 +21,10 @@ import {
 import type { NpAgentEventCanonicalV1 } from "../agent-contract/types.js";
 import { npRequireCommentRow } from "../community-contract/contract.js";
 import type { NpCommentRow } from "../community-contract/types.js";
-import { npInspectCommunityContentContainmentV1 } from "../community/content-containment.js";
+import {
+  npInspectCommunityContentContainmentV1,
+  npInspectCommunityCommentEvidenceBatchV1,
+} from "../community/content-containment.js";
 import type {
   NpCommunityModerationObservationV1,
   NpCommunityModerationObserverV1,
@@ -231,7 +234,7 @@ export async function npReadAgentModeratorCommentFactV1(
 ): Promise<NpAgentModeratorFactV1 | null> {
   const checked = await npReadAgentModeratorCommentSourceV1(source);
   if (!checked) return null;
-  const { event, outcome } = checked;
+  const { event } = checked;
   let versionDigest: string;
   try {
     ({ versionDigest } = await npInspectCommunityContentContainmentV1(
@@ -262,6 +265,16 @@ export async function npReadAgentModeratorCommentFactV1(
     .limit(1);
   if (!raw) return null;
   const row = npRequireCommentRow(raw);
+  return commentFact(source, checked, { versionDigest, comment: row });
+}
+
+function commentFact(
+  source: EventRow,
+  checked: NonNullable<Awaited<ReturnType<typeof npReadAgentModeratorCommentSourceV1>>>,
+  current: { versionDigest: string; comment: NpCommentRow },
+): NpAgentModeratorFactV1 | null {
+  const { event, outcome } = checked;
+  const { comment: row, versionDigest } = current;
   if (
     (row.status !== "visible" && row.status !== "pending") ||
     row.targetId !== event.subject.documentId ||
@@ -291,6 +304,45 @@ export async function npReadAgentModeratorCommentFactV1(
       excerpt: null,
     },
   });
+}
+
+/** Internal bounded read pass; reuse the source owner and per-comment ACL/version checks. */
+export async function npReadAgentModeratorCommentFactsBatchV1(
+  db: Db,
+  input: { siteId: string; sources: readonly EventRow[]; user: NpAuthUser },
+): Promise<(NpAgentModeratorFactV1 | null)[]> {
+  if (input.sources.length > 100) unavailable();
+  const checked = await Promise.all(input.sources.map(npReadAgentModeratorCommentSourceV1));
+  const selected = input.sources.flatMap((source, index) => {
+    const parsed = checked[index];
+    return parsed && source.siteId === input.siteId ? [{ source, parsed, index }] : [];
+  });
+  const result: (NpAgentModeratorFactV1 | null)[] = input.sources.map(() => null);
+  let current: Awaited<ReturnType<typeof npInspectCommunityCommentEvidenceBatchV1>>;
+  try {
+    current = await npInspectCommunityCommentEvidenceBatchV1(db as unknown as NpTransaction, {
+      siteId: input.siteId,
+      user: input.user,
+      targets: selected.map(({ parsed }) => ({
+        kind: "comment",
+        collection: parsed.event.subject.collection,
+        id: parsed.event.subject.commentId,
+      })),
+    });
+  } catch (error) {
+    if (
+      error instanceof NpForbiddenError ||
+      error instanceof NpNotFoundError ||
+      error instanceof NpValidationError
+    )
+      return result;
+    throw error;
+  }
+  for (const [index, entry] of selected.entries()) {
+    const evidence = current[index];
+    if (evidence) result[entry.index] = commentFact(entry.source, entry.parsed, evidence);
+  }
+  return result;
 }
 /** Re-resolve all immutable refs and current domain ACLs inside the Incident writer transaction. */
 export async function npResolveAgentModeratorCommentEvidenceV1(input: {

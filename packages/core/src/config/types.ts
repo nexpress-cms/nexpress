@@ -7,10 +7,22 @@ export type { NpI18nConfig } from "../i18n-contract/types.js";
 export type { NpRichTextContent } from "../fields/rich-text.js";
 export type { NpNavItem } from "../navigation/types.js";
 
+/**
+ * Canonical, actor-bound by-id read within a caller-owned transaction. Only
+ * available during the current create/update access or pre-write hook callback;
+ * do not retain it for later work. Tenant checks, read ACLs and read hooks apply.
+ */
+export type NpCollectionDocumentReader = <T extends object = Record<string, unknown>>(
+  collection: string,
+  id: string,
+) => Promise<T | null>;
+
 export type NpAccessFunction = (args: {
   user: NpAuthUser | null;
   doc?: Record<string, unknown>;
   data?: Record<string, unknown>;
+  /** Supplied only to staff create/update access with a caller-owned transaction. */
+  readDocument?: NpCollectionDocumentReader;
 }) => boolean | Promise<boolean>;
 
 export type NpMemberWriteOperation = "create" | "update" | "delete";
@@ -349,6 +361,8 @@ export type NpCollectionHook = (args: {
   principal: NpHookPrincipal | null;
   collection: string;
   originalDoc?: Record<string, unknown> | null;
+  /** Supplied only to beforeCreate/beforeUpdate with a caller-owned transaction. */
+  readDocument?: NpCollectionDocumentReader;
 }) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
 export interface NpUploadConfig {
@@ -1333,8 +1347,10 @@ export interface NpSaveOptions {
    * value exported from `@nexpress/core`; the pipeline narrows
    * with an internal cast at the boundary.
    *
-   * Pre-write hooks still fire OUTSIDE the tx (they shouldn't see
-   * pending state). Post-commit work (collection after-hooks,
+   * Pre-write hooks run before the persist block. Ordinary lookup helpers
+   * keep their existing behavior; create/update access callbacks and
+   * collection before-hooks can explicitly read pending documents with
+   * their callback-scoped `readDocument`. Post-commit work (collection after-hooks,
    * `content:afterSave` jobs, and plugin lifecycle hooks) fires
    * after the inner persist block. Wrap caller-owned transactions in
    * `withDeferredPostCommit(() => db.transaction(...))` to flush only

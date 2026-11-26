@@ -1,7 +1,7 @@
 import { AgentReadObservation } from "./agent-read-observation.js";
 import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Activity, Bot, Cable, KeyRound } from "lucide-react";
 
 import { cn } from "../ui/utils.js";
@@ -14,6 +14,7 @@ export function AgentStudioFrame({
   children,
   busy = false,
   refreshing = false,
+  disableWhileRefreshing = true,
   observedAt,
   recovery,
 }: {
@@ -21,9 +22,21 @@ export function AgentStudioFrame({
   children: ReactNode;
   busy?: boolean;
   refreshing?: boolean;
+  disableWhileRefreshing?: boolean;
   observedAt?: number;
   recovery?: unknown;
 }) {
+  const initialLoading = busy && !refreshing;
+  const [announceLoading, setAnnounceLoading] = useState(false);
+  useEffect(() => {
+    if (!initialLoading) return;
+    // Leave the live region empty at mount and skip announcements for quick reads.
+    const timeout = window.setTimeout(() => setAnnounceLoading(true), 650);
+    return () => {
+      window.clearTimeout(timeout);
+      setAnnounceLoading(false);
+    };
+  }, [initialLoading]);
   return (
     <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
       <header className="space-y-2">
@@ -95,21 +108,30 @@ export function AgentStudioFrame({
           </Link>
         ))}
       </nav>
-      {busy ? (
-        <div role="status" aria-live="polite" className="space-y-2 text-sm text-neutral-500">
-          <p>
-            {refreshing
-              ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
-              : "Loading Agent Studio data…"}
-          </p>
-          {!refreshing ? (
-            <div aria-hidden className="h-12 rounded-lg bg-neutral-100 dark:bg-neutral-900" />
-          ) : null}
-        </div>
+      <p role="status" aria-atomic="true" className="text-sm text-neutral-500 empty:m-0">
+        {busy && refreshing
+          ? disableWhileRefreshing
+            ? "Refreshing — previous validated data is shown; actions are temporarily disabled."
+            : "Refreshing — previous validated data is shown."
+          : initialLoading && announceLoading
+            ? "Loading Agent Studio data…"
+            : null}
+      </p>
+      {initialLoading && !announceLoading ? (
+        <p aria-hidden className="text-sm text-neutral-500">
+          Loading Agent Studio data…
+        </p>
+      ) : null}
+      {initialLoading ? (
+        <div aria-hidden className="h-12 rounded-lg bg-neutral-100 dark:bg-neutral-900" />
       ) : null}
       <AgentReadObservation receivedAt={observedAt} refreshing={refreshing} label={active} />
       <AgentRecoveryBoundary error={recovery}>
-        <fieldset disabled={busy} aria-busy={busy} className="min-w-0 space-y-6">
+        <fieldset
+          disabled={busy && (!refreshing || disableWhileRefreshing)}
+          aria-busy={busy}
+          className="min-w-0 space-y-6"
+        >
           {children}
         </fieldset>
       </AgentRecoveryBoundary>

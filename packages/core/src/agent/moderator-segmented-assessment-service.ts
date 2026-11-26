@@ -10,6 +10,7 @@ import {
   npRequireAgentModeratorSegmentedAssessmentV2,
   type NpAgentModeratorSegmentedAssessmentV2,
 } from "../agent-contract/moderator-segmented-assessment-contract.js";
+import { npSummarizeAgentModeratorSegmentedAssessmentV2 } from "../agent-contract/moderator-segmented-assessment-summary.js";
 import type { NpAgentJsonObject } from "../agent-contract/types.js";
 import {
   npAgentIncidents,
@@ -38,15 +39,8 @@ function aggregate(
 ): NpAgentModeratorSegmentedAssessmentV2 {
   const { anchor, completed } = progress;
   if (!anchor?.incident || !completed.length) unavailable();
-  const incomplete =
-    anchor.manifest.incomplete ||
-    completed.some((entry) => entry.evidence.truncated || entry.evidence.sources.length === 0);
-  const complete = completed.length === anchor.manifest.segmentCount && !incomplete;
-  const first = completed[0].decision.label;
-  const label =
-    complete && first !== "uncertain" && completed.every((entry) => entry.decision.label === first)
-      ? first
-      : "uncertain";
+  const { complete, incomplete, label, confidenceBasisPoints, reasonCodes } =
+    npSummarizeAgentModeratorSegmentedAssessmentV2(anchor.manifest, completed);
   const provenance = {
     runId: run.id,
     provider: completed[0].call.provider,
@@ -69,14 +63,8 @@ function aggregate(
     incidentVersion: anchor.incident.versionNumber,
     observedAt: anchor.observedAt,
     label,
-    confidenceBasisPoints:
-      label === "uncertain"
-        ? 0
-        : Math.min(...completed.map((entry) => entry.decision.confidenceBasisPoints)),
-    reasonCodes:
-      label === "uncertain"
-        ? ["insufficient-evidence"]
-        : [...new Set(completed.flatMap((entry) => entry.decision.reasonCodes))].sort(),
+    confidenceBasisPoints,
+    reasonCodes,
     summary:
       label === "uncertain"
         ? "Segmented model review is uncertain because evidence is incomplete, uncertain, or conflicting. Human review remains separate."

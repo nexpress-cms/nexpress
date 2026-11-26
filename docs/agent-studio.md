@@ -47,6 +47,53 @@ reference shapes remain unavailable. Input is untrusted data, not permission to
 execute a capability. See the [Runtime management flow](design/agentic-platform/r5-runtime-studio-flow.md)
 for the host and executor boundaries.
 
+On a Runtime Run detail, **Runtime diagnostics** shows the recorded trigger and
+the earliest retry time while the run is waiting to retry. Each of the 20 most
+recent retained provider calls shows its recorded outcome, dispatch state,
+latency and available usage. Token and cost sources can differ. A call with
+unconfirmed dispatch has unknown usage. The retry time indicates eligibility;
+the worker must still claim the run. The panel excludes raw provider bodies and
+provider request identifiers.
+
+**Policies at admission** lists the versions and hashes frozen when the Run
+was admitted. Open an Action from the Run to follow its recorded approval and
+ChangeSet. The approval page shows the human decision under its existing access
+checks. The execution Action shows the recorded verification result, completion
+time and hash when available. The request Action retains its original state.
+
+In **Activity → Runs**, the **Agent ID** and **Trigger kind** filters narrow the
+list to Runtime runs. Trigger kind uses the registered trigger recorded at
+admission. **View activity** on an Agent opens that Agent's run history.
+**Agent template** also narrows the list to Runtime runs. **Search by ID, recipe,
+or operation** matches an exact Run, Agent, Agent version, principal, invocation
+or trigger ID, recipe ID, or initiating operation. **Capability** matches the
+initiating operation for Gateway runs and recorded, visible Actions for Runtime
+runs. Pagination preserves the filters.
+
+**View related runs** on an Approval or ChangeSet opens Activity with that
+exact record selected. Approval matches the recorded request, execution or
+target Action. ChangeSet matches linked proposal, validation, preview or
+execution evidence that you can currently read.
+
+**View related runs** on an Incident filters Activity by that Incident ID.
+Results come from verified assessment entries and containment Actions linked
+to Runs. Opening the list requires current access to the Incident and each Run.
+
+Run detail shows a bounded set of **Related records** when verified Incident,
+Approval or ChangeSet evidence is currently visible. **Copy support bundle**
+copies a JSON summary with Run identity, status, timestamps and available
+invocation and audit references. Expired Runs use the retained history receipt.
+
+When the host installs Operator review, Runtime Run detail can open a current
+cancel or retry request prepared by Operator. The approval page records the
+human decision. Operator dispatches the approved operation through its existing
+execution checks. Activity links to a verified cancellation result or to the
+new Run after a successful retry, subject to current item access.
+After dispatch begins, the request shows the last recorded execution state.
+An unconfirmed outcome calls for checking the operation before requesting it
+again. Failed or conflicted results link to their execution record. A verified
+retry Run links back to the original Run when you can view both.
+
 ## Understand what the displayed times mean
 
 “Last received” is when the browser accepted a validated response. Runtime status

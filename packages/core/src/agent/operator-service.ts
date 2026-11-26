@@ -154,6 +154,7 @@ import type {
   NpAgentAuthorizationContextCanonicalV1,
   NpAgentScope,
 } from "../agent-contract/types.js";
+import { npAgentScopeStaffCapability } from "../agent-contract/types.js";
 import {
   npAgentMcpTaskLimitsV1,
   type NpAgentMcpTaskV1,
@@ -164,7 +165,14 @@ import { withCurrentSite } from "../sites/context.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { registerJobHandler } from "../jobs/handlers.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
-import { npReadAgentOperatorReviewV1 } from "./operator-review.js";
+import {
+  npReadAgentOperatorReviewV1,
+  type NpAgentOperatorRuntimeResultSelectorV1,
+} from "./operator-review.js";
+import {
+  npReadAgentOperatorRetrySourceV1,
+  npReadAgentOperatorRunActivityV1,
+} from "./operator-run-activity.js";
 import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 
 type Db = ReturnType<typeof database>;
@@ -2360,6 +2368,58 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
     return "pendingExecutionId" in result ? finishExecution(result) : result;
   }
 
+  async function projectActivity(
+    input: { siteId: string; actor: NpAgentAdminActorV1; actionId: string },
+    requireRuntimeResult?: NpAgentOperatorRuntimeResultSelectorV1,
+  ) {
+    if (!options.host.assertReviewAccess) throw unavailable();
+    return database().transaction(async (db) => {
+      const auth = await npResolveAgentStaffSessionAuthorizationV1(
+        db,
+        input.siteId,
+        input.actor,
+        now(),
+      );
+      if (!auth.authority.capabilities.includes("admin.manage")) throw unavailable();
+      const review = await npReadAgentOperatorReviewV1({
+        db,
+        siteId: input.siteId,
+        actionId: input.actionId,
+        now: now(),
+        requireRuntimeResult,
+        authorize: async ({ requiredScopes, ...selector }) => {
+          if (
+            requireRuntimeResult &&
+            !requiredScopes.every((scope) =>
+              auth.authority.capabilities.includes(npAgentScopeStaffCapability[scope]),
+            )
+          )
+            throw unavailable();
+          await options.host.assertReviewAccess!({
+            db,
+            siteId: input.siteId,
+            staffUser: {
+              ...input.actor.user,
+              role:
+                auth.authority.kind === "super-admin"
+                  ? "admin"
+                  : (auth.authority.role as NpAuthUser["role"]),
+            },
+            ...selector,
+          });
+        },
+      });
+      const current = await npResolveAgentStaffSessionAuthorizationV1(
+        db,
+        input.siteId,
+        input.actor,
+        now(),
+      );
+      if (!same(auth, current)) throw unavailable();
+      return review;
+    });
+  }
+
   return {
     approvalTargets,
     inspectRuntimeApproval,
@@ -2410,44 +2470,33 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
       return "pendingExecutionId" in result ? finishExecution(result) : result;
     },
     invokeRuntimeCapability: invokeRuntimeRequest,
-    async projectActivity(input: { siteId: string; actor: NpAgentAdminActorV1; actionId: string }) {
-      if (!options.host.assertReviewAccess) throw unavailable();
-      return database().transaction(async (db) => {
-        const auth = await npResolveAgentStaffSessionAuthorizationV1(
-          db,
-          input.siteId,
-          input.actor,
-          now(),
-        );
-        if (!auth.authority.capabilities.includes("admin.manage")) throw unavailable();
-        const review = await npReadAgentOperatorReviewV1({
-          db,
-          siteId: input.siteId,
-          actionId: input.actionId,
-          now: now(),
-          authorize: async (selector) => {
-            await options.host.assertReviewAccess!({
-              db,
-              siteId: input.siteId,
-              staffUser: {
-                ...input.actor.user,
-                role:
-                  auth.authority.kind === "super-admin"
-                    ? "admin"
-                    : (auth.authority.role as NpAuthUser["role"]),
-              },
-              ...selector,
-            });
-          },
-        });
-        const current = await npResolveAgentStaffSessionAuthorizationV1(
-          db,
-          input.siteId,
-          input.actor,
-          now(),
-        );
-        if (!same(auth, current)) throw unavailable();
-        return review;
+    projectActivity: (input: Parameters<typeof projectActivity>[0]) => projectActivity(input),
+    projectRunActivity(input: {
+      siteId: string;
+      actor: NpAgentAdminActorV1;
+      runId: string;
+      state: string;
+      finished: boolean;
+    }) {
+      if (!options.host.assertReviewAccess) return Promise.resolve([]);
+      return npReadAgentOperatorRunActivityV1({
+        ...input,
+        db: database(),
+        now: now(),
+        admission: options.runtimeAdmission,
+        review: (actionId, expected) => projectActivity({ ...input, actionId }, expected),
+        readApproval: options.resolveApprovals
+          ? (id) =>
+              options.resolveApprovals!().get({ siteId: input.siteId, actor: input.actor, id })
+          : undefined,
+      });
+    },
+    projectRunRetrySource(input: { siteId: string; actor: NpAgentAdminActorV1; runId: string }) {
+      if (!options.host.assertReviewAccess) return Promise.resolve(undefined);
+      return npReadAgentOperatorRetrySourceV1({
+        ...input,
+        db: database(),
+        review: (actionId, expected) => projectActivity({ ...input, actionId }, expected),
       });
     },
     async projectRuntimeAction(runtime: NpAgentRuntimeRunContextV1, actionId: string) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -8,6 +8,7 @@ import {
   chmodSync,
   symlinkSync,
   rmSync,
+  readFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,6 +59,59 @@ test("only complete, regular documentation changes select the fast path", () => 
     }),
     null,
   );
+});
+
+test("the workflow checks gate requires both independent jobs and preserves docs skips", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const jobs = workflow.split(/^  ([\w-]+):\s*$/m);
+  const gate = jobs[jobs.indexOf("checks-gate") + 1];
+  assert.ok(gate);
+  const needs = gate.match(/^    needs: \[([^\]]+)\]/m)?.[1].split(/,\s*/);
+  assert.deepEqual(needs, ["scope", "checks", "unit-tests"]);
+  for (const name of ["checks", "unit-tests"]) {
+    const job = jobs[jobs.indexOf(name) + 1];
+    assert.match(job, /^    needs: \[scope\]$/m);
+    assert.match(job, /^    if: needs.scope.outputs.docs_only != 'true'$/m);
+  }
+  const bindings = [...gate.matchAll(/^          (\w+): \$\{\{ needs\.([\w.-]+) \}\}$/gm)];
+  assert.ok(bindings.length);
+  const command = gate.match(/        run: \|\n((?:          [^\n]*\n)+)/)?.[1];
+  assert.ok(command);
+  const script = command.replace(/^          /gm, "");
+  const cases = [
+    ["both jobs pass", "success", "false", "success", "success", true],
+    ["build fails", "success", "false", "failure", "success", false],
+    ["units fail", "success", "false", "success", "failure", false],
+    ["units cancel", "success", "false", "success", "cancelled", false],
+    ["units missing", "success", "false", "success", "", false],
+    ["units skipped", "success", "false", "success", "skipped", false],
+    ["classification fails", "failure", "false", "success", "success", false],
+    ["docs validation fails", "failure", "true", "skipped", "skipped", false],
+    ["validated docs skip both jobs", "success", "true", "skipped", "skipped", true],
+    ["docs units unexpectedly run", "success", "true", "skipped", "success", false],
+    ["docs units missing", "success", "true", "skipped", "", false],
+  ];
+  for (const [label, scope, docs, build, units, passed] of cases) {
+    const results = {
+      "scope.result": scope,
+      "scope.outputs.docs_only": docs,
+      "checks.result": build,
+      "unit-tests.result": units,
+    };
+    const env = { PATH: process.env.PATH };
+    for (const [, name, expression] of bindings) {
+      assert.ok(Object.hasOwn(results, expression), expression);
+      env[name] = results[expression];
+    }
+    const child = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], {
+      cwd: new URL("../", import.meta.url),
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    assert.ifError(child.error);
+    assert.equal(child.status === 0, passed, `${label}: ${child.stderr}`);
+  }
 });
 
 test("real merge-base history includes code hidden by renames or older PR commits", () => {

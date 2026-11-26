@@ -50,6 +50,7 @@ import {
   type NpSaveResult,
   type NpAuthUser,
   type NpCollectionHook,
+  type NpCollectionDocumentReader,
   type NpFieldConfig,
   type NpHookPrincipal,
   type NpMemberWriteAccessArgs,
@@ -127,6 +128,10 @@ interface InsertValuesQuery extends Promise<unknown> {
   returning(): Promise<unknown[]>;
 }
 
+interface DeleteWhereQuery extends Promise<unknown> {
+  returning(): Promise<unknown[]>;
+}
+
 interface DrizzleTransactionLike {
   execute(query: SQL): Promise<unknown>;
   insert(table: PgTable): {
@@ -140,7 +145,7 @@ interface DrizzleTransactionLike {
     };
   };
   delete(table: PgTable): {
-    where(condition: QueryCondition): Promise<unknown>;
+    where(condition: QueryCondition): DeleteWhereQuery;
   };
   select(selection?: Record<string, unknown>): {
     from(table: PgTable | SQL): SelectQuery;
@@ -1034,6 +1039,7 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
       ctx.actor.user,
       ctx.validatedData,
       ctx.originalDoc,
+      ctx.outerTx,
     );
     return;
   }
@@ -1109,6 +1115,7 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
       collection: c.collection,
       originalDoc: c.originalDoc,
     },
+    c.outerTx,
   );
 
   // Plugin draft hooks run before slug/i18n/field preparation so in-place
@@ -1929,6 +1936,7 @@ export async function promoteMemberDocument(
   staffUserId: string,
 ): Promise<NpSaveResult> {
   npAssertAgentPreviewEffectsAllowed();
+  const mutationObserver = npGetCollectionMutationObserverV1();
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
@@ -1972,37 +1980,52 @@ export async function promoteMemberDocument(
   // between the load and the update can't promote the wrong row.
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
-  const updated = (await db
-    .update(table)
-    .set({
-      status: "published",
-      updatedAt: now,
-      updatedBy: staffUserId,
-      ...(hiddenField ? { [hiddenField]: false } : {}),
-    })
-    .where(
-      sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")} and ${eq(getTableColumn(table, "siteId"), requestSiteId)}`,
-    )
-    .returning()) as Array<Record<string, unknown>>;
-  if (updated.length === 0) {
-    // Either a concurrent promote already flipped this row, or
-    // staff edited it out of `pending` between our read and our
-    // write. Surface as a validation error — the caller should
-    // re-fetch and retry only if they still want to act.
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "status",
-        message: "Cannot promote: row is no longer pending (concurrent change)",
-      },
-    ]);
-  }
-  const [persistedDoc] = await hydratePersistedDocuments(
-    db,
-    registration,
-    [toRecord(updated[0])],
-    "write-result",
-  );
-  if (!persistedDoc) throw new Error(`Promoted ${collection} document could not be hydrated.`);
+  const promote = async (tx: DrizzleTransactionLike): Promise<Record<string, unknown>> => {
+    const updated = (await tx
+      .update(table)
+      .set({
+        status: "published",
+        updatedAt: now,
+        updatedBy: staffUserId,
+        ...(hiddenField ? { [hiddenField]: false } : {}),
+      })
+      .where(
+        sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")} and ${eq(getTableColumn(table, "siteId"), requestSiteId)}`,
+      )
+      .returning()) as Array<Record<string, unknown>>;
+    if (updated.length === 0) {
+      // Either a concurrent promote already flipped this row, or
+      // staff edited it out of `pending` between our read and our
+      // write. Surface as a validation error — the caller should
+      // re-fetch and retry only if they still want to act.
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "status",
+          message: "Cannot promote: row is no longer pending (concurrent change)",
+        },
+      ]);
+    }
+    const [persistedDoc] = await hydratePersistedDocuments(
+      tx,
+      registration,
+      [toRecord(updated[0])],
+      "write-result",
+    );
+    if (!persistedDoc) throw new Error(`Promoted ${collection} document could not be hydrated.`);
+    if (mutationObserver)
+      await mutationObserver.record({
+        db: tx,
+        siteId: requireDocumentSiteId(persistedDoc, `Promoted ${collection} document`),
+        collection,
+        documentId: getRecordId(persistedDoc),
+        writeId: randomUUID(),
+        occurredAt: new Date(),
+        actor: { kind: "staff", userId: staffUserId },
+        fact: { kind: "member-promotion", revision: null },
+      });
+    return persistedDoc;
+  };
+  const persistedDoc = mutationObserver ? await db.transaction(promote) : await promote(db);
 
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
@@ -2320,6 +2343,11 @@ async function deleteDocumentImpl(
   actor: SaveActor,
   options?: { tx?: NpTransaction },
 ): Promise<void> {
+  const mutationObserver = npGetCollectionMutationObserverV1();
+  const mutationActor: NpCollectionMutationActorV1 =
+    actor.kind === "staff"
+      ? { kind: "staff", userId: actor.user.id }
+      : { kind: "member", memberId: actor.memberId };
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -2408,6 +2436,19 @@ async function deleteDocumentImpl(
   const documentSiteId = requireDocumentSiteId(originalDoc, `Deleted ${collection} document`);
 
   const cascade = async (tx: DrizzleTransactionLike): Promise<void> => {
+    if (mutationObserver) {
+      // Take the parent lock before cascading, matching save/autosave lock order.
+      // A losing concurrent delete must not emit another successful source fact.
+      const [locked] = await tx
+        .select({ id: getTableColumn(table, "id") })
+        .from(table)
+        .where(
+          sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "siteId"), siteId)}`,
+        )
+        .limit(1)
+        .for("update");
+      if (!locked) throw new NpNotFoundError(collection, docId);
+    }
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
     await tx
@@ -2486,7 +2527,32 @@ async function deleteDocumentImpl(
       .where(
         sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, docId)}`,
       );
-    await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
+    const deletion = tx
+      .delete(table)
+      .where(
+        mutationObserver
+          ? sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "siteId"), siteId)}`
+          : eq(getTableColumn(table, "id"), docId),
+      );
+    if (mutationObserver) {
+      const [deleted] = await deletion.returning();
+      if (!deleted) throw new NpNotFoundError(collection, docId);
+      const row = toRecord(deleted);
+      await mutationObserver.record({
+        db: tx,
+        siteId: requireDocumentSiteId(row, `Deleted ${collection} document`),
+        collection,
+        documentId: getRecordId(row),
+        writeId: randomUUID(),
+        occurredAt: new Date(),
+        actor: mutationActor,
+        fact: {
+          kind: "document-delete",
+          status: collectionMutationStatus(row.status),
+          revision: null,
+        },
+      });
+    } else await deletion;
   };
 
   if (options?.tx) {
@@ -2918,6 +2984,34 @@ export async function npGetPersistedCollectionDocumentIds(
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
+async function withCollectionDocumentReader<T>(
+  user: NpAuthUser | null,
+  tx: NpTransaction | undefined,
+  callback: (readDocument?: NpCollectionDocumentReader) => T | Promise<T>,
+): Promise<T> {
+  if (!tx) return await callback();
+
+  let active = true;
+  const readDocument: NpCollectionDocumentReader = async <TDocument extends object>(
+    collection: string,
+    id: string,
+  ) => {
+    if (!active) {
+      throw new Error("Collection document reader is no longer active.");
+    }
+    const document = await getDocumentById<TDocument>(collection, id, user ?? undefined, { tx });
+    if (!active) {
+      throw new Error("Collection document reader is no longer active.");
+    }
+    return document;
+  };
+  try {
+    return await callback(readDocument);
+  } finally {
+    active = false;
+  }
+}
+
 async function assertWriteAccess(
   config: NpCollectionConfig,
   collection: string,
@@ -2925,6 +3019,7 @@ async function assertWriteAccess(
   user: NpAuthUser,
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
+  tx?: NpTransaction,
 ): Promise<void> {
   const access = operation === "create" ? config.access?.create : config.access?.update;
 
@@ -2932,7 +3027,14 @@ async function assertWriteAccess(
     return;
   }
 
-  const allowed = await access({ user, doc: originalDoc ?? undefined, data });
+  const allowed = await withCollectionDocumentReader(user, tx, (readDocument) =>
+    access({
+      user,
+      doc: originalDoc ?? undefined,
+      data,
+      ...(readDocument ? { readDocument } : {}),
+    }),
+  );
 
   if (!allowed) {
     throw new NpForbiddenError(collection, operation);
@@ -2973,14 +3075,18 @@ export { assertReadAccess as npAssertCollectionReadScope };
 async function runHooks(
   hooks: NpCollectionHook[] | undefined,
   args: Parameters<NpCollectionHook>[0],
+  tx?: NpTransaction,
 ): Promise<Record<string, unknown>> {
   let nextData = args.data;
 
   for (const hook of hooks ?? []) {
-    nextData = await hook({
-      ...args,
-      data: nextData,
-    });
+    nextData = await withCollectionDocumentReader(args.user, tx, (readDocument) =>
+      hook({
+        ...args,
+        data: nextData,
+        ...(readDocument ? { readDocument } : {}),
+      }),
+    );
   }
 
   return nextData;

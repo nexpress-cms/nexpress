@@ -16,7 +16,7 @@ export function StorefrontPostList({ doc }: NpTemplateRenderProps) {
   const data = doc as StorefrontPostListDoc;
   const posts = data.docs ?? [];
   return (
-    <main className="np-storefront-container np-storefront-journal">
+    <div className="np-storefront-container np-storefront-journal">
       <header>
         <p>Brand journal</p>
         <h1>{data.heading ?? "Stories"}</h1>
@@ -44,6 +44,6 @@ export function StorefrontPostList({ doc }: NpTemplateRenderProps) {
       ) : (
         <p className="np-storefront-empty">아직 공개된 이야기가 없습니다.</p>
       )}
-    </main>
+    </div>
   );
 }

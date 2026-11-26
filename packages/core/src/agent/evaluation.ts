@@ -30,6 +30,8 @@ import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.
 import { npCreateAgentOperatorRecipeDefinitionV1 } from "../agent-contract/operator-recipe-contract.js";
 import {
   npBuildAgentEvaluationArtifactV1,
+  npCreateAgentMemberReportEvaluationPredictionV1,
+  npCreateAgentSegmentedEvaluationPredictionV2,
   npDigestAgentEvaluationCaseV1,
   npDigestAgentEvaluationValueV1,
   npAgentEvaluationResponseSchemaV1,
@@ -37,6 +39,7 @@ import {
   npRequireAgentEvaluationBudgetV1,
   npRequireAgentEvaluationPredictionV1,
   npRequireAgentEvaluationSuiteV1,
+  npIsAgentFixedEvaluationCategoryV1,
   type NpAgentEvaluationArtifactV1,
   type NpAgentEvaluationBudgetV1,
   type NpAgentEvaluationCaseResultV1,
@@ -184,6 +187,12 @@ export async function runAgentEvaluationV1(
   }
   if (options.mode !== "fake" && options.mode !== "provider")
     throw new NpAgentEvaluationError("ARGUMENT_INVALID");
+  const category = suite.cases[0].category;
+  if (
+    npIsAgentFixedEvaluationCategoryV1(category) &&
+    (options.mode !== "fake" || budget.maxCostMicros !== 0)
+  )
+    throw new NpAgentEvaluationError("ARGUMENT_INVALID");
   if (
     options.mode === "fake" &&
     (options.providerId !== "fake" || options.model !== "deterministic-v1" || options.provider)
@@ -214,7 +223,6 @@ export async function runAgentEvaluationV1(
       )
         throw new NpAgentEvaluationError("ARGUMENT_INVALID");
     }
-  const category = suite.cases[0].category;
   const publisherProfile =
     category === "publisher" ? await npCreateAgentPublisherEvaluationProfileV1(suite) : null;
   if (category === "publisher-selection")
@@ -227,16 +235,17 @@ export async function runAgentEvaluationV1(
     category === "publisher-selection"
       ? await npCreateAgentPublisherSelectionEvaluationProfileV1()
       : null;
-  const recipe = await (category === "publisher-selection"
-    ? selectionProfile!.recipe
-    : category === "moderator-assessment"
-      ? npCreateAgentModeratorAssessmentRecipeDefinitionV1()
-      : category === "moderator-proposal"
-        ? npCreateAgentModeratorRecipeDefinitionV1()
-        : category === "publisher"
-          ? publisherProfile!.recipe
-          : npCreateAgentOperatorRecipeDefinitionV1());
-  if (!recipe.instruction) throw new NpAgentEvaluationError("ARGUMENT_INVALID");
+  const recipe = await (npIsAgentFixedEvaluationCategoryV1(category)
+    ? null
+    : category === "publisher-selection"
+      ? selectionProfile!.recipe
+      : category === "moderator-assessment"
+        ? npCreateAgentModeratorAssessmentRecipeDefinitionV1()
+        : category === "moderator-proposal"
+          ? npCreateAgentModeratorRecipeDefinitionV1()
+          : category === "publisher"
+            ? publisherProfile!.recipe
+            : npCreateAgentOperatorRecipeDefinitionV1());
   const now = options.now ?? (() => new Date());
   const startedAt = now().toISOString();
   const remaining = {
@@ -270,6 +279,17 @@ export async function runAgentEvaluationV1(
       stopped = true;
       continue;
     }
+    if (npIsAgentFixedEvaluationCategoryV1(category)) {
+      calls++;
+      result.calls = 1;
+      result.prediction =
+        category === "moderator-segmented-assessment"
+          ? await npCreateAgentSegmentedEvaluationPredictionV2(entry.evidence)
+          : npCreateAgentMemberReportEvaluationPredictionV1(entry.evidence);
+      result.error = null;
+      continue;
+    }
+    if (!recipe?.instruction) throw new NpAgentEvaluationError("ARGUMENT_INVALID");
     const request: NpAgentEvaluationProviderRequestV1 = {
       case: structuredClone({
         id: entry.id,

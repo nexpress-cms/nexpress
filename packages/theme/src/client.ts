@@ -19,3 +19,4 @@ export {
   isColorScheme,
   type NpColorScheme,
 } from "./color-scheme-keys.js";
+export { npOpenMobileNavDialog, type NpMobileNavDialogOptions } from "./mobile-nav-dialog.js";

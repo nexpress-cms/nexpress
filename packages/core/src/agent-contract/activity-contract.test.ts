@@ -5,12 +5,16 @@ import {
   npAnalyzeAgentActivityRunResourceV1,
   npAnalyzeAgentActivityRunsPageV1,
   npAnalyzeAgentActivityRunDetailV1,
+  npBuildAgentActivityRunSupportBundleV1,
+  npRequireAgentActivityRunResourceV1,
   npAgentActivityContractV1,
   npAgentActivityReadRoutesV1,
 } from "./activity-contract.js";
 import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
+import { parseActivityRuntimeOperationsV1 } from "./activity-runtime-operations.js";
 describe("Activity closed contract", () => {
   it("allows canonical bounded filters and rejects kind-specific/foreign inventory", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
     expect(
       npAnalyzeAgentActivityQueryV1("runs", {
         limit: 100,
@@ -19,6 +23,10 @@ describe("Activity closed contract", () => {
         from: "2026-09-01T00:00:00.000Z",
       }).ok,
     ).toBe(true);
+    expect(npAnalyzeAgentActivityQueryV1("runs", { agentId, triggerKind: "event" })).toMatchObject({
+      ok: true,
+      value: { agentId, triggerKind: "event" },
+    });
     for (const q of [
       { limit: 101 },
       { limit: 0 },
@@ -29,12 +37,41 @@ describe("Activity closed contract", () => {
       { siteId: "other" },
       { kind: "external" },
       { capabilityId: "plugin.read" },
+      { agentId: "observer" },
+      { triggerKind: "webhook" },
+      { incidentId: "latest" },
+      { template: "default" },
+      { q: "private query" },
+      { q: "site.%" },
     ])
       expect(npAnalyzeAgentActivityQueryV1("runs", q).ok).toBe(false);
     expect(
       npAnalyzeAgentActivityQueryV1("principals", { runId: "11111111-1111-4111-8111-111111111111" })
         .ok,
     ).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("actions", { agentId }).ok).toBe(false);
+    const changeSetId = "22222222-2222-4222-8222-222222222222";
+    expect(
+      npAnalyzeAgentActivityQueryV1("runs", { approvalId: agentId, changeSetId }),
+    ).toMatchObject({
+      ok: true,
+      value: { approvalId: agentId, changeSetId },
+    });
+    expect(npAnalyzeAgentActivityQueryV1("actions", { approvalId: agentId }).ok).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("runs", { incidentId: agentId })).toMatchObject({
+      ok: true,
+      value: { incidentId: agentId },
+    });
+    expect(npAnalyzeAgentActivityQueryV1("actions", { incidentId: agentId }).ok).toBe(false);
+    expect(
+      npAnalyzeAgentActivityQueryV1("runs", { template: "guardian", q: "site.inspect" }),
+    ).toMatchObject({
+      ok: true,
+      value: { template: "guardian", q: "site.inspect" },
+    });
+    expect(npAnalyzeAgentActivityQueryV1("actions", { q: "site.inspect" }).ok).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("runs", { changeSetId: "draft" }).ok).toBe(false);
+    expect(npAnalyzeAgentActivityQueryV1("principals", { triggerKind: "manual" }).ok).toBe(false);
   });
   it("does not execute hostile query getters", () => {
     let calls = 0;
@@ -74,7 +111,7 @@ describe("Activity closed contract", () => {
       createHash("sha256")
         .update(serializeAgentCanonicalJson(npAgentActivityContractV1))
         .digest("hex"),
-    ).toBe("e3cfe7740ad0df81f6f0e8fd46a4228dfb782e540ac8c498ace9ea56af1fc756");
+    ).toBe("8db25a25d46ea7097b24c3a88e7381575ef07e0ddbdb89c12bccf963557d64a6");
   });
   it("locks only six read routes, leaving mutations in the shared admission registry", () => {
     expect(npAgentActivityReadRoutesV1.map(({ method, path }) => `${method} ${path}`)).toEqual([
@@ -102,9 +139,60 @@ const expiredRun = {
   releasedAt: "2026-09-18T00:00:00.000Z",
   evidence: "expired",
 };
+
+it("requires an exact approval or result reference for a Runtime operation", () => {
+  const run = { id: expiredRun.runId, origin: "runtime" as const };
+  const approval = {
+    operation: "agent.run.cancel",
+    state: "approved",
+    approvalId: expiredRun.agent.id,
+    expiresAt: "2026-09-01T00:00:00.000Z",
+  };
+  expect(parseActivityRuntimeOperationsV1([approval], run)).toEqual([approval]);
+  const unknown = { operation: "agent.run.cancel", state: "unknown" };
+  const failed = { operation: "agent.run.retry", state: "failed", actionId: expiredRun.agent.id };
+  expect(parseActivityRuntimeOperationsV1([unknown, failed], run)).toEqual([unknown, failed]);
+  expect(() => parseActivityRuntimeOperationsV1([unknown, unknown], run)).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([{ ...unknown, actionId: failed.actionId }], run),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([{ ...failed, resultRunId: expiredRun.agent.versionId }], run),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([approval], { ...run, origin: "gateway" }),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1([{ ...approval, actionId: approval.approvalId }], run),
+  ).toThrow();
+  expect(() =>
+    parseActivityRuntimeOperationsV1(
+      [
+        {
+          operation: "agent.run.retry",
+          state: "succeeded",
+          actionId: expiredRun.agent.id,
+          resultRunId: run.id,
+        },
+      ],
+      run,
+    ),
+  ).toThrow();
+});
 describe("expired Run detail resource", () => {
   it("accepts retained facts only and leaves live list items unchanged", () => {
     expect(npAnalyzeAgentActivityRunResourceV1(expiredRun).ok).toBe(true);
+    expect(
+      npBuildAgentActivityRunSupportBundleV1(npRequireAgentActivityRunResourceV1(expiredRun)),
+    ).toEqual({
+      schemaVersion: "np.agent-activity-run-support.v1",
+      runId: expiredRun.runId,
+      siteId: expiredRun.siteId,
+      state: expiredRun.state,
+      finishedAt: expiredRun.finishedAt,
+      releasedAt: expiredRun.releasedAt,
+      evidence: expiredRun.evidence,
+    });
     expect(npAnalyzeAgentActivityRunDetailV1(expiredRun).ok).toBe(false);
     expect(
       npAnalyzeAgentActivityRunsPageV1({
@@ -121,6 +209,7 @@ describe("expired Run detail resource", () => {
     { usage: { inputTokens: 0 } },
     { runLimitsHash: "private" },
     { goal: "source" },
+    { related: { incidentIds: [expiredRun.runId], approvalIds: [], changeSetIds: [] } },
     { releasedAt: "2026-08-01T00:00:00.000Z" },
   ])("rejects unsupported historical facts %j", (extra) => {
     expect(npAnalyzeAgentActivityRunResourceV1({ ...expiredRun, ...extra }).ok).toBe(false);

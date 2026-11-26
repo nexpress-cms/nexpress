@@ -66,6 +66,16 @@ export interface NpAgentGuardianContentActivityV1 {
     | {
         kind: "revision-autosave";
         revision: NpAgentGuardianContentRevisionV1 & { status: "autosave" };
+      }
+    | {
+        /** These owners change status without creating a revision. */
+        kind: "scheduled-publish" | "member-promotion";
+        revision: null;
+      }
+    | {
+        kind: "document-delete";
+        status: "draft" | "scheduled" | "published" | "archived" | "pending";
+        revision: null;
       };
 }
 export interface NpAgentGuardianContentEventPayloadV1 {
@@ -226,7 +236,9 @@ export function npParseAgentGuardianContentActivityV1(
   const factKeys =
     factKind === "document-save"
       ? ["kind", "operation", "status", "revision"]
-      : ["kind", "revision"];
+      : factKind === "document-delete"
+        ? ["kind", "status", "revision"]
+        : ["kind", "revision"];
   const raw = canonicalBodyRecord(row.fact, path, factKeys, factKeys, state);
   let fact: NpAgentGuardianContentActivityV1["fact"];
   if (factKind === "document-save") {
@@ -247,13 +259,40 @@ export function npParseAgentGuardianContentActivityV1(
       ),
       revision: savedRevision === null ? null : { ...savedRevision, status: savedRevision.status },
     };
-  } else {
-    if (factKind !== "revision-autosave")
-      failCanonicalBody("invalid-field", path, "unknown content activity");
+  } else if (factKind === "revision-autosave") {
     const autosave = revision(raw.revision, path, state);
     if (autosave.status !== "autosave")
       failCanonicalBody("invalid-field", path, "an autosave requires an actual autosave revision");
     fact = { kind: factKind, revision: { ...autosave, status: autosave.status } };
+  } else if (
+    factKind === "scheduled-publish" ||
+    factKind === "member-promotion" ||
+    factKind === "document-delete"
+  ) {
+    if (raw.revision !== null)
+      failCanonicalBody("invalid-field", path, "a lifecycle transition creates no revision");
+    if (
+      factKind === "scheduled-publish"
+        ? actor.kind !== "system" || actor.component !== "content.publish-scheduled"
+        : factKind === "member-promotion"
+          ? actor.kind !== "staff"
+          : actor.kind !== "staff" && actor.kind !== "member"
+    )
+      failCanonicalBody("invalid-field", path, "content lifecycle actor does not match its owner");
+    fact =
+      factKind === "document-delete"
+        ? {
+            kind: factKind,
+            status: canonicalBodyEnum(
+              raw.status,
+              path,
+              new Set(["draft", "scheduled", "published", "archived", "pending"]),
+            ),
+            revision: null,
+          }
+        : { kind: factKind, revision: null };
+  } else {
+    failCanonicalBody("invalid-field", path, "unknown content activity");
   }
   return {
     schemaVersion: canonicalBodyEnum(

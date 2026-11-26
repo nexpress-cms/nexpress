@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { npAgentActions, npAgentPrincipals } from "../../../packages/core/src/db/schema/agent.js";
+import {
+  npAgentActions,
+  npAgentChangesetExecutions,
+  npAgentPrincipals,
+  npAgentRuns,
+} from "../../../packages/core/src/db/schema/agent.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import { runtimeApprovalResumeFixture } from "./agent-runtime-approval-resume-fixture.js";
 import {
   closeTestDb,
@@ -62,6 +68,29 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime approval resumption", () => 
   it("executes the approved request as a distinct action and keeps its request immutable", async () => {
     const f = await runtimeApprovalResumeFixture();
     const before = await f.requestAction();
+    const activity = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(61),
+      changesets: f.service,
+      now: f.options.now,
+    });
+    const staff = { siteId: f.input.siteId, actor: f.actor.actor };
+    const readRun = () => activity.getRun({ ...staff, id: f.input.runId });
+    const readAction = (id: string) => activity.getAction({ ...staff, id });
+    const waiting = await f.run();
+    expect(waiting.policyRefs.length).toBeGreaterThan(0);
+    expect(await readRun()).toMatchObject({
+      run: { state: "waiting_approval" },
+      runtimeDiagnostics: { policyRefs: waiting.policyRefs },
+    });
+    expect(await readAction(f.requestActionId)).toMatchObject({
+      action: { state: "approval_pending", approvalId: f.required.approvalId },
+      changeSetId: f.required.changeSet.id,
+    });
+    expect(await readAction(f.requestActionId)).not.toHaveProperty("verificationResult");
+    const related = { approvalId: f.required.approvalId, changeSetId: f.required.changeSet.id };
+    const matchingRuns = async () =>
+      (await activity.listRuns({ ...staff, query: related })).items.map(({ run }) => run.id);
+    expect(await matchingRuns()).toEqual([f.input.runId]);
     await f.approve();
     const acquired = await f.store.claimApproval({
       ...f.input,
@@ -91,6 +120,7 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime approval resumption", () => 
       executionSequence: 5,
     });
     expect(receipt.executionActionId).not.toBe(f.requestActionId);
+    if (!receipt.executionActionId) throw new Error("Expected the executed Action");
     expect(await f.store.transition({ ...claimed, state: "succeeded" })).toEqual({
       state: "succeeded",
     });
@@ -100,6 +130,45 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime approval resumption", () => 
     expect(
       await f.db.select().from(npAgentActions).where(eq(npAgentActions.runId, f.input.runId)),
     ).toHaveLength(5);
+    const executionAction = await readAction(receipt.executionActionId);
+    expect(executionAction).toMatchObject({
+      action: { state: "succeeded", approvalId: f.required.approvalId },
+      changeSetId: f.required.changeSet.id,
+      verificationResult: {
+        state: "passed",
+        completedAt: expect.any(String),
+        digest: expect.any(String),
+      },
+    });
+    expect(await readAction(f.requestActionId)).not.toHaveProperty("verificationResult");
+    expect(await matchingRuns()).toEqual([f.input.runId]);
+    expect(await f.service.approvals!.get({ ...staff, id: f.required.approvalId })).toMatchObject({
+      item: { approval: { state: "consumed" } },
+    });
+    const listed = await activity.listActions({ ...staff, query: { runId: f.input.runId } });
+    expect(listed.items).toHaveLength(5);
+    expect(listed.items.every((item) => !Object.hasOwn(item, "verificationResult"))).toBe(true);
+    const query = {
+      agentId: waiting.agentId!,
+      capabilityId: "changeset.apply",
+    } as const;
+    const listRuns = async (filters: unknown) =>
+      (await activity.listRuns({ ...staff, query: filters })).items.map(({ run }) => run.id);
+    expect(await listRuns(query)).toEqual([f.input.runId]);
+    expect(await listRuns({ ...query, capabilityId: "schema.get" })).toEqual([]);
+    const withoutTargetAccess = createAgentActivityServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(61),
+      now: f.options.now,
+    });
+    expect((await withoutTargetAccess.listRuns({ ...staff, query })).items).toEqual([]);
+
+    await f.db
+      .update(npAgentChangesetExecutions)
+      .set({ verificationDigest: `cj1:sha256:${"A".repeat(43)}` })
+      .where(eq(npAgentChangesetExecutions.invocationId, executionAction.invocationId!));
+    expect(await readAction(receipt.executionActionId)).not.toHaveProperty("verificationResult");
+    await f.db.update(npAgentRuns).set({ policyRefs: [] }).where(eq(npAgentRuns.id, f.input.runId));
+    expect(await readRun()).toMatchObject({ runtimeDiagnostics: { policyRefs: null } });
   });
   it("allows a bounded retry after the immutable approval request is fulfilled", async () => {
     const f = await runtimeApprovalResumeFixture();

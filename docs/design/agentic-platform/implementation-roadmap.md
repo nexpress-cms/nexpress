@@ -790,23 +790,27 @@ adds a separate 32-case bilingual document/comment replay corpus with actual
 threshold, author independence, target-kind deduplication and newest-fact checks.
 It preserves both earlier detector artifacts and keeps CLI/Workbench/report
 feedback bound to exact predictions. Member filings now have the advisory
-review flow above; Member response/classification datasets, production precision,
-longitudinal comparison and live-model quality remain separate work.
+review flow above. The [Member report evaluation](r6-evaluation-workbench-flow.md#member-report-and-response-evaluation)
+adds a standalone synthetic corpus for claim classification and response review
+eligibility. Production precision, longitudinal comparison and live-model
+quality remain separate work.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.
 Its bounded statements and synthetic intent do not establish arbitrary natural
 language accuracy, live-model usefulness or full AP-602/AP-606/R6 acceptance.
 The [unified evaluation report and operating guide](r6-evaluation-report-flow.md)
-brings the three recipe owners' results, review coverage and compatible baseline
-comparisons into one independently recomputed offline artifact. Missing evidence
-and unreviewed cases stay explicit; report generation does not establish model
-usefulness, production readiness or full R6 acceptance.
+brings the recipe owners' results, review coverage and compatible baseline
+comparisons into one independently recomputed offline artifact. V2 shows each
+dataset and version separately, including Member report, V1 semantic
+assessment and V2 segmented assessment. Missing and unreviewed evidence stay
+visible. Model usefulness and production acceptance require their own evidence.
 
 The [Admin evaluation review workspace](r6-evaluation-workbench-flow.md) connects
 these existing owners to bounded file imports, case review, baseline comparison
-and compatible artifact exports. Reviews remain offline and self-reported;
-no live approval, provider activation or R6 acceptance is inferred.
+and compatible artifact exports. Staff can send a validated case-review result
+and its baseline to the grouped V2 report, with confirmation for replacement.
+The resulting report carries self-reported offline review evidence.
 
 ### R7 — Guardian and application security orchestration
 
@@ -855,6 +859,18 @@ brief while following existing codegen/migration/release contracts.
 
 The artifact and workflow contract is
 [build-agent-and-site-blueprint.md](build-agent-and-site-blueprint.md).
+
+AP-801–805 local implementation and unpaid acceptance are complete for the
+recorded package/source/environment epochs (2026-10-27). The workflow includes
+all sixteen canonical artifact owners, three-direction trusted rendering and
+fresh rerender acceptance, reviewed schema/SQL generation, bounded repository
+publication, ordinary Admin/member continuation and a non-authorizing handoff.
+The [completion evidence and limits](build-agent-and-site-blueprint.md#current-local-implementation)
+record the final 113-task `verify`, 41-task lint, focused PostgreSQL regression,
+packed-scaffold, native, preview and privacy results without conflating package
+epochs or opt-in skips. The [Launchpad evaluation](r8-launchpad-evaluation.md)
+completes AP-806 with a defer decision. Hosted adoption, production enablement,
+Git publication and deployment require their own later authorization.
 
 | ID     | Scope                                                                                                              |
 | ------ | ------------------------------------------------------------------------------------------------------------------ |
@@ -946,6 +962,24 @@ ship:
 - package changeset and live documentation.
 
 ## 8. Product release boundary
+
+The local development closeout on 2026-11-26 KST records the completed report
+workflow and preserves the operating conditions for a later release decision:
+
+- [R5 Admin acceptance](r5-acceptance.md#remaining-admin-acceptance-work) retains
+  the observed VoiceOver and browser evidence. Complete operator-led acceptance
+  and proof of the required queues and maintenance on the selected host remain open.
+- [R6 operating acceptance](r6-acceptance.md#actual-model-and-operating-acceptance)
+  requires representative model and operating evidence. Automatic Moderator
+  quarantine has a separate reviewed-precision and
+  [production shadow gate](testing-and-evaluation.md#93-enablement-gates).
+- [R7 qualification](r7-completion-plan.md#advisory-reasoning-offline-evaluation-and-response-qualification)
+  requires independent security review, real shadow evidence, legitimate-user
+  impact review, compensation verification and deployment approval for
+  automatic responses.
+- [R8 local acceptance](build-agent-and-site-blueprint.md#current-local-implementation)
+  is complete for its recorded scope. The [hosted Launchpad decision](r8-launchpad-evaluation.md)
+  remains deferred.
 
 The first credible public release should include R1–R4 plus:
 

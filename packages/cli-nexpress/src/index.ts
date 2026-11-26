@@ -62,6 +62,7 @@ import { runThemeAdd } from "./theme-add/run.js";
 import { parseThemeRemoveArgs } from "./theme-remove/args.js";
 import { runThemeRemove } from "./theme-remove/run.js";
 import { AGENT_CONNECT_HELP, parseAgentConnectArgsV1, runAgentConnectV1 } from "./agent-connect.js";
+import { runSiteCommandV1 } from "./site-build/command.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
@@ -79,9 +80,14 @@ Usage:
   nexpress theme remove <package> --apply             Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
+  nexpress site brief init|validate                  Create or canonicalize a local Site Brief
+  nexpress site proposal validate                    Check a blueprint proposal against its exact brief
+  nexpress site catalog inspect                      Inspect configured declarations in an isolated worker
+  nexpress site generate                            Verify a private candidate; publish with exact execute/plan arguments
+  nexpress site skill install --client <codex|claude> [--apply]  Plan or install the local Build skill
   nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
   nexpress agent evaluate --report manifest.json [--out report.json] [--json]   Unified offline evaluation report
-  nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|publisher.v2|publisher.v3|moderator-assessment.v1|moderator.v1|moderator.v2|moderator.v3|moderator-proposal.v1|moderator-proposal.v2|moderator-proposal.v3|guardian.v1] [--json]   Bounded offline evaluation
+  nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|publisher.v2|publisher.v3|moderator-assessment.v1|moderator-assessment.v2|moderator-member-report.v1|moderator.v1|moderator.v2|moderator.v3|moderator-proposal.v1|moderator-proposal.v2|moderator-proposal.v3|guardian.v1] [--json]   Bounded offline evaluation
   nexpress agent runtime status|pause|resume --site <siteId> [--json]   Local runtime containment and recovery
   nexpress agent guardian status|disable|enable-plan|enable --site <siteId> [--json]   Local Guardian capture control
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
@@ -465,7 +471,7 @@ async function runEvaluationProjectScript(
 ): Promise<void> {
   if (passthrough.length === 1 && (passthrough[0] === "--help" || passthrough[0] === "-h")) {
     process.stdout.write(
-      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|publisher.v2|publisher.v3|moderator-assessment.v1|moderator.v1|moderator.v2|moderator.v3|moderator-proposal.v1|moderator-proposal.v2|moderator-proposal.v3|guardian.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. guardian.v1 uses 64 synthetic Korean/English cases with a deterministic reference baseline; production rule replay, precision, model usefulness and enablement remain unestablished. Guardian reviews support or reject only the exact synthetic prediction and confer no approval authority. moderator.v1 preserves original observed-content fixtures; moderator.v2 replays unverified report and mixed facts through the actual detector. moderator.v3 adds document-report and document/comment mixed facts with exact target deduplication and author independence. All detector datasets are offline with no network providers or explicit model/budget flags; reports confer no spam verdict or approval authority. moderator-proposal.v1 checks recipe proposals and abstentions against synthetic observed evidence. moderator-proposal.v2 adds unverified report and mixed evidence. moderator-proposal.v3 adds exact document/comment targets to document-report and mixed evidence; reports confer no verdict or approval authority. publisher.v2 retains V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile. publisher.v3 checks bounded multi-document selection with its explicit V3 instruction. moderator-assessment.v1 checks the explicit read-only semantic profile using bilingual synthetic evidence; confidence is not calibrated probability. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
+      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|publisher.v2|publisher.v3|moderator-assessment.v1|moderator-assessment.v2|moderator-member-report.v1|moderator.v1|moderator.v2|moderator.v3|moderator-proposal.v1|moderator-proposal.v2|moderator-proposal.v3|guardian.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. guardian.v1 uses 64 synthetic Korean/English cases with a deterministic reference baseline; production rule replay, precision, model usefulness and enablement remain unestablished. Guardian reviews support or reject only the exact synthetic prediction and confer no approval authority. moderator.v1 preserves original observed-content fixtures; moderator.v2 replays unverified report and mixed facts through the actual detector. moderator.v3 adds document-report and document/comment mixed facts with exact target deduplication and author independence. All detector datasets are offline with no network providers or explicit model/budget flags; reports confer no spam verdict or approval authority. moderator-proposal.v1 checks recipe proposals and abstentions against synthetic observed evidence. moderator-proposal.v2 adds unverified report and mixed evidence. moderator-proposal.v3 adds exact document/comment targets to document-report and mixed evidence; reports confer no verdict or approval authority. publisher.v2 retains V1 cases and adds completeness-priority controls with a separate uncertainty instruction profile. publisher.v3 checks bounded multi-document selection with its explicit V3 instruction. moderator-assessment.v1 checks the explicit read-only semantic profile using bilingual synthetic evidence; confidence is not calibrated probability. moderator-assessment.v2 replays synthetic V2 segments and reports coverage separately from the advisory classification. moderator-member-report.v1 scores synthetic reports and eligibility for human review locally. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
     );
     return;
   }
@@ -742,6 +748,13 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     process.stdout.write(HELP_TEXT);
     return 0;
+  }
+
+  if (args[0] === "site") {
+    const result = await runSiteCommandV1(args.slice(1), cwd);
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    return result.code;
   }
 
   if (args[0] === "feedback") {

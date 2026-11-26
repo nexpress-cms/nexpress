@@ -128,6 +128,10 @@ export * from "./incident-member-report-contract.js";
 export * from "./moderator-member-report-contract.js";
 
 export * from "./moderator-assessment-evaluation-contract.js";
+export {
+  npRequireAgentModeratorSegmentedEvaluationResultV2,
+  type NpAgentModeratorSegmentedEvaluationResultV2,
+} from "./moderator-segmented-evaluation-contract.js";
 
 export * from "./operator-review-contract.js";
 
@@ -161,3 +165,5 @@ export * from "./guardian-http-contract.js";
 export * from "./guardian-credential-contract.js";
 export * from "./guardian-plugin-contract.js";
 export * from "./guardian-delivery-contract.js";
+
+export * from "../build-contract/index.js";

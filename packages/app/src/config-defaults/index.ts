@@ -14,7 +14,7 @@ import { latestPostsPlugin } from "@nexpress/plugin-block-latest-posts";
 import { newsletterPlugin } from "@nexpress/plugin-block-newsletter";
 import { pricingPlugin } from "@nexpress/plugin-block-pricing";
 import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
-import { createForum } from "@nexpress/plugin-forum";
+import { createForum, type NpForumBuildRouteOwnerV1 } from "@nexpress/plugin-forum";
 import { createShop, createShopProductInquiryContextSource } from "@nexpress/plugin-shop";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
@@ -135,6 +135,38 @@ export const defaultThemes: NpRegisteredTheme[] = [
   storefrontTheme,
   docsTheme,
 ];
+
+/** Build-only ownership declarations over these exact scaffold component objects. */
+export function npGetDefaultBuildOwnerBindingsV1(): Array<{
+  package: string;
+  value: unknown;
+  routes?: readonly NpForumBuildRouteOwnerV1[];
+}> {
+  return [
+    { package: "@nexpress/theme-default", value: defaultTheme },
+    { package: "@nexpress/theme-community", value: communityTheme },
+    { package: "@nexpress/theme-docs", value: docsTheme },
+    { package: "@nexpress/theme-magazine", value: magazineTheme },
+    { package: "@nexpress/theme-portfolio", value: portfolioTheme },
+    { package: "@nexpress/theme-storefront", value: storefrontTheme },
+    { package: "@nexpress/plugin-block-callout", value: calloutPlugin },
+    { package: "@nexpress/plugin-block-embed", value: embedPlugin },
+    { package: "@nexpress/plugin-block-latest-posts", value: latestPostsPlugin },
+    { package: "@nexpress/plugin-block-newsletter", value: newsletterPlugin },
+    { package: "@nexpress/plugin-block-pricing", value: pricingPlugin },
+    { package: "@nexpress/plugin-block-stats", value: statsBlockPlugin },
+    { package: "@nexpress/plugin-oauth-github", value: githubOAuthPlugin },
+    { package: "@nexpress/plugin-oauth-google", value: googleOAuthPlugin },
+    { package: "@nexpress/plugin-reading-time", value: readingTimePlugin },
+    { package: "@nexpress/plugin-seo-audit", value: seoAuditPlugin },
+    {
+      package: "@nexpress/plugin-forum",
+      value: defaultForumPlugin,
+      routes: [defaultForumDefinition.buildRouteOwner],
+    },
+    { package: "@nexpress/plugin-shop", value: defaultShopPlugin },
+  ];
+}
 
 /**
  * Exact locale catalog shared with the proxy-facing i18n config. The default

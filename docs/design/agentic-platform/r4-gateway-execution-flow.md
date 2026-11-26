@@ -163,3 +163,66 @@ checks do not certify a deployment's cache/search/media adapters. Unknown
 external effects remain fenced and inspection-only. No R5 runtime, provider,
 automatic worker/factory, scanner, seed, default activation, package-version
 change or changeset is added.
+
+### Gateway admission cost
+
+Discovery (`admission.project`) still returns the complete installed registry
+fingerprint. Invocation and ChangeSet requester revalidation use
+`admission.authorize`, which shares the same current authentication, settings,
+transport, scopes, installed-definition checks and full canonical registry
+validation. It omits the unused discovery fingerprint; it does not cache authority
+or remove a database check. Execution still uses its existing transaction fences.
+
+A local PostgreSQL 16 comparison retained all 13 Gateway execution scenarios,
+fixtures, assertions and deadlines. With the same native Node runtime, at most
+two forks and temporary CPU/query instrumentation, test time fell from 101.97 to
+65.79 seconds; command wall time fell from 112.459 to 75.437 seconds. The same
+single approval/apply journey fell from 20.084 to 11.852 seconds with 3,217 SQL
+calls in both runs. These are local observations, not a hosted CI or single API
+latency guarantee. The regression journey checks discovery/admission parity,
+changed installation metadata, uninstall/reinstall and revocation without writes
+after denial. Temporary instrumentation is absent from the test sources.
+
+Bundle verification passed 10 PostgreSQL files / 97 cases without skips,
+workspace `verify` 113 tasks and lint 41 tasks. Existing conditional unit skips
+remain: three Redis cases and five CLI/Linux cases.
+
+The ChangeSet facade serializes each deeply frozen definition when it builds the
+entry. Admission resolves the current installation on every call and compares
+the serialization and fingerprint with the expected definition. For entries
+supplied outside that factory, admission serializes the body and checks both
+definition aliases on each call. Discovery and invocation validate the assembled
+registry and check current authority, scopes, and Gateway exposure.
+
+Matched local PostgreSQL 16.8 runs on 2026-11-07 measured the complete approval
+and execution journeys. Apply fell from 9.745 to 5.740 seconds with 3,216 SQL
+calls in each run. Schedule fell from 9.653 to 5.670 seconds with 3,271 calls in
+each run. The existing installation regression covers a factory entry returned
+under the wrong capability ID and a custom entry whose definition changes after
+a successful projection.
+
+Scoped verification passed 87 PostgreSQL cases across eight files, including
+all 13 Gateway execution scenarios and the Runtime approval and unattended
+journeys. Integration-file typechecking, all 113 workspace `verify` tasks, and
+all 41 lint tasks passed. The existing optional Redis and CLI/Linux unit skips
+were reported by the workspace runner.
+
+Gateway admission can reuse one validated canonical registry per service. The
+read capability and ChangeSet constructors identify their deeply frozen entries.
+Reuse requires that provenance for every entry and the same ordered sequence of
+canonical objects. A different sequence or a custom entry goes through the full
+registry parser. Each request resolves the live installation and checks current
+authentication, scopes, transport, and Gateway exposure. Discovery computes its
+fingerprint from the validated registry using the canonical digest owner.
+
+Matched PostgreSQL 16.8 runs on 2026-11-07 measured apply from 5.730 to 2.397
+seconds and schedule from 5.709 to 2.172 seconds. Each comparison performed
+3,216 and 3,271 SQL calls respectively. The regression checks cover a shortened
+inventory, duplicate or reordered definitions, mutable custom metadata, and a
+live installation replacement followed by credential revocation.
+
+Scoped verification passed 42 PostgreSQL cases across eight files, seven
+registry unit tests, and integration-file typechecking. Workspace verification
+passed all 113 tasks and lint passed all 41 tasks. The initial workspace run
+hit a Build blueprint unit test timeout. The file and workspace reruns passed
+with the same test deadline.

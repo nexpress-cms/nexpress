@@ -48,7 +48,7 @@ import {
   npRequireAgentConnectionConfigCanonical,
   npDigestAgentConnectionConfigCanonical,
 } from "../agent-contract/canonical-connections.js";
-import { npDigestAgentRecipeRegistryCanonical } from "../agent-contract/canonical-recipe-registry.js";
+import { npRequireAgentRuntimeRecipeEvidenceV1 } from "./runtime-recipe-evidence.js";
 import {
   npResolveAgentBudgetV1,
   npAgentBudgetWindowsV1,
@@ -557,16 +557,17 @@ export function createAgentRuntimeAdmissionV1(
       snapshot.sourceRefs.find((ref) => ref.kind === "agent")?.version !== evidence.version.version
     )
       fail("RUNTIME_ADMISSION_INVALID");
-    const recipe = evidence.registry.recipes.find(
-      (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
+    const recipeEvidence = npRequireAgentRuntimeRecipeEvidenceV1(
+      evidence.registry,
+    ).definitions.find(
+      ({ recipe }) => recipe.id === run.recipeId && recipe.version === run.recipeVersion,
     );
+    const recipe = recipeEvidence?.recipe;
     if (
+      !recipeEvidence ||
       !recipe ||
       !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id) ||
-      (await npDigestAgentRecipeRegistryCanonical(
-        { ...evidence.registry, projection: "definition", recipes: [recipe] },
-        evidence.registry.recipes,
-      )) !== run.recipeFingerprint
+      recipeEvidence.fingerprint !== run.recipeFingerprint
     )
       fail("RUNTIME_ADMISSION_INVALID");
     if (
@@ -1208,10 +1209,13 @@ export function createAgentRuntimeAdmissionV1(
             fail("RUNTIME_BUDGET_EXHAUSTED");
         }
         const runLimits = resolveRunLimits(agentBudget, provider.connection !== null);
-        const fingerprint = await npDigestAgentRecipeRegistryCanonical(
-          { ...evidence.registry, projection: "definition", recipes: [recipe] },
-          evidence.registry.recipes,
+        const selectedRecipe = npRequireAgentRuntimeRecipeEvidenceV1(
+          evidence.registry,
+        ).definitions.find(
+          (entry) => entry.recipe.id === recipe.id && entry.recipe.version === recipe.version,
         );
+        if (!selectedRecipe) fail("RUNTIME_ADMISSION_INVALID");
+        const fingerprint = selectedRecipe.fingerprint;
         const recipeRef = { id: recipe.id, version: recipe.version, fingerprint };
         const snapshot = npRequireAgentBudgetSnapshotCanonical({
           schemaVersion: "np.agent-budget-snapshot.v1",

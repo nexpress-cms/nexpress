@@ -234,17 +234,28 @@ describe.skipIf(skipIfNoTestDb())("Guardian request observations", () => {
     expect(await f.db.select().from(npAgentEvents)).toHaveLength(100);
   });
 
-  it("deduplicates concurrent source retries and canonicalizes equivalent IPv6/login spellings", async () => {
+  it("retries the same source after lock contention and canonicalizes equivalent spellings", async () => {
     const f = await setup();
     const input = f.observation({
       networkAddress: "2001:db8::1",
       loginIdentifier: "  Private@Example.Test  ",
     });
-    const results = await Promise.all([f.guardian.observe(input), f.guardian.observe(input)]);
-    expect(results.map((result) => result.disposition).sort()).toEqual(["recorded", "replayed"]);
+    await npWithAgentRuntimeControlTransactionV1(siteId, async () => {
+      await expect(f.guardian.observe(input)).rejects.toMatchObject({
+        cause: { code: "55P03" },
+      });
+    });
+    expect(await f.db.select().from(npAgentEvents)).toHaveLength(0);
+    const result = await f.guardian.observe(input);
+    expect(result).toMatchObject({ disposition: "recorded", eventId: expect.any(String) });
+    expect(await f.guardian.observe(input)).toMatchObject({
+      disposition: "replayed",
+      eventId: result.eventId,
+    });
     for (let index = 0; index < 4; index++)
       await f.observe(f.observation({ networkAddress: "2001:0db8:0:0:0:0:0:1" }));
     const rows = await f.db.select().from(npAgentEvents);
+    expect(rows).toHaveLength(5);
     expect(new Set(rows.map((row) => JSON.stringify(row.subject))).size).toBe(1);
     expect(await f.db.select().from(npAgentIncidents)).toHaveLength(1);
   });
@@ -291,14 +302,8 @@ describe.skipIf(skipIfNoTestDb())("Guardian request observations", () => {
     ).toBeNull();
   });
 
-  it("bounds source-lock contention and rolls back a failing source owner", async () => {
+  it("rolls back a failing source owner", async () => {
     const f = await setup();
-    await npWithAgentRuntimeControlTransactionV1(siteId, async () => {
-      await expect(f.guardian.observe(f.observation())).rejects.toMatchObject({
-        cause: { code: "55P03" },
-      });
-    });
-    expect(await f.db.select().from(npAgentEvents)).toHaveLength(0);
     const failing = createAgentGuardianObservationServiceV1({
       actorKey: { id: "guardian-fixture-1", bytes: key },
       isInstalledSite: () => Promise.resolve(true),

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { npOpenMobileNavDialog } from "@nexpress/theme/client";
 import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 
 /**
  * Portfolio theme mobile drawer. Inherits the dark surface; the
- * inline nav hides at <720px (CSS) and a "Menu" button opens
+ * inline nav hides at ≤880px (CSS) and a "Menu" button opens
  * a full-screen panel with large links centered.
  */
 export interface PortfolioMobileNavProps {
@@ -17,31 +18,15 @@ const DESKTOP_NAV_QUERY = "(min-width: 881px)";
 export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    const media = window.matchMedia(DESKTOP_NAV_QUERY);
-    const closeForDesktop = () => {
-      if (media.matches) setOpen(false);
-    };
-
-    closeForDesktop();
-    media.addEventListener("change", closeForDesktop);
-    return () => {
-      media.removeEventListener("change", closeForDesktop);
-    };
-  }, []);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previousOverflow;
-    };
+    if (!open || !dialogRef.current || !triggerRef.current) return;
+    return npOpenMobileNavDialog(dialogRef.current, triggerRef.current, {
+      desktopQuery: DESKTOP_NAV_QUERY,
+      onClose: () => setOpen(false),
+    });
   }, [open]);
 
   if (items.length === 0) return null;
@@ -49,6 +34,7 @@ export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         className="np-portfolio-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
@@ -58,16 +44,25 @@ export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
       >
         <span aria-hidden="true">{open ? "Close" : "Menu"}</span>
       </button>
-      <aside
+      <dialog
+        ref={dialogRef}
         id="np-portfolio-nav-drawer"
         className="np-portfolio-nav-drawer"
         data-open={open ? "true" : "false"}
-        aria-hidden={open ? "false" : "true"}
+        aria-label="Menu"
         onClick={(e) => {
           // Click on the backdrop closes; clicks on inner content stop here.
           if (e.target === e.currentTarget) setOpen(false);
         }}
       >
+        <button
+          type="button"
+          className="np-portfolio-nav-close"
+          onClick={() => setOpen(false)}
+          aria-label="Close menu"
+        >
+          Close
+        </button>
         <ul className="np-portfolio-nav-drawer-list">
           <li>
             <a href="/search" onClick={() => setOpen(false)}>
@@ -93,7 +88,7 @@ export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
             </li>
           ))}
         </ul>
-      </aside>
+      </dialog>
     </>
   );
 }

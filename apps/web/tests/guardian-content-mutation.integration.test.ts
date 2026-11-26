@@ -5,9 +5,14 @@ import {
   autosaveRevision,
   createMemberDocument,
   deleteDocument,
+  deleteMemberDocument,
+  promoteMemberDocument,
   saveDocument,
   withDeferredPostCommit,
+  type NpTransaction,
 } from "../../../packages/core/src/collections/pipeline.js";
+import { publishScheduledDocuments } from "../../../packages/core/src/collections/scheduled.js";
+import { NpNotFoundError, NpValidationError } from "../../../packages/core/src/errors.js";
 import {
   resetCollectionMutationObserverV1,
   setCollectionMutationObserverV1,
@@ -46,6 +51,27 @@ function post(title: string) {
 function documentId(result: NpSaveResult): string {
   if (typeof result.doc.id !== "string") throw new Error("Expected saved document id");
   return result.doc.id;
+}
+
+async function pendingMemberDocument() {
+  const registration = getCollectionRegistration("discussions");
+  registerCollection("discussions", registration.table, {
+    ...registration.config,
+    community: {
+      ...registration.config.community,
+      memberWrite: {
+        ...registration.config.community?.memberWrite,
+        defaultStatus: "pending",
+      },
+    },
+  });
+  const member = await seedActiveMember();
+  const saved = await createMemberDocument(
+    "discussions",
+    { title: "Pending source fact", body: npCreateEmptyRichTextContent() },
+    member.memberId,
+  );
+  return { member, id: documentId(saved) };
 }
 
 async function staff(): Promise<NpAuthUser> {
@@ -325,6 +351,28 @@ describe.skipIf(skipIfNoTestDb())("committed collection mutation source seam", (
     expect(user.id).toBe(other.id);
     const [revision] = await (await getTestDb()).select().from(npRevisions);
     expect(revision.authorId).toBe(other.id);
+    user.id = originalId;
+    setCollectionMutationObserverV1({ record: f.record });
+    registerCollection("posts", registration.table, {
+      ...registration.config,
+      hooks: {
+        beforeDelete: [
+          async ({ data, user: mutableUser }) => {
+            if (mutableUser) mutableUser.id = other.id;
+            data.status = "archived";
+            setCollectionMutationObserverV1(replacement);
+            return data;
+          },
+        ],
+      },
+    });
+    const [saved] = await (await getTestDb()).select().from(postsTable);
+    await deleteDocument("posts", saved.id, user);
+    expect(f.observations[1]).toMatchObject({
+      actor: { kind: "staff", userId: originalId },
+      fact: { kind: "document-delete", status: "published", revision: null },
+    });
+    expect(replacement.record).not.toHaveBeenCalled();
   });
 
   it("keeps member editing identity independent of nullable staff revision authorship", async () => {
@@ -349,9 +397,15 @@ describe.skipIf(skipIfNoTestDb())("committed collection mutation source seam", (
       .where(eq(npRevisions.documentId, documentId(saved)));
     expect(revision.authorId).toBeNull();
     expect((await markers())[0].actorMemberId).toBe(member.memberId);
+    await deleteMemberDocument("discussions", documentId(saved), member.memberId);
+    expect(f.observations[1]).toMatchObject({
+      actor: { kind: "member", memberId: member.memberId },
+      fact: { kind: "document-delete", status: saved.doc.status, revision: null },
+    });
+    expect(await markers()).toHaveLength(2);
   });
 
-  it("retains exact receipt metadata after revision pruning and excluded document deletion", async () => {
+  it("retains exact receipt metadata after revision pruning and records actual deletion separately", async () => {
     const user = await staff();
     const registration = getCollectionRegistration("posts");
     registerCollection("posts", registration.table, {
@@ -374,8 +428,15 @@ describe.skipIf(skipIfNoTestDb())("committed collection mutation source seam", (
     const firstMarker = retained.find((item) => item.id === f.observations[0].writeId);
     expect(firstMarker?.payload.fact).toEqual(JSON.parse(JSON.stringify(firstFact)));
     await deleteDocument("posts", id, user);
-    expect(f.observations).toHaveLength(2);
-    expect(await markers()).toEqual(retained);
+    expect(f.observations).toHaveLength(3);
+    const committed = await markers();
+    expect(committed).toHaveLength(3);
+    for (const marker of retained) expect(committed).toContainEqual(marker);
+    expect(f.observations[2].fact).toEqual({
+      kind: "document-delete",
+      status: "published",
+      revision: null,
+    });
   });
 
   it("never records rejected ACL or cross-site writes", async () => {
@@ -385,7 +446,7 @@ describe.skipIf(skipIfNoTestDb())("committed collection mutation source seam", (
     const registration = getCollectionRegistration("posts");
     registerCollection("posts", registration.table, {
       ...registration.config,
-      access: { update: () => false },
+      access: { update: () => false, delete: () => false },
     });
     await expect(
       saveDocument("posts", documentId(saved), { title: "Denied" }, user),
@@ -395,7 +456,165 @@ describe.skipIf(skipIfNoTestDb())("committed collection mutation source seam", (
         saveDocument("posts", documentId(saved), { title: "Wrong site" }, user),
       ),
     ).rejects.toThrow();
+    await expect(deleteDocument("posts", documentId(saved), user)).rejects.toThrow();
+    await expect(
+      withCurrentSite("content-other", () => deleteDocument("posts", documentId(saved), user)),
+    ).rejects.toThrow();
     expect(f.record).not.toHaveBeenCalled();
     expect(await markers()).toEqual([]);
+  });
+
+  it("records only actual scheduled publications with their system owner and no new revision", async () => {
+    const user = await staff();
+    const saved = await saveDocument(
+      "posts",
+      null,
+      { ...post("Scheduled source"), publishedAt: new Date(Date.now() - 60_000) },
+      user,
+      { status: "scheduled" },
+    );
+    const db = await getTestDb();
+    const revisions = await db.select().from(npRevisions);
+    const f = installRecorder();
+    const first = await publishScheduledDocuments();
+    expect(first.byCollection.posts).toEqual([documentId(saved)]);
+    expect(f.observations).toHaveLength(1);
+    expect(f.observations[0]).toMatchObject({
+      siteId: "default",
+      documentId: documentId(saved),
+      actor: { kind: "system", component: "content.publish-scheduled" },
+      fact: { kind: "scheduled-publish", revision: null },
+    });
+    expect((await publishScheduledDocuments()).published).toBe(0);
+    expect(f.record).toHaveBeenCalledOnce();
+    expect(await db.select().from(npRevisions)).toEqual(revisions);
+    expect(await markers()).toHaveLength(1);
+  });
+
+  it("rolls back scheduled publication and suppresses follow-ups when its receipt fails", async () => {
+    const user = await staff();
+    const saved = await saveDocument(
+      "posts",
+      null,
+      { ...post("Scheduled rollback"), publishedAt: new Date(Date.now() - 60_000) },
+      user,
+      { status: "scheduled" },
+    );
+    const registration = getCollectionRegistration("posts");
+    const afterUpdate = vi.fn(async ({ data }: { data: Record<string, unknown> }) => data);
+    registerCollection("posts", registration.table, {
+      ...registration.config,
+      hooks: { afterUpdate: [afterUpdate] },
+    });
+    const f = installRecorder();
+    f.state.reject = true;
+    await expect(publishScheduledDocuments()).rejects.toThrow("Injected receipt failure");
+    const [row] = await (
+      await getTestDb()
+    )
+      .select()
+      .from(postsTable)
+      .where(eq(postsTable.id, documentId(saved)));
+    expect(row.status).toBe("scheduled");
+    expect(await markers()).toEqual([]);
+    expect(afterUpdate).not.toHaveBeenCalled();
+  });
+
+  it("records one staff promotion across concurrent attempts without inventing revision history", async () => {
+    const user = await staff();
+    const pending = await pendingMemberDocument();
+    const db = await getTestDb();
+    const revisions = await db.select().from(npRevisions);
+    const f = installRecorder();
+    await expect(
+      withCurrentSite("content-other", () =>
+        promoteMemberDocument("discussions", pending.id, user.id),
+      ),
+    ).rejects.toThrow();
+    expect(f.record).not.toHaveBeenCalled();
+    const attempts = await Promise.allSettled([
+      promoteMemberDocument("discussions", pending.id, user.id),
+      promoteMemberDocument("discussions", pending.id, user.id),
+    ]);
+    expect(attempts.map((attempt) => attempt.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const rejected = attempts.find((attempt) => attempt.status === "rejected");
+    expect(rejected?.reason).toBeInstanceOf(NpValidationError);
+    expect(f.record).toHaveBeenCalledOnce();
+    expect(f.observations[0]).toMatchObject({
+      documentId: pending.id,
+      actor: { kind: "staff", userId: user.id },
+      fact: { kind: "member-promotion", revision: null },
+    });
+    expect(await db.select().from(npRevisions)).toEqual(revisions);
+    expect(await markers()).toHaveLength(1);
+  });
+
+  it("rolls back a rejected promotion before its audit and first-approval follow-ups", async () => {
+    const user = await staff();
+    const pending = await pendingMemberDocument();
+    const db = await getTestDb();
+    const before = await db.select().from(npAuditEvents);
+    const f = installRecorder();
+    f.state.reject = true;
+    await expect(promoteMemberDocument("discussions", pending.id, user.id)).rejects.toThrow(
+      "Injected receipt failure",
+    );
+    expect(await markers()).toEqual([]);
+    expect(await db.select().from(npAuditEvents)).toEqual(before);
+    f.state.reject = false;
+    const promoted = await promoteMemberDocument("discussions", pending.id, user.id);
+    expect(promoted.doc.status).toBe("published");
+    expect(await markers()).toHaveLength(1);
+  });
+
+  it("rolls back deletion, cascades and its receipt with either owner or outer transaction failure", async () => {
+    const user = await staff();
+    const saved = await saveDocument("posts", null, post("Retain on failure"), user);
+    const id = documentId(saved);
+    const db = await getTestDb();
+    const revisions = await db.select().from(npRevisions);
+    const registration = getCollectionRegistration("posts");
+    const afterDelete = vi.fn(async ({ data }: { data: Record<string, unknown> }) => data);
+    registerCollection("posts", registration.table, {
+      ...registration.config,
+      hooks: { afterDelete: [afterDelete] },
+    });
+    const f = installRecorder();
+    f.state.reject = true;
+    await expect(deleteDocument("posts", id, user)).rejects.toThrow("Injected receipt failure");
+    f.state.reject = false;
+    await expect(
+      withDeferredPostCommit(() =>
+        db.transaction(async (tx) => {
+          await deleteDocument("posts", id, user, { tx: tx as unknown as NpTransaction });
+          expect(f.observations.at(-1)?.db).toBe(tx);
+          throw new Error("Outer deletion rollback");
+        }),
+      ),
+    ).rejects.toThrow("Outer deletion rollback");
+    expect(await db.select().from(postsTable).where(eq(postsTable.id, id))).toHaveLength(1);
+    expect(await db.select().from(npRevisions)).toEqual(revisions);
+    expect(await markers()).toEqual([]);
+    expect(afterDelete).not.toHaveBeenCalled();
+    await deleteDocument("posts", id, user);
+    expect(await db.select().from(postsTable)).toEqual([]);
+    expect(await db.select().from(npRevisions)).toEqual([]);
+    expect(await markers()).toHaveLength(1);
+    expect(afterDelete).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a losing concurrent deletion from claiming another committed mutation", async () => {
+    const user = await staff();
+    const saved = await saveDocument("posts", null, post("Delete once"), user);
+    const f = installRecorder();
+    const attempts = await Promise.allSettled([
+      deleteDocument("posts", documentId(saved), user),
+      deleteDocument("posts", documentId(saved), user),
+    ]);
+    expect(attempts.map((attempt) => attempt.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const rejected = attempts.find((attempt) => attempt.status === "rejected");
+    expect(rejected?.reason).toBeInstanceOf(NpNotFoundError);
+    expect(f.record).toHaveBeenCalledOnce();
+    expect(await markers()).toHaveLength(1);
   });
 });

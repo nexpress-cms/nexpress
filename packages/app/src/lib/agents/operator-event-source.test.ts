@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const mocks = vi.hoisted(() => ({ backup: vi.fn(), storage: vi.fn() }));
@@ -32,6 +32,9 @@ describe("source-owned Operator status events", () => {
           ],
         }),
       );
+      // Retained evidence must predate the observer's millisecond clock.
+      const recordedAt = new Date(Date.now() - 1000);
+      await utimes(path, recordedAt, recordedAt);
       mocks.storage.mockResolvedValue({ id: "storage.adapter", state: "ok" });
       const source = npCreateAgentOperatorAppStatusSourceV1({
         reportSources: { doctor: { path } },
