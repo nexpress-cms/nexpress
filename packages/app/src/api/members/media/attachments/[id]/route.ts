@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpConflictError, NpNotFoundError } from "@nexpress/core";
 import { withMemberWrite } from "@nexpress/core/community";
 import { deleteMedia, getMediaById } from "@nexpress/core/media";
@@ -9,7 +10,7 @@ import { requireMember } from "../../../../../lib/member-auth-helpers";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -42,3 +43,5 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const DELETE = npWithAgentGuardianHttpResponseV1("community", npGuardianDELETE);

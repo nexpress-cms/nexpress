@@ -17,6 +17,7 @@ export const NP_BUILTIN_JOB_TYPES = [
   "notifications:sendDigest",
   "import:wordpressApply",
   "agent:eventDispatch",
+  "agent:notificationSend",
   "agent:eventReconcile",
   "agent:scheduleTick",
   "agent:runExecute",
@@ -159,6 +160,7 @@ export interface NpAgentChangeSetVerifyJobPayload {
 }
 
 export interface NpBuiltinJobPayloadMap {
+  "agent:notificationSend": { siteId: string; notificationId: string; expectedAttempt: number };
   "agent:eventDispatch": { siteId: string; eventId: string };
   "agent:eventReconcile": NpEmptyJobData;
   "agent:scheduleTick": NpEmptyJobData;
@@ -199,6 +201,8 @@ export interface NpJobSummary {
   retryCount: number;
   output: string | null;
   createdOn: string;
+  /** Stored earliest start; absent/null when the adapter does not expose it. Not execution proof. */
+  startAfter?: string | null;
   startedOn: string | null;
   completedOn: string | null;
   source: NpJobSource;

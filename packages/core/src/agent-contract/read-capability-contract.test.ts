@@ -13,9 +13,12 @@ import {
 const digest = "cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 describe("Agent read capability contract", () => {
-  it("locks the three exact server-owned read descriptors", () => {
+  it("locks the exact server-owned read descriptors", () => {
     expect(Object.keys(npAgentReadCapabilityDescriptorsV1)).toEqual([
       "content.query",
+      "incident.get",
+      "incident.list",
+      "ops.status",
       "schema.get",
       "site.inspect",
     ]);

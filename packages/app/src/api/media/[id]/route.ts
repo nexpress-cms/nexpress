@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-http-observer";
 import {
   NpConflictError,
   NpForbiddenError,
@@ -13,7 +14,10 @@ import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
 import { toMediaApiItem } from "../../../lib/media-response";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function npGuardianGET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
     // Admin-library detail. The public site reads media by id
@@ -38,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(
+async function npGuardianDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -70,3 +74,6 @@ export async function DELETE(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("cms", npGuardianGET);
+export const DELETE = npWithAgentGuardianHttpResponseV1("cms", npGuardianDELETE);

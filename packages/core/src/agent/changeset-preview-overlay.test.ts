@@ -1,5 +1,6 @@
 import type { NpTransaction } from "../collections/pipeline.js";
 import { previewFixture as fixture } from "./changeset-preview-test-fixture.js";
+import { createAgentPostgresRestrictionAdapterV1 } from "./guardian-restriction-adapter.js";
 import { saveDocument } from "../collections/pipeline.js";
 import { sendEmail } from "../email/service.js";
 import { enqueueJob } from "../jobs/queue.js";
@@ -82,6 +83,11 @@ describe("ChangeSet preview async context", () => {
     expect(npIsAgentChangeSetPreview()).toBe(false);
   });
   it("blocks actual framework effect facades before inputs, adapters or hooks execute", async () => {
+    const restrictionAdapter = createAgentPostgresRestrictionAdapterV1({
+      db: () => {
+        throw new Error("Preview must not access the effect adapter database");
+      },
+    });
     await withAgentChangeSetPreview(await fixture(), async () => {
       for (const method of [
         saveDocument,
@@ -90,6 +96,8 @@ describe("ChangeSet preview async context", () => {
         npUploadStorageObject,
         npDeleteStorageObject,
         npInvalidateCache,
+        restrictionAdapter.install.bind(restrictionAdapter),
+        restrictionAdapter.remove.bind(restrictionAdapter),
       ])
         await expect(Reflect.apply(method, undefined, [])).rejects.toMatchObject({
           statusCode: 403,

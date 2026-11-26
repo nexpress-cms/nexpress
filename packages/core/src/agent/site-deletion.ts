@@ -1,6 +1,23 @@
+import { npAgentRuntimeReceipts } from "../db/schema/guardian-runtime.js";
+import {
+  npDigestAgentRestrictionCanonical,
+  npRequireAgentRestrictionCanonical,
+} from "../agent-contract/canonical-restriction.js";
+import {
+  npRequireAgentRestrictionMutationResultV1,
+  npRequireAgentRestrictionVerifyResultV1,
+} from "../agent-contract/restriction-adapter-contract.js";
+import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  canonicalBodyUtc,
+  canonicalBodyUuid,
+} from "../agent-contract/canonical-body-validation.js";
+import { npAuditEvents } from "../db/schema/community.js";
+import { npAgentContentReceipts } from "../db/schema/guardian.js";
+import { npRequireNotificationDeliveryAttemptHistoryV1 } from "./notification-delivery-evidence.js";
 import { createHash } from "node:crypto";
 
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { npAgentMcpTaskIdPatternV1 } from "../agent-contract/mcp-task-contract.js";
@@ -9,6 +26,8 @@ import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgents,
+  npAgentEvaluationSources,
+  npAgentEvaluationReviews,
   npAgentVersions,
   npAgentPolicies,
   npAgentTriggers,
@@ -17,6 +36,17 @@ import {
   npAgentUsageDaily,
   npAgentCircuitBreakers,
   npAgentEvents,
+  npAgentNotifications,
+  npAgentFeedback,
+  npAgentIncidentTimeline,
+  npAgentIncidentSignals,
+  npAgentSignals,
+  npAgentIncidents,
+  npAgentContainments,
+  npAgentActorRestrictions,
+  npAgentRestrictionEnforcements,
+  npAgentOperatorPlans,
+  npAgentOperatorExecutions,
   npAgentConnectionAuthRequests,
   npAgentConnectionConfigVersions,
   npAgentConnectionOperations,
@@ -66,6 +96,21 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_runtime_receipts",
+  "np_agent_content_receipts",
+  "np_agent_actor_restrictions",
+  "np_agent_restriction_enforcements",
+  "np_agent_evaluation_reviews",
+  "np_agent_evaluation_sources",
+  "np_agent_operator_executions",
+  "np_agent_operator_plans",
+  "np_agent_notifications",
+  "np_agent_feedback",
+  "np_agent_incident_timeline",
+  "np_agent_incident_signals",
+  "np_agent_signals",
+  "np_agent_containments",
+  "np_agent_incidents",
   "np_agent_source_release_edges",
   "np_agent_preview_viewer_launches",
   "np_agent_preview_render_sessions",
@@ -115,6 +160,77 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_runtime_receipts: {
+    table: npAgentRuntimeReceipts,
+    id: npAgentRuntimeReceipts.id,
+    siteId: npAgentRuntimeReceipts.siteId,
+  },
+  np_agent_content_receipts: {
+    table: npAgentContentReceipts,
+    id: npAgentContentReceipts.id,
+    siteId: npAgentContentReceipts.siteId,
+  },
+  np_agent_actor_restrictions: {
+    table: npAgentActorRestrictions,
+    id: npAgentActorRestrictions.id,
+    siteId: npAgentActorRestrictions.siteId,
+  },
+  np_agent_restriction_enforcements: {
+    table: npAgentRestrictionEnforcements,
+    id: npAgentRestrictionEnforcements.id,
+    siteId: npAgentRestrictionEnforcements.siteId,
+  },
+  np_agent_evaluation_reviews: {
+    table: npAgentEvaluationReviews,
+    id: npAgentEvaluationReviews.id,
+    siteId: npAgentEvaluationReviews.siteId,
+  },
+  np_agent_evaluation_sources: {
+    table: npAgentEvaluationSources,
+    id: npAgentEvaluationSources.id,
+    siteId: npAgentEvaluationSources.siteId,
+  },
+  np_agent_notifications: {
+    table: npAgentNotifications,
+    id: npAgentNotifications.id,
+    siteId: npAgentNotifications.siteId,
+  },
+  np_agent_feedback: {
+    table: npAgentFeedback,
+    id: npAgentFeedback.id,
+    siteId: npAgentFeedback.siteId,
+  },
+  np_agent_incident_timeline: {
+    table: npAgentIncidentTimeline,
+    id: npAgentIncidentTimeline.id,
+    siteId: npAgentIncidentTimeline.siteId,
+  },
+  np_agent_incident_signals: {
+    table: npAgentIncidentSignals,
+    id: npAgentIncidentSignals.id,
+    siteId: npAgentIncidentSignals.siteId,
+  },
+  np_agent_signals: { table: npAgentSignals, id: npAgentSignals.id, siteId: npAgentSignals.siteId },
+  np_agent_operator_executions: {
+    table: npAgentOperatorExecutions,
+    id: npAgentOperatorExecutions.id,
+    siteId: npAgentOperatorExecutions.siteId,
+  },
+  np_agent_operator_plans: {
+    table: npAgentOperatorPlans,
+    id: npAgentOperatorPlans.id,
+    siteId: npAgentOperatorPlans.siteId,
+  },
+  np_agent_containments: {
+    table: npAgentContainments,
+    id: npAgentContainments.id,
+    siteId: npAgentContainments.siteId,
+  },
+  np_agent_incidents: {
+    table: npAgentIncidents,
+    id: npAgentIncidents.id,
+    siteId: npAgentIncidents.siteId,
+  },
   np_agent_source_release_edges: {
     table: npAgentSourceReleaseEdges,
     id: npAgentSourceReleaseEdges.id,
@@ -448,6 +564,90 @@ export async function npCountAgentSiteRows(db: NpAgentDb, siteId: string): Promi
 
 export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    // TTL restores access independently; deletion still waits for confirmed cleanup.
+    const unsafeRestriction = await tx.execute(sql`
+      select 1 from public.np_agent_actor_restrictions where site_id=${siteId} and state not in ('removed','expired')
+      union all select 1 from public.np_agent_restriction_enforcements where site_id=${siteId} and state<>'removed' limit 1
+    `);
+    if (unsafeRestriction.rows.length)
+      throw new Error("Agent site deletion requires confirmed actor restriction cleanup.");
+    let afterRestriction: string | undefined;
+    for (;;) {
+      const rows = await tx
+        .select()
+        .from(npAgentActorRestrictions)
+        .where(
+          and(
+            eq(npAgentActorRestrictions.siteId, siteId),
+            afterRestriction ? gt(npAgentActorRestrictions.id, afterRestriction) : undefined,
+          ),
+        )
+        .orderBy(asc(npAgentActorRestrictions.id))
+        .limit(100);
+      for (const row of rows) {
+        try {
+          const descriptor = npRequireAgentRestrictionCanonical(row.descriptor),
+            evidence = row.removalReceipt;
+          if (
+            descriptor.restrictionId !== row.id ||
+            descriptor.siteId !== siteId ||
+            descriptor.expiresAt !== row.expiresAt.toISOString() ||
+            (await npDigestAgentRestrictionCanonical(descriptor)) !== row.restrictionHash ||
+            !row.removedAt ||
+            !evidence ||
+            evidence.schemaVersion !== "np.agent-guardian-response-effect.v1" ||
+            evidence.restrictionId !== row.id ||
+            evidence.restrictionHash !== row.restrictionHash ||
+            evidence.sourceActionId !== row.sourceActionId ||
+            evidence.actionId !== (row.removalActionId ?? row.sourceActionId) ||
+            evidence.incidentId !== row.incidentId ||
+            evidence.operation !== (row.state === "expired" ? "expire" : "remove") ||
+            typeof evidence.priorActivationEstablished !== "boolean" ||
+            canonicalBodyUtc(evidence.executedAt, "restrictionCleanup.executedAt") !==
+              row.removedAt.toISOString()
+          )
+            throw new Error("Invalid restriction cleanup receipt");
+          const receipt = npRequireAgentRestrictionMutationResultV1(evidence.receipt),
+            verification = npRequireAgentRestrictionVerifyResultV1(evidence.verification);
+          if (
+            receipt.restrictionId !== row.id ||
+            !["removed", "already_absent"].includes(receipt.status) ||
+            receipt.effectiveExpiresAt !== null ||
+            verification.restrictionId !== row.id ||
+            verification.state !== "absent" ||
+            verification.effectiveExpiresAt !== null
+          )
+            throw new Error("Unconfirmed restriction cleanup");
+          const [audit] = await tx
+            .select()
+            .from(npAuditEvents)
+            .where(
+              and(
+                eq(npAuditEvents.siteId, siteId),
+                eq(
+                  npAuditEvents.id,
+                  canonicalBodyUuid(evidence.auditEventId, "restrictionCleanup.auditEventId"),
+                ),
+              ),
+            )
+            .limit(1);
+          if (
+            !audit ||
+            audit.actorKind !== "system" ||
+            audit.action !== "agent.guardian_response.effect" ||
+            audit.targetType !== "incident" ||
+            audit.targetId !== row.incidentId ||
+            audit.createdAt.toISOString() !== evidence.executedAt ||
+            serializeAgentCanonicalJson(audit.payload) !== serializeAgentCanonicalJson(evidence)
+          )
+            throw new Error("Missing restriction cleanup audit");
+        } catch {
+          throw new Error("Agent site deletion requires confirmed actor restriction cleanup.");
+        }
+      }
+      if (rows.length < 100) break;
+      afterRestriction = rows.at(-1)!.id;
+    }
     const [workingTask] = await tx
       .select({ id: npAgentMcpTasks.id })
       .from(npAgentMcpTasks)
@@ -455,6 +655,69 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
       .limit(1);
     if (workingTask) {
       throw new Error("Agent site deletion requires every MCP task to be terminal.");
+    }
+    // A sending attempt may still finish outside this transaction. Pending or
+    // unknown deliveries retain their source/config/receipt evidence until the
+    // delivery owner converges them; deleting the site is not a cancellation.
+    const unsafeNotification = await tx.execute(sql`
+      select 1 from public.np_agent_notifications n where n.site_id=${siteId}
+        and n.channel<>'admin' and (
+          n.state in ('queued','sending')
+          or n.delivery_digest_body is null or n.delivery_result_digest is null
+          or coalesce(n.delivery_digest_body->'result'->>'state','') not in ('confirmed','retryable_not_sent','permanent_failure')
+          or n.last_error_code='DELIVERY_AMBIGUOUS'
+        ) limit 1
+    `);
+    if (unsafeNotification.rows.length)
+      throw new Error("Agent site deletion requires terminal known notification deliveries.");
+    // The latest receipt alone cannot clear an earlier ambiguous dispatch.
+    // Page rows and cap each history read; the outer site fence owns deletion.
+    let afterNotification: string | undefined;
+    for (;;) {
+      const notifications = await tx
+        .select()
+        .from(npAgentNotifications)
+        .where(
+          and(
+            eq(npAgentNotifications.siteId, siteId),
+            sql`${npAgentNotifications.channel}<>'admin'`,
+            afterNotification ? gt(npAgentNotifications.id, afterNotification) : undefined,
+          ),
+        )
+        .orderBy(asc(npAgentNotifications.id))
+        .limit(100);
+      if (!notifications.length) break;
+      const facts = await tx
+        .select()
+        .from(npAgentIncidentTimeline)
+        .where(
+          and(
+            eq(npAgentIncidentTimeline.siteId, siteId),
+            inArray(
+              npAgentIncidentTimeline.sourceId,
+              notifications.map((row) => row.id),
+            ),
+          ),
+        )
+        .orderBy(asc(npAgentIncidentTimeline.sourceId), asc(npAgentIncidentTimeline.sequence))
+        .limit(501);
+      if (facts.length > 500)
+        throw new Error("Agent site deletion requires terminal known notification deliveries.");
+      for (const row of notifications) {
+        try {
+          const { result, unresolvedAmbiguity } =
+            await npRequireNotificationDeliveryAttemptHistoryV1(
+              row,
+              facts.filter((entry) => entry.sourceId === row.id),
+            );
+          if (!result || unresolvedAmbiguity || result.state === "ambiguous")
+            throw new Error("Unknown notification outcome");
+        } catch {
+          throw new Error("Agent site deletion requires terminal known notification deliveries.");
+        }
+      }
+      if (notifications.length < 100) break;
+      afterNotification = notifications.at(-1)!.id;
     }
     const unsafeRuntime = await tx.execute(sql`
       select 1 from public.np_agent_runs where site_id=${siteId} and origin='runtime' and state not in ('succeeded','failed','cancelled','policy_blocked','budget_blocked')

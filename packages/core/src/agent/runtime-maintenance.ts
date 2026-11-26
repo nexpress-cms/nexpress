@@ -6,6 +6,10 @@ import { NpAgentGatewayError } from "./admin-admission.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import type { getDb } from "../db/runtime.js";
+import {
+  npRequireAgentIncidentRetentionPolicyV1,
+  type NpAgentIncidentRetentionPolicyV1,
+} from "../agent-contract/incident-retention-contract.js";
 
 function invalid(): never {
   throw new NpAgentGatewayError(
@@ -55,8 +59,9 @@ export async function pruneAgentRuntimeEventsV1(options: {
   cursor?: string | null;
   limit?: number;
   now?: Date;
+  incidentRetention?: NpAgentIncidentRetentionPolicyV1;
 }): Promise<{ examined: number; pruned: number; nextCursor: string | null }> {
-  const args = input(options, ["siteId", "cursor", "limit", "now"]);
+  const args = input(options, ["siteId", "cursor", "limit", "now", "incidentRetention"]);
   const now = clock(args.now);
   const limit = args.limit === undefined ? 50 : args.limit;
   const cursor = args.cursor === undefined ? null : args.cursor;
@@ -84,6 +89,10 @@ export async function pruneAgentRuntimeEventsV1(options: {
           settings,
           revision,
           beforeStatement,
+          incidentRetention:
+            args.incidentRetention === undefined
+              ? undefined
+              : npRequireAgentIncidentRetentionPolicyV1(args.incidentRetention),
         }),
       db,
     ),

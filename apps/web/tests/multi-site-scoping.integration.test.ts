@@ -25,12 +25,7 @@ describe.skipIf(skipIfNoTestDb())("multi-site collection scoping (Phase 15.2)", 
   });
   beforeEach(async () => {
     await truncateAll();
-    // Wipe non-default sites so previous tests don't leak.
-    const { listSites, deleteSite, resetCurrentSiteResolver } = await import("@nexpress/core");
-    const sites = await listSites();
-    for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
-    }
+    const { resetCurrentSiteResolver } = await import("@nexpress/core");
     resetCurrentSiteResolver();
   });
   afterEach(async () => {

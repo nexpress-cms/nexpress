@@ -78,7 +78,8 @@ wiring and custom-path source options.
 Two bundled skins are always available: `classic` for the familiar compact
 table and `community-full` for policy summaries, author identity, status-rich
 rows, numbered pagination, detailed post metadata, comments, and composers.
-Both work with any theme. Forum structure ships in `@layer np-blocks` and reads
+Both work with any theme and render inside the host shell's `main` landmark;
+skin roots must not introduce a second `main`. Forum structure ships in `@layer np-blocks` and reads
 core theme tokens with documented `--np-forum-*` override properties, so a
 theme can enhance the plugin without importing it and the plugin remains fully
 usable without that theme.

@@ -1203,12 +1203,25 @@ export interface NpAgentRestrictionAdapter {
 canonically keyed as
 `principal:v1:<principalKind>:<principalId>`. An opaque subject is keyed as
 `bucket:v1:<purpose>:<projectionVersion>:<keyId>:<base64url-hmac>`. The final
-component is unpadded base64url of the 32-byte HMAC-SHA-256 output. Its input
-is `u32be(length) || bytes` framing, in order, for the UTF-8 domain label
-`np-agent-actor-bucket/v1`, canonical site id, ASCII purpose, decimal
-projection version, ASCII projection fingerprint, and the projection's raw
-normalized subject bytes. Normalization is purpose-specific and owned by an
-independent, server-registered actor-bucket projection whose positive version
+component is unpadded base64url of the 32-byte HMAC-SHA-256 output. Input
+encoding belongs to the exact registered projection profile. The shipped
+Guardian observation-v1 profile preserves canonical UTF-8 JSON with the named
+fields `domain`, `siteId`, `purpose`, `projectionFingerprint`, `keyId` and
+normalized `value`, under domain `np.agent-guardian-actor.v1`. Its registered
+fingerprint binds version 1, algorithm and normalization; key id is part of
+the authenticated input. Canonical JSON names and string escaping delimit
+fields unambiguously, including Unicode and delimiter characters. Fixed
+independent vectors pin these bytes. Existing Events and active restrictions
+must never be reinterpreted under a different encoding.
+
+The originally proposed `u32be(length) || bytes` profile under domain
+`np-agent-actor-bucket/v1` is a different projection, not the shipped
+observation-v1 algorithm. Introducing it requires a new registered positive
+version/fingerprint and separate golden vectors. R7 retains observation-v1
+compatibility rather than migrating active identities. The proxy's bounded
+historical projection/key enumeration and retention rules apply to either
+profile. Normalization is purpose-specific and owned by an independent,
+server-registered actor-bucket projection whose positive version
 and fingerprint are frozen into every event, signal, incident, restriction,
 and adapter request that carries the bucket. It never accepts a model-provided
 bucket. The projection implementation and keyring retain every referenced

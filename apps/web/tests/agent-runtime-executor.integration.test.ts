@@ -1,3 +1,11 @@
+import { eq } from "drizzle-orm";
+import { createAgentOperatorServiceV1 } from "../../../packages/core/src/agent/operator-service.js";
+import {
+  createAgentOperatorCapabilityFacadeV1,
+  type NpAgentOperatorCapabilityFacadeV1,
+} from "../../../packages/core/src/agent/operator-capability.js";
+import { runtimeDefinition } from "./agent-runtime-service-fixture.js";
+import type { NpAgentJsonSchema } from "../../../packages/core/src/agent-contract/types.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentRuntimeExecutorV1 } from "../../../packages/core/src/agent/runtime-executor.js";
 import { createAgentRuntimeExecutionStoreV1 } from "../../../packages/core/src/agent/runtime-execution-store.js";
@@ -12,6 +20,10 @@ import { npAgentDisabledGatewaySettingsV1 } from "../../../packages/core/src/age
 import type { NpAgentProviderInvokeOutcomeV1 } from "../../../packages/core/src/agent-contract/types.js";
 import {
   npAgentProviderCalls,
+  npAgentActions,
+  npAgentInvocations,
+  npAgentOperatorPlans,
+  npAgentRuns,
   npAgentUsageReservations,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { runtimeUsageFixture } from "./agent-runtime-usage-fixture.js";
@@ -45,12 +57,26 @@ function success(): NpAgentProviderInvokeOutcomeV1 {
     latencyMs: 0,
   };
 }
-async function fixture(invoke = vi.fn().mockResolvedValue(success())) {
+async function fixture(
+  invoke = vi.fn().mockResolvedValue(success()),
+  operator?: { responseSchema: NpAgentJsonSchema },
+) {
+  const definition = runtimeDefinition();
+  if (operator) {
+    definition.scopes = ["ops:plan", "site:read"];
+    definition.autonomy = "advise";
+    definition.capabilityModes = [{ capabilityId: "ops.plan", mode: "advise" }];
+  }
   const f = await runtimeUsageFixture({
     dataClassCeiling: "internal-redacted",
     providerInference: { invoke },
+    ...(operator ? { definition, delegated: true, responseSchema: operator.responseSchema } : {}),
   });
-  const store = createAgentRuntimeExecutionStoreV1({ admission: f.admission, now: f.options.now });
+  const store = createAgentRuntimeExecutionStoreV1({
+    admission: f.admission,
+    now: f.options.now,
+    ...(operator ? { leaseSeconds: 5 } : {}),
+  });
   const registry = await createAgentReadCapabilityRegistryV1(
     createAgentCoreReadCapabilityExecutorsV1({
       cursorHmacKey: { id: "runtime-executor", key: new Uint8Array(32).fill(7) },
@@ -58,12 +84,33 @@ async function fixture(invoke = vi.fn().mockResolvedValue(success())) {
       resolveBlockSchemas: () => [],
     }),
   );
+  let operatorFacade: NpAgentOperatorCapabilityFacadeV1 | null = null;
   const capabilities = createAgentCapabilityAdmissionServiceV1({
     registry,
     runtimeAdmission: f.admission,
+    resolveOperatorCapabilities: () => operatorFacade,
     resolveGatewaySettings: () => npAgentDisabledGatewaySettingsV1,
     now: f.options.now,
   });
+  const planOwner = vi.fn(() =>
+    Promise.resolve({
+      artifact: { schemaVersion: "fixture.migration-plan.v1", pending: 0 },
+      contractId: "ops.migrate",
+      projectCommand: "pnpm --silent run ops:migrate -- plan --json",
+      checks: [{ id: "migration.status", status: "pass" as const }],
+    }),
+  );
+  if (operator) {
+    operatorFacade = createAgentOperatorCapabilityFacadeV1(
+      createAgentOperatorServiceV1({
+        admission: capabilities,
+        runtimeAdmission: f.admission,
+        host: { assertAccess: () => Promise.resolve(), plan: planOwner },
+        resolveTransportAudience: () => "https://example.test",
+        now: f.options.now,
+      }),
+    );
+  }
   const context = createAgentRuntimeContextV1({
     admission: f.admission,
     capabilities: {
@@ -104,7 +151,7 @@ async function fixture(invoke = vi.fn().mockResolvedValue(success())) {
     await provider.shutdown();
     await f.dispose();
   });
-  return { ...f, executor, invoke, input: { siteId, runId: f.runId } };
+  return { ...f, executor, invoke, capabilities, planOwner, input: { siteId, runId: f.runId } };
 }
 describe.skipIf(skipIfNoTestDb())("explicit Runtime executor", () => {
   beforeAll(ensureMigrated);
@@ -116,6 +163,116 @@ describe.skipIf(skipIfNoTestDb())("explicit Runtime executor", () => {
     for (const cleanup of cleanups.splice(0)) await cleanup();
   });
   afterAll(closeTestDb);
+  it("resumes after an Operator plan commit without creating a second action or artifact", async () => {
+    const responseSchema: NpAgentJsonSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        task: { type: "string", const: "interactive-capability", maxLength: 64 },
+        decision: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                kind: { type: "string", const: "complete", maxLength: 64 },
+                summary: { type: "string", maxLength: 128 },
+              },
+              required: ["kind", "summary"],
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                kind: { type: "string", const: "propose-capability", maxLength: 64 },
+                capabilityId: { type: "string", const: "ops.plan", maxLength: 128 },
+                rationale: { type: "string", maxLength: 128 },
+                arguments: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    action: { type: "string", const: "migration.plan", maxLength: 128 },
+                    target: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: { kind: { type: "string", const: "site", maxLength: 128 } },
+                      required: ["kind"],
+                    },
+                  },
+                  required: ["action", "target"],
+                },
+              },
+              required: ["arguments", "capabilityId", "kind", "rationale"],
+            },
+          ],
+        },
+      },
+      required: ["decision", "task"],
+    };
+    const proposal: NpAgentProviderInvokeOutcomeV1 = {
+      ...success(),
+      output: {
+        task: "interactive-capability",
+        decision: {
+          kind: "propose-capability",
+          capabilityId: "ops.plan",
+          rationale: "Inspect the pending migration plan.",
+          arguments: { action: "migration.plan", target: { kind: "site" } },
+        },
+      },
+    };
+    const f = await fixture(vi.fn().mockResolvedValueOnce(proposal).mockResolvedValue(success()), {
+      responseSchema,
+    });
+    const original = f.capabilities.invokeRuntime.bind(f.capabilities);
+    vi.spyOn(f.capabilities, "invokeRuntime").mockImplementationOnce(async (input) => {
+      await original(input);
+      // Simulate a process loss after its independent capability transaction committed.
+      // The expired lease prevents the old executor from recording a terminal run state.
+      f.advance(6);
+      throw new Error("Simulated interruption after Operator commit");
+    });
+    await expect(f.executor.process(f.input)).rejects.toMatchObject({
+      code: "RUNTIME_EXECUTION_FAILED",
+    });
+    const firstActions = await f.db
+      .select()
+      .from(npAgentActions)
+      .where(eq(npAgentActions.runId, f.runId));
+    expect(firstActions).toHaveLength(1);
+    expect(firstActions[0]).toMatchObject({ state: "succeeded", capabilityId: "ops.plan" });
+    const firstPlans = await f.db.select().from(npAgentOperatorPlans);
+    expect(firstPlans).toHaveLength(1);
+    const [firstInvocation] = await f.db
+      .select()
+      .from(npAgentInvocations)
+      .where(eq(npAgentInvocations.id, firstPlans[0].invocationId));
+    expect(firstInvocation.idempotencyKey).toMatch(/^runtime:action:[a-f0-9]{64}$/);
+    expect(await f.executor.process(f.input)).toEqual({ state: "succeeded" });
+    expect(
+      await f.db.select().from(npAgentActions).where(eq(npAgentActions.runId, f.runId)),
+    ).toEqual(firstActions);
+    expect(await f.db.select().from(npAgentOperatorPlans)).toEqual(firstPlans);
+    expect(f.planOwner).toHaveBeenCalledTimes(1);
+    expect(f.invoke).toHaveBeenCalledTimes(2);
+    expect(f.invoke).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        limits: expect.objectContaining({ maxInputTokens: 100, maxOutputTokens: 100 }),
+      }),
+      expect.anything(),
+    );
+    expect(f.invoke).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        limits: expect.objectContaining({ maxInputTokens: 99, maxOutputTokens: 99 }),
+      }),
+      expect.anything(),
+    );
+    const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId));
+    expect(run).toMatchObject({ state: "succeeded", attempt: 2 });
+  });
   it("completes one explicit provider turn and never repeats a terminal run", async () => {
     const f = await fixture();
     expect(await f.executor.process(f.input)).toEqual({ state: "succeeded" });

@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import {
   NpForbiddenError,
   NpConflictError,
@@ -22,7 +23,7 @@ import { ensureFor } from "../../../../../../lib/init-core";
  *
  * Gated on `admin.manage` to match the rest of `/admin/plugins`.
  */
-export async function POST(
+async function npGuardianPOST(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string; taskId: string }> },
 ) {
@@ -54,3 +55,5 @@ export async function POST(
 }
 
 export const dynamic = "force-dynamic";
+
+export const POST = npWithAgentGuardianHttpResponseV1("plugins", npGuardianPOST);

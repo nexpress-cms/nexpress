@@ -13,6 +13,10 @@ AP-210 and require explicit host injection and enablement. They accept only
 dedicated Agent HTTP service credentials; staff cookies are not credentials
 for that surface.
 
+For staff management of installed Runtime services, current-state review and
+error recovery, use [Agent Studio](agent-studio.md). Studio guidance does not
+change the CMS REST or machine Gateway authentication boundaries.
+
 ---
 
 ## 1. Discover the API surface

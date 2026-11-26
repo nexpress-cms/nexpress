@@ -11,17 +11,7 @@ import {
   resolveTsconfigExtends,
 } from "./scaffold-utils.js";
 
-describe("scaffold utils", () => {
-  let workdir: string;
-
-  beforeEach(async () => {
-    workdir = await mkdtemp(join(tmpdir(), "nexpress-scaffold-utils-"));
-  });
-
-  afterEach(async () => {
-    await rm(workdir, { recursive: true, force: true });
-  });
-
+describe("scaffold defaults", () => {
   it("defaults generated plugin framework deps to workspace links", () => {
     const pkg = JSON.parse(basePackageJson("demo-plugin", "Demo plugin")) as {
       dependencies: Record<string, string>;
@@ -44,6 +34,30 @@ describe("scaffold utils", () => {
 
     expect(pkg.dependencies["@nexpress/blocks"]).toBe("file:/tmp/nexpress-blocks-0.4.0.tgz");
     expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("0.4.0");
+  });
+
+  it("emits a self-contained plugin tsconfig when no base config is available", () => {
+    const tsconfig = JSON.parse(baseTsconfig()) as {
+      extends?: string;
+      compilerOptions: Record<string, unknown>;
+    };
+
+    expect(tsconfig.extends).toBeUndefined();
+    expect(tsconfig.compilerOptions.module).toBe("NodeNext");
+    expect(tsconfig.compilerOptions.moduleResolution).toBe("NodeNext");
+    expect(tsconfig.compilerOptions.strict).toBe(true);
+  });
+});
+
+describe("scaffold filesystem lookup", () => {
+  let workdir: string;
+
+  beforeEach(async () => {
+    workdir = await mkdtemp(join(tmpdir(), "nexpress-scaffold-utils-"));
+  });
+
+  afterEach(async () => {
+    await rm(workdir, { recursive: true, force: true });
   });
 
   it("reads installed framework ranges from the nearest parent package.json", async () => {
@@ -128,17 +142,5 @@ describe("scaffold utils", () => {
     await mkdir(pluginDir, { recursive: true });
 
     expect(resolveTsconfigExtends(pluginDir)).toBeUndefined();
-  });
-
-  it("emits a self-contained plugin tsconfig when no base config is available", () => {
-    const tsconfig = JSON.parse(baseTsconfig()) as {
-      extends?: string;
-      compilerOptions: Record<string, unknown>;
-    };
-
-    expect(tsconfig.extends).toBeUndefined();
-    expect(tsconfig.compilerOptions.module).toBe("NodeNext");
-    expect(tsconfig.compilerOptions.moduleResolution).toBe("NodeNext");
-    expect(tsconfig.compilerOptions.strict).toBe(true);
   });
 });

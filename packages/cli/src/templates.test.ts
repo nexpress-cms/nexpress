@@ -92,6 +92,19 @@ describe("getProjectFiles", () => {
     expect(worker).not.toMatch(/@\/lib\/init-core/);
   });
 
+  it("emits an offline Agent evaluator without environment or bootstrap side effects", () => {
+    const source = baseFiles["scripts/agent-evaluate.ts"];
+    expect(source).toBe(
+      readFileSync(
+        resolve(import.meta.dirname, "../../../apps/web/scripts/agent-evaluate.ts"),
+        "utf8",
+      ),
+    );
+    expect(source).not.toMatch(/_load-env|bootstrap|ensureFor/);
+    const pkg = JSON.parse(baseFiles["package.json"]) as { scripts: Record<string, string> };
+    expect(pkg.scripts["agent:evaluate"]).toBe("tsx scripts/agent-evaluate.ts");
+  });
+
   it("emits one port-free Agent MCP stdio wrapper without storing credentials or site input", () => {
     const files = baseFiles;
     const script = files["scripts/agent-mcp-stdio.ts"];

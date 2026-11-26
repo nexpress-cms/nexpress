@@ -11,6 +11,8 @@ import type { NpCommunityDocumentAudience } from "@nexpress/core/community-contr
 import { useRouter } from "next/navigation";
 import { Suspense, lazy, useRef, useState, type ComponentType } from "react";
 
+import { readCookie } from "./cookie.js";
+
 type ForumFormAttachment = Omit<NpMediaAttachmentWire, "status">;
 
 interface ForumPostFormProps {
@@ -80,13 +82,6 @@ const LazyRichTextEditor = lazy(async () => {
     default: module.NpRichTextEditor as ComponentType<LazyRichTextEditorProps>,
   };
 });
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
-}
 
 function extractError(body: unknown): string | null {
   if (!body || typeof body !== "object" || !("error" in body)) return null;

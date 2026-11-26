@@ -27,7 +27,7 @@ export async function POST(
     });
     return npSuccessResponse(npRequireAgentServiceTokenV1(result.output));
   } catch (error) {
-    return agentStudioErrorResponse(error, "mutation");
+    return agentStudioErrorResponse(error, "mutation", undefined, request);
   }
 }
 

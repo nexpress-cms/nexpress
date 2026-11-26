@@ -421,6 +421,10 @@ test("Gateway token keyboard issue, one-time disclosure and revocation preserve 
   await expect(page.getByRole("button", { name: "Create token", exact: true })).toBeEnabled();
   await activate(page, page.getByRole("button", { name: "Create token", exact: true }));
   await expect(page.getByRole("heading", { name: "Copy this token now" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Copy this token now" })).toBeFocused();
+  await expect(
+    page.getByRole("heading", { name: "Copy this token now" }),
+  ).toHaveAccessibleDescription(/It will not be shown again/);
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
   expect(creates).toHaveLength(2);
   expect(creates[1]).toEqual(creates[0]);
@@ -468,6 +472,7 @@ test("Gateway token keyboard issue, one-time disclosure and revocation preserve 
   await activate(page, page.getByRole("button", { name: "Revoke", exact: true }));
   await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(0);
   expect(revokes).toHaveLength(2);
+  await expect(page.getByLabel(`Service token ${token.name}, revoked`)).toBeFocused();
   expect(revokes[1]).toEqual(revokes[0]);
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
   expired = true;
@@ -554,6 +559,7 @@ test("connection successful revocation waits for confirmed server state and stay
   state = revoked;
   await pending!.fulfill({ json: revoked });
   await expect(main.getByText("revoked", { exact: true })).toBeVisible();
+  await expect(main.getByLabel("Connection revoked", { exact: true })).toBeFocused();
   await expect(main.getByText("Credential: absent", { exact: true })).toBeVisible();
   await expect(revoke).toBeDisabled();
   await activate(page, page.getByRole("button", { name: "Refresh", exact: true }));

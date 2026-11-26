@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../lib/agents/guardian-http-observer";
 import { createHash, randomUUID } from "node:crypto";
 
 import { npRecordContentView } from "@nexpress/core/community";
@@ -18,7 +19,7 @@ const VISITOR_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
  * target per UTC day. The raw first-party visitor id never reaches storage;
  * Core receives only its SHA-256 digest.
  */
-export async function POST(request: NextRequest) {
+async function npGuardianPOST(request: NextRequest) {
   try {
     await ensureFor("write");
     const target = npRequireCommunityRequest(
@@ -47,3 +48,5 @@ export async function POST(request: NextRequest) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const POST = npWithAgentGuardianHttpResponseV1("views", npGuardianPOST);

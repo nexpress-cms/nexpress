@@ -1,3 +1,9 @@
+import {
+  npAssertPublisherChangeSetDraftV1,
+  npAssertPublisherChangeSetRequestV1,
+} from "./publisher-changeset.js";
+import type { NpAgentRuntimeDocumentEvidenceReaderV1 } from "./read-capability-executors.js";
+import { npObserveAgentRuntimeActionV1 } from "./guardian-runtime-observer.js";
 import { npVerifyAgentChangeSetPlanEvidenceV1 } from "./changeset-plan-evidence.js";
 import { npReadCancelledChangeSetReleaseV1 } from "./cancelled-changeset-history.js";
 import {
@@ -16,6 +22,7 @@ import {
   npAdmitChangeSetExecutionProjectionV1,
   npHasFreshChangeSetExecutionOutputV1,
   npDigestChangeSetExecutionProjectionV1,
+  npDigestRuntimeChangeSetCapabilityOutputV1,
   npReconcileChangeSetExecutionProjectionV1,
 } from "./changeset-execution-projection.js";
 import { npAgentMcpTaskLimitsV1 } from "../agent-contract/mcp-task-contract.js";
@@ -59,6 +66,7 @@ import {
 import {
   npRequireAgentChangeSetRequestApprovalInputV1,
   type NpAgentApprovalDetailV1,
+  type NpAgentApprovalListItemV1,
 } from "../agent-contract/approval-contract.js";
 import { npRequireAgentApprovalStatementCanonical } from "../agent-contract/canonical-approval.js";
 import { npRequireAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
@@ -222,12 +230,15 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Db = ReturnType<typeof getRootDb>;
 const runtimeChangeSetTransaction = new AsyncLocalStorage<Db>();
+const runtimeChangeSetContext = new AsyncLocalStorage<NpAgentRuntimeRunContextV1>();
 function getDb(): Db {
   return runtimeChangeSetTransaction.getStore() ?? getRootDb();
 }
 type Row = typeof npAgentChangesets.$inferSelect;
 type PreviewRow = typeof npAgentChangesetPreviews.$inferSelect;
 type OpRow = typeof npAgentChangesetOperations.$inferSelect;
+type ExecutionRow = typeof npAgentChangesetExecutions.$inferSelect;
+type ApplyEvidence = { original: OpRow[]; applied: ExecutionRow | null };
 export type NpAgentChangeSetActorV1 =
   | { kind: "staff"; siteId: string; actor: NpAgentAdminActorV1 }
   | { kind: "principal"; authentication: NpAgentCapabilityAuthenticationV1 }
@@ -241,6 +252,8 @@ export type NpAgentChangeSetActorV1 =
 export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionOptionsV1 {
   cursorKey: Uint8Array;
   runtimeAdmission?: NpAgentRuntimeAdmissionV1;
+  /** Same explicitly installed framework reader used by Publisher Runtime context. */
+  publisherEvidence?: NpAgentRuntimeDocumentEvidenceReaderV1;
   /** Explicit host installation; no worker, queue, or runtime is created. */
   execution?: {
     resolveIntent: (input: { siteId: string }) => Promise<{ enabled: boolean; paused: boolean }>;
@@ -254,7 +267,10 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
     enqueueVerify?: (job: NpAgentChangeSetVerifyJobPayload) => Promise<void>;
   };
   /** Explicit approval-only installation. Execution is not installed or advertised. */
-  approvals?: Pick<NpAgentApprovalServiceOptionsV1, "integrityKeys" | "challengeKeys"> & {
+  approvals?: Pick<
+    NpAgentApprovalServiceOptionsV1,
+    "integrityKeys" | "challengeKeys" | "resolveActionTargets"
+  > & {
     lifetimeSeconds?: number;
     resolveExecutionBinding: (input: {
       siteId: string;
@@ -694,6 +710,7 @@ export function createAgentChangeSetServiceV1(
             const request = gatewayRequestContext.getStore();
             if (!request) throw denied();
             requireRuntimeMode(context, request);
+            await npAssertPublisherChangeSetRequestV1(context, request);
             if (!input.sequence) throw denied();
             const actions = await context.db
               .select({
@@ -715,7 +732,7 @@ export function createAgentChangeSetServiceV1(
                 : actions.length >= context.limits.maxCapabilityCalls
             )
               throw conflict();
-            return mutate(context.db, context.now);
+            return runtimeChangeSetContext.run(context, () => mutate(context.db, context.now));
           }),
       );
     }
@@ -727,11 +744,11 @@ export function createAgentChangeSetServiceV1(
       mutate,
     });
   }
-  async function resolve(input: NpAgentChangeSetActorV1, write: boolean): Promise<Actor> {
+  async function resolve(input: NpAgentChangeSetActorV1, write: boolean, db?: Db): Promise<Actor> {
     const scope: NpAgentScope = write ? "changeset:write" : "changeset:read";
     if (input.kind === "staff") {
       const authority = await npResolveAgentStaffSessionAuthorizationV1(
-        getDb(),
+        db ?? getDb(),
         input.siteId,
         input.actor,
         now(),
@@ -765,7 +782,7 @@ export function createAgentChangeSetServiceV1(
       });
     if (!options.admission) throw missing();
     const auth = input.authentication;
-    await options.admission.project({ authentication: auth });
+    await options.admission.authorize({ authentication: auth });
     if (
       !auth.scopes.includes(scope) ||
       auth.principal.authority.kind !== "user" ||
@@ -834,6 +851,19 @@ export function createAgentChangeSetServiceV1(
     db: Db = getDb(),
     includePreview = true,
   ): Promise<NpAgentChangeSetWire> {
+    return (await projectWithEvidence(row, actor, db, { write, includePreview })).changeSet;
+  }
+  async function projectWithEvidence(
+    row: Row,
+    actor: Actor,
+    db: Db,
+    options: {
+      write?: boolean;
+      includePreview: boolean;
+      reviewSnapshot?: boolean;
+      rollbackPlan?: RollbackRow;
+    },
+  ) {
     const ops = await operations(db, row);
     const execution = await executionEvidence(db, row, ops);
     const reserved = ops
@@ -849,7 +879,7 @@ export function createAgentChangeSetServiceV1(
       };
       requireScopes(
         actor,
-        write
+        options.write
           ? (await resources.prepare({ ...context, reservedCreateDocumentIds: reserved }))
               .requiredScopes
           : await resources.assertVisible({
@@ -995,7 +1025,14 @@ export function createAgentChangeSetServiceV1(
       ? await npReadCancelledChangeSetReleaseV1({ db, changeSet: row })
       : null;
     if (row.runSourceReleaseId && !releasedSource) throw missing();
-    return npRequireAgentChangeSetWire({
+    const preview = options.includePreview ? await latestPreviewSummary(db, row, actor) : null;
+    const approval = await latestApprovalSummary(db, row);
+    const plan = options.rollbackPlan ?? (await latestRollback(db, row));
+    const applyEvidence = { original: ops, applied: execution };
+    const rollback = plan
+      ? await rollbackEvidence(db, row, plan, options.reviewSnapshot ? applyEvidence : undefined)
+      : null;
+    const changeSet = npRequireAgentChangeSetWire({
       schemaVersion: "np.agent-changeset.v1",
       id: row.id,
       siteId: row.siteId,
@@ -1023,16 +1060,17 @@ export function createAgentChangeSetServiceV1(
         resultDigest: op.resultDigest,
       })),
       validation,
-      preview: includePreview ? await latestPreviewSummary(db, row, actor) : null,
-      approval: await latestApprovalSummary(db, row),
+      preview,
+      approval,
       schedule: row.scheduledFor ? { at: row.scheduledFor.toISOString() } : null,
       execution: execution ? executionSummary(execution) : null,
       verification: execution ? verificationSummary(execution) : null,
-      rollback: await latestRollbackSummary(db, row),
+      rollback: rollback ? rollbackSummary(rollback) : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
     });
+    return { changeSet, applyEvidence, rollback };
   }
   async function get(input: { actor: NpAgentChangeSetActorV1; id: string }) {
     const actor = await resolve(input.actor, false);
@@ -1058,7 +1096,6 @@ export function createAgentChangeSetServiceV1(
       id: string;
     },
     approvalChecks = false,
-    selectedRollbackPlanId?: string,
   ): Promise<NpAgentChangeSetReviewV1> {
     const actor = await resolve(input.actor, false);
     if (!uuid.test(input.id)) throw missing();
@@ -1073,8 +1110,11 @@ export function createAgentChangeSetServiceV1(
           )
           .limit(1);
         if (!row) throw missing();
-        const changeSet = await project(row, actor, false, db, false);
-        const ops = await operations(db, row);
+        // The summary and detail share retained evidence from this read-only snapshot.
+        const { changeSet, applyEvidence, rollback } = await projectWithEvidence(row, actor, db, {
+          includePreview: false,
+          reviewSnapshot: true,
+        });
         const sealed =
           row.sealedPlanBody === null
             ? null
@@ -1082,13 +1122,13 @@ export function createAgentChangeSetServiceV1(
         const review = npRequireAgentChangeSetReviewV1({
           schemaVersion: "np.agent-changeset-review.v1",
           changeSet,
-          executionDetail: await executionDetail(db, row, ops),
+          executionDetail: executionDetail(row, applyEvidence.applied),
           executionActions: [],
-          rollbackDetail: await rollbackDetail(db, row, actor, selectedRollbackPlanId),
+          rollbackDetail: rollback ? await rollbackDetail(db, row, actor, rollback) : null,
           rollbackActions: [],
           requiredStaffCapabilities:
             sealed?.planKind === "changeset" ? sealed.body.requiredHumanCapabilities : [],
-          operations: ops.map((op) =>
+          operations: applyEvidence.original.map((op) =>
             npProjectAgentChangeSetReviewOperationV1({
               ordinal: op.ordinal,
               operation: op.input,
@@ -1218,6 +1258,15 @@ export function createAgentChangeSetServiceV1(
         if (current.sourceInputHash !== inputHash) throw conflict();
         return current.id;
       }
+    }
+    if (!current && actor.source?.kind === "runtime") {
+      const context = runtimeChangeSetContext.getStore();
+      if (!context || context.run.id !== actor.runtime?.runId || context.db !== db) throw denied();
+      await npAssertPublisherChangeSetDraftV1({
+        context,
+        reader: options.publisherEvidence,
+        draft,
+      });
     }
     const previous = current ? await operations(db, current) : [];
     if (current)
@@ -4457,6 +4506,7 @@ export function createAgentChangeSetServiceV1(
       (context) =>
         runtimeChangeSetTransaction.run(context.db, async () => {
           requireRuntimeMode(context, request);
+          await npAssertPublisherChangeSetRequestV1(context, request);
           const approvedId =
             request.capabilityId === "changeset.apply" ||
             request.capabilityId === "changeset.schedule"
@@ -4643,7 +4693,7 @@ export function createAgentChangeSetServiceV1(
         targetVersionFacts: [],
         input: request.arguments.input,
       });
-      await context.db.insert(npAgentActions).values({
+      const actionRow = {
         id,
         siteId: input.siteId,
         runId: input.runId,
@@ -4668,11 +4718,13 @@ export function createAgentChangeSetServiceV1(
         inputHash: await npDigestAgentActionCanonical(canonical),
         auditEventId: invocation.auditEventId,
         outputRedacted: json(output),
-        outputHash: hash("np.agent-runtime-changeset-output.v1", output),
+        outputHash: npDigestRuntimeChangeSetCapabilityOutputV1(output),
         createdAt: context.now,
         startedAt: context.now,
         finishedAt: context.now,
-      } satisfies typeof npAgentActions.$inferInsert);
+      } satisfies typeof npAgentActions.$inferInsert;
+      await context.db.insert(npAgentActions).values(actionRow);
+      await npObserveAgentRuntimeActionV1({ db: context.db, run: context.run, action: actionRow });
       await context.db
         .update(npAgentInvocations)
         .set({ runId: input.runId })
@@ -4801,7 +4853,7 @@ export function createAgentChangeSetServiceV1(
             action.capabilityId === "changeset.schedule" ||
             action.capabilityId === "changeset.rollback"
               ? npDigestChangeSetExecutionProjectionV1(output)
-              : hash("np.agent-runtime-changeset-output.v1", output))
+              : npDigestRuntimeChangeSetCapabilityOutputV1(output))
         )
           return null;
         const changeSets: NpAgentChangeSetWire[] = [];
@@ -5107,7 +5159,7 @@ export function createAgentChangeSetServiceV1(
     const authorizationContext = await principalContext(actorInput);
     if (actorInput.kind === "principal") {
       if (!options.admission) throw missing();
-      const projected = await options.admission.project({
+      const projected = await options.admission.authorize({
         authentication: actorInput.authentication,
       });
       if (
@@ -5655,14 +5707,14 @@ export function createAgentChangeSetServiceV1(
     await project(row, viewer, false, db, false);
     return viewer;
   }
-  const approvals = options.approvals
+  const approvals: NpAgentApprovalServiceV1 | null = options.approvals
     ? createAgentApprovalServiceV1({
         ...options,
         ...options.approvals,
         targets: {
           visible: async (input) => {
             if (input.target.kind === "changeset_rollback")
-              return rollbackApprovalVisible({ ...input, target: input.target });
+              return (await readRollbackApproval({ ...input, target: input.target })).reviewSummary;
             if (input.target.kind !== "changeset") throw missing();
             const target = input.target;
             return getDb().transaction(
@@ -5824,16 +5876,12 @@ export function createAgentChangeSetServiceV1(
               );
             });
           },
+          rollbackReview: async (input) => {
+            const { reviewSummary, detail } = await readRollbackApproval(input, input.approvalId);
+            if (!detail) throw missing();
+            return { reviewSummary, detail };
+          },
           review: async (input) => {
-            if (input.target.kind === "changeset_rollback")
-              return getReview(
-                {
-                  actor: { kind: "staff", siteId: input.siteId, actor: input.actor },
-                  id: input.target.changeSetId,
-                },
-                false,
-                input.target.rollbackPlanId,
-              );
             if (input.target.kind !== "changeset") throw missing();
             return getReview({
               actor: { kind: "staff", siteId: input.siteId, actor: input.actor },
@@ -6079,9 +6127,9 @@ export function createAgentChangeSetServiceV1(
       .limit(1);
     return plan ?? null;
   }
-  async function rollbackEvidence(db: Db, row: Row, plan: RollbackRow) {
-    const original = await operations(db, row);
-    const applied = await executionEvidence(db, row, original);
+  async function rollbackEvidence(db: Db, row: Row, plan: RollbackRow, apply?: ApplyEvidence) {
+    const original = apply?.original ?? (await operations(db, row));
+    const applied = apply ? apply.applied : await executionEvidence(db, row, original);
     const context = npRequireAgentAuthorizationContextCanonical(plan.authorizationContextBody);
     if (
       !applied?.committedAt ||
@@ -6142,7 +6190,7 @@ export function createAgentChangeSetServiceV1(
         !["preparing", "invalid", "conflicted", "expired", "failed"].includes(plan.state)
       )
         throw missing();
-      return { original, applied, ops, sealed: null };
+      return { plan, original, applied, ops, sealed: null };
     }
     const sealed = npRequireAgentChangeSetPlanCanonical(plan.sealedPlanBody);
     if (
@@ -6191,26 +6239,22 @@ export function createAgentChangeSetServiceV1(
       )
         throw missing();
     }
-    return { original, applied, ops, sealed };
+    return { plan, original, applied, ops, sealed };
   }
-  async function rollbackSummary(db: Db, row: Row, plan: RollbackRow) {
-    const evidence = await rollbackEvidence(db, row, plan);
+  type RollbackEvidence = Awaited<ReturnType<typeof rollbackEvidence>>;
+  function rollbackSummary({ plan, ops }: RollbackEvidence) {
     return npRequireAgentRollbackSummaryV1({
       rollbackPlanId: plan.id,
       generation: plan.generation,
       state: plan.state,
       planHash: plan.planHash,
       approvalId: plan.approvalId,
-      operationCount: evidence.ops.length,
+      operationCount: ops.length,
       createdAt: plan.createdAt.toISOString(),
       expiresAt: plan.expiresAt.toISOString(),
       finishedAt: plan.finishedAt?.toISOString() ?? null,
       terminalReason: plan.terminalReason,
     });
-  }
-  async function latestRollbackSummary(db: Db, row: Row) {
-    const plan = await latestRollback(db, row);
-    return plan ? rollbackSummary(db, row, plan) : null;
   }
   async function lockRollback(db: Db, siteId: string, changeSetId: string, id: string) {
     if (!uuid.test(id) || !uuid.test(changeSetId)) throw missing();
@@ -6674,39 +6718,67 @@ export function createAgentChangeSetServiceV1(
       },
     };
   }
-  async function rollbackApprovalVisible(input: {
-    siteId: string;
-    target: Extract<NpAgentApprovalTargetV1, { kind: "changeset_rollback" }>;
-    actor: NpAgentAdminActorV1;
-  }) {
-    return getDb().transaction(
+  async function readRollbackApproval(
+    input: {
+      siteId: string;
+      target: Extract<NpAgentApprovalTargetV1, { kind: "changeset_rollback" }>;
+      actor: NpAgentAdminActorV1;
+    },
+    approvalId?: string,
+  ) {
+    const staffInput = { kind: "staff" as const, siteId: input.siteId, actor: input.actor };
+    const { viewer, reviewSummary, detail } = await getDb().transaction(
       async (tx) => {
         const db = tx as unknown as Db;
+        const viewer = await resolve(staffInput, false, db);
         const [row] = await db
           .select()
           .from(npAgentChangesets)
           .where(parentWhere(input.siteId, input.target.changeSetId))
           .limit(1);
+        if (!row) throw missing();
         const [plan] = await db
           .select()
           .from(npAgentChangesetRollbackPlans)
-          .where(rollbackWhere(input.siteId, input.target.rollbackPlanId))
+          .where(
+            and(
+              rollbackWhere(input.siteId, input.target.rollbackPlanId),
+              eq(npAgentChangesetRollbackPlans.changesetId, row.id),
+            ),
+          )
           .limit(1);
-        if (!row || !plan || plan.planHash !== input.target.planHash) throw missing();
-        await approvalViewer(db, input.siteId, input.actor, row);
-        const evidence = await rollbackEvidence(db, row, plan);
-        return {
-          operationCount: evidence.ops.length,
+        if (
+          !plan ||
+          plan.planHash !== input.target.planHash ||
+          (approvalId && plan.approvalId !== approvalId)
+        )
+          throw missing();
+        // Verify the parent and the signed target together without reading another generation.
+        const { rollback } = await projectWithEvidence(row, viewer, db, {
+          includePreview: false,
+          reviewSnapshot: true,
+          rollbackPlan: plan,
+        });
+        if (!rollback) throw missing();
+        const reviewSummary: NpAgentApprovalListItemV1["reviewSummary"] = {
+          operationCount: rollback.ops.length,
           targetCount: new Set(
-            evidence.ops.map((op) => serializeAgentCanonicalJson(op.canonicalResourceKey)),
+            rollback.ops.map((op) => serializeAgentCanonicalJson(op.canonicalResourceKey)),
           ).size,
           previewState: null,
           checksRun: null,
-          rollbackPlan: evidence.sealed ? ("available" as const) : ("unavailable" as const),
+          rollbackPlan: rollback.sealed ? "available" : "unavailable",
+        };
+        return {
+          viewer,
+          reviewSummary,
+          detail: approvalId ? await rollbackDetail(db, row, viewer, rollback) : null,
         };
       },
       { isolationLevel: "repeatable read", accessMode: "read only" },
     );
+    if (approvalId) await same(staffInput, viewer);
+    return { reviewSummary, detail };
   }
   async function withRollbackApprovalAuthority<T>(input: {
     siteId: string;
@@ -7286,27 +7358,14 @@ export function createAgentChangeSetServiceV1(
     ];
   }
 
-  async function rollbackDetail(db: Db, row: Row, actor: Actor, selected?: string) {
-    const plan = selected
-      ? (
-          await db
-            .select()
-            .from(npAgentChangesetRollbackPlans)
-            .where(
-              and(
-                rollbackWhere(row.siteId, selected),
-                eq(npAgentChangesetRollbackPlans.changesetId, row.id),
-              ),
-            )
-            .limit(1)
-        )[0]
-      : await latestRollback(db, row);
-    if (!plan) {
-      if (selected) throw missing();
-      return null;
-    }
-    const evidence = await rollbackEvidence(db, row, plan),
-      e = await rollbackExecutionEvidence(db, row, plan, evidence.ops);
+  async function rollbackDetail(
+    db: Db,
+    row: Row,
+    actor: Actor,
+    evidence: RollbackEvidence,
+  ): Promise<NpAgentRollbackDetailV1> {
+    const { plan } = evidence;
+    const e = await rollbackExecutionEvidence(db, row, plan, evidence.ops);
     const [a] = plan.approvalId
       ? await db
           .select()
@@ -7331,7 +7390,7 @@ export function createAgentChangeSetServiceV1(
     return npRequireAgentRollbackDetailV1({
       schemaVersion: "np.agent-rollback-detail.v1",
       changeSetId: row.id,
-      summary: await rollbackSummary(db, row, plan),
+      summary: rollbackSummary(evidence),
       version: plan.version,
       compensatesExecutionId: plan.compensatesExecutionId,
       originalPlanHash: plan.originalPlanHash,
@@ -7470,7 +7529,6 @@ export function createAgentChangeSetServiceV1(
     return { examined: plans.length, nextCursor: plans.length === limit ? plans.at(-1)!.id : null };
   }
 
-  type ExecutionRow = typeof npAgentChangesetExecutions.$inferSelect;
   type ApprovalRow = typeof npAgentApprovals.$inferSelect;
   const executionResources = createAgentChangeSetApplyResourceServiceV1();
   const executionWhere = (siteId: string, id: string) =>
@@ -7631,8 +7689,7 @@ export function createAgentChangeSetServiceV1(
       throw missing();
     return e;
   }
-  async function executionDetail(db: Db, row: Row, ops: OpRow[]) {
-    const e = await executionEvidence(db, row, ops);
+  function executionDetail(row: Row, e: ExecutionRow | null) {
     return e
       ? npRequireAgentChangeSetExecutionDetailV1({
           schemaVersion: "np.agent-changeset-execution.v1",

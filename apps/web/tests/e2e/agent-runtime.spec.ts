@@ -10,7 +10,7 @@ import {
   readiness,
   catalog,
 } from "./fixtures/runtime-studio.js";
-import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
   npCreateDisabledAgentRuntimeSettingsV1,
   npBuildAgentPolicySimulationFixtureInputV1,
@@ -20,6 +20,9 @@ import {
   npRequireAgentRuntimeStudioMutationResultV1,
   npRequireAgentRuntimeStudioTriggerV1,
   npRequireAgentRuntimeAdminInputV1,
+  npRequireAgentActivityRunResourceV1,
+  npRequireAgentActivityActionDetailV1,
+  npRequireAgentApprovalDetailV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -32,6 +35,39 @@ async function tabTo(page: Page, control: Locator) {
     await page.keyboard.press("Tab");
   }
   await expect(control).toBeFocused();
+}
+
+/** Sample each layout owner without multiplying every workflow by every media combination. */
+async function inspectDraftFormLayout(page: Page, testInfo: TestInfo, name: string) {
+  for (const sample of [
+    { width: 320, height: 800, colorScheme: "light" },
+    { width: 768, height: 1024, colorScheme: "dark" },
+    { width: 1280, height: 900, colorScheme: "light" },
+  ] as const) {
+    await page.setViewportSize({ width: sample.width, height: sample.height });
+    await page.emulateMedia({ colorScheme: sample.colorScheme, reducedMotion: "reduce" });
+    await expect(page.locator("html")).toHaveClass(
+      sample.colorScheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/,
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
+    const outsideViewport = await page.locator("form").evaluate((form) =>
+      [...form.querySelectorAll("input, textarea, button")]
+        .filter((element) => {
+          const bounds = element.getBoundingClientRect();
+          return bounds.width > 0 && (bounds.x < 0 || bounds.right > window.innerWidth);
+        })
+        .map((element) => element.getAttribute("id") ?? element.textContent),
+    );
+    expect(outsideViewport).toEqual([]);
+    const screenshot = testInfo.outputPath(`${name}-${sample.width}-${sample.colorScheme}.png`);
+    await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+    await testInfo.attach(`${name}-${sample.width}-${sample.colorScheme}`, {
+      path: screenshot,
+      contentType: "image/png",
+    });
+  }
 }
 
 test("Runtime management stays unavailable without a host and new writes retain CSRF", async ({
@@ -50,6 +86,327 @@ test("Runtime management stays unavailable without a host and new writes retain 
   });
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ error: { code: "CSRF_INVALID" } });
+});
+
+test("Runtime Run diagnoses the last provider call and clears the evidence on access loss", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 216 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const runId = "55555555-5555-4555-8555-555555555555";
+  const triggerId = "44444444-4444-4444-8444-444444444444";
+  const retryAt = "2026-09-14T00:01:00.000Z";
+  const detail = npRequireAgentActivityRunResourceV1({
+    schemaVersion: "np.agent-activity-run.v1",
+    run: {
+      schemaVersion: "np.agent-run.v1",
+      id: runId,
+      siteId: "default",
+      origin: "runtime",
+      agent: { id, versionId },
+      principalId,
+      rootRunId: runId,
+      parentRunId: null,
+      causalDepth: 0,
+      state: "waiting_retry",
+      goal: "[redacted]",
+      runLimits: {
+        schemaVersion: "np.agent-run-limits.v1",
+        maxAttempts: 2,
+        maxProviderCalls: 2,
+        maxCapabilityCalls: 2,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxCostMicros: 500,
+        maxWallClockSeconds: 120,
+      },
+      usage: null,
+      attempt: 1,
+      errorCode: null,
+      errorMessage: null,
+      queuedAt: "2026-09-14T00:00:00.000Z",
+      startedAt: "2026-09-14T00:00:01.000Z",
+      deadlineAt: "2026-09-14T00:02:00.000Z",
+      finishedAt: null,
+    },
+    invocationId: null,
+    evidence: "redacted",
+    auditEventIds: [],
+    runtimeDiagnostics: {
+      trigger: {
+        id: triggerId,
+        kind: "schedule",
+        eventKind: null,
+        scheduledFor: "2026-09-14T00:00:00.000Z",
+      },
+      retryAt,
+      providerCalls: [
+        {
+          sequence: 1,
+          provider: "fake",
+          model: "fixture-model",
+          state: "failed",
+          dispatchState: "dispatched",
+          errorClass: "transient",
+          latencyMs: 752,
+          usage: {
+            inputTokens: 6,
+            cachedInputTokens: 2,
+            outputTokens: 3,
+            tokenSource: "provider",
+            costMicros: 11,
+            costSource: "adapter-estimate",
+          },
+          startedAt: "2026-09-14T00:00:02.000Z",
+          finishedAt: "2026-09-14T00:00:03.000Z",
+        },
+      ],
+      moreProviderCalls: false,
+    },
+  });
+  let denied = false;
+  await page.route(`**/api/admin/agents/activity/${runId}`, (route) =>
+    route.fulfill(denied ? { status: 403, json: {} } : { json: detail }),
+  );
+  await page.route("**/api/admin/agents/activity/actions?*", (route) =>
+    route.fulfill({
+      json: { schemaVersion: "np.agent-activity-actions.v1", items: [], nextCursor: null },
+    }),
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByText(`Scheduled · ${triggerId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Retry eligible at", { exact: true })).toBeVisible();
+  await expect(page.locator(`time[datetime="${retryAt}"]`)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Call 1 · fake / fixture-model" })).toBeVisible();
+  await expect(page.getByText(/Dispatched · transient/)).toBeVisible();
+  await expect(page.getByText("752 ms", { exact: true })).toBeVisible();
+  await expect(page.getByText("6 / 2 / 3 · Provider reported", { exact: true })).toBeVisible();
+  await expect(page.getByText("11 · Adapter estimate", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  denied = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).first().click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
+  ).toBeVisible();
+  await expect(page.getByText("Runtime diagnostics", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Retry eligible at", { exact: true })).toHaveCount(0);
+});
+
+test("Runtime activity connects admission policy evidence, a human approval and the verified execution", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 221 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const runId = "55111111-1111-4111-8111-111111111111";
+  const requestId = "55111111-1111-4111-8111-111111111112";
+  const executionId = "55111111-1111-4111-8111-111111111113";
+  const approvalId = "55111111-1111-4111-8111-111111111114";
+  const changeSetId = "55111111-1111-4111-8111-111111111115";
+  const startedAt = "2026-09-14T00:00:01.000Z";
+  const finishedAt = "2026-09-14T00:01:00.000Z";
+  let executed = false;
+  let denied = false;
+  const runDetail = () =>
+    npRequireAgentActivityRunResourceV1({
+      schemaVersion: "np.agent-activity-run.v1",
+      run: {
+        schemaVersion: "np.agent-run.v1",
+        id: runId,
+        siteId: "default",
+        origin: "runtime",
+        agent: { id, versionId },
+        principalId,
+        rootRunId: runId,
+        parentRunId: null,
+        causalDepth: 0,
+        state: executed ? "succeeded" : "waiting_approval",
+        goal: "[redacted]",
+        runLimits: {
+          schemaVersion: "np.agent-run-limits.v1",
+          maxAttempts: 2,
+          maxProviderCalls: 2,
+          maxCapabilityCalls: 2,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          maxCostMicros: 500,
+          maxWallClockSeconds: 120,
+        },
+        usage: null,
+        attempt: 1,
+        errorCode: null,
+        errorMessage: null,
+        queuedAt: "2026-09-14T00:00:00.000Z",
+        startedAt,
+        deadlineAt: "2026-09-14T00:02:00.000Z",
+        finishedAt: executed ? finishedAt : null,
+      },
+      invocationId: null,
+      evidence: "redacted",
+      auditEventIds: [],
+      runtimeDiagnostics: {
+        trigger: null,
+        retryAt: null,
+        providerCalls: [],
+        moreProviderCalls: false,
+        policyRefs: [{ kind: "site-policy", id: "editorial-policy", version: 3, digest }],
+      },
+    });
+  const action = (complete: boolean) =>
+    npRequireAgentActivityActionDetailV1({
+      schemaVersion: "np.agent-activity-action.v1",
+      principalId,
+      invocationId: null,
+      evidence: "redacted",
+      inputHash: digest,
+      outputHash: complete ? digest : null,
+      auditEventId: null,
+      action: {
+        schemaVersion: "np.agent-action-projection.v1",
+        id: complete ? executionId : requestId,
+        siteId: "default",
+        runId,
+        sequence: complete ? 2 : 1,
+        capabilityId: "changeset.apply",
+        capabilityContractVersion: 1,
+        capabilityFingerprint: digest,
+        effectProfile: { id: "changeset.apply", contractVersion: 1 },
+        risk: "reversible",
+        state: complete ? "succeeded" : "approval_pending",
+        approvalId,
+        proposalHash: digest,
+        requiredScopes: ["changeset:apply"],
+        targetRefs: [],
+        inputRedacted: {},
+        outputRedacted: complete ? {} : null,
+        verificationState: null,
+        errorCode: null,
+        createdAt: startedAt,
+        startedAt: complete ? startedAt : null,
+        finishedAt: complete ? finishedAt : null,
+      },
+    });
+  await page.route(`**/api/admin/agents/activity/${runId}`, (route) =>
+    route.fulfill({ json: runDetail() }),
+  );
+  await page.route("**/api/admin/agents/activity/actions?*", (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-actions.v1",
+        items: executed ? [action(true), action(false)] : [action(false)],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route(`**/api/admin/agents/activity/actions/${requestId}`, (route) =>
+    route.fulfill({ json: { ...action(false), changeSetId } }),
+  );
+  await page.route(`**/api/admin/agents/activity/actions/${executionId}`, (route) =>
+    route.fulfill(
+      denied
+        ? { status: 403, json: {} }
+        : {
+            json: {
+              ...action(true),
+              changeSetId,
+              verificationResult: { state: "passed", completedAt: finishedAt, digest },
+            },
+          },
+    ),
+  );
+  await page.route(`**/api/admin/agents/approvals/${approvalId}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentApprovalDetailV1({
+        schemaVersion: "np.agent-approval-detail.v1",
+        rollbackReview: null,
+        review: null,
+        item: {
+          schemaVersion: "np.agent-approval-list-item.v1",
+          approval: {
+            id: approvalId,
+            generation: 1,
+            state: executed ? "consumed" : "pending",
+            statementHash: digest,
+            requiredHumanCapabilities: ["content.author"],
+            requiredHumanPredicates: [],
+            requestedAt: startedAt,
+            expiresAt: "2026-09-14T00:02:00.000Z",
+            decidedAt: executed ? finishedAt : null,
+          },
+          version: executed ? 3 : 1,
+          target: { kind: "changeset", changeSetId, planHash: digest, scheduledFor: null },
+          intendedOperation: "apply",
+          scheduledFor: null,
+          statementHash: digest,
+          reauthentication: { mode: "none" },
+          allowedDecisions: [],
+          risk: "reversible",
+          capabilityId: "changeset.apply",
+          capabilityContractVersion: 1,
+          capabilityFingerprint: digest,
+          policyHashes: [],
+          requiresLivePreview: false,
+          reviewSummary: {
+            operationCount: 1,
+            targetCount: 1,
+            previewState: null,
+            checksRun: null,
+            rollbackPlan: "unavailable",
+          },
+          requiredScopes: ["changeset:apply"],
+          requester: { kind: "principal", id: principalId },
+        },
+      }),
+    }),
+  );
+  await page.route(/\/api\/admin\/agents\/activity\?/, (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const match = query.get("approvalId") === approvalId;
+    const { schemaVersion, run, invocationId, evidence, auditEventIds } = runDetail();
+    return route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-runs.v1",
+        items:
+          match && !query.has("cursor")
+            ? [{ schemaVersion, run, invocationId, evidence, auditEventIds }]
+            : [],
+        nextCursor: match && !query.has("cursor") ? "next-approval-page" : null,
+      },
+    });
+  });
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByRole("region", { name: "Policies at admission" })).toContainText(
+    "Site policy · version 3",
+  );
+  await page.getByRole("link", { name: /changeset\.apply.*approval_pending/ }).click();
+  await expect(page.getByText("No result recorded", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Open approval" }).click();
+  await expect(page.getByRole("heading", { name: "Server approval facts" })).toBeVisible();
+  await expect(page.getByText("pending", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "View related runs" }).click();
+  await expect(page.getByLabel("Approval ID", { exact: true })).toHaveValue(approvalId);
+  await page.getByRole("link", { name: "Next page" }).click();
+  await expect(page.getByRole("link", { name: "First page" })).toBeVisible();
+  await expect(page.getByLabel("Approval ID", { exact: true })).toHaveValue(approvalId);
+  executed = true;
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await page.getByRole("link", { name: /changeset\.apply.*succeeded/ }).click();
+  await expect(page.getByText("passed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verification completed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open ChangeSet" })).toHaveAttribute(
+    "href",
+    `/admin/agents/changesets/${changeSetId}`,
+  );
+  await page.getByRole("link", { name: "Open approval" }).click();
+  await expect(page.getByText("consumed", { exact: true })).toBeVisible();
+  denied = true;
+  await page.goto(`/admin/agents/activity/actions/${executionId}`);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open approval" })).toHaveCount(0);
 });
 
 test("Runtime activation waits for acknowledgement and readback before showing active controls", async ({
@@ -192,6 +549,7 @@ test("Runtime activation waits for acknowledgement and readback before showing a
   await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toHaveCount(0);
   await readback!.fulfill({ json: active });
   await expect(activeStatus).toBeVisible();
+  await expect(activeStatus).toBeFocused();
   await expect(activate).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toBeEnabled();
@@ -199,7 +557,9 @@ test("Runtime activation waits for acknowledgement and readback before showing a
   await expect(page.getByRole("button", { name: "Archive Agent", exact: true })).toBeEnabled();
   await expect(page.getByText("manual · enabled", { exact: true })).toBeVisible();
   await expect(page.getByText(triggerId, { exact: true })).toBeVisible();
-  await expect(page.getByText("Effective configuration review", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /^Effective configuration review/ })).toHaveCount(
+    0,
+  );
   expect(detailReads).toBe(2);
   expect(writes).toHaveLength(1);
   expect(unexpected).toEqual([]);
@@ -220,7 +580,17 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   let delayedDecision: Route | undefined;
   let delayedRead: Route | undefined;
   let holdRead = false;
-  await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
+  await page.route("**/api/admin/agents/capabilities", (route) =>
+    route.fulfill({
+      json: {
+        ...catalog,
+        recipes: catalog.recipes.map((recipe) => ({
+          ...recipe,
+          triggerKinds: ["event", "manual", "schedule"],
+        })),
+      },
+    }),
+  );
   await page.route("**/api/admin/agents/triggers?**", (route) =>
     route.fulfill({
       json: { schemaVersion: "np.agent-triggers-page.v1", items: [], nextCursor: null },
@@ -272,6 +642,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await expect.poll(() => requests.some((query) => query.includes("name=Worker"))).toBe(true);
   await page.getByRole("link", { name: "Worker observer", exact: true }).click();
+  await expect(page.getByRole("link", { name: "View activity", exact: true })).toHaveAttribute(
+    "href",
+    `/admin/agents/activity?origin=runtime&agentId=${id}`,
+  );
   await expect(
     page.getByRole("button", { name: "Activate reviewed version", exact: true }),
   ).toBeDisabled();
@@ -290,6 +664,40 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await tabTo(page, enableTrigger);
   await page.keyboard.press("Space");
   await expect(enableTrigger).toBeChecked();
+  await page.getByRole("button", { name: "Add schedule trigger", exact: true }).click();
+  const cron = page.getByLabel("Five-field UTC cron", { exact: true });
+  await expect(cron).toHaveValue("*/5 * * * *");
+  await cron.fill("*/15 * * * *");
+  await page.getByRole("combobox", { name: "Missed schedule handling", exact: true }).click();
+  await page.getByRole("option", { name: "Catch up once", exact: true }).click();
+  await expect(
+    page.getByLabel("Enable after activation", { exact: true }).nth(1),
+  ).not.toBeChecked();
+  expect(writes).toHaveLength(0);
+  await page.getByRole("button", { name: "Add event trigger", exact: true }).click();
+  await page.getByRole("combobox", { name: "Registered event kind", exact: true }).click();
+  await page.getByRole("option", { name: "security.edge.signal", exact: true }).click();
+  await page.getByRole("combobox", { name: "Event filter operator", exact: true }).click();
+  await page.getByRole("option", { name: "in", exact: true }).click();
+  const allowedValues = page.getByRole("textbox", {
+    name: "Event filter allowed values",
+    exact: true,
+  });
+  await tabTo(page, allowedValues);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("public, internal");
+  await expect(allowedValues).toHaveValue("public, internal");
+  await page.keyboard.press("Tab");
+  await page.getByRole("combobox", { name: "Event filter field", exact: true }).click();
+  await page.getByRole("option", { name: "payload.count", exact: true }).click();
+  await tabTo(page, allowedValues);
+  await page.keyboard.press("ControlOrMeta+A");
+  // Numeric conversion must wait for a complete token, not replace an intermediate `1e`.
+  await page.keyboard.type("1e");
+  await expect(allowedValues).toHaveValue("1e");
+  await page.keyboard.type("2, 3");
+  await expect(allowedValues).toHaveValue("1e2, 3");
+  await page.keyboard.press("Tab");
   await tabTo(page, page.getByRole("button", { name: "Confirm", exact: true }));
   await page.keyboard.press("Enter");
   await expect(
@@ -300,7 +708,22 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
     expectedVersion: 1,
     configHash: digest,
     reviewedPolicyRefs: [],
-    triggers: [{ definition: { type: "manual" }, enabled: true }],
+    triggers: [
+      { definition: { type: "manual" }, enabled: true },
+      {
+        definition: { type: "schedule", cron: "*/15 * * * *", catchUp: "once" },
+        enabled: false,
+      },
+      {
+        definition: {
+          type: "event",
+          eventKind: "security.edge.signal",
+          filter: { op: "in", field: "payload.count", values: [100, 3] },
+          coalesceSeconds: 0,
+        },
+        enabled: false,
+      },
+    ],
   });
   await expect(page.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -333,9 +756,11 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
 
 test("Runtime budget and operations show unknown measurements without inventing zero", async ({
   page,
-}) => {
+}, testInfo) => {
   let budgetReads = 0;
   let runtimeReads = 0;
+  let failBudgetRead = false;
+  let malformedRuntimeTime = false;
   const writes: unknown[] = [];
   await page.clock.install();
   await page.route("**/api/admin/agents/budgets", (route) => {
@@ -351,6 +776,14 @@ test("Runtime budget and operations show unknown measurements without inventing 
       });
     }
     budgetReads++;
+    if (failBudgetRead)
+      return route.fulfill({
+        status: 503,
+        json: {
+          status: 503,
+          error: { code: "UNAVAILABLE", message: "Site budget temporarily unavailable" },
+        },
+      });
     return route.fulfill({
       json: {
         schemaVersion: "np.agent-runtime-budget.v1",
@@ -383,7 +816,7 @@ test("Runtime budget and operations show unknown measurements without inventing 
           enabled: true,
           paused: true,
           readiness: { ...readiness, budget: "unavailable" },
-          generatedAt: at,
+          generatedAt: malformedRuntimeTime ? "not-a-timestamp" : at,
         },
         operations: null,
       },
@@ -394,6 +827,21 @@ test("Runtime budget and operations show unknown measurements without inventing 
   await expect(
     page.getByText("Measurement unavailable; configured hard limits fail closed.", { exact: true }),
   ).toBeVisible();
+  const budgetObservation = page.getByRole("region", {
+    name: "Site budget observation",
+    exact: true,
+  });
+  const runtimeObservation = page.getByRole("region", {
+    name: "Runtime status observation",
+    exact: true,
+  });
+  await expect(budgetObservation.getByText(/^Last received /)).toBeVisible();
+  await expect(budgetObservation.locator("time")).toHaveCount(1);
+  const initialBudgetReceipt = await budgetObservation.locator("time").getAttribute("datetime");
+  await expect(
+    budgetObservation.getByText("Server projection time unavailable.", { exact: true }),
+  ).toBeVisible();
+  await page.clock.runFor(1000);
   await page.getByRole("button", { name: "Edit site budget", exact: true }).click();
   await page.getByLabel("Concurrent runs", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Reload Runtime status", exact: true }).click();
@@ -406,6 +854,75 @@ test("Runtime budget and operations show unknown measurements without inventing 
     page.getByText("Operations evidence is unavailable. Counts are unknown.", { exact: true }),
   ).toBeVisible();
   expect(runtimeReads).toBe(2);
+  await expect(runtimeObservation.getByText(/^Server projection generated /)).toBeVisible();
+  await expect(runtimeObservation.locator("time").nth(1)).toHaveAttribute("datetime", at);
+  await expect(runtimeObservation.locator("time").first()).not.toHaveAttribute(
+    "datetime",
+    initialBudgetReceipt!,
+  );
+  await expect(budgetObservation.locator("time")).toHaveAttribute(
+    "datetime",
+    initialBudgetReceipt!,
+  );
+  const initialRuntimeReceipt = await runtimeObservation
+    .locator("time")
+    .first()
+    .getAttribute("datetime");
+  await page.getByRole("button", { name: "Close budget editor", exact: true }).click();
+  const previousViewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.clock.runFor(400);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-budget-observations-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  if (previousViewport) await page.setViewportSize(previousViewport);
+
+  // The two responses are independent: one failed refresh cannot erase the other's evidence.
+  failBudgetRead = true;
+  await page.clock.runFor(1000);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("Site budget temporarily unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(runtimeObservation.locator("time")).toHaveCount(2);
+  await expect(runtimeObservation.locator("time").nth(1)).toHaveAttribute("datetime", at);
+  await expect(budgetObservation.locator("time")).toHaveCount(0);
+  await expect(runtimeObservation.locator("time").first()).not.toHaveAttribute(
+    "datetime",
+    initialRuntimeReceipt!,
+  );
+  const runtimeReceipt = await runtimeObservation.locator("time").first().getAttribute("datetime");
+  failBudgetRead = false;
+  await page.clock.runFor(1000);
+  await page.getByRole("button", { name: "Reload site budget", exact: true }).click();
+  await expect(budgetObservation.locator("time")).toHaveCount(1);
+  await expect(budgetObservation.locator("time")).not.toHaveAttribute(
+    "datetime",
+    initialBudgetReceipt!,
+  );
+  await expect(runtimeObservation.locator("time").first()).toHaveAttribute(
+    "datetime",
+    runtimeReceipt!,
+  );
+
+  // Invalid server timestamps fail contract validation instead of looking like fresh facts.
+  malformedRuntimeTime = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("The Runtime response could not be validated.", { exact: true }),
+  ).toBeVisible();
+  await expect(runtimeObservation.locator("time")).toHaveCount(0);
+  await expect(budgetObservation.locator("time")).toHaveCount(1);
+  malformedRuntimeTime = false;
+  await page.getByRole("button", { name: "Reload Runtime status", exact: true }).click();
+  await expect(runtimeObservation.locator("time").nth(1)).toHaveAttribute("datetime", at);
+  await page.getByRole("button", { name: "Edit site budget", exact: true }).click();
+  await page.getByLabel("Concurrent runs", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Review budget changes", exact: true }).click();
   const confirm = page.getByRole("button", { name: "Confirm budget update", exact: true });
   await confirm.click();
@@ -425,7 +942,7 @@ test("Runtime budget and operations show unknown measurements without inventing 
 
 test("Runtime typed draft creation requires explicit self-delegation and never activates implicitly", async ({
   page,
-}) => {
+}, testInfo) => {
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
   await page.route("**/api/admin/agents/triggers?**", (route) =>
@@ -451,15 +968,43 @@ test("Runtime typed draft creation requires explicit self-delegation and never a
     { exact: true },
   );
   await expect(delegation).not.toBeChecked();
-  await page.getByLabel("Agent name", { exact: true }).fill("Worker observer");
-  await page.getByLabel("Registered check IDs", { exact: true }).fill("jobs.worker");
-  await page.getByLabel("site:read", { exact: true }).check();
-  await page.getByRole("combobox", { name: "site.inspect", exact: true }).click();
-  await page.getByRole("option", { name: "Observe only", exact: true }).click();
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(
-    page.locator("form").getByRole("alert").filter({ hasText: "Request failed (502)" }),
-  ).toHaveText("Request failed (502)");
+  const name = page.getByLabel("Agent name", { exact: true });
+  const checks = page.getByLabel("Registered check IDs", { exact: true });
+  const scope = page.getByLabel("site:read", { exact: true });
+  const mode = page.getByRole("combobox", { name: "site.inspect", exact: true });
+  const save = page.getByRole("button", { name: "Save draft", exact: true });
+  await tabTo(page, name);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
+  await expect(name).toBeFocused();
+  expect(writes).toHaveLength(0);
+  await page.keyboard.type("Worker observer");
+  await tabTo(page, checks);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("jobs.worker");
+  await tabTo(page, scope);
+  await page.keyboard.press("Space");
+  await expect(scope).toBeChecked();
+  await tabTo(page, mode);
+  await page.keyboard.press("Enter");
+  const observe = page.getByRole("option", { name: "Observe only", exact: true });
+  await expect(page.getByRole("option", { name: "Never", exact: true })).toBeFocused();
+  await page.keyboard.press("o");
+  await expect(observe).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(mode).toContainText("Observe only");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
+  const failure = page.locator("form").getByRole("alert");
+  await expect(failure).toHaveText("Request failed (502)");
+  await expect(failure).toBeFocused();
+  await expect(name).toHaveValue("Worker observer");
+  await expect(checks).toHaveValue("jobs.worker");
+  await expect(scope).toBeChecked();
+  await expect(delegation).not.toBeChecked();
+  await inspectDraftFormLayout(page, testInfo, "agent-draft-failed-save");
   expect(writes).toHaveLength(1);
   expect(writes[0].body).not.toHaveProperty("authority");
   const savedDefinition = JSON.parse(writes[0].body.definitionJson as string) as Record<
@@ -477,8 +1022,11 @@ test("Runtime typed draft creation requires explicit self-delegation and never a
   });
   expect(savedDefinition).not.toHaveProperty("enabled");
   expect(writes[0].body).not.toHaveProperty("triggers");
-  await delegation.check();
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await tabTo(page, delegation);
+  await page.keyboard.press("Space");
+  await expect(delegation).toBeChecked();
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/admin/agents/configurations/${id}$`));
   expect(writes).toHaveLength(2);
   expect(writes[1].body).toMatchObject({ authority: { kind: "user", userId: principalId } });
@@ -491,7 +1039,7 @@ test("Runtime typed draft creation requires explicit self-delegation and never a
 
 test("Agent override policy creation binds the target and retries the exact typed draft safely", async ({
   page,
-}) => {
+}, testInfo) => {
   const policyId = "44444444-4444-4444-8444-444444444444";
   const bodies: string[] = [];
   const guidance =
@@ -537,14 +1085,47 @@ test("Agent override policy creation binds the target and retries the exact type
   await page.getByRole("link", { name: "Create Agent policy", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/agents/policies/new\\?agentId=${id}$`));
   await expect(page.getByText(`Applies to Agent ${id}.`, { exact: true })).toBeVisible();
-  await page.getByLabel("Policy name", { exact: true }).fill("Worker review policy");
-  await page.getByLabel("Guidance (Markdown text)", { exact: true }).fill(guidance);
-  await page.getByRole("button", { name: "Save policy draft", exact: true }).click();
-  await expect(
-    page.locator("form").getByRole("alert").filter({ hasText: "Request failed (502)" }),
-  ).toHaveText("Request failed (502)");
+  const name = page.getByLabel("Policy name", { exact: true });
+  const guidanceInput = page.getByLabel("Guidance (Markdown text)", { exact: true });
+  const inheritCollections = page.getByRole("checkbox", {
+    name: "No additional restriction for collections",
+    exact: true,
+  });
+  const collections = page.getByRole("textbox", { name: "collections", exact: true });
+  const save = page.getByRole("button", { name: "Save policy draft", exact: true });
+  await tabTo(page, name);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("Worker review policy");
+  await tabTo(page, guidanceInput);
+  await page.keyboard.type(guidance);
+  await tabTo(page, inheritCollections);
+  await page.keyboard.press("Space");
+  await expect(inheritCollections).not.toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(collections).toBeFocused();
+  await expect(collections).toHaveAccessibleDescription(
+    "An empty list permits no matching resources.",
+  );
+  await page.keyboard.type("pages, posts");
+  // Enter must submit the latest list before a blur can commit it.
+  await page.keyboard.press("Enter");
+  const failure = page.locator("form").getByRole("alert");
+  await expect(failure).toHaveText("Request failed (502)");
+  await expect(failure).toBeFocused();
+  await expect(name).toHaveValue("Worker review policy");
+  await expect(guidanceInput).toHaveValue(guidance);
+  await expect(collections).toHaveValue("pages, posts");
   expect(bodies).toHaveLength(1);
-  await page.getByRole("button", { name: "Save policy draft", exact: true }).click();
+  await inspectDraftFormLayout(page, testInfo, "policy-draft-failed-save");
+  // Visiting an unchanged list must not rotate the retry identity.
+  await tabTo(page, collections);
+  // Tab selects the text; ArrowRight collapses it to the end on macOS and Linux.
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.type(", ");
+  await expect(collections).toHaveValue("pages, posts, ");
+  await page.keyboard.press("Tab");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/admin/agents/policies/${policyId}$`));
   await expect(
     page.getByRole("heading", { name: "Worker review policy", exact: true }),
@@ -560,12 +1141,75 @@ test("Agent override policy creation binds the target and retries the exact type
     agentId: id,
     name: "Worker review policy",
     instructions: guidance,
-    rules: catalog.defaultPolicyRules,
+    rules: {
+      ...catalog.defaultPolicyRules,
+      resources: { ...catalog.defaultPolicyRules.resources, collections: ["pages", "posts"] },
+    },
   });
   expect(command.definitionHash).toMatch(/^cj1:sha256:[A-Za-z0-9_-]{43}$/u);
   expect(command.idempotencyKey).toBeTruthy();
   await expect(page.getByText(guidance, { exact: true })).toBeVisible();
   await expect(page.locator('[data-runtime-untrusted="marker"]')).toHaveCount(0);
+});
+
+test("Policy draft editing binds the read version and retains unsaved input after a conflict", async ({
+  page,
+}) => {
+  const writes: Array<Record<string, unknown>> = [];
+  await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
+  await page.route(`**/api/admin/agents/policies/${id}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      writes.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ status: 409, body: "The policy draft changed." });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        schemaVersion: "np.agent-policy-detail.v1",
+        id,
+        rowVersion: 7,
+        version: 3,
+        status: "draft",
+        contentHash: digest,
+        definition: {
+          schemaVersion: "np.agent-policy-definition.v1",
+          agentId: null,
+          name: "Existing site policy",
+          instructions: "Existing guidance",
+          rules: catalog.defaultPolicyRules,
+        },
+        availableActions: ["agents.policies.update"],
+        createdAt: at,
+      },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/policies/${id}`);
+  await tabTo(page, page.getByRole("button", { name: "Edit draft", exact: true }));
+  await page.keyboard.press("Enter");
+  const name = page.getByLabel("Policy name", { exact: true });
+  const guidance = page.getByLabel("Guidance (Markdown text)", { exact: true });
+  const save = page.getByRole("button", { name: "Save policy draft", exact: true });
+  await expect(name).toHaveValue("Existing site policy");
+  await tabTo(page, guidance);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("Keep this unsaved operator guidance.");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
+  const failure = page.locator("form").getByRole("alert");
+  await expect(failure).toContainText("This resource changed. Reload, review the current version");
+  await expect(failure).toBeFocused();
+  await expect(guidance).toHaveValue("Keep this unsaved operator guidance.");
+  await expect(guidance).toBeDisabled();
+  await expect(save).toBeDisabled();
+  await page.keyboard.press("Enter");
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ expectedVersion: 7, configHash: digest });
+  expect(JSON.parse(writes[0].definitionJson as string)).toMatchObject({
+    agentId: null,
+    name: "Existing site policy",
+    instructions: "Keep this unsaved operator guidance.",
+  });
 });
 
 test("Policy simulation displays bounded non-authorizing facts and preserves unknown-outcome retry identity", async ({

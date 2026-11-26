@@ -831,6 +831,15 @@ function legacyDiscoveryItem(plugin: NpPluginConfig): NpPluginDiscoveryItem {
   };
 }
 
+/** Definition-only metadata for local Build inspection. Never loads a plugin or runs setup. */
+export function npProjectPluginDeclarationDiscoveryV1(value: unknown): NpPluginDiscoveryItem {
+  if (isResolvedPlugin(value)) {
+    validateDefinitionContract(value.manifest.id, value);
+    return npRequirePluginDiscoveryResponse({ items: [resolvedDiscoveryItem(value)] }).items[0];
+  }
+  throw new Error("Build inspection requires a validated SDK plugin declaration.");
+}
+
 function materializePluginDiscoveryItem(registration: PluginRegistration): NpPluginDiscoveryItem {
   return {
     ...registration.discovery,

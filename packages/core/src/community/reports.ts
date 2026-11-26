@@ -35,6 +35,9 @@ import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
+import { npWriteObservedMemberReportV1 } from "./member-report-observer.js";
+import { npWriteObservedDocumentReportV1 } from "./document-report-observer.js";
+import { npWriteObservedCommentReportV1 } from "./report-observer.js";
 import { memberCapabilities, withMemberWrite } from "./can.js";
 import { hideComment, staffHideComment } from "./comments.js";
 import { moderateMemberThread } from "./document-moderation.js";
@@ -254,26 +257,37 @@ async function reportTargetScopes(targetType: string, targetId: string) {
 
 async function doFileReport(input: FileReportInput): Promise<NpReportRow> {
   const target = await assertReportTargetExists(input.targetType, input.targetId, input.reporterId);
-  const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   if (target.siteId !== null && target.siteId !== siteId) {
     throw new NpForbiddenError("report", "cross-site");
   }
-  const [row] = (await db
-    .insert(npReports)
-    .values({
-      reporterId: input.reporterId,
-      targetType: input.targetType,
-      targetId: input.targetId,
-      reason: input.reason,
-      siteId,
-    })
-    .onConflictDoNothing()
-    .returning()) as NpReportRow[];
-  if (!row) {
-    throw new NpConflictError("You already have an unresolved report for this target.");
-  }
-  const checkedRow = npRequireReportRow(row);
+  const writeObservedReport =
+    input.targetType === "member"
+      ? npWriteObservedMemberReportV1
+      : input.targetType === "comment"
+        ? npWriteObservedCommentReportV1
+        : npWriteObservedDocumentReportV1;
+  const checkedRow = await writeObservedReport({
+    siteId,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    reporterId: input.reporterId,
+    async write(writeDb) {
+      const [row] = await writeDb
+        .insert(npReports)
+        .values({
+          reporterId: input.reporterId,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          reason: input.reason,
+          siteId,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!row) throw new NpConflictError("You already have an unresolved report for this target.");
+      return npRequireReportRow(row);
+    },
+  });
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.reporterId },

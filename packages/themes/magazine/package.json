@@ -66,8 +66,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
+    "build": "rm -rf dist && tsup",
+    "dev": "tsx watch --include src --include package.json --include tsup.config.ts --include tsconfig.json --include ../../../tsconfig.base.json --exclude dist --exclude \"**/tsup.config.bundled_*\" ../../../scripts/build-dev-package.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint"

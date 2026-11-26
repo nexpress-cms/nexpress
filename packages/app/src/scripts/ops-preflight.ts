@@ -1,9 +1,13 @@
 // Must be first so child scripts see the same environment shape.
 import "./_load-env.js";
+import {
+  commandText,
+  detectPackageManager,
+  runArgs,
+  type PackageManager,
+} from "./ops-package-manager.js";
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 
 import { DEPLOY_TARGETS, parseDeployTargetArg, type DeployTarget } from "./deploy-targets.js";
 import type { DeployPlanJson } from "./deploy-plan-core.js";
@@ -39,8 +43,6 @@ export interface OpsPreflightJson {
   doctor: DoctorJsonOutput | null;
   migrate: OpsMigrateJson | null;
 }
-
-type PackageManager = "pnpm" | "npm" | "yarn";
 
 const ARGV = process.argv.slice(2);
 const JSON_MODE = ARGV.includes("--json");
@@ -91,28 +93,6 @@ Options:
 
 function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
-}
-
-function detectPackageManager(cwd: string): PackageManager {
-  let current = cwd;
-  while (true) {
-    if (existsSync(resolve(current, "pnpm-lock.yaml"))) return "pnpm";
-    if (existsSync(resolve(current, "yarn.lock"))) return "yarn";
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return "npm";
-}
-
-function runArgs(manager: PackageManager, script: string, passthrough: string[]): string[] {
-  if (manager === "yarn") return [script, ...passthrough];
-  if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
-  return ["run", script, "--", ...passthrough];
-}
-
-function commandText(manager: PackageManager, args: string[]): string {
-  return `${manager} ${args.join(" ")}`;
 }
 
 function capture(manager: PackageManager, args: string[]): Promise<CapturedCommand> {

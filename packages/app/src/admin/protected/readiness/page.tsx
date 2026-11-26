@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { StateBadge, LinkButton, AnchorButton, SummaryStat } from "../ops-ui";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { can, verifyTokenFull } from "@nexpress/core";
@@ -349,44 +349,6 @@ function RelatedLinks({ section }: { section: OpsReadinessSection }) {
   );
 }
 
-function LinkButton({
-  href,
-  variant,
-  className,
-  children,
-}: {
-  href: string;
-  variant: LinkButtonVariant;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link href={href} className={linkButtonClass(variant, className)}>
-      {children}
-    </Link>
-  );
-}
-
-function AnchorButton({
-  href,
-  variant,
-  className,
-  download,
-  children,
-}: {
-  href: string;
-  variant: LinkButtonVariant;
-  className?: string;
-  download?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <a href={href} download={download} className={linkButtonClass(variant, className)}>
-      {children}
-    </a>
-  );
-}
-
 function MetricTile({ metric }: { metric: OpsReadinessMetric }) {
   const valueColor = toneTextClass(metric.tone);
   return (
@@ -414,11 +376,11 @@ function CheckLine({ check }: { check: OpsReadinessSection["checks"][number] }) 
       />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-baseline gap-2">
-          <span className="break-words text-[12.5px] font-medium text-neutral-900 dark:text-neutral-100">
+          <span className="min-w-0 max-w-full break-words text-[12.5px] font-medium text-neutral-900 dark:text-neutral-100">
             {check.label}
           </span>
           {check.detail ? (
-            <span className="break-words text-[12px] text-neutral-500 dark:text-neutral-400">
+            <span className="min-w-0 max-w-full break-words text-[12px] text-neutral-500 dark:text-neutral-400">
               {check.detail}
             </span>
           ) : null}
@@ -430,45 +392,6 @@ function CheckLine({ check }: { check: OpsReadinessSection["checks"][number] }) 
         ) : null}
       </div>
     </div>
-  );
-}
-
-function SummaryStat({
-  label,
-  value,
-  helper,
-  state,
-}: {
-  label: string;
-  value: string;
-  helper: string;
-  state: OpsReadinessState;
-}) {
-  return (
-    <Card className="min-w-0">
-      <CardContent className="min-w-0">
-        <p className="break-words text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
-          {label}
-        </p>
-        <p
-          className={`mt-3 break-words text-[24px] font-semibold leading-none ${toneTextClass(state)}`}
-        >
-          {value}
-        </p>
-        <p className="mt-1 break-words text-[12px] text-neutral-500 dark:text-neutral-400">
-          {helper}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function StateBadge({ state }: { state: OpsReadinessState }) {
-  const variant = state === "error" ? "destructive" : state === "warn" ? "outline" : "brand";
-  return (
-    <Badge variant={variant} className="shrink-0 uppercase tracking-[0.06em]">
-      {state === "error" ? "Blocked" : state === "warn" ? "Attention" : "Ready"}
-    </Badge>
   );
 }
 
@@ -508,23 +431,6 @@ function relatedLinksForSection(
   }
   const _exhaustive: never = id;
   return _exhaustive;
-}
-
-type LinkButtonVariant = "default" | "outline" | "ghost";
-
-function linkButtonClass(variant: LinkButtonVariant, className?: string): string {
-  const base =
-    "inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[12.5px] font-medium outline-none transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] sm:h-7 sm:px-2.5";
-  const styles: Record<LinkButtonVariant, string> = {
-    default:
-      "bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200",
-    outline:
-      "border border-neutral-200/80 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40 dark:text-neutral-50 dark:hover:bg-neutral-900",
-    ghost:
-      "text-neutral-700 hover:bg-neutral-950/[0.045] hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/[0.05] dark:hover:text-white",
-  };
-
-  return [base, styles[variant], className].filter(Boolean).join(" ");
 }
 
 function toneTextClass(tone: OpsReadinessMetric["tone"]): string {

@@ -1,0 +1,1070 @@
+"use client";
+
+import { IncidentSeverity } from "./agent-incident-severity.js";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  npAgentIncidentStates,
+  npAgentIncidentCategories,
+  npAgentIncidentSeverities,
+  npRequireAgentIncidentStudioListOutputV1,
+  npRequireAgentIncidentStudioDetailV1,
+  npRequireAgentIncidentFeedbackInputV1,
+  npRequireAgentRuntimeStudioMutationResultV1,
+  type NpAgentIncidentStudioDetailV1,
+  type NpAgentIncidentFeedbackInputV1,
+  type NpAgentIncidentV1,
+  type NpAgentIncidentStudioListOutputV1,
+} from "@nexpress/core/agent-contract";
+import { IncidentNotificationDeliveries } from "./agent-incident-notification-deliveries.js";
+import { IncidentNotifications } from "./agent-incident-notifications.js";
+import { IncidentAssignment } from "./agent-incident-assignment.js";
+import { IncidentEvidence } from "./agent-incident-evidence.js";
+import { IncidentGuardianEvidence } from "./agent-incident-guardian-evidence.js";
+import { IncidentGuardianSecurityEvidence } from "./agent-incident-guardian-security-evidence.js";
+import { IncidentGuardianExport } from "./agent-incident-guardian-export.js";
+import {
+  IncidentGuardianContentEvidence,
+  IncidentGuardianRuntimeEvidence,
+  IncidentGuardianHttpEvidence,
+  IncidentGuardianExternalEvidence,
+  IncidentGuardianAssessment,
+  IncidentGuardianSessionEvidence,
+} from "./agent-incident-guardian-observations.js";
+import { IncidentResponse } from "./agent-incident-response.js";
+import { IncidentGuardianResponse } from "./agent-incident-guardian-response.js";
+import { IncidentGuardianSession } from "./agent-incident-guardian-session.js";
+import { IncidentMemberResponse } from "./agent-incident-member-response.js";
+import { IncidentWorkflow } from "./agent-incident-workflow.js";
+import { AgentStudioFrame } from "./agent-studio-frame.js";
+import { AgentStudioApiError } from "./agent-studio-api.js";
+import { runtimeAccessLost, runtimeRequest, useRuntimeResource } from "./agent-runtime-api.js";
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
+import { RuntimeSelect } from "./agent-runtime-fields.js";
+import { useAgentPolling } from "./use-agent-polling.js";
+import { Button } from "../ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Input } from "../ui/input.js";
+
+const root = "/api/admin/agents/incidents";
+const unresolved = "open,investigating,contained,monitoring";
+const allStatuses = npAgentIncidentStates.join(",");
+const statusFilter = (value: string | null) => (value === allStatuses ? "all" : value || "all");
+const options = (values: readonly string[]) => values.map((value) => ({ value, label: value }));
+
+function IncidentListSummary({
+  incident,
+  summary,
+}: {
+  incident: NpAgentIncidentV1;
+  summary: NonNullable<NpAgentIncidentStudioListOutputV1["summaries"]>[number] | undefined;
+}) {
+  const containment = summary?.containment;
+  const expiry =
+    containment === null || containment === undefined
+      ? "Unknown"
+      : containment.active === 0
+        ? "No active containment"
+        : (containment.nearestExpiryAt ?? "No expiry recorded");
+  const assessment =
+    summary?.assessmentAvailable === true
+      ? "Available for review"
+      : summary?.assessmentAvailable === false
+        ? "None recorded"
+        : "Unknown";
+  return (
+    <>
+      <p className="break-all">Assigned Agent: {incident.assignedAgentId ?? "Unassigned"}</p>
+      <p>Active containments: {containment?.active ?? "Unknown"}</p>
+      <p>
+        Nearest containment expiry:{" "}
+        {containment?.nearestExpiryAt ? (
+          <time dateTime={containment.nearestExpiryAt}>{expiry}</time>
+        ) : (
+          expiry
+        )}
+        . Expiry does not automatically restore content.
+      </p>
+      <p>AI assessment: {assessment}</p>
+    </>
+  );
+}
+
+export function AgentIncidentListView({ query = "" }: { query?: string }) {
+  return <IncidentList key={query} query={query} />;
+}
+function IncidentList({ query }: { query: string }) {
+  const router = useRouter();
+  const params = new URLSearchParams(query);
+  if (!params.has("statuses")) params.set("statuses", unresolved);
+  params.set("includeSummaries", "true");
+  const normalized = params.toString();
+  const [filters, setFilters] = React.useState({
+    statuses: statusFilter(params.get("statuses")),
+    categories: params.get("categories") || "all",
+    severities: params.get("severities") || "all",
+    source: params.get("source") || "",
+    assignedAgentId: params.get("assignedAgentId") || "",
+    containment: params.get("containment") || "all",
+    observedAfter: params.get("observedAfter") || "",
+    observedBefore: params.get("observedBefore") || "",
+    query: params.get("query") || "",
+  });
+  const path = `${root}?${normalized}`;
+  const state = useRuntimeResource(path, npRequireAgentIncidentStudioListOutputV1);
+  useAgentPolling(path, state.value, state.value !== null, state.loading, state.reload, "list");
+  const summaries = new Map(
+    state.value?.summaries?.map((summary) => [summary.incidentId, summary]),
+  );
+  const clearList = state.clear;
+  const notificationsAccessLost = React.useCallback(
+    (error: unknown) => {
+      clearList("Incident information is unavailable or you no longer have access.", error);
+    },
+    [clearList],
+  );
+  return (
+    <AgentStudioFrame
+      active="incidents"
+      busy={state.loading}
+      refreshing={state.refreshing}
+      disableWhileRefreshing={false}
+      observedAt={state.observedAt}
+      recovery={state.failure}
+    >
+      <div className="flex flex-wrap justify-between gap-3">
+        <h2 className="text-lg font-semibold">Incidents</h2>
+        <Button variant="outline" onClick={state.reload} disabled={state.loading}>
+          Refresh
+        </Button>
+      </div>
+      <p className="text-sm text-neutral-500">
+        Review correlated signals and record human feedback. Feedback does not approve or execute
+        containment.
+      </p>
+      {!runtimeAccessLost(state.failure) ? (
+        <IncidentNotifications onAccessLost={notificationsAccessLost} />
+      ) : null}
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const next = new URLSearchParams(normalized);
+          next.delete("cursor");
+          for (const [key, value] of Object.entries(filters)) {
+            if (value !== "all" && value.trim()) next.set(key, value.trim());
+            else if (key === "statuses") next.set(key, allStatuses);
+            else next.delete(key);
+          }
+          router.push(`/admin/agents/incidents?${next}`);
+        }}
+      >
+        <RuntimeSelect
+          label="Incident status"
+          value={filters.statuses}
+          onChange={(statuses) => setFilters((value) => ({ ...value, statuses }))}
+          options={[
+            { value: unresolved, label: "Unresolved" },
+            { value: "all", label: "All statuses" },
+            ...options(npAgentIncidentStates),
+          ]}
+        />
+        <RuntimeSelect
+          label="Incident category"
+          value={filters.categories}
+          onChange={(categories) => setFilters((value) => ({ ...value, categories }))}
+          options={[
+            { value: "all", label: "All categories" },
+            ...options(npAgentIncidentCategories),
+          ]}
+        />
+        <RuntimeSelect
+          label="Incident severity"
+          value={filters.severities}
+          onChange={(severities) => setFilters((value) => ({ ...value, severities }))}
+          options={[
+            { value: "all", label: "All severities" },
+            ...options(npAgentIncidentSeverities),
+          ]}
+        />
+        <RuntimeSelect
+          label="Active containment"
+          value={filters.containment}
+          onChange={(containment) => setFilters((value) => ({ ...value, containment }))}
+          options={[
+            { value: "all", label: "Any containment" },
+            { value: "active", label: "Active containment" },
+            { value: "inactive", label: "No active containment" },
+          ]}
+        />
+        {(
+          [
+            ["source", "Detector source", 128],
+            ["assignedAgentId", "Assigned Agent ID", 36],
+            ["observedAfter", "Observed since (UTC ISO)", 24],
+            ["observedBefore", "Observed until (UTC ISO)", 24],
+            ["query", "Search incident title and summary", 200],
+          ] as const
+        ).map(([key, label, maxLength]) => (
+          <label key={key} className="min-w-0 space-y-1 text-sm">
+            <span>{label}</span>
+            <Input
+              value={filters[key]}
+              maxLength={maxLength}
+              onChange={(event) => setFilters((value) => ({ ...value, [key]: event.target.value }))}
+            />
+          </label>
+        ))}
+        <Button variant="outline" type="submit">
+          Apply filters
+        </Button>
+      </form>
+      {state.error ? <p role="alert">{state.error}</p> : null}
+      {state.value?.items.length === 0 ? (
+        <p>
+          {state.value.nextCursor
+            ? "No visible incidents on this page. Continue to the next page."
+            : "No incidents match this view."}
+        </p>
+      ) : null}
+      <div className="grid gap-4 md:grid-cols-2">
+        {state.value?.items.map((incident) => (
+          <Card key={incident.id}>
+            <CardHeader>
+              <CardTitle>
+                <Link className="underline" href={`/admin/agents/incidents/${incident.id}`}>
+                  {incident.title}
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p>
+                {incident.category} · {incident.severity} · {incident.status}
+              </p>
+              <p>{incident.summary}</p>
+              <p>
+                {incident.signalIds.length} signals · {incident.eventCount} events
+              </p>
+              <IncidentListSummary incident={incident} summary={summaries.get(incident.id)} />
+              <p>
+                First observed:{" "}
+                <time dateTime={incident.firstObservedAt}>{incident.firstObservedAt}</time>
+              </p>
+              <p>
+                Last observed:{" "}
+                <time dateTime={incident.lastObservedAt}>{incident.lastObservedAt}</time>
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      {state.value?.nextCursor ? (
+        <Button
+          variant="outline"
+          onClick={() => {
+            const selectedCursor = state.value?.nextCursor;
+            if (!selectedCursor) return;
+            const next = new URLSearchParams(normalized);
+            next.set("cursor", selectedCursor);
+            router.push(`/admin/agents/incidents?${next}`);
+          }}
+        >
+          Next page
+        </Button>
+      ) : null}
+    </AgentStudioFrame>
+  );
+}
+
+const timelineLabels: Record<string, string> = {
+  observed: "Observed fact",
+  correlated: "Deterministic correlation/policy",
+  agent_assessment: "Agent assessment",
+  human_note: "Human note/decision",
+  state_transition: "State transition",
+  action: "Action/containment",
+  verification: "Verification",
+  notification: "Notification",
+};
+
+function IncidentNotificationRecovery({
+  recovery,
+}: {
+  recovery: NpAgentIncidentStudioDetailV1["timeline"][number]["notificationRecovery"];
+}) {
+  if (recovery === undefined) return null;
+  if (recovery === null) return <p>Local Admin notification recording evidence is unavailable.</p>;
+  return (
+    <div className="space-y-1 break-words">
+      <p className="font-medium">Local Admin notification recording</p>
+      <p>
+        {recovery.state === "pending"
+          ? "Recording pending. Retries require host maintenance."
+          : recovery.state === "sent"
+            ? "Local Admin notification recorded. This does not confirm external delivery."
+            : "Bounded recording recovery stopped."}
+      </p>
+      <p>Recording attempts: {recovery.attempts} of 5</p>
+      <p>
+        Last attempt:{" "}
+        {recovery.lastAttemptAt ? (
+          <time dateTime={recovery.lastAttemptAt}>{recovery.lastAttemptAt}</time>
+        ) : (
+          "No attempt recorded"
+        )}
+      </p>
+      {recovery.state === "pending" ? (
+        <p>
+          Next eligible attempt:{" "}
+          {recovery.nextAttemptAt ? (
+            <time dateTime={recovery.nextAttemptAt}>{recovery.nextAttemptAt}</time>
+          ) : (
+            "Unavailable"
+          )}
+        </p>
+      ) : null}
+      {recovery.lastErrorCode === "NOTIFICATION_RECORDING_FAILED" ? (
+        <p>NOTIFICATION_RECORDING_FAILED: The local Admin notification could not be recorded.</p>
+      ) : recovery.lastErrorCode === "SOURCE_EVIDENCE_INVALID" ? (
+        <p>
+          SOURCE_EVIDENCE_INVALID: Source evidence could not be verified for notification recording.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function AgentIncidentDetailView({ id }: { id: string }) {
+  return <IncidentDetail key={id} id={id} />;
+}
+function IncidentDetail({ id }: { id: string }) {
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
+  const [cursor, setCursor] = React.useState<string | null>(null);
+  const [responseCursor, setResponseCursor] = React.useState<string | null>(null);
+  const [writing, setWriting] = React.useState(false);
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  if (responseCursor) params.set("responseCursor", responseCursor);
+  const path = `${root}/${encodeURIComponent(id)}${params.size ? `?${params}` : ""}`;
+  const state = useRuntimeResource(path, npRequireAgentIncidentStudioDetailV1);
+  const detail = state.value;
+  React.useEffect(() => {
+    if (state.error && document.activeElement === document.body) errorRef.current?.focus();
+  }, [state.error]);
+  const securityEvidence = detail?.guardianSecurityEvidence;
+  const contentEvidence = detail?.guardianContentEvidence;
+  const externalEvidence = detail?.guardianExternalEvidence;
+  const runtimeEvidence = detail?.guardianRuntimeEvidence;
+  const httpEvidence = detail?.guardianHttpEvidence;
+  const isReadOnlyGuardianSource =
+    securityEvidence !== undefined ||
+    contentEvidence !== undefined ||
+    externalEvidence !== undefined ||
+    runtimeEvidence !== undefined ||
+    httpEvidence !== undefined;
+  const [responseSelection, setResponseSelection] = React.useState<{
+    detail: NpAgentIncidentStudioDetailV1;
+    index: string;
+    fromEvidence: boolean;
+  } | null>(null);
+  const clearEvidenceSelection = React.useCallback(() => {
+    setResponseSelection((selection) =>
+      selection && (detail?.incident.primarySubject?.kind === "member" || selection.fromEvidence)
+        ? { ...selection, index: "", fromEvidence: false }
+        : selection,
+    );
+  }, [detail?.incident.primarySubject?.kind]);
+  const clearDetail = state.clear;
+  const evidenceAccessLost = React.useCallback(
+    (error: unknown) => {
+      clearDetail("This incident is unavailable or you no longer have access.", error);
+    },
+    [clearDetail],
+  );
+  const evidenceConflict = React.useCallback(() => {
+    clearDetail(
+      "This incident or its evidence changed. Refresh and review the current evidence before continuing.",
+    );
+  }, [clearDetail]);
+  const assignmentConflict = React.useCallback(() => {
+    clearDetail(
+      "This incident or its Agent assignment changed. Refresh and review the current assignment before continuing.",
+    );
+  }, [clearDetail]);
+  useAgentPolling(
+    path,
+    detail,
+    Boolean(
+      detail &&
+      !cursor &&
+      !responseCursor &&
+      !writing &&
+      !["resolved", "dismissed"].includes(detail.incident.status),
+    ),
+    state.loading,
+    state.reload,
+  );
+  return (
+    <AgentStudioFrame
+      active="incidents"
+      busy={state.loading}
+      refreshing={state.refreshing}
+      observedAt={state.observedAt}
+      recovery={state.failure}
+    >
+      <div className="flex flex-wrap justify-between gap-3">
+        <Link className="underline" href="/admin/agents/incidents">
+          All incidents
+        </Link>
+        <Button
+          variant="outline"
+          disabled={writing}
+          onClick={() => {
+            setCursor(null);
+            setResponseCursor(null);
+            state.reload();
+          }}
+        >
+          Refresh
+        </Button>
+      </div>
+      {state.error ? (
+        <p ref={errorRef} tabIndex={-1} role="alert">
+          {state.error}
+        </p>
+      ) : null}
+      {detail ? (
+        <>
+          <header className="space-y-2">
+            <h2 className="text-lg font-semibold">{detail.incident.title}</h2>
+            <p>{detail.incident.summary}</p>
+            <p>
+              {detail.incident.category} · {detail.incident.severity} · {detail.incident.status}
+            </p>
+            <p className="text-sm">
+              Incident {detail.incident.id} · Version {detail.incident.versionNumber}
+            </p>
+            <p className="text-sm">
+              First observed: {detail.incident.firstObservedAt} · Last observed:{" "}
+              {detail.incident.lastObservedAt}
+            </p>
+            <Link
+              className="text-sm underline"
+              href={`/admin/agents/activity?incidentId=${encodeURIComponent(detail.incident.id)}`}
+            >
+              View related runs
+            </Link>
+          </header>
+          {isReadOnlyGuardianSource ||
+          detail.guardianEvidence !== undefined ||
+          detail.guardianSessionEvidence !== undefined ? (
+            <IncidentGuardianExport
+              key={`guardian-export:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              version={detail.incident.versionNumber}
+              onAccessLost={evidenceAccessLost}
+            />
+          ) : null}
+          {securityEvidence !== undefined ? (
+            <IncidentGuardianSecurityEvidence evidence={securityEvidence} />
+          ) : contentEvidence !== undefined ? (
+            <IncidentGuardianContentEvidence evidence={contentEvidence} />
+          ) : externalEvidence !== undefined ? (
+            <IncidentGuardianExternalEvidence evidence={externalEvidence} />
+          ) : runtimeEvidence !== undefined ? (
+            <IncidentGuardianRuntimeEvidence evidence={runtimeEvidence} />
+          ) : httpEvidence !== undefined ? (
+            <IncidentGuardianHttpEvidence evidence={httpEvidence} />
+          ) : detail.guardianSessionEvidence !== undefined ? (
+            <IncidentGuardianSessionEvidence evidence={detail.guardianSessionEvidence} />
+          ) : detail.guardianEvidence !== undefined ? (
+            <IncidentGuardianEvidence evidence={detail.guardianEvidence} />
+          ) : (
+            <section className="space-y-3" aria-labelledby="incident-signals">
+              <h3 id="incident-signals" className="font-semibold">
+                Signal evidence
+              </h3>
+              <p className="text-sm text-neutral-500">
+                Source references are shown below. Private signal payloads and raw logs are not
+                included in this view.
+              </p>
+              {detail.signals.length === 0 ? (
+                <p>No visible signals.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {detail.signals.map((signal) => {
+                    const memberReport = signal.detectorId === "moderator.member-report-review";
+                    return (
+                      <li key={signal.id} className="break-words rounded-lg border p-3 text-sm">
+                        <p>
+                          {signal.category} · Detector {signal.detectorId} · Version{" "}
+                          {signal.detectorVersion}
+                        </p>
+                        <p>
+                          {memberReport
+                            ? "Report evidence basis"
+                            : "Deterministic confidence basis"}
+                          : {signal.confidenceBasis}
+                        </p>
+                        <p>
+                          {memberReport ? "Abuse assessment score" : "Deterministic score"}:{" "}
+                          {signal.scoreBasisPoints === null
+                            ? memberReport
+                              ? "Not assessed"
+                              : "Unknown"
+                            : `${signal.scoreBasisPoints} basis points`}
+                        </p>
+                        {memberReport ? (
+                          <p>A filed report is an unverified claim requiring human review.</p>
+                        ) : null}
+                        <p>Signal {signal.id}</p>
+                        <time dateTime={signal.createdAt}>{signal.createdAt}</time>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
+          <IncidentNotificationDeliveries
+            key={`deliveries:${detail.incident.id}`}
+            incidentId={detail.incident.id}
+            onAccessLost={evidenceAccessLost}
+          />
+          {!writing &&
+          !state.loading &&
+          !isReadOnlyGuardianSource &&
+          detail.guardianEvidence === undefined &&
+          detail.incident.primarySubject?.kind !== "session" ? (
+            <IncidentEvidence
+              key={`evidence:${state.generation}:${detail.incident.versionNumber}`}
+              detail={detail}
+              onSelect={(index) => setResponseSelection({ detail, index, fromEvidence: true })}
+              onClearSelection={clearEvidenceSelection}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
+            />
+          ) : null}
+          {!state.loading ? (
+            <IncidentAssignment
+              key={`assignment:${state.generation}:${detail.incident.versionNumber}`}
+              detail={detail}
+              disabled={writing}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={assignmentConflict}
+            />
+          ) : null}
+          {!isReadOnlyGuardianSource &&
+          detail.guardianEvidence === undefined &&
+          detail.incident.primarySubject?.kind !== "member" &&
+          detail.incident.primarySubject?.kind !== "session" ? (
+            <IncidentResponse
+              responsePage={Boolean(responseCursor)}
+              onResponsePage={(next) => {
+                setResponseSelection({ detail, index: "", fromEvidence: false });
+                setCursor(null);
+                setResponseCursor(next);
+              }}
+              detail={detail}
+              choiceIndex={
+                responseSelection === null
+                  ? "0"
+                  : responseSelection.detail === detail
+                    ? responseSelection.index
+                    : ""
+              }
+              onChoiceChange={(index) =>
+                setResponseSelection({ detail, index, fromEvidence: false })
+              }
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={(error) =>
+                state.clear("This incident is unavailable or you no longer have access.", error)
+              }
+              onConflict={() =>
+                state.clear(
+                  "This response plan or its target changed. Reload and review the current evidence before preparing or executing a response.",
+                )
+              }
+            />
+          ) : null}
+          {!isReadOnlyGuardianSource && detail.guardianEvidence !== undefined ? (
+            <IncidentGuardianResponse
+              key={`guardian-response:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              incidentVersion={detail.incident.versionNumber}
+              refreshGeneration={state.generation}
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
+            />
+          ) : null}
+          {!isReadOnlyGuardianSource && detail.incident.primarySubject?.kind === "session" ? (
+            <IncidentGuardianSession
+              key={`guardian-session:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              incidentVersion={detail.incident.versionNumber}
+              refreshGeneration={state.generation}
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
+            />
+          ) : null}
+          {!isReadOnlyGuardianSource &&
+          detail.guardianEvidence === undefined &&
+          detail.incident.primarySubject?.kind === "member" ? (
+            <IncidentMemberResponse
+              key={`member-response:${detail.incident.id}:${detail.incident.versionNumber}`}
+              incidentId={detail.incident.id}
+              incidentVersion={detail.incident.versionNumber}
+              refreshGeneration={state.generation}
+              memberId={detail.incident.primarySubject.memberId}
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
+            />
+          ) : null}
+          <IncidentSeverity
+            key={`${detail.incident.id}:${detail.incident.versionNumber}`}
+            detail={detail}
+            disabled={writing || state.loading}
+            onWriting={setWriting}
+            onSuccess={() => {
+              setCursor(null);
+              setResponseCursor(null);
+              state.reload();
+            }}
+            onAccessLost={(error) =>
+              state.clear("This incident is unavailable or you no longer have access.", error)
+            }
+            onConflict={() =>
+              state.clear(
+                "This incident changed. Reload and review the current severity and evidence before raising severity.",
+              )
+            }
+          />
+          <IncidentWorkflow
+            detail={detail}
+            disabled={writing || state.loading}
+            onWriting={setWriting}
+            onSuccess={() => {
+              setCursor(null);
+              setResponseCursor(null);
+              state.reload();
+            }}
+            onAccessLost={(error) =>
+              state.clear("This incident is unavailable or you no longer have access.", error)
+            }
+            onConflict={() =>
+              state.clear(
+                "This incident or its containment changed. Reload and review the current evidence before making a decision.",
+              )
+            }
+          />
+          {!isReadOnlyGuardianSource ? (
+            <IncidentFeedback
+              disabled={writing || state.loading}
+              detail={detail}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                setResponseCursor(null);
+                state.reload();
+              }}
+              onAccessLost={(error) =>
+                state.clear("This incident is unavailable or you no longer have access.", error)
+              }
+              onConflict={() =>
+                state.clear(
+                  "This incident changed. Reload and review the current evidence before submitting feedback.",
+                )
+              }
+            />
+          ) : null}
+          <section className="space-y-3" aria-labelledby="incident-timeline">
+            <h3 id="incident-timeline" className="font-semibold">
+              Timeline
+            </h3>
+            <p className="text-sm text-neutral-500">
+              Each entry is labeled by its source. An Agent assessment is not an observed fact or an
+              authorization.
+            </p>
+            {detail.timelinePageComplete === false ? (
+              <p role="status">
+                Some timeline entries could not be verified or viewed. A complete evidence export is
+                unavailable.
+              </p>
+            ) : null}
+            {detail.timeline.length === 0 ? (
+              <p>No timeline entries on this page.</p>
+            ) : (
+              <ol className="space-y-2">
+                {detail.timeline.map((entry) => (
+                  <li key={entry.id} className="space-y-1 rounded-lg border p-3 text-sm">
+                    <p className="font-medium">
+                      {entry.assignment
+                        ? "Human decision · Agent assignment"
+                        : (timelineLabels[entry.kind] ?? entry.kind)}
+                    </p>
+                    <p>
+                      #{entry.sequence} · <time dateTime={entry.createdAt}>{entry.createdAt}</time>
+                    </p>
+                    {entry.assignment ? (
+                      <p className="break-all">
+                        Assigned Agent: {entry.assignment.fromAgentId ?? "Unassigned"} →{" "}
+                        {entry.assignment.toAgentId ?? "Unassigned"}
+                      </p>
+                    ) : null}
+                    {entry.severityChange ? (
+                      <div className="space-y-1 break-words">
+                        <p>
+                          Human severity change: {entry.severityChange.fromSeverity} →{" "}
+                          {entry.severityChange.toSeverity}
+                        </p>
+                        <p className="whitespace-pre-wrap">{entry.severityChange.note}</p>
+                      </div>
+                    ) : null}
+                    {entry.guardianAssessment ? (
+                      <IncidentGuardianAssessment assessment={entry.guardianAssessment} />
+                    ) : null}
+                    {entry.ruleSeverityChange ? (
+                      <p className="break-words">
+                        Deterministic rule severity change: {entry.ruleSeverityChange.fromSeverity}{" "}
+                        → {entry.ruleSeverityChange.toSeverity}. Detector{" "}
+                        {entry.ruleSeverityChange.detectorId} v
+                        {entry.ruleSeverityChange.detectorVersion}.
+                      </p>
+                    ) : null}
+                    {entry.assessment ? (
+                      <div className="space-y-2 break-words">
+                        <p className="font-medium">AI assessment: {entry.assessment.label}</p>
+                        <p className="text-sm">
+                          Model score: {entry.assessment.confidenceBasisPoints / 100} / 100. This is
+                          not a calibrated probability or a human decision.
+                        </p>
+                        <p className="whitespace-pre-wrap">{entry.assessment.summary}</p>
+                        <p className="text-sm">
+                          Reasons: {entry.assessment.reasonCodes.join(", ")}. Evidence references:{" "}
+                          {entry.assessment.evidenceDigests.length}.
+                        </p>
+                        <p className="text-sm">
+                          {entry.assessment.provenance.provider} /{" "}
+                          {entry.assessment.provenance.model} · Source observed{" "}
+                          {entry.assessment.observedAt}
+                        </p>
+                        <Link
+                          className="text-primary underline"
+                          href={`/admin/agents/runs/${entry.assessment.provenance.runId}`}
+                        >
+                          Review assessment Run
+                        </Link>
+                      </div>
+                    ) : null}
+                    {entry.segmentedAssessment ? (
+                      <div className="space-y-2 break-words">
+                        <p className="font-medium">
+                          AI assessment across batches: {entry.segmentedAssessment.label}
+                        </p>
+                        <p className="text-sm">
+                          Coverage: {entry.segmentedAssessment.segmentProviderCallIds.length} of{" "}
+                          {entry.segmentedAssessment.coverage.segmentCount} batches;{" "}
+                          {entry.segmentedAssessment.coverage.targetCount} content targets.{" "}
+                          {entry.segmentedAssessment.coverage.complete
+                            ? "All evidence in this recorded snapshot was covered."
+                            : "Evidence coverage is incomplete; an overall content verdict is not established."}
+                        </p>
+                        <p className="whitespace-pre-wrap">{entry.segmentedAssessment.summary}</p>
+                        <p className="text-sm">
+                          Model score: {entry.segmentedAssessment.confidenceBasisPoints / 100} /
+                          100. This is not a calibrated probability or authorization to act.
+                        </p>
+                        <p className="text-sm">
+                          {entry.segmentedAssessment.provenance.provider} /{" "}
+                          {entry.segmentedAssessment.provenance.model} · Source observed{" "}
+                          {entry.segmentedAssessment.observedAt}
+                        </p>
+                        <Link
+                          className="text-primary underline"
+                          href={`/admin/agents/runs/${entry.segmentedAssessment.provenance.runId}`}
+                        >
+                          Review assessment batches in Run
+                        </Link>
+                      </div>
+                    ) : null}
+                    {entry.containmentFailure ? (
+                      <div className="space-y-2">
+                        <p>
+                          Quarantine verification failed. The attempted content changes were rolled
+                          back.
+                        </p>
+                        <IncidentNotificationRecovery recovery={entry.notificationRecovery} />
+                      </div>
+                    ) : null}
+                    {entry.decision ? (
+                      <div className="space-y-1 break-words">
+                        <p>
+                          Human decision: {entry.decision.fromStatus} → {entry.decision.toStatus}
+                        </p>
+                        {entry.decision.resolutionCode ? (
+                          <p>Reason: {entry.decision.resolutionCode.replaceAll("_", " ")}</p>
+                        ) : null}
+                        <p className="whitespace-pre-wrap">{entry.decision.note}</p>
+                        {entry.decision.containmentDisposition ? (
+                          <p>
+                            Containment disposition: {entry.decision.containmentDisposition}. No
+                            automatic restoration.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-4">
+                      {entry.approvalId ? (
+                        <Link
+                          className="underline"
+                          href={`/admin/agents/approvals/${entry.approvalId}`}
+                        >
+                          Review approval
+                        </Link>
+                      ) : null}
+                      {entry.actionId ? (
+                        <Link
+                          className="underline"
+                          href={`/admin/agents/activity/actions/${entry.actionId}`}
+                        >
+                          Review action and verification
+                        </Link>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div className="flex gap-3">
+              {cursor ? (
+                <Button variant="outline" disabled={writing} onClick={() => setCursor(null)}>
+                  First timeline page
+                </Button>
+              ) : null}
+              {detail.nextTimelineCursor ? (
+                <Button
+                  variant="outline"
+                  disabled={writing}
+                  onClick={() => setCursor(detail.nextTimelineCursor)}
+                >
+                  Next timeline page
+                </Button>
+              ) : null}
+            </div>
+          </section>
+        </>
+      ) : null}
+    </AgentStudioFrame>
+  );
+}
+
+function IncidentFeedback({
+  detail,
+  disabled,
+  onWriting,
+  onSuccess,
+  onAccessLost,
+  onConflict,
+}: {
+  detail: NpAgentIncidentStudioDetailV1;
+  disabled: boolean;
+  onWriting: (value: boolean) => void;
+  onSuccess: () => void;
+  onAccessLost: (error: unknown) => void;
+  onConflict: () => void;
+}) {
+  const feedbackSignals = detail.signals.filter((signal) => signal.category === "spam");
+  const [signalId, setSignalId] = React.useState(feedbackSignals[0]?.id ?? "");
+  const [label, setLabel] = React.useState("confirmed-spam");
+  const [command, setCommand] = React.useState<NpAgentIncidentFeedbackInputV1 | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const request = React.useRef<AbortController | null>(null);
+  const blocked = useAgentRetryBlocked(failure);
+  React.useEffect(
+    () => () => {
+      request.current?.abort();
+    },
+    [],
+  );
+  const latest = detail.feedback.find(
+    (item) =>
+      item.signalId === signalId &&
+      !detail.feedback.some((later) => later.supersedesId === item.id),
+  );
+  async function submit() {
+    if (request.current || blocked || (disabled && !command)) return;
+    const controller = new AbortController();
+    request.current = controller;
+    try {
+      const next =
+        command ??
+        npRequireAgentIncidentFeedbackInputV1({
+          schemaVersion: "np.agent-incident-feedback-input.v1",
+          expectedVersion: detail.incident.versionNumber,
+          signalId,
+          label,
+          supersedesId: latest?.id ?? null,
+          idempotencyKey: crypto.randomUUID(),
+        });
+      setCommand(next);
+      setBusy(true);
+      onWriting(true);
+      setFailure(null);
+      setMessage(null);
+      await runtimeRequest(
+        `${root}/${encodeURIComponent(detail.incident.id)}/feedback`,
+        npRequireAgentRuntimeStudioMutationResultV1,
+        {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        },
+      );
+      if (controller.signal.aborted) return;
+      setCommand(null);
+      onWriting(false);
+      setMessage("Feedback recorded. No containment was executed.");
+      onSuccess();
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setFailure(error);
+      if (runtimeAccessLost(error)) {
+        onWriting(false);
+        onAccessLost(error);
+        return;
+      }
+      if (error instanceof AgentStudioApiError && error.status === 409) {
+        setCommand(null);
+        onWriting(false);
+        onConflict();
+        return;
+      }
+      if (
+        error instanceof AgentStudioApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 429
+      ) {
+        setCommand(null);
+        onWriting(false);
+        setMessage(error.message);
+      } else
+        setMessage(
+          "The feedback outcome is unconfirmed. Retry the unchanged request using the same identity.",
+        );
+    } finally {
+      request.current = null;
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+  return (
+    <section className="space-y-3" aria-labelledby="incident-feedback">
+      <h3 id="incident-feedback" className="font-semibold">
+        Human feedback
+      </h3>
+      <p className="text-sm">
+        Feedback labels a signal for review. It does not dismiss the incident, grant approval,
+        quarantine content or restore it.
+      </p>
+      <ul className="space-y-1 text-sm">
+        {detail.feedback.map((item) => (
+          <li key={item.id}>
+            {item.label} · Signal {item.signalId} · {item.createdAt}
+            {item.supersedesId ? " · Supersedes earlier feedback" : ""}
+          </li>
+        ))}
+      </ul>
+      {!detail.feedbackAvailable || feedbackSignals.length === 0 ? (
+        <p>Feedback is unavailable for this incident or your current access.</p>
+      ) : (
+        <AgentRecoveryBoundary error={failure}>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <fieldset
+              disabled={disabled || busy || command !== null}
+              className="flex flex-wrap gap-3"
+            >
+              <RuntimeSelect
+                label="Feedback signal"
+                disabled={disabled || busy || command !== null}
+                value={signalId}
+                onChange={setSignalId}
+                options={feedbackSignals.map((signal) => ({
+                  value: signal.id,
+                  label: `${signal.detectorId} · ${signal.id}`,
+                }))}
+              />
+              <RuntimeSelect
+                label="Feedback classification"
+                disabled={disabled || busy || command !== null}
+                value={label}
+                onChange={setLabel}
+                options={[
+                  { value: "confirmed-spam", label: "Confirmed spam" },
+                  { value: "false-positive", label: "False positive" },
+                ]}
+              />
+            </fieldset>
+            {latest ? (
+              <p className="text-sm">
+                Submitting will supersede the current {latest.label} label for this signal and
+                preserve its history.
+              </p>
+            ) : null}
+            <Button type="submit" disabled={busy || blocked || !signalId || (disabled && !command)}>
+              {busy
+                ? "Recording feedback…"
+                : command
+                  ? "Retry unchanged feedback"
+                  : "Record feedback"}
+            </Button>
+          </form>
+        </AgentRecoveryBoundary>
+      )}
+      {message ? <p role="status">{message}</p> : null}
+    </section>
+  );
+}

@@ -8,7 +8,7 @@ import {
   collectOpsJobsStatus,
   renderBriefOpsJobsStatus,
 } from "./ops-jobs-core.js";
-import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
+import { readCommandOption, normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 const RAW_ARGV = process.argv.slice(2);
 const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
@@ -51,28 +51,15 @@ function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
 }
 
-function readReasonArg(): string | null {
-  return readStringArg("--reason");
-}
-
-function readStringArg(name: string): string | null {
-  for (let i = 0; i < ARGV.length; i += 1) {
-    const arg = ARGV[i];
-    if (arg === name) return ARGV[i + 1] ?? null;
-    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
-  }
-  return null;
-}
-
 function readRetryStateArg(): "failed" | "cancelled" | "expired" | undefined {
-  const state = readStringArg("--state");
+  const state = readCommandOption(ARGV, "--state");
   if (state === null) return undefined;
   if (state === "failed" || state === "cancelled" || state === "expired") return state;
   throw new Error("--state must be failed, cancelled, or expired");
 }
 
 function readLimitArg(): number | undefined {
-  const raw = readStringArg("--limit");
+  const raw = readCommandOption(ARGV, "--limit");
   if (raw === null) return undefined;
   if (!/^[1-9]\d*$/u.test(raw)) throw new Error("--limit must be an integer between 1 and 500");
   const parsed = Number(raw);
@@ -100,20 +87,23 @@ async function main(): Promise<void> {
 
   const report =
     SUBCOMMAND === "pause" || SUBCOMMAND === "resume"
-      ? await applyOpsJobsPauseMutation({ action: SUBCOMMAND, reason: readReasonArg() })
+      ? await applyOpsJobsPauseMutation({
+          action: SUBCOMMAND,
+          reason: readCommandOption(ARGV, "--reason"),
+        })
       : SUBCOMMAND === "retry-all"
         ? await applyOpsJobsRetryAllMutation({
             state: readRetryStateArg(),
-            name: readStringArg("--name"),
+            name: readCommandOption(ARGV, "--name"),
             limit: readLimitArg(),
             execute: ARGV.includes("--execute"),
-            approve: readStringArg("--approve"),
+            approve: readCommandOption(ARGV, "--approve"),
           })
         : SUBCOMMAND === "drain"
           ? await applyOpsJobsDrainMutation({
               execute: ARGV.includes("--execute"),
-              approve: readStringArg("--approve"),
-              reason: readReasonArg(),
+              approve: readCommandOption(ARGV, "--approve"),
+              reason: readCommandOption(ARGV, "--reason"),
             })
           : await collectOpsJobsStatus();
   if (JSON_MODE) {

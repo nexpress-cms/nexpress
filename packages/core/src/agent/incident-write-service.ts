@@ -1,0 +1,664 @@
+import { npObserveIncidentCandidate } from "./incident-observation-service.js";
+import { getLogger } from "../observability/logger.js";
+import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
+import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
+import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
+import { npAgentModeratorFingerprintV1 } from "./moderator-detector.js";
+import { createHash } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
+import { getDb } from "../db/runtime.js";
+import {
+  npAgentActions,
+  npAgentContainments,
+  npAgentFeedback,
+  npAgentIncidents,
+  npAgentIncidentTimeline,
+  npAgentInvocations,
+  npAgentSignals,
+} from "../db/schema/agent.js";
+import {
+  npRequireAgentModeratorSignalCandidateV1,
+  type NpAgentModeratorSignalCandidateV1,
+} from "../agent-contract/moderator-contract.js";
+import {
+  npDigestAgentSignalEvidenceCanonical,
+  npRequireAgentSignalEvidenceCanonical,
+} from "../agent-contract/canonical-events.js";
+import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  canonicalBodySiteId,
+  canonicalBodyUuid,
+} from "../agent-contract/canonical-body-validation.js";
+import {
+  npRequireAgentIncidentFeedbackInputV1,
+  type NpAgentIncidentFeedbackInputV1,
+} from "../agent-contract/incident-feedback-contract.js";
+import type {
+  NpAgentJsonObject,
+  NpAgentSignalEvidenceCanonicalV1,
+} from "../agent-contract/types.js";
+import {
+  createAgentAdminAdmissionV1,
+  npResolveAgentStaffSessionAuthorizationV1,
+  NpAgentGatewayError,
+  type NpAgentAdminActorV1,
+  type NpAgentAdminExecutionResultV1,
+} from "./admin-admission.js";
+import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+
+type Db = ReturnType<typeof getDb>;
+type Incident = typeof npAgentIncidents.$inferSelect;
+type Signal = typeof npAgentSignals.$inferSelect;
+export interface NpAgentIncidentObservationResultV1 {
+  incidentId: string;
+  signalId: string;
+  versionNumber: number;
+  disposition: "created" | "correlated" | "replayed" | "suppressed";
+}
+export interface NpAgentIncidentWriteServiceOptionsV1 {
+  /** Required source-domain owner. It must validate every subject, immutable source
+   * digest and current fact under this transaction; a missing owner never accepts. */
+  resolveEvidence(input: {
+    db: Db;
+    candidate: NpAgentModeratorSignalCandidateV1;
+  }): boolean | Promise<boolean>;
+  /** Current per-target staff ACL. Absence keeps human feedback disabled. */
+  canRecordFeedback?(input: {
+    db: Db;
+    actor: NpAgentAdminActorV1;
+    incident: Incident;
+    signal: NpAgentSignalEvidenceCanonicalV1;
+  }): boolean | Promise<boolean>;
+  notifications?: Pick<NpAgentIncidentNotificationsServiceV1, "record" | "recordFailure">;
+  now?: () => Date;
+}
+export interface NpAgentIncidentContainmentEventV1 {
+  db: Db;
+  siteId: string;
+  incidentId: string;
+  actionId: string;
+  containmentId: string;
+  phase: "quarantined" | "restored";
+  auditEventId: string;
+}
+export interface NpAgentIncidentWriteServiceV1 {
+  /** Installation readiness only; feedback still checks current staff and target ACLs. */
+  readonly feedbackEnabled: boolean;
+  observe(
+    candidate: NpAgentModeratorSignalCandidateV1,
+    options?: { transaction?: Db },
+  ): Promise<NpAgentIncidentObservationResultV1>;
+  feedback(input: {
+    siteId: string;
+    incidentId: string;
+    actor: NpAgentAdminActorV1;
+    command: NpAgentIncidentFeedbackInputV1;
+  }): Promise<NpAgentAdminExecutionResultV1<NpAgentJsonObject>>;
+  appendContainmentEvent(input: NpAgentIncidentContainmentEventV1): Promise<number>;
+  appendFailedContainmentEvent(
+    input: Omit<NpAgentIncidentContainmentEventV1, "containmentId" | "phase">,
+  ): Promise<number>;
+}
+function fail(code = "INCIDENT_EVIDENCE_INVALID", status = 409): never {
+  throw new NpAgentGatewayError(code, status, "Incident operation is unavailable.");
+}
+function digest(value: unknown): string {
+  return `cj1:sha256:${createHash("sha256").update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
+}
+function signalCanonical(row: Signal): NpAgentSignalEvidenceCanonicalV1 {
+  return npRequireAgentSignalEvidenceCanonical({
+    schemaVersion: "np.agent-signal-evidence.v1",
+    siteId: row.siteId,
+    detectorId: row.detectorId,
+    detectorVersion: row.detectorVersion,
+    category: row.category,
+    window: {
+      startedAt: row.windowStartedAt.toISOString(),
+      endedAt: row.windowEndedAt.toISOString(),
+    },
+    subject: row.subject,
+    evidence: row.evidence,
+  });
+}
+async function sequence(db: Db, siteId: string, incidentId: string): Promise<number> {
+  const [row] = await db
+    .select({ maximum: sql<number>`coalesce(max(${npAgentIncidentTimeline.sequence}),0)` })
+    .from(npAgentIncidentTimeline)
+    .where(
+      and(
+        eq(npAgentIncidentTimeline.siteId, siteId),
+        eq(npAgentIncidentTimeline.incidentId, incidentId),
+      ),
+    );
+  const next = Number(row?.maximum ?? 0) + 1;
+  if (!Number.isSafeInteger(next) || next > 2147483647) fail("INCIDENT_LIMIT_REACHED");
+  return next;
+}
+async function retryFeedbackTransaction<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const cause = error as { code?: string; cause?: { code?: string } };
+      if (attempt === 2 || !["40001", "23505"].includes(cause.cause?.code ?? cause.code ?? ""))
+        throw error;
+    }
+  }
+}
+/** Host-installed deterministic ingestion; no worker, model, authority or effect is installed. */
+export function createAgentIncidentWriteServiceV1(
+  options: NpAgentIncidentWriteServiceOptionsV1,
+): NpAgentIncidentWriteServiceV1 {
+  if (typeof options.resolveEvidence !== "function")
+    throw new Error("Incident evidence owner is required.");
+  const now = options.now ?? (() => new Date());
+  const admission = createAgentAdminAdmissionV1({ now });
+  return {
+    feedbackEnabled: typeof options.canRecordFeedback === "function",
+    async observe(value, supplied = {}) {
+      npAssertAgentPreviewEffectsAllowed();
+      const candidate = npRequireAgentModeratorSignalCandidateV1(value);
+      const canonical = candidate.canonicalEvidence;
+      if (
+        (await npDigestAgentSignalEvidenceCanonical(canonical)) !== candidate.evidenceDigest ||
+        npAgentModeratorFingerprintV1({
+          siteId: canonical.siteId,
+          windowStartedAt: canonical.window.startedAt,
+          domainHash: candidate.domainHash,
+        }) !== candidate.fingerprint
+      )
+        fail();
+      return npObserveIncidentCandidate({
+        candidate,
+        resolveEvidence: (db) =>
+          options.resolveEvidence({ db, candidate: structuredClone(candidate) }),
+        now,
+        notifications: options.notifications,
+        transaction: supplied.transaction,
+      });
+    },
+    async feedback(input) {
+      npAssertAgentPreviewEffectsAllowed();
+      canonicalBodySiteId(input.siteId, "incident.siteId");
+      canonicalBodyUuid(input.incidentId, "incident.id");
+      const canRecordFeedback = options.canRecordFeedback?.bind(options);
+      if (!canRecordFeedback) fail("INCIDENT_FEEDBACK_DISABLED", 403);
+      return retryFeedbackTransaction(() =>
+        getDb().transaction(
+          (tx) =>
+            npWithAgentRuntimeControlTransactionV1(
+              input.siteId,
+              async ({ db }) => {
+                const request = npRequireAgentIncidentFeedbackInputV1(input.command);
+                const currentAuthority = await npResolveAgentStaffSessionAuthorizationV1(
+                  db,
+                  input.siteId,
+                  input.actor,
+                  now(),
+                );
+                if (!currentAuthority.authority.capabilities.includes("community.moderate"))
+                  fail("SITE_ACCESS_DENIED", 403);
+                // Idempotent replay still requires the current target owner, in addition to
+                // admission's current staff-session and site-capability check.
+                const [currentIncident] = await db
+                  .select()
+                  .from(npAgentIncidents)
+                  .where(
+                    and(
+                      eq(npAgentIncidents.siteId, input.siteId),
+                      eq(npAgentIncidents.id, input.incidentId),
+                    ),
+                  )
+                  .limit(1);
+                const [currentSignal] = await db
+                  .select()
+                  .from(npAgentSignals)
+                  .where(
+                    and(
+                      eq(npAgentSignals.siteId, input.siteId),
+                      eq(npAgentSignals.id, request.signalId),
+                      eq(npAgentSignals.incidentId, input.incidentId),
+                    ),
+                  )
+                  .limit(1);
+                if (
+                  !currentIncident ||
+                  currentIncident.category !== "spam" ||
+                  !currentSignal ||
+                  currentSignal.category !== "spam"
+                )
+                  fail("INCIDENT_NOT_FOUND", 404);
+                const currentCanonical = signalCanonical(currentSignal);
+                if (
+                  (await npDigestAgentSignalEvidenceCanonical(currentCanonical)) !==
+                    currentSignal.evidenceDigest ||
+                  (await canRecordFeedback({
+                    db: db,
+                    actor: structuredClone(input.actor),
+                    incident: structuredClone(currentIncident),
+                    signal: currentCanonical,
+                  })) !== true
+                )
+                  fail("INCIDENT_FEEDBACK_FORBIDDEN", 403);
+                return admission({
+                  db,
+                  siteId: input.siteId,
+                  actor: input.actor,
+                  operationId: "agents.incidents.feedback",
+                  targetId: input.incidentId,
+                  command: input.command,
+                  mutate: async ({ db, now: time, invocationId, command }) => {
+                    const [incident] = await db
+                      .select()
+                      .from(npAgentIncidents)
+                      .where(
+                        and(
+                          eq(npAgentIncidents.siteId, input.siteId),
+                          eq(npAgentIncidents.id, input.incidentId),
+                        ),
+                      )
+                      .for("update")
+                      .limit(1);
+                    if (!incident || incident.category !== "spam") fail("INCIDENT_NOT_FOUND", 404);
+                    if (incident.versionNumber !== command.expectedVersion)
+                      fail("INCIDENT_VERSION_CONFLICT");
+                    const [signal] = await db
+                      .select()
+                      .from(npAgentSignals)
+                      .where(
+                        and(
+                          eq(npAgentSignals.siteId, input.siteId),
+                          eq(npAgentSignals.id, command.signalId),
+                          eq(npAgentSignals.incidentId, incident.id),
+                        ),
+                      )
+                      .limit(1);
+                    if (!signal || signal.category !== "spam") fail();
+                    const canonical = signalCanonical(signal);
+                    if (
+                      (await npDigestAgentSignalEvidenceCanonical(canonical)) !==
+                        signal.evidenceDigest ||
+                      (await canRecordFeedback({
+                        db,
+                        actor: structuredClone(input.actor),
+                        incident: structuredClone(incident),
+                        signal: canonical,
+                      })) !== true
+                    )
+                      fail("INCIDENT_FEEDBACK_FORBIDDEN", 403);
+                    const currentAuthority = await npResolveAgentStaffSessionAuthorizationV1(
+                      db,
+                      input.siteId,
+                      input.actor,
+                      now(),
+                    );
+                    if (!currentAuthority.authority.capabilities.includes("community.moderate"))
+                      fail("INCIDENT_FEEDBACK_FORBIDDEN", 403);
+                    const targetFingerprint = digest({
+                      schemaVersion: "np.agent-incident-feedback-target.v1",
+                      siteId: input.siteId,
+                      incidentId: incident.id,
+                      signalId: signal.id,
+                      evidenceDigest: signal.evidenceDigest,
+                    });
+                    if (command.supersedesId === null) {
+                      const [prior] = await db
+                        .select({ id: npAgentFeedback.id })
+                        .from(npAgentFeedback)
+                        .where(
+                          and(
+                            eq(npAgentFeedback.siteId, input.siteId),
+                            eq(npAgentFeedback.targetKind, "incident"),
+                            eq(npAgentFeedback.targetFingerprint, targetFingerprint),
+                          ),
+                        )
+                        .limit(1);
+                      if (prior) fail("INCIDENT_FEEDBACK_SUPERSESSION_REQUIRED");
+                    } else {
+                      const [prior] = await db
+                        .select()
+                        .from(npAgentFeedback)
+                        .where(
+                          and(
+                            eq(npAgentFeedback.siteId, input.siteId),
+                            eq(npAgentFeedback.id, command.supersedesId),
+                            eq(npAgentFeedback.targetKind, "incident"),
+                            eq(npAgentFeedback.targetFingerprint, targetFingerprint),
+                          ),
+                        )
+                        .limit(1);
+                      const [successor] = await db
+                        .select({ id: npAgentFeedback.id })
+                        .from(npAgentFeedback)
+                        .where(
+                          and(
+                            eq(npAgentFeedback.siteId, input.siteId),
+                            eq(npAgentFeedback.supersedesId, command.supersedesId),
+                          ),
+                        )
+                        .limit(1);
+                      if (!prior || successor) fail("INCIDENT_FEEDBACK_VERSION_CONFLICT");
+                    }
+                    const [invocation] = await db
+                      .select({
+                        actorFingerprint: npAgentInvocations.actorFingerprint,
+                        auditEventId: npAgentInvocations.auditEventId,
+                      })
+                      .from(npAgentInvocations)
+                      .where(
+                        and(
+                          eq(npAgentInvocations.siteId, input.siteId),
+                          eq(npAgentInvocations.id, invocationId),
+                        ),
+                      )
+                      .limit(1);
+                    if (!invocation?.auditEventId) fail();
+                    const [feedback] = await db
+                      .insert(npAgentFeedback)
+                      .values({
+                        siteId: input.siteId,
+                        targetKind: "incident",
+                        targetId: incident.id,
+                        targetFingerprint,
+                        label: command.label,
+                        detectorId: signal.detectorId,
+                        detectorVersion: signal.detectorVersion,
+                        policyHashes: [],
+                        recordedByUserId: input.actor.user.id,
+                        actorFingerprint: invocation.actorFingerprint,
+                        supersedesId: command.supersedesId,
+                        createdAt: time,
+                      })
+                      .returning({ id: npAgentFeedback.id });
+                    if (!feedback) fail();
+                    const versionNumber = incident.versionNumber + 1;
+                    const updated = await db
+                      .update(npAgentIncidents)
+                      .set({ versionNumber, updatedAt: time })
+                      .where(
+                        and(
+                          eq(npAgentIncidents.siteId, input.siteId),
+                          eq(npAgentIncidents.id, incident.id),
+                          eq(npAgentIncidents.versionNumber, command.expectedVersion),
+                        ),
+                      )
+                      .returning({ id: npAgentIncidents.id });
+                    if (updated.length !== 1) fail("INCIDENT_VERSION_CONFLICT");
+                    await db.insert(npAgentIncidentTimeline).values({
+                      siteId: input.siteId,
+                      incidentId: incident.id,
+                      sequence: await sequence(db, input.siteId, incident.id),
+                      kind: "human_note",
+                      sourceKind: "staff",
+                      sourceId: input.actor.user.id,
+                      sourceFingerprint: invocation.actorFingerprint,
+                      signalId: signal.id,
+                      auditEventId: invocation.auditEventId,
+                      summary:
+                        command.label === "false-positive"
+                          ? "Moderator feedback: false positive."
+                          : "Moderator feedback: confirmed spam.",
+                      details: {
+                        schemaVersion: "np.agent-incident-feedback-entry.v1",
+                        feedbackId: feedback.id,
+                        label: command.label,
+                        signalId: signal.id,
+                        detectorId: signal.detectorId,
+                        detectorVersion: signal.detectorVersion,
+                        supersedesId: command.supersedesId,
+                      },
+                      createdAt: time,
+                    });
+                    return {
+                      resourceId: incident.id,
+                      output: {
+                        schemaVersion: "np.agent-incident-feedback-result.v1",
+                        incidentId: incident.id,
+                        feedbackId: feedback.id,
+                        versionNumber,
+                      },
+                    };
+                  },
+                });
+              },
+              tx as Db,
+            ),
+          { isolationLevel: "serializable" },
+        ),
+      );
+    },
+    async appendFailedContainmentEvent(input) {
+      npAssertAgentPreviewEffectsAllowed();
+      const { db, siteId, incidentId, actionId, auditEventId } = input;
+      await npWithAgentRuntimeControlTransactionV1(siteId, async () => {}, db);
+      canonicalBodySiteId(siteId, "incident.siteId");
+      for (const id of [incidentId, actionId, auditEventId])
+        canonicalBodyUuid(id, "incident.reference");
+      const [incident] = await db
+        .select()
+        .from(npAgentIncidents)
+        .where(and(eq(npAgentIncidents.siteId, siteId), eq(npAgentIncidents.id, incidentId)))
+        .for("update")
+        .limit(1);
+      if (!incident) fail();
+      const { action, execution } = await npRequireIncidentContainmentFailure(input);
+      const [existing] = await db
+        .select()
+        .from(npAgentIncidentTimeline)
+        .where(
+          and(
+            eq(npAgentIncidentTimeline.siteId, siteId),
+            eq(npAgentIncidentTimeline.incidentId, incidentId),
+            eq(npAgentIncidentTimeline.actionId, actionId),
+            eq(npAgentIncidentTimeline.kind, "action"),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        if (
+          existing.details.schemaVersion !== "np.agent-incident-containment-failure-entry.v1" ||
+          existing.auditEventId !== auditEventId ||
+          existing.details.executionInvocationId !== execution.id ||
+          existing.sourceFingerprint !== action.inputHash ||
+          existing.sourceKind !== "system" ||
+          existing.details.outcome !== "rolled_back" ||
+          existing.details.phase !== "failed" ||
+          !Number.isInteger(existing.details.transitionVersion) ||
+          Number(existing.details.transitionVersion) > incident.versionNumber ||
+          Number(existing.details.transitionVersion) < 2 ||
+          typeof existing.details.severity !== "string" ||
+          !["info", "low", "medium", "high", "critical"].includes(existing.details.severity) ||
+          typeof existing.details.status !== "string" ||
+          !["open", "investigating", "contained", "monitoring", "resolved", "dismissed"].includes(
+            existing.details.status,
+          )
+        )
+          fail();
+        return incident.versionNumber;
+      }
+      const time = now(),
+        versionNumber = incident.versionNumber + 1;
+      const updated = await db
+        .update(npAgentIncidents)
+        .set({ versionNumber, updatedAt: time })
+        .where(
+          and(
+            eq(npAgentIncidents.siteId, siteId),
+            eq(npAgentIncidents.id, incidentId),
+            eq(npAgentIncidents.versionNumber, incident.versionNumber),
+          ),
+        )
+        .returning({ id: npAgentIncidents.id });
+      if (updated.length !== 1) fail("INCIDENT_VERSION_CONFLICT");
+      const [entry] = await db
+        .insert(npAgentIncidentTimeline)
+        .values({
+          siteId,
+          incidentId,
+          sequence: await sequence(db, siteId, incidentId),
+          kind: "action",
+          sourceKind: "system",
+          sourceFingerprint: action.inputHash,
+          actionId,
+          auditEventId,
+          summary: "Content quarantine verification failed; the attempt was rolled back.",
+          details: {
+            schemaVersion: "np.agent-incident-containment-failure-entry.v1",
+            phase: "failed",
+            outcome: "rolled_back",
+            executionInvocationId: execution.id,
+            transitionVersion: versionNumber,
+            severity: incident.severity,
+            status: incident.status,
+            ...(options.notifications?.recordFailure &&
+            ["high", "critical"].includes(incident.severity)
+              ? { notificationRecoveryRequested: true }
+              : {}),
+          },
+          createdAt: time,
+        })
+        .returning({ id: npAgentIncidentTimeline.id });
+      if (!entry) fail();
+      if (options.notifications) {
+        try {
+          if (
+            options.notifications.recordFailure &&
+            ["high", "critical"].includes(incident.severity)
+          ) {
+            await db.transaction((tx) =>
+              options.notifications!.recordFailure!({
+                db: tx,
+                siteId,
+                incidentId,
+                transitionVersion: versionNumber,
+                transition: "containment_failed",
+                timelineId: entry.id,
+              }),
+            );
+          } else
+            await db.transaction((tx) =>
+              options.notifications!.record({
+                db: tx,
+                siteId,
+                incidentId,
+                transitionVersion: versionNumber,
+                transition: "containment_failed",
+                timelineId: entry.id,
+              }),
+            );
+        } catch {
+          getLogger().warn(
+            "Incident containment failure recorded; Admin notification could not be recorded.",
+          );
+        }
+      }
+      return versionNumber;
+    },
+    async appendContainmentEvent(input) {
+      npAssertAgentPreviewEffectsAllowed();
+      const { db, siteId, incidentId, actionId, containmentId, phase } = input;
+      await npWithAgentRuntimeControlTransactionV1(siteId, async () => {}, db);
+      canonicalBodySiteId(siteId, "incident.siteId");
+      for (const id of [incidentId, actionId, containmentId, input.auditEventId])
+        canonicalBodyUuid(id, "incident.reference");
+      if (phase !== "quarantined" && phase !== "restored") fail();
+      const [incident] = await db
+        .select()
+        .from(npAgentIncidents)
+        .where(and(eq(npAgentIncidents.siteId, siteId), eq(npAgentIncidents.id, incidentId)))
+        .for("update")
+        .limit(1);
+      const [action] = await db
+        .select()
+        .from(npAgentActions)
+        .where(and(eq(npAgentActions.siteId, siteId), eq(npAgentActions.id, actionId)))
+        .limit(1);
+      const [containment] = await db
+        .select()
+        .from(npAgentContainments)
+        .where(
+          and(
+            eq(npAgentContainments.siteId, siteId),
+            eq(npAgentContainments.id, containmentId),
+            eq(npAgentContainments.incidentId, incidentId),
+          ),
+        )
+        .limit(1);
+      if (
+        !incident ||
+        !action ||
+        !containment ||
+        action.containmentId !== containmentId ||
+        action.verificationState !== "passed" ||
+        !action.targetVersionDigest ||
+        (phase === "quarantined"
+          ? action.capabilityId !== "moderation.quarantine" || action.state !== "succeeded"
+          : action.capabilityId !== "moderation.restore" || action.state !== "compensated") ||
+        (phase === "quarantined"
+          ? containment.sourceActionId !== actionId || containment.state !== "active"
+          : containment.restoreActionId !== actionId || containment.state !== "restored")
+      )
+        fail();
+      if (!action.executionInvocationId) fail();
+      const [execution] = await db
+        .select({ auditEventId: npAgentInvocations.auditEventId })
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, siteId),
+            eq(npAgentInvocations.id, action.executionInvocationId),
+          ),
+        )
+        .limit(1);
+      if (execution?.auditEventId !== input.auditEventId) fail();
+      const [existing] = await db
+        .select({ id: npAgentIncidentTimeline.id })
+        .from(npAgentIncidentTimeline)
+        .where(
+          and(
+            eq(npAgentIncidentTimeline.siteId, siteId),
+            eq(npAgentIncidentTimeline.incidentId, incidentId),
+            eq(npAgentIncidentTimeline.actionId, actionId),
+            eq(npAgentIncidentTimeline.kind, "action"),
+          ),
+        )
+        .limit(1);
+      if (existing) return incident.versionNumber;
+      const time = now(),
+        versionNumber = incident.versionNumber + 1;
+      // One bounded target action does not assert the entire campaign is contained.
+      await db
+        .update(npAgentIncidents)
+        .set({ versionNumber, updatedAt: time })
+        .where(
+          and(
+            eq(npAgentIncidents.siteId, siteId),
+            eq(npAgentIncidents.id, incidentId),
+            eq(npAgentIncidents.versionNumber, incident.versionNumber),
+          ),
+        );
+      await db.insert(npAgentIncidentTimeline).values({
+        siteId,
+        incidentId,
+        sequence: await sequence(db, siteId, incidentId),
+        kind: "action",
+        sourceKind: "system",
+        sourceFingerprint: action.inputHash,
+        actionId,
+        auditEventId: input.auditEventId,
+        summary:
+          phase === "quarantined"
+            ? "Approved content quarantine installed."
+            : "Approved content quarantine restored.",
+        details: {
+          schemaVersion: "np.agent-incident-containment-entry.v1",
+          containmentId,
+          phase,
+          targetVersionDigest: action.targetVersionDigest,
+        },
+        createdAt: time,
+      });
+      return versionNumber;
+    },
+  };
+}

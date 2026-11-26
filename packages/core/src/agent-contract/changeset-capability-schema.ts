@@ -591,8 +591,25 @@ export const npAgentChangeSetListOutputSchemaV1: NpAgentJsonSchema = {
   $defs: outputDefs,
 };
 
-export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJsonSchema {
+export function npCompactAgentWireSchemaV1(
+  source: NpAgentJsonSchema,
+  options: {
+    factorShortConstraints?: boolean;
+    simplifyStringEnums?: boolean;
+    simplifyClosedRequiredObjects?: boolean;
+    inlineSingleUseDefinitions?: boolean;
+  } = {},
+): NpAgentJsonSchema {
   type Node = Record<string, unknown>;
+  function signatureOf(value: unknown): string {
+    return JSON.stringify(value, (_key, child: unknown) => {
+      if (child && typeof child === "object" && !Array.isArray(child))
+        return Object.fromEntries(
+          Object.entries(child).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        );
+      return child;
+    });
+  }
   const counts = new Map<string, { node: Node; count: number }>();
   function children(node: Node, visit: (node: Node) => Node): Node {
     const out: Node = { ...node };
@@ -609,20 +626,91 @@ export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJs
     return out;
   }
   function count(node: Node): Node {
-    const signature = JSON.stringify(node);
-    if (signature.length >= 40 && !node.$ref) {
+    const signature = signatureOf(node);
+    if ((options.factorShortConstraints || signature.length >= 40) && !node.$ref) {
       const prior = counts.get(signature);
       counts.set(signature, { node, count: (prior?.count ?? 0) + 1 });
     }
     children(node, count);
     return node;
   }
-  count(source);
+  function normalizeDialect(node: Node, inherited: unknown, root = false): Node {
+    const dialect = node.$schema ?? inherited;
+    const out = children(node, (child) => normalizeDialect(child, dialect));
+    // A closed string enum already enforces its type and any satisfied length bounds.
+    // Removing only proven redundant constraints preserves accepted wire values.
+    if (
+      options.simplifyStringEnums &&
+      ((Array.isArray(out.enum) &&
+        out.enum.length > 0 &&
+        out.enum.every((item) => typeof item === "string")) ||
+        typeof out.const === "string")
+    ) {
+      const values = typeof out.const === "string" ? [out.const] : (out.enum as string[]);
+      if (out.type === "string") delete out.type;
+      if (
+        typeof out.maxLength === "number" &&
+        values.every(
+          (value) =>
+            Array.from(value).length <= Number(out.maxLength) &&
+            value.length <= Number(out.maxLength),
+        )
+      )
+        delete out.maxLength;
+      if (
+        typeof out.minLength === "number" &&
+        values.every(
+          (value) =>
+            Array.from(value).length >= Number(out.minLength) &&
+            value.length >= Number(out.minLength),
+        )
+      )
+        delete out.minLength;
+    }
+    // A closed object whose declared properties are all required accepts exactly
+    // the same keys when its property count must equal that declared key count.
+    // This removes repeated required-name arrays without widening validation.
+    if (
+      options.simplifyClosedRequiredObjects &&
+      out.type === "object" &&
+      out.additionalProperties === false &&
+      !out.patternProperties &&
+      out.properties &&
+      typeof out.properties === "object" &&
+      !Array.isArray(out.properties) &&
+      Array.isArray(out.required)
+    ) {
+      const names = Object.keys(out.properties);
+      const required = out.required;
+      if (
+        required.length === names.length &&
+        new Set(required).size === names.length &&
+        names.every((name) => required.includes(name))
+      ) {
+        delete out.required;
+        if (names.length > 0 || typeof out.minProperties === "number")
+          out.minProperties = Math.max(
+            names.length,
+            typeof out.minProperties === "number" ? out.minProperties : 0,
+          );
+      }
+    }
+    if (!root && out.$schema === inherited) delete out.$schema;
+    return out;
+  }
+  const normalizedSource = normalizeDialect(source, undefined, true);
+  count(normalizedSource);
   const names = new Map<string, string>();
   let sequence = 0;
   const originalDefinitions = source.$defs as Node | undefined;
+  function nodeCount(value: unknown): number {
+    if (Array.isArray(value)) return 1 + value.reduce((sum, child) => sum + nodeCount(child), 0);
+    if (value && typeof value === "object")
+      return 1 + Object.values(value).reduce<number>((sum, child) => sum + 1 + nodeCount(child), 0);
+    return 1;
+  }
   for (const [signature, value] of counts)
-    if (value.count > 1) {
+    if (value.count > 1 && (value.count - 1) * nodeCount(value.node) > 3 * value.count + 1) {
       let name: string;
       do {
         name = `wireShared${(sequence++).toString()}`;
@@ -630,15 +718,132 @@ export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJs
       names.set(signature, name);
     }
   function compact(node: Node, definition = false): Node {
-    const name = names.get(JSON.stringify(node));
+    const name = names.get(signatureOf(node));
     if (name && !definition) return { $ref: `#/$defs/${name}` };
     return children(node, (child) => compact(child));
   }
-  const result = compact(source, true);
+  const result = compact(normalizedSource, true);
   const defs = { ...(result.$defs as Node) };
   for (const [signature, name] of names) defs[name] = compact(counts.get(signature)!.node, true);
+  // Collapse local definition aliases created when an imported definition and an
+  // inline schema share a body. The referenced validation constraints stay exact.
+  function collapseAliases(node: Node): Node {
+    let out = node;
+    const seen = new Set<string>();
+    while (typeof out.$ref === "string" && Object.keys(out).length === 1) {
+      const encodedName = out.$ref.match(/^#\/\$defs\/([^/]+)$/u)?.[1];
+      const name = encodedName?.replace(/~1/gu, "/").replace(/~0/gu, "~");
+      const candidate = name ? (defs[name] as Node | undefined) : undefined;
+      if (
+        !name ||
+        seen.has(name) ||
+        !candidate ||
+        Object.keys(candidate).length !== 1 ||
+        typeof candidate.$ref !== "string"
+      )
+        break;
+      seen.add(name);
+      out = candidate;
+    }
+    return children(out, collapseAliases);
+  }
+  for (const [name, definition] of Object.entries(defs))
+    defs[name] = collapseAliases(definition as Node);
+  const collapsedResult = collapseAliases(result);
+  // A repeated parent may replace every occurrence of an imported definition.
+  // Keep only definitions reachable from the composed root, including transitive
+  // references, so unused copies do not consume the unchanged schema node budget.
+  const root = { ...collapsedResult };
+  delete root.$defs;
+  const reachable = new Set<string>();
+  function visitReferences(value: unknown): void {
+    if (!value || typeof value !== "object") return;
+    if (!Array.isArray(value) && "$ref" in value && typeof value.$ref === "string") {
+      const encodedName = value.$ref.match(/^#\/\$defs\/([^/]+)/u)?.[1];
+      const name = encodedName?.replace(/~1/gu, "/").replace(/~0/gu, "~");
+      if (name && !reachable.has(name) && Object.hasOwn(defs, name)) {
+        reachable.add(name);
+        visitReferences(defs[name]);
+      }
+    }
+    for (const child of Object.values(value)) visitReferences(child);
+  }
+  visitReferences(root);
+  let compactedRoot = root;
+  let compactedDefinitions: Node = Object.fromEntries(
+    [...reachable].map((name) => [name, defs[name]]),
+  );
+  if (options.inlineSingleUseDefinitions) {
+    const referenceName = (node: Node): string | null => {
+      if (Object.keys(node).length !== 1 || typeof node.$ref !== "string") return null;
+      const encoded = node.$ref.match(/^#\/\$defs\/([^/]+)$/u)?.[1];
+      return encoded ? encoded.replace(/~1/gu, "/").replace(/~0/gu, "~") : null;
+    };
+    function references(value: unknown, counts: Map<string, number>): void {
+      if (!value || typeof value !== "object") return;
+      if (!Array.isArray(value)) {
+        const name = referenceName(value as Node);
+        if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+      for (const child of Object.values(value)) references(child, counts);
+    }
+    const depth = (value: unknown): number =>
+      !value || typeof value !== "object"
+        ? 0
+        : Math.max(0, ...Object.values(value).map((child) => 1 + depth(child)));
+    const cyclic = (origin: string): boolean => {
+      const visited = new Set<string>();
+      function reaches(name: string): boolean {
+        if (visited.has(name)) return false;
+        visited.add(name);
+        const direct = new Map<string, number>();
+        references(compactedDefinitions[name], direct);
+        return [...direct.keys()].some(
+          (child) =>
+            child === origin || (Object.hasOwn(compactedDefinitions, child) && reaches(child)),
+        );
+      }
+      return reaches(origin);
+    };
+    // Parent factoring can leave a formerly repeated child reachable only once.
+    // Remove that ref/definition overhead only when the complete JSON remains shallower
+    // than the existing limit. Cycles and shared definitions retain their references.
+    for (;;) {
+      const counts = new Map<string, number>();
+      references(compactedRoot, counts);
+      references(compactedDefinitions, counts);
+      let changed = false;
+      for (const [name, count] of counts) {
+        if (count !== 1 || !Object.hasOwn(compactedDefinitions, name) || cyclic(name)) continue;
+        const replace = (node: Node): Node =>
+          referenceName(node) === name
+            ? structuredClone(compactedDefinitions[name] as Node)
+            : children(node, replace);
+        const candidateRoot = replace(compactedRoot);
+        const candidateDefinitions = Object.fromEntries(
+          Object.entries(compactedDefinitions)
+            .filter(([key]) => key !== name)
+            .map(([key, value]) => [key, replace(value as Node)]),
+        );
+        const candidate = { ...candidateRoot, $defs: candidateDefinitions };
+        if (
+          depth(candidate) > npAgentContractLimits.jsonSchemaDepth ||
+          nodeCount(candidate) >= nodeCount({ ...compactedRoot, $defs: compactedDefinitions })
+        )
+          continue;
+        compactedRoot = candidateRoot;
+        compactedDefinitions = candidateDefinitions;
+        changed = true;
+        break;
+      }
+      if (!changed) break;
+    }
+  }
   return npRequireAgentContractResult(
-    npAnalyzeAgentJsonSchema({ ...result, $defs: defs }),
+    npAnalyzeAgentJsonSchema({
+      ...compactedRoot,
+      $defs: compactedDefinitions,
+    }),
     "Invalid approval detail schema",
   );
 }

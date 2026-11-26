@@ -5,6 +5,13 @@ Implementation based on PR #1459 squash `e7d3e664`, preserving the
 [Admin acceptance](admin-acceptance.md) contracts. No public API, permission,
 Runtime/provider activation, schema, version, changeset or lockfile changes.
 
+Current operator instructions are in the [Studio guide](../../agent-studio.md).
+The original verification below remains a dated checkpoint. Subsequent
+[success journeys](admin-success-lifecycle.md), [diagnostic recovery](agent-error-diagnostics.md),
+[read observation](studio-read-observation.md) and Health/Doctor
+[maintenance](agent-maintenance-evidence.md), [budget](agent-budget-evidence.md)
+and [worker](agent-worker-evidence.md) records extend that evidence.
+
 ## Supported presentation
 
 Activity lists and Run/Action details use a static, motion-free read skeleton,
@@ -38,17 +45,17 @@ The browser fixture uses only synthetic token material and mocked endpoints.
 
 ## Applicable state boundary
 
-| Requested state                   | Supported interpretation                                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Initial loading / refreshing      | Static skeleton, retained read-only values, explicit invalidating review refresh, background polling status.                    |
-| Empty / missing                   | Authorized empty lists remain distinct from missing or forbidden details and absent installed services.                         |
-| Stale / freshness                 | Only exact local receipt time is available. No server cache-age, freshness verdict or heartbeat is inferred.                    |
-| Partial failure                   | Independently owned Run actions, OAuth clients and existing budget/Runtime reads identify their own failure and recovery.       |
-| Contract / safe API errors        | Validated error code/message plus optional [server diagnostics](agent-error-diagnostics.md); absent metadata stays unavailable. |
-| Authentication / forbidden / 429  | Existing fail-closed clearing, login link, polling stop and exact supported Retry-After wait.                                   |
-| Conflict / mutation error         | Existing CAS/review invalidation and unchanged-request retry semantics; no fictional mutation on a read-only list.              |
-| Provider / worker / budget health | Only returned contract facts. A missing host or unknown measurement is not a synthetic health verdict.                          |
-| Incident response                 | No shipped incident route. Its future product gate is not represented by a fixture.                                             |
+| Requested state                   | Supported interpretation                                                                                                                                          |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Initial loading / refreshing      | Static skeleton, retained read-only values, explicit invalidating review refresh, background polling status.                                                      |
+| Empty / missing                   | Authorized empty lists remain distinct from missing or forbidden details and absent installed services.                                                           |
+| Stale / freshness                 | Shared [read observation](studio-read-observation.md) distinguishes receipt and existing Runtime projection times; no cache-age or freshness verdict is inferred. |
+| Partial failure                   | Independently owned Run actions, OAuth clients and existing budget/Runtime reads identify their own failure and recovery.                                         |
+| Contract / safe API errors        | Validated error code/message plus optional [server diagnostics](agent-error-diagnostics.md); absent metadata stays unavailable.                                   |
+| Authentication / forbidden / 429  | Existing fail-closed clearing, login link, polling stop and exact supported Retry-After wait.                                                                     |
+| Conflict / mutation error         | Existing CAS/review invalidation and unchanged-request retry semantics; no fictional mutation on a read-only list.                                                |
+| Provider / worker / budget health | Only returned contract facts. A missing host or unknown measurement is not a synthetic health verdict.                                                            |
+| Incident response                 | No shipped incident route. Its future product gate is not represented by a fixture.                                                                               |
 
 ## Browser and assistive-technology evidence
 
@@ -75,18 +82,74 @@ journey checks issue failure/recovery, exact retry payload, one-time disclosure,
 clipboard acknowledgement, explicit hiding, no redisclosure after refresh,
 revocation recovery and authentication-loss clearing.
 
-VoiceOver is installed on this macOS host and was not running during inspection.
+At the recorded inspection, VoiceOver was installed on the macOS host and was not running.
 Available tools provide DOM/accessibility snapshots and keyboard/UI control but
 no captured screen-reader speech stream. No actual VoiceOver announcement or
 complete human screen-reader journey was verified. A human check must record
 browser/AT versions and complete connection, activation, approval, rollback and
 applicable Gateway/token flows, including failure/recovery. Full Admin/R5 remains
-open for that evidence and unsupported server-state requirements above. Completed
+open for that evidence and the requirement boundaries in the
+[current R5 decision](r5-acceptance.md). Completed
 retention/manual-input work is not reopened.
 
 The later [assistive-technology record](admin-assistive-technology-acceptance.md)
 records environment inspection, the unresolved speech-observation gate and one
 consolidated workflow checklist. It does not replace this bundle's browser evidence.
+
+The later [Agent and policy form acceptance](admin-form-acceptance.md) covers
+keyboard draft creation, unchanged retry identity and edit conflicts in the
+shared configuration/policy form owners.
+
+## Narrow dark detail review — 2026-09-26
+
+Baseline: PR #1491 (`9f36875c`), using the existing completed production build
+(`DE30jFjBLPZTdmSKq88sy`) and isolated local E2E database. Changes after the tested
+Runtime outcome implementation were documentation only. This review reuses four
+existing synthetic browser journeys; it does not perform live activation,
+provider work, approval or rollback against operational data.
+
+Each named state below was captured and visually inspected at 320×900 and
+768×900 CSS pixels, dark mode and reduced motion. Long pages scroll vertically;
+checks found no document horizontal overflow or overlapping controls in these
+samples. Long identifiers wrap, rollback Before/After facts remain readable,
+and Budget fields switch from one to two columns.
+
+| Shared flow | Inspected states                                                                        | Existing fixture                                                                                                    |
+| ----------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Activation  | Reviewed version/trigger confirmation; returned active state and registered trigger     | `agent-runtime.spec.ts`, `Runtime activation waits for acknowledgement and readback before showing active controls` |
+| Approval    | Typed-challenge dialog; uncertain-result error; returned approved decision              | `agent-approvals.spec.ts`, `requires a typed challenge and renders only the returned decision state`                |
+| Rollback    | Prepared plan; approved decision; execute-ready ChangeSet; verified compensation result | `agent-changesets.spec.ts`, `rollback succeeds through preparation, human approval and verified compensation`       |
+| Budget      | Edited ceiling fields; proposed-change review and confirmation                          | `agent-runtime.spec.ts`, `Runtime budget and operations show unknown measurements without inventing zero`           |
+
+The initial 320px uncertain-approval capture showed only part of the confirmation
+button because the dialog content exceeded its scroll area. A follow-up used
+Tab to reach both Confirm approve and Cancel at each width, asserted each was
+inside the viewport and passed pointer actionability without clicking. Two
+additional inspected captures show the complete controls after internal scroll.
+This was not an inaccessible-control defect. The existing unchanged-request
+retry assertions still passed. No product correction was needed.
+
+Verification: the four selected journeys passed together without retries
+(30.5 seconds). The approval scroll follow-up passed separately (13.5 seconds),
+and the added execute-ready rollback capture passed separately (14.0 seconds).
+These are four distinct journeys, not six new tests. Captures were added through
+temporary local instrumentation without changing synthetic responses, existing
+assertions or product code; the three fixture sources were then restored exactly.
+No permanent test matrix or additional CI work was introduced.
+
+Artifacts: 24 inspected PNGs and a SHA-256 manifest in
+`/tmp/np-r5-detail-captures`; observation fixture copies in
+`/tmp/np-r5-detail-observation-fixtures`; logs in
+`/tmp/np-r5-detail-browser.log`, `/tmp/np-r5-detail-controls.log` and
+`/tmp/np-r5-detail-execute.log`. These local artifacts are not repository assets.
+Formatting, links and whitespace checks cover the resulting documentation.
+
+This closes the selected narrow/dark detail-review task from the R5
+reconciliation. It is not a full visual matrix, numeric contrast audit,
+actual screen-reader run or new complete R5 gate. Other historical evidence
+retains its scope; AT-01–06 remain unverified. No application rebuild, full
+workspace test, PostgreSQL integration, Redis or packed-scaffold rerun was needed
+for the documentation-only result.
 
 ## Verification
 

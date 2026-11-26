@@ -1,7 +1,6 @@
-import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
+import { npBuildAgentChangeSetCapabilityEntryV1 } from "./changeset-capability-entry.js";
 import {
   npAgentChangeSetCapabilityIdsV1,
-  npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
   npRequireAgentChangeSetCapabilityInvocationResultV1,
   type NpAgentChangeSetCapabilityIdV1,
   type NpAgentChangeSetCapabilityInvocationRequestV1,
@@ -31,33 +30,16 @@ export function createAgentChangeSetCapabilityFacadeV1(
     )
   )
     throw new Error("Invalid ChangeSet capability inventory.");
-  function freeze<T>(value: T): T {
-    if (value && typeof value === "object" && !Object.isFrozen(value)) {
-      for (const child of Object.values(value)) freeze(child);
-      Object.freeze(value);
-    }
-    return value;
-  }
-  async function buildEntry(id: NpAgentChangeSetCapabilityIdV1) {
-    const canonical = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id);
-    const definition = canonical.capabilities[0];
-    return freeze({
-      definition,
-      canonical: definition,
-      definitionCanonical: canonical,
-      capabilityFingerprint: await npDigestAgentCapabilityRegistryCanonical(
-        canonical,
-        canonical.capabilities,
-      ),
-    });
-  }
-  const entries = new Map<NpAgentChangeSetCapabilityIdV1, ReturnType<typeof buildEntry>>();
+  const entries = new Map<
+    NpAgentChangeSetCapabilityIdV1,
+    ReturnType<typeof npBuildAgentChangeSetCapabilityEntryV1>
+  >();
   return {
     ids: Object.freeze([...service.capabilityIds]),
     entry(id: NpAgentChangeSetCapabilityIdV1) {
       let cached = entries.get(id);
       if (!cached) {
-        cached = buildEntry(id);
+        cached = npBuildAgentChangeSetCapabilityEntryV1(id);
         entries.set(id, cached);
       }
       return cached;

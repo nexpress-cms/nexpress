@@ -35,7 +35,7 @@ const list = {
   cursor: null,
 };
 describe("installed framework capability projection", () => {
-  it("extends the locked reads with exactly eight ChangeSet descriptors", () => {
+  it("extends the locked reads with ChangeSet, moderation and Operator descriptors", () => {
     expect(npAgentInstalledCapabilityIdsV1).toEqual([
       "changeset.apply",
       "changeset.create",
@@ -46,8 +46,16 @@ describe("installed framework capability projection", () => {
       "changeset.schedule",
       "changeset.validate",
       "content.query",
+      "incident.get",
+      "incident.list",
+      "ops.status",
       "schema.get",
       "site.inspect",
+      "moderation.quarantine",
+      "moderation.restore",
+      "audit.run",
+      "ops.plan",
+      "ops.execute",
     ]);
     for (const id of npAgentReadCapabilityIdsV1)
       expect(npAgentInstalledCapabilityDescriptorsV1[id]).toBe(
@@ -83,7 +91,7 @@ describe("installed framework capability projection", () => {
       createHash("sha256")
         .update(JSON.stringify(npAgentInstalledCapabilityDescriptorsV1))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"d15e6aeb772154c92bda1248bb887e48d6bcfe07524418081cd473c0881440f9"`);
+    ).toMatchInlineSnapshot(`"234dba89ce7cbfc7f90a89414bcb0d3879c57bceec563841833c1f6f59df9092"`);
   });
   it("reuses the whole wire and closes every workflow object", () => {
     expect(Object.keys(npAgentChangeSetWireSchemaV1.properties as object)).toEqual(

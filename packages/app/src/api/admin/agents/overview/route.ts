@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       }),
     );
   } catch (error) {
-    return agentStudioErrorResponse(error, "read");
+    return agentStudioErrorResponse(error, "read", undefined, request);
   }
 }
 

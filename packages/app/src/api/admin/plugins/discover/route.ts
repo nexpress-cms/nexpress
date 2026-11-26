@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -48,7 +49,7 @@ interface DiscoveredPlugin {
 const REGISTRY_URL = "https://registry.npmjs.org/-/v1/search";
 const TIMEOUT_MS = 8_000;
 
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
@@ -108,3 +109,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);

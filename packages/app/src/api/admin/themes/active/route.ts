@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../lib/agents/guardian-http-observer";
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
@@ -30,7 +31,7 @@ import { ensureFor } from "../../../../lib/init-core";
  * Admin-only and CSRF-gated — this is a site-wide visual
  * change.
  */
-export async function GET(request: NextRequest) {
+async function npGuardianGET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function npGuardianPUT(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -94,3 +95,6 @@ export async function PUT(request: NextRequest) {
 export { PUT as PATCH };
 
 export const dynamic = "force-dynamic";
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
+export const PUT = npWithAgentGuardianHttpResponseV1("admin", npGuardianPUT);

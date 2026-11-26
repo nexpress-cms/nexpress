@@ -5883,174 +5883,90 @@ export function createShop(options: NpShopOptions = {}) {
                 }
               },
             },
-            resumeExchangeCarrier: {
-              kind: "action" as const,
-              handler: async (data: unknown, ctx: NpPluginContext) => {
-                try {
-                  if (ctx.actionInvocation?.kind !== "staff") {
-                    return {
-                      ok: false as const,
-                      error: "Replacement carrier reconciliation requires a direct staff action.",
-                    };
-                  }
-                  const result = await npBookShopExchangeCarrierShipment(
-                    runtime,
-                    npRequireShopExchangeCarrierExistingActionInput(data),
-                    ctx.actionInvocation.userId,
-                  );
-                  return {
-                    ok: true as const,
-                    data: `Replacement carrier booking ${result.booking.status}; shipment ${result.booking.id}.`,
-                  };
-                } catch (error) {
-                  return {
-                    ok: false as const,
-                    error: error instanceof Error ? error.message : "Unknown error",
-                  };
-                }
-              },
-            },
-            shipBookedExchange: {
-              kind: "action" as const,
-              handler: async (data: unknown, ctx: NpPluginContext) => {
-                try {
-                  if (ctx.actionInvocation?.kind !== "staff") {
-                    return {
-                      ok: false as const,
-                      error: "Replacement shipment handoff requires a direct staff action.",
-                    };
-                  }
-                  const result = await npShipBookedShopExchange(
-                    runtime,
-                    npRequireShopExchangeCarrierExistingActionInput(data),
-                    ctx.actionInvocation.userId,
-                  );
-                  return {
-                    ok: true as const,
-                    data: `Exchange shipped with ${result.carrier ?? "provider carrier"}.`,
-                  };
-                } catch (error) {
-                  return {
-                    ok: false as const,
-                    error: error instanceof Error ? error.message : "Unknown error",
-                  };
-                }
-              },
-            },
-            cancelExchangeCarrier: {
-              kind: "action" as const,
-              handler: async (data: unknown, ctx: NpPluginContext) => {
-                try {
-                  if (ctx.actionInvocation?.kind !== "staff") {
-                    return {
-                      ok: false as const,
-                      error: "Replacement carrier cancellation requires a direct staff action.",
-                    };
-                  }
-                  const result = await npCancelShopExchangeCarrierShipment(
-                    runtime,
-                    npRequireShopExchangeCarrierExistingActionInput(data),
-                    ctx.actionInvocation.userId,
-                  );
-                  return {
-                    ok: true as const,
-                    data: `Replacement carrier booking ${result.booking.status}; exchange ${result.exchange.status}.`,
-                  };
-                } catch (error) {
-                  return {
-                    ok: false as const,
-                    error: error instanceof Error ? error.message : "Unknown error",
-                  };
-                }
-              },
-            },
           }
         : {}),
-      ...(!runtime.carrierExchangeAdapter
-        ? {
-            resumeExchangeCarrier: {
-              kind: "action" as const,
-              handler: async (data: unknown, ctx: NpPluginContext) => {
-                try {
-                  if (ctx.actionInvocation?.kind !== "staff") {
-                    return {
-                      ok: false as const,
-                      error: "Replacement carrier reconciliation requires a direct staff action.",
-                    };
-                  }
-                  const result = await npBookShopExchangeCarrierShipment(
-                    runtime,
-                    npRequireShopExchangeCarrierExistingActionInput(data),
-                    ctx.actionInvocation.userId,
-                  );
-                  return {
-                    ok: true as const,
-                    data: `Replacement carrier booking ${result.booking.status}; shipment ${result.booking.id}.`,
-                  };
-                } catch (error) {
-                  return {
-                    ok: false as const,
-                    error: error instanceof Error ? error.message : "Unknown error",
-                  };
-                }
-              },
-            },
-            shipBookedExchange: {
-              kind: "action" as const,
-              handler: async (data: unknown, ctx: NpPluginContext) => {
-                try {
-                  if (ctx.actionInvocation?.kind !== "staff") {
-                    return {
-                      ok: false as const,
-                      error: "Replacement shipment handoff requires a direct staff action.",
-                    };
-                  }
-                  const result = await npShipBookedShopExchange(
-                    runtime,
-                    npRequireShopExchangeCarrierExistingActionInput(data),
-                    ctx.actionInvocation.userId,
-                  );
-                  return {
-                    ok: true as const,
-                    data: `Exchange shipped with ${result.carrier ?? "provider carrier"}.`,
-                  };
-                } catch (error) {
-                  return {
-                    ok: false as const,
-                    error: error instanceof Error ? error.message : "Unknown error",
-                  };
-                }
-              },
-            },
-            cancelExchangeCarrier: {
-              kind: "action" as const,
-              handler: async (data: unknown, ctx: NpPluginContext) => {
-                try {
-                  if (ctx.actionInvocation?.kind !== "staff") {
-                    return {
-                      ok: false as const,
-                      error: "Replacement carrier cancellation requires a direct staff action.",
-                    };
-                  }
-                  const result = await npCancelShopExchangeCarrierShipment(
-                    runtime,
-                    npRequireShopExchangeCarrierExistingActionInput(data),
-                    ctx.actionInvocation.userId,
-                  );
-                  return {
-                    ok: true as const,
-                    data: `Replacement carrier booking ${result.booking.status}; exchange ${result.exchange.status}.`,
-                  };
-                } catch (error) {
-                  return {
-                    ok: false as const,
-                    error: error instanceof Error ? error.message : "Unknown error",
-                  };
-                }
-              },
-            },
+      resumeExchangeCarrier: {
+        kind: "action" as const,
+        handler: async (data: unknown, ctx: NpPluginContext) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false as const,
+                error: "Replacement carrier reconciliation requires a direct staff action.",
+              };
+            }
+            const result = await npBookShopExchangeCarrierShipment(
+              runtime,
+              npRequireShopExchangeCarrierExistingActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true as const,
+              data: `Replacement carrier booking ${result.booking.status}; shipment ${result.booking.id}.`,
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
           }
-        : {}),
+        },
+      },
+      shipBookedExchange: {
+        kind: "action" as const,
+        handler: async (data: unknown, ctx: NpPluginContext) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false as const,
+                error: "Replacement shipment handoff requires a direct staff action.",
+              };
+            }
+            const result = await npShipBookedShopExchange(
+              runtime,
+              npRequireShopExchangeCarrierExistingActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true as const,
+              data: `Exchange shipped with ${result.carrier ?? "provider carrier"}.`,
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      cancelExchangeCarrier: {
+        kind: "action" as const,
+        handler: async (data: unknown, ctx: NpPluginContext) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false as const,
+                error: "Replacement carrier cancellation requires a direct staff action.",
+              };
+            }
+            const result = await npCancelShopExchangeCarrierShipment(
+              runtime,
+              npRequireShopExchangeCarrierExistingActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true as const,
+              data: `Replacement carrier booking ${result.booking.status}; exchange ${result.exchange.status}.`,
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+
       countFulfillments: {
         kind: "metric",
         handler: async () => {

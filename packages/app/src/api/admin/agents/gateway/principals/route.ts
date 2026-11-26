@@ -33,9 +33,14 @@ export async function GET(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    return agentStudioErrorResponse(error, "read", {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return agentStudioErrorResponse(
+      error,
+      "read",
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+      request,
+    );
   }
 }
 
@@ -53,7 +58,7 @@ export async function POST(request: NextRequest) {
     });
     return npSuccessResponse(npRequireAgentPrincipalV1(result.output), { status: 201 });
   } catch (error) {
-    return agentStudioErrorResponse(error, "mutation");
+    return agentStudioErrorResponse(error, "mutation", undefined, request);
   }
 }
 

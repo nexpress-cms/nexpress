@@ -16,6 +16,12 @@ import {
 import { npMemberSessions, npMembers } from "../db/schema/community.js";
 import { sha256 } from "./session.js";
 import { signMemberToken, verifyMemberToken, type NpMemberTokenUse } from "./member-token.js";
+import type { getDb } from "../db/runtime.js";
+import {
+  npGetGuardianSensitiveObserverV1,
+  npGuardianSensitiveMutationActorV1,
+  type NpGuardianSensitiveObservationContextV1,
+} from "../agent/guardian-sensitive-observer.js";
 
 type MemberSessionDb = NodePgDatabase<Record<string, unknown>>;
 
@@ -296,12 +302,36 @@ export async function replaceMemberPasswordAndInvalidateSessions(
   expectedPasswordHash: string,
   passwordHash: string,
   profilePatch: NpMemberPasswordProfilePatch = {},
+  observation?: NpGuardianSensitiveObservationContextV1,
 ): Promise<boolean> {
   if (expectedPasswordHash.length === 0 || passwordHash.length === 0) {
     throw new Error("Password hashes must not be empty.");
   }
   requirePasswordProfilePatch(profilePatch);
+  const observer = npGetGuardianSensitiveObserverV1(),
+    scope = { kind: "deployment" } as const,
+    actor = observer
+      ? npGuardianSensitiveMutationActorV1(observation, "auth.member-password-change")
+      : null;
   return db.transaction(async (tx) => {
+    const sourceDb = tx as unknown as ReturnType<typeof getDb>;
+    let previous: { tokenVersion: number } | undefined;
+    if (observer) {
+      await observer.prepare({ db: sourceDb, scope });
+      [previous] = await tx
+        .select({ tokenVersion: npMembers.tokenVersion })
+        .from(npMembers)
+        .where(
+          and(
+            eq(npMembers.id, memberId),
+            eq(npMembers.status, "active"),
+            eq(npMembers.password, expectedPasswordHash),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!previous) return false;
+    }
     const [updated] = await tx
       .update(npMembers)
       .set({
@@ -317,9 +347,26 @@ export async function replaceMemberPasswordAndInvalidateSessions(
           eq(npMembers.password, expectedPasswordHash),
         ),
       )
-      .returning({ id: npMembers.id });
+      .returning({ id: npMembers.id, tokenVersion: npMembers.tokenVersion });
     if (!updated) return false;
     await tx.delete(npMemberSessions).where(eq(npMemberSessions.memberId, memberId));
+    if (observer && previous && actor)
+      await observer.recordCredential({
+        db: sourceDb,
+        scope,
+        actor,
+        transitionId: randomUUID(),
+        occurredAt: new Date(),
+        transition: {
+          kind: "password-replaced",
+          audience: "member",
+          principalId: memberId,
+          purpose: "password-change",
+          previous: { tokenVersion: previous.tokenVersion },
+          current: { tokenVersion: updated.tokenVersion },
+          memberResetActivation: null,
+        },
+      });
     return true;
   });
 }

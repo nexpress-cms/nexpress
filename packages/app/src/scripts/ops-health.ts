@@ -1,7 +1,7 @@
 // Must be first so SITE_URL is available before selecting the probe URL.
 import "./_load-env.js";
 
-import { toProjectCommand } from "./ops-command-format.js";
+import { readCommandOption, toProjectCommand } from "./ops-command-format.js";
 
 interface OpsHealthJson {
   schemaVersion: "np.ops-health.v1";
@@ -54,15 +54,6 @@ Options:
 
 function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
-}
-
-function readUrlArg(argv: string[]): string | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--url") return argv[i + 1] ?? null;
-    if (arg?.startsWith("--url=")) return arg.slice("--url=".length);
-  }
-  return null;
 }
 
 function readinessUrl(origin: string): string {
@@ -139,7 +130,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const origin = readUrlArg(ARGV) ?? process.env.SITE_URL ?? "http://localhost:3000";
+  const origin =
+    readCommandOption(ARGV, "--url") ?? process.env.SITE_URL ?? "http://localhost:3000";
   const report = await probe(readinessUrl(origin));
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));

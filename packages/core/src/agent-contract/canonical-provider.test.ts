@@ -259,6 +259,26 @@ describe("Agent provider request and response canonical bodies", () => {
   });
 
   it("binds recipe tasks, tool availability, and context component limits", () => {
+    for (const task of ["moderation-classification", "interactive-capability"] as const) {
+      expect(
+        npAnalyzeAgentProviderRequestCanonical(
+          providerRequest({
+            recipe: { id: "moderator.repeated-link-spam", version: 1, fingerprint: digestA },
+            task,
+          }),
+        ).ok,
+      ).toBe(true);
+    }
+    expectIssue(
+      npAnalyzeAgentProviderRequestCanonical(
+        providerRequest({
+          recipe: { id: "moderator.repeated-link-spam", version: 1, fingerprint: digestA },
+          task: "guardian-assessment",
+        }),
+      ),
+      "invalid-field",
+      "agent.canonical.providerRequest.task",
+    );
     expectIssue(
       npAnalyzeAgentProviderRequestCanonical(
         providerRequest({

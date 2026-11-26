@@ -1,3 +1,4 @@
+import { npSiteQuotaLockExpressionV1 } from "./quota-lock.js";
 import { and, count, eq, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
@@ -90,12 +91,7 @@ async function getSiteQuotasWithDb(db: NpSiteQuotaDb, siteId: string): Promise<N
 
 /** Serialize every quota-sensitive mutation for one tenant. */
 export async function npLockSiteQuotas(db: NpSiteQuotaDb, siteId: string): Promise<void> {
-  if (!npIsCanonicalSiteId(siteId)) {
-    throw new Error("Site quota lock requires a canonical site id.");
-  }
-  await db.execute(
-    sql`select pg_advisory_xact_lock(hashtextextended(${`np:site-quota:${siteId}`}, 0))`,
-  );
+  await db.execute(sql`select ${npSiteQuotaLockExpressionV1(siteId)}`);
 }
 
 export async function getSiteQuotas(siteId?: string): Promise<NpSiteQuotas> {

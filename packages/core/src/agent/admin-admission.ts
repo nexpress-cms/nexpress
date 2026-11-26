@@ -1,4 +1,48 @@
 import {
+  npRequireAgentGuardianSessionPlanInputV1,
+  npRequireAgentGuardianSessionExecuteInputV1,
+  type NpAgentGuardianSessionPlanInputV1,
+  type NpAgentGuardianSessionExecuteInputV1,
+} from "../agent-contract/guardian-session-contract.js";
+import {
+  npRequireAgentGuardianResponsePlanInputV1,
+  npRequireAgentGuardianResponseExecuteInputV1,
+  type NpAgentGuardianResponsePlanInputV1,
+  type NpAgentGuardianResponseExecuteInputV1,
+} from "../agent-contract/guardian-response-contract.js";
+import {
+  npRequireAgentMemberResponsePlanInputV1,
+  npRequireAgentMemberResponseExecuteInputV1,
+  type NpAgentMemberResponsePlanInputV1,
+  type NpAgentMemberResponseExecuteInputV1,
+} from "../agent-contract/member-response-contract.js";
+import {
+  npRequireAgentEvaluationHistorySaveV1,
+  type NpAgentEvaluationHistorySaveV1,
+} from "../agent-contract/evaluation-history-contract.js";
+import {
+  npRequireAgentIncidentSeverityInputV1,
+  type NpAgentIncidentSeverityInputV1,
+} from "../agent-contract/incident-severity-contract.js";
+import {
+  npRequireAgentIncidentAssignmentInputV1,
+  type NpAgentIncidentAssignmentInputV1,
+} from "../agent-contract/incident-assignment-contract.js";
+import {
+  npRequireAgentIncidentResponsePlanInputV1,
+  npRequireAgentIncidentResponseExecuteInputV1,
+  type NpAgentIncidentResponsePlanInputV1,
+  type NpAgentIncidentResponseExecuteInputV1,
+} from "../agent-contract/incident-response-contract.js";
+import {
+  npRequireAgentIncidentTransitionInputV1,
+  type NpAgentIncidentTransitionInputV1,
+} from "../agent-contract/incident-workflow-contract.js";
+import {
+  npRequireAgentIncidentFeedbackInputV1,
+  type NpAgentIncidentFeedbackInputV1,
+} from "../agent-contract/incident-feedback-contract.js";
+import {
   npRequireAgentRollbackPlanCreateInputV1,
   npRequireAgentRollbackPlanRequestApprovalInputV1,
   npRequireAgentRollbackPlanExecuteInputV1,
@@ -47,7 +91,7 @@ import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundat
 import type { NpCapability } from "../auth/capabilities.js";
 import type { NpAuthUser, NpUserRole } from "../config/types.js";
 import { getDb } from "../db/runtime.js";
-import { NpError } from "../errors.js";
+import { NpAgentGatewayError } from "./gateway-error.js";
 import { npAgentInvocations } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { npSessions, npSiteMemberships, npSites, npUsers } from "../db/schema/system.js";
@@ -75,6 +119,20 @@ import {
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
+  | "agents.evaluations.review"
+  | "agents.incidents.guardian_session_plan"
+  | "agents.incidents.guardian_session_execute"
+  | "agents.incidents.guardian_response_plan"
+  | "agents.incidents.guardian_response_execute"
+  | "agents.incidents.member_response_plan"
+  | "agents.incidents.member_response_execute"
+  | "agents.incidents.response_plan"
+  | "agents.incidents.response_execute"
+  | "agents.incidents.restore"
+  | "agents.incidents.assign"
+  | "agents.incidents.escalate"
+  | "agents.incidents.transition"
+  | "agents.incidents.feedback"
   | NpAgentRuntimeAdminOperationIdV1
   | NpAgentGatewayAdminOperationIdV1
   | NpAgentConnectionAdminOperationIdV1
@@ -98,6 +156,20 @@ export type NpAgentAdmittedAdminOperationIdV1 =
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.evaluations.review": NpAgentEvaluationHistorySaveV1;
+    "agents.incidents.guardian_session_plan": NpAgentGuardianSessionPlanInputV1;
+    "agents.incidents.guardian_session_execute": NpAgentGuardianSessionExecuteInputV1;
+    "agents.incidents.guardian_response_plan": NpAgentGuardianResponsePlanInputV1;
+    "agents.incidents.guardian_response_execute": NpAgentGuardianResponseExecuteInputV1;
+    "agents.incidents.member_response_plan": NpAgentMemberResponsePlanInputV1;
+    "agents.incidents.member_response_execute": NpAgentMemberResponseExecuteInputV1;
+    "agents.incidents.response_plan": NpAgentIncidentResponsePlanInputV1;
+    "agents.incidents.response_execute": NpAgentIncidentResponseExecuteInputV1;
+    "agents.incidents.restore": NpAgentIncidentResponseExecuteInputV1;
+    "agents.incidents.assign": NpAgentIncidentAssignmentInputV1;
+    "agents.incidents.escalate": NpAgentIncidentSeverityInputV1;
+    "agents.incidents.transition": NpAgentIncidentTransitionInputV1;
+    "agents.incidents.feedback": NpAgentIncidentFeedbackInputV1;
     "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
     "agents.changesets.rollback_plans.request_approval": NpAgentRollbackPlanRequestApprovalInputV1;
     "agents.changesets.rollback_plans.execute": NpAgentRollbackPlanExecuteInputV1;
@@ -123,6 +195,35 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.incidents.guardian_session_plan")
+    return npRequireAgentGuardianSessionPlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.guardian_session_execute")
+    return npRequireAgentGuardianSessionExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.guardian_response_plan")
+    return npRequireAgentGuardianResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.guardian_response_execute")
+    return npRequireAgentGuardianResponseExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.member_response_plan")
+    return npRequireAgentMemberResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.member_response_execute")
+    return npRequireAgentMemberResponseExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.evaluations.review")
+    return npRequireAgentEvaluationHistorySaveV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.response_plan")
+    return npRequireAgentIncidentResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (
+    operationId === "agents.incidents.response_execute" ||
+    operationId === "agents.incidents.restore"
+  )
+    return npRequireAgentIncidentResponseExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.assign")
+    return npRequireAgentIncidentAssignmentInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.escalate")
+    return npRequireAgentIncidentSeverityInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.transition")
+    return npRequireAgentIncidentTransitionInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.feedback")
+    return npRequireAgentIncidentFeedbackInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (RUNTIME_ADMIN_OPERATION_IDS.has(operationId))
     return npRequireAgentRuntimeAdminInputV1(
       operationId as NpAgentRuntimeAdminOperationIdV1,
@@ -174,17 +275,7 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   ) as NpAgentAdmittedAdminInputMapV1[I];
 }
 
-export class NpAgentGatewayError extends NpError {
-  constructor(
-    code: string,
-    public readonly status: number,
-    message: string,
-    details: NpAgentJsonObject = {},
-  ) {
-    super(message, code, status, details);
-    this.name = "NpAgentGatewayError";
-  }
-}
+export { NpAgentGatewayError } from "./gateway-error.js";
 
 export interface NpAgentAdminActorV1 {
   user: NpAuthUser;
@@ -306,6 +397,37 @@ function redactedInvocationInput(
 ): NpAgentJsonObject {
   // Structured manual payloads belong only to the Run. Keep legacy goal-only
   // request bytes unchanged so existing Admin idempotency records still replay.
+  if (operationId === "agents.evaluations.review") {
+    const decision = command.decision as {
+      outcome: string;
+      notes: string;
+      editedProposalJson: string | null;
+    } | null;
+    return {
+      schemaVersion: command.schemaVersion,
+      recipe: command.recipe,
+      sourceHash: command.sourceHash,
+      expectedVersion: command.expectedVersion,
+      caseId: command.caseId,
+      caseVersion: command.caseVersion,
+      caseHash: command.caseHash,
+      predictionHash: command.predictionHash,
+      idempotencyKey: command.idempotencyKey,
+      decisionHash: sha256Canonical(
+        "np.agent-evaluation-history-decision.v1",
+        decision === null
+          ? null
+          : {
+              outcome: decision.outcome,
+              notes: decision.notes,
+              editedProposal:
+                decision.editedProposalJson === null
+                  ? null
+                  : (JSON.parse(decision.editedProposalJson) as unknown),
+            },
+      ),
+    };
+  }
   if (operationId === "agents.configurations.run" && typeof command.inputJson === "string") {
     let envelope: unknown;
     try {
@@ -662,19 +784,24 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
             actorKind: "staff",
             actorUserId: input.actor.user.id,
             action: operation.audit.eventId,
-            targetType: RUNTIME_ADMIN_OPERATION_IDS.has(input.operationId)
-              ? "agent-runtime"
-              : input.operationId.startsWith("agents.approvals.")
-                ? "agent-approval"
-                : input.operationId.startsWith("agents.changesets.")
-                  ? "agent-changeset"
-                  : input.operationId.startsWith("agents.connections.")
-                    ? "agent-connection"
-                    : input.operationId.includes("oauth_clients")
-                      ? "agent-oauth-client"
-                      : input.operationId.includes("principal_tokens")
-                        ? "agent-service-token"
-                        : "agent-principal",
+            targetType:
+              input.operationId === "agents.evaluations.review"
+                ? "agent-evaluation"
+                : RUNTIME_ADMIN_OPERATION_IDS.has(input.operationId)
+                  ? "agent-runtime"
+                  : input.operationId.startsWith("agents.approvals.")
+                    ? "agent-approval"
+                    : input.operationId.startsWith("agents.changesets.")
+                      ? "agent-changeset"
+                      : input.operationId.startsWith("agents.connections.")
+                        ? "agent-connection"
+                        : input.operationId.includes("oauth_clients")
+                          ? "agent-oauth-client"
+                          : input.operationId.startsWith("agents.incidents.")
+                            ? "agent-incident"
+                            : input.operationId.includes("principal_tokens")
+                              ? "agent-service-token"
+                              : "agent-principal",
             targetId: input.targetId,
             siteId: input.siteId,
             payload: {

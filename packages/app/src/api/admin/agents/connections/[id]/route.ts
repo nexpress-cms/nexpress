@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ),
     );
   } catch (error) {
-    return agentStudioErrorResponse(error, "read");
+    return agentStudioErrorResponse(error, "read", undefined, request);
   }
 }
 

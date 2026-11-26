@@ -1,3 +1,5 @@
+import { AgentReadObservation } from "./agent-read-observation.js";
+
 /** Read presentation only: receipt time never asserts server freshness. */
 export function AgentReadState({
   loading,
@@ -33,15 +35,7 @@ export function AgentReadState({
           <div className="h-5 w-1/2 rounded bg-neutral-100 dark:bg-neutral-900" />
         </div>
       ) : null}
-      {observedAt !== undefined ? (
-        <p className="text-xs">
-          Last received{" "}
-          <time dateTime={new Date(observedAt).toISOString()}>
-            {new Date(observedAt).toISOString()}
-          </time>
-          . Browser receipt time; refresh to check current server facts.
-        </p>
-      ) : null}
+      <AgentReadObservation receivedAt={observedAt} refreshing={refreshing} label={label} />
     </div>
   );
 }

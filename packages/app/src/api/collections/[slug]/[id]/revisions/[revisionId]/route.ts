@@ -1,10 +1,11 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../../lib/agents/guardian-http-observer";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
 import { getDocumentRevision } from "../../../../../../lib/revision-helpers";
 
-export async function GET(
+async function npGuardianGET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string; revisionId: string }> },
 ) {
@@ -18,3 +19,5 @@ export async function GET(
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("collections", npGuardianGET);

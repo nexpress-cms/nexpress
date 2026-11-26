@@ -32,7 +32,6 @@ import {
   buildPluginRouteRenderProps,
   collectThemeRoutes,
   dispatchPluginRoute,
-  dispatchPluginRouteSync,
   dispatchThemeRoute,
 } from "./route-dispatcher.js";
 
@@ -285,202 +284,13 @@ function pluginEntry(
   };
 }
 
-describe("dispatchPluginRouteSync", () => {
-  beforeEach(() => {
-    mockPageRoutes = [];
-    mockEnabledMap = new Map();
-    __resetPluginCollisionWarnings();
-  });
-
-  it("returns null when no plugin routes registered", () => {
-    expect(
-      dispatchPluginRouteSync({
-        localeAwarePath: "/anything",
-        rawPath: "/anything",
-        themeRoutes: [],
-      }),
-    ).toBeNull();
-  });
-
-  it("matches a literal plugin route", () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    expect(match?.pluginId).toBe("forum");
-    expect(match?.route.pattern).toBe("/discussions");
-    expect(match?.params).toEqual({});
-  });
-
-  it("captures :param tokens", () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions/:slug")];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/discussions/my-thread",
-      rawPath: "/discussions/my-thread",
-      themeRoutes: [],
-    });
-    expect(match?.params).toEqual({ slug: "my-thread" });
-  });
-
-  it("normalizes path without leading slash", () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    expect(
-      dispatchPluginRouteSync({
-        localeAwarePath: "discussions",
-        rawPath: "discussions",
-        themeRoutes: [],
-      }),
-    ).not.toBeNull();
-  });
-
-  it("first registered plugin wins on duplicate pattern", () => {
-    mockPageRoutes = [
-      pluginEntry("forum-a", "/discussions"),
-      pluginEntry("forum-b", "/discussions"),
-    ];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    expect(match?.pluginId).toBe("forum-a");
-  });
-
-  it("skips disabled plugins via the enabled callback", () => {
-    mockPageRoutes = [
-      pluginEntry("forum-a", "/discussions"),
-      pluginEntry("forum-b", "/discussions"),
-    ];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-      enabled: (id) => id !== "forum-a",
-    });
-    expect(match?.pluginId).toBe("forum-b");
-  });
-
-  it("returns null when path matches no registered pattern", () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    expect(
-      dispatchPluginRouteSync({
-        localeAwarePath: "/elsewhere",
-        rawPath: "/elsewhere",
-        themeRoutes: [],
-      }),
-    ).toBeNull();
-  });
-
-  it("rejects entries whose component is a primitive (defense-in-depth)", () => {
-    mockPageRoutes = [pluginEntry("bad", "/x", { component: "not-a-component" })];
-    expect(
-      dispatchPluginRouteSync({ localeAwarePath: "/x", rawPath: "/x", themeRoutes: [] }),
-    ).toBeNull();
-  });
-
-  it("preserves surface and locale fields on the match", () => {
-    mockPageRoutes = [
-      pluginEntry("forum", "/discussions/new", {
-        surface: "member",
-        locale: "none",
-      }),
-    ];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/discussions/new",
-      rawPath: "/discussions/new",
-      themeRoutes: [],
-    });
-    expect(match?.route.surface).toBe("member");
-    expect(match?.route.locale).toBe("none");
-  });
-
-  it("matches locale=auto against the locale-stripped path", () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/ko/discussions",
-      themeRoutes: [],
-    });
-    expect(match?.pluginId).toBe("forum");
-  });
-
-  it("matches locale=none only against the raw unprefixed path", () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions", { locale: "none" })];
-    expect(
-      dispatchPluginRouteSync({
-        localeAwarePath: "/discussions",
-        rawPath: "/ko/discussions",
-        themeRoutes: [],
-      }),
-    ).toBeNull();
-    expect(
-      dispatchPluginRouteSync({
-        localeAwarePath: "/discussions",
-        rawPath: "/discussions",
-        themeRoutes: [],
-      })?.pluginId,
-    ).toBe("forum");
-  });
-
-  it("matches a plugin route registered at site root '/'", () => {
-    mockPageRoutes = [pluginEntry("landing", "/")];
-    const match = dispatchPluginRouteSync({
-      localeAwarePath: "/",
-      rawPath: "/",
-      themeRoutes: [],
-    });
-    expect(match?.pluginId).toBe("landing");
-    expect(match?.params).toEqual({});
-  });
-});
-
-describe("dispatchPluginRoute (async, with enabled-gate)", () => {
-  beforeEach(() => {
-    mockPageRoutes = [];
-    mockEnabledMap = new Map();
-    __resetPluginCollisionWarnings();
-  });
-
-  it("matches when plugin is enabled (default)", async () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    const match = await dispatchPluginRoute({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    expect(match?.pluginId).toBe("forum");
-  });
-
-  it("skips disabled plugins per the gate", async () => {
-    mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    mockEnabledMap.set("forum", false);
-    const match = await dispatchPluginRoute({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    expect(match).toBeNull();
-  });
-
-  it("falls through disabled plugin to enabled one on same pattern", async () => {
-    mockPageRoutes = [
-      pluginEntry("forum-a", "/discussions"),
-      pluginEntry("forum-b", "/discussions"),
-    ];
-    mockEnabledMap.set("forum-a", false);
-    const match = await dispatchPluginRoute({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    expect(match?.pluginId).toBe("forum-b");
-  });
-});
-
-describe("dispatchPluginRoute — collision warnings", () => {
+describe("dispatchPluginRoute", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
+  const context = {
+    localeAwarePath: "/discussions",
+    rawPath: "/discussions",
+    themeRoutes: [],
+  };
 
   beforeEach(() => {
     mockPageRoutes = [];
@@ -493,71 +303,95 @@ describe("dispatchPluginRoute — collision warnings", () => {
     warnSpy.mockRestore();
   });
 
-  it("warns when a theme route shadows a plugin pattern", () => {
+  it("matches literal, parameterized, unprefixed and root paths", async () => {
+    for (const { pattern, path, params } of [
+      { pattern: "/discussions", path: "/discussions", params: {} },
+      {
+        pattern: "/discussions/:slug",
+        path: "/discussions/my-thread",
+        params: { slug: "my-thread" },
+      },
+      { pattern: "/discussions", path: "discussions", params: {} },
+      { pattern: "/", path: "/", params: {} },
+    ]) {
+      mockPageRoutes = [pluginEntry("forum", pattern)];
+      expect(
+        await dispatchPluginRoute({ ...context, localeAwarePath: path, rawPath: path }),
+        path,
+      ).toMatchObject({ pluginId: "forum", route: { pattern }, params });
+    }
+  });
+
+  it("returns null for absent routes, unmatched paths and invalid components", async () => {
+    expect(await dispatchPluginRoute(context), "no registered routes").toBeNull();
+    mockPageRoutes = [pluginEntry("forum", "/elsewhere")];
+    expect(await dispatchPluginRoute(context), "unmatched pattern").toBeNull();
+    mockPageRoutes = [pluginEntry("bad", "/discussions", { component: "not-a-component" })];
+    expect(await dispatchPluginRoute(context), "non-callable component").toBeNull();
+  });
+
+  it("uses registration order and reevaluates the enabled gate on every request", async () => {
+    mockPageRoutes = [
+      pluginEntry("forum-a", "/discussions"),
+      pluginEntry("forum-b", "/discussions"),
+    ];
+    expect((await dispatchPluginRoute(context))?.pluginId).toBe("forum-a");
+    mockEnabledMap.set("forum-a", false);
+    expect((await dispatchPluginRoute(context))?.pluginId).toBe("forum-b");
+    mockEnabledMap.set("forum-b", false);
+    expect(await dispatchPluginRoute(context)).toBeNull();
+  });
+
+  it("matches locale=auto against the locale-stripped path", async () => {
     mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    const themeRoute: NpThemeRoute = {
-      pattern: "/discussions",
-      component: StubComponent,
-    };
-    dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [themeRoute],
+    expect((await dispatchPluginRoute({ ...context, rawPath: "/ko/discussions" }))?.pluginId).toBe(
+      "forum",
+    );
+  });
+
+  it("matches locale=none only against the raw path and preserves route metadata", async () => {
+    const metadata = () => ({ title: "New discussion" });
+    mockPageRoutes = [
+      pluginEntry("forum", "/discussions", { surface: "member", locale: "none", metadata }),
+    ];
+    expect(await dispatchPluginRoute({ ...context, rawPath: "/ko/discussions" })).toBeNull();
+    expect(await dispatchPluginRoute(context)).toMatchObject({
+      pluginId: "forum",
+      route: { surface: "member", locale: "none", component: PluginStub, metadata },
     });
+  });
+
+  it("warns once when the active theme shadows a plugin pattern", async () => {
+    mockPageRoutes = [pluginEntry("forum", "/discussions")];
+    const withTheme = {
+      ...context,
+      themeRoutes: [{ pattern: "/discussions", component: StubComponent }],
+    };
+    await dispatchPluginRoute(withTheme);
+    await dispatchPluginRoute(withTheme);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain("shadowed by the active theme");
     expect(warnSpy.mock.calls[0]?.[0]).toContain("/discussions");
     expect(warnSpy.mock.calls[0]?.[0]).toContain("forum");
   });
 
-  it("warns when two plugins claim the same pattern", () => {
+  it("warns once when plugins claim the same pattern", async () => {
     mockPageRoutes = [
       pluginEntry("forum-a", "/discussions"),
       pluginEntry("forum-b", "/discussions"),
     ];
-    dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
+    await dispatchPluginRoute(context);
+    await dispatchPluginRoute(context);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain("forum-a");
     expect(warnSpy.mock.calls[0]?.[0]).toContain("forum-b");
   });
 
-  it("warns once per pattern across multiple dispatch calls", () => {
-    mockPageRoutes = [
-      pluginEntry("forum-a", "/discussions"),
-      pluginEntry("forum-b", "/discussions"),
-    ];
-    dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [],
-    });
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not warn when plugin and theme patterns differ", () => {
+  it("does not warn when plugin and theme patterns differ", async () => {
     mockPageRoutes = [pluginEntry("forum", "/discussions")];
-    const themeRoute: NpThemeRoute = {
-      pattern: "/lookbook",
-      component: StubComponent,
-    };
-    dispatchPluginRouteSync({
-      localeAwarePath: "/discussions",
-      rawPath: "/discussions",
-      themeRoutes: [themeRoute],
+    await dispatchPluginRoute({
+      ...context,
+      themeRoutes: [{ pattern: "/lookbook", component: StubComponent }],
     });
     expect(warnSpy).not.toHaveBeenCalled();
   });

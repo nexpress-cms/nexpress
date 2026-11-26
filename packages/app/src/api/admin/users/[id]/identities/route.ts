@@ -1,3 +1,4 @@
+import { npWithAgentGuardianHttpResponseV1 } from "../../../../../lib/agents/guardian-http-observer";
 import { NpForbiddenError, listUserIdentities, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -10,7 +11,7 @@ import { ensureFor } from "../../../../../lib/init-core";
  * identity reveal is sensitive (provider subjects can be used to
  * pivot back to provider accounts).
  */
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function npGuardianGET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireGlobalAuth(request);
@@ -34,3 +35,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export const GET = npWithAgentGuardianHttpResponseV1("admin", npGuardianGET);
