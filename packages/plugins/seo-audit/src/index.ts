@@ -335,6 +335,12 @@ export const seoAuditPlugin = definePlugin<SeoAuditConfig>({
       );
     },
     "render:beforePage": ({ data }) => {
+      // Normal page/post routes already emit their locale-aware canonical,
+      // description and Open Graph tags through buildPageMetadata. A second
+      // JSX contribution survives React head hoisting and can contradict the
+      // route (for example /about versus /ko/about). Keep the fallback only
+      // for custom collection hosts that do not have those metadata owners.
+      if (data.collection === "pages" || data.collection === "posts") return;
       const doc: JsonRecord = data.document;
       const input = extractInputFromDocument(doc);
       const head: Array<

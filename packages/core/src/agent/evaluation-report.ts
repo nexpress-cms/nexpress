@@ -19,6 +19,7 @@ import {
   npRequireAgentEvaluationArtifactV1,
   npCompareAgentEvaluationArtifactsV1,
   npDigestAgentEvaluationValueV1,
+  npIsAgentFixedEvaluationCategoryV1,
 } from "../agent-contract/evaluation-contract.js";
 import {
   npBuildAgentEvaluationReviewArtifactV1,
@@ -37,12 +38,17 @@ import {
 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
 import {
   npAgentEvaluationReportMaxBytesV1,
+  npAgentEvaluationReportMaxEntriesV2,
   npAgentEvaluationReportRecipesV1,
+  npReadAgentEvaluationReportDatasetV2,
   type NpAgentEvaluationReportRecipeV1,
   type NpAgentEvaluationReportEvidenceV1,
   type NpAgentEvaluationReportInputV1,
+  type NpAgentEvaluationReportInputV2,
   type NpAgentEvaluationReportRowV1,
+  type NpAgentEvaluationReportRowV2,
   type NpAgentEvaluationReportV1,
+  type NpAgentEvaluationReportV2,
 } from "../agent-contract/evaluation-report-contract.js";
 import {
   npBuildAgentModeratorEvaluationReviewArtifact,
@@ -83,16 +89,17 @@ async function evidence(
     evaluation.schemaVersion === "np.agent-eval.v1" &&
     evaluation.suite.cases.some(
       (c) =>
+        !(recipe === "moderator-assessment" && npIsAgentFixedEvaluationCategoryV1(c.category)) &&
         c.category !==
-        (recipe === "publisher-selection"
-          ? "publisher-selection"
-          : recipe === "moderator-assessment"
-            ? "moderator-assessment"
-            : recipe === "operator"
-              ? "ops-plan"
-              : recipe === "moderator-proposal"
-                ? "moderator-proposal"
-                : "publisher"),
+          (recipe === "publisher-selection"
+            ? "publisher-selection"
+            : recipe === "moderator-assessment"
+              ? "moderator-assessment"
+              : recipe === "operator"
+                ? "ops-plan"
+                : recipe === "moderator-proposal"
+                  ? "moderator-proposal"
+                  : "publisher"),
     )
   )
     fail();
@@ -113,44 +120,60 @@ async function evidence(
   if (review && !equal(review.source, evaluation)) fail();
   return { evaluation, review };
 }
-type ValidatedInput = Omit<NpAgentEvaluationReportInputV1, "entries"> & {
-  entries: {
-    recipe: NpAgentEvaluationReportRecipeV1;
-    current: NpAgentEvaluationReportEvidenceV1;
-    baseline: NpAgentEvaluationReportEvidenceV1 | null;
-  }[];
+type ValidatedEntry = {
+  recipe: NpAgentEvaluationReportRecipeV1;
+  current: NpAgentEvaluationReportEvidenceV1;
+  baseline: NpAgentEvaluationReportEvidenceV1 | null;
 };
-async function input(value: unknown): Promise<ValidatedInput> {
+function datasetIdentity(
+  evaluation: NpAgentEvaluationReportEvidenceV1["evaluation"],
+): NonNullable<NpAgentEvaluationReportRowV2["dataset"]> {
+  return npReadAgentEvaluationReportDatasetV2(evaluation) ?? fail();
+}
+async function validateEntries(
+  value: unknown,
+  schemaVersion: (NpAgentEvaluationReportInputV1 | NpAgentEvaluationReportInputV2)["schemaVersion"],
+): Promise<ValidatedEntry[]> {
   const r = record(clone(value), ["schemaVersion", "entries"]);
+  const v1 = schemaVersion === "np.agent-eval-report-input.v1";
   if (
-    r.schemaVersion !== "np.agent-eval-report-input.v1" ||
+    r.schemaVersion !== schemaVersion ||
     !Array.isArray(r.entries) ||
-    r.entries.length > npAgentEvaluationReportRecipesV1.length
+    r.entries.length >
+      (v1 ? npAgentEvaluationReportRecipesV1.length : npAgentEvaluationReportMaxEntriesV2)
   )
     fail();
   const seen = new Set<string>();
-  const entries: ValidatedInput["entries"] = [];
+  const entries: ValidatedEntry[] = [];
   for (const raw of r.entries as unknown[]) {
     const entry = record(raw, ["recipe", "current", "baseline"]);
     const recipe = npAgentEvaluationReportRecipesV1.find((recipe) => recipe === entry.recipe);
-    if (!recipe || seen.has(recipe)) return fail();
-    seen.add(recipe);
+    if (!recipe || (v1 && seen.has(recipe))) return fail();
+    const current = await evidence(recipe, entry.current);
+    const key = v1 ? recipe : JSON.stringify([recipe, datasetIdentity(current.evaluation)]);
+    if (seen.has(key)) return fail();
+    seen.add(key);
     entries.push({
       recipe,
-      current: await evidence(recipe, entry.current),
+      current,
       baseline: entry.baseline === null ? null : await evidence(recipe, entry.baseline),
     });
   }
-  entries.sort(
-    (a, b) =>
+  entries.sort((a, b) => {
+    const recipeOrder =
       npAgentEvaluationReportRecipesV1.indexOf(a.recipe) -
-      npAgentEvaluationReportRecipesV1.indexOf(b.recipe),
-  );
-  return { schemaVersion: "np.agent-eval-report-input.v1", entries };
+      npAgentEvaluationReportRecipesV1.indexOf(b.recipe);
+    if (recipeOrder || v1) return recipeOrder;
+    const left = datasetIdentity(a.current.evaluation);
+    const right = datasetIdentity(b.current.evaluation);
+    if (left.id === right.id) return left.version - right.version;
+    return left.id < right.id ? -1 : 1;
+  });
+  return entries;
 }
 async function row(
   recipe: NpAgentEvaluationReportRecipeV1,
-  entry: ValidatedInput["entries"][number] | undefined,
+  entry: ValidatedEntry | undefined,
 ): Promise<NpAgentEvaluationReportRowV1> {
   if (!entry)
     return {
@@ -253,52 +276,93 @@ async function row(
     reviewComparison,
   };
 }
-/** Offline validation and projection only; never invokes a provider or grants authority. */
-export async function npBuildAgentEvaluationReportV1(
-  value: unknown,
-): Promise<NpAgentEvaluationReportV1> {
-  const source = await input(value);
-  const rows: NpAgentEvaluationReportRowV1[] = [];
-  for (const recipe of npAgentEvaluationReportRecipesV1.filter(
+function reportRecipes(entries: ValidatedEntry[]) {
+  return npAgentEvaluationReportRecipesV1.filter(
     (recipe) =>
       !["moderator-assessment", "publisher-selection", "guardian"].includes(recipe) ||
-      source.entries.some((entry) => entry.recipe === recipe),
-  ))
-    rows.push(
-      await row(
-        recipe,
-        source.entries.find((e) => e.recipe === recipe),
-      ),
-    );
-  const body = {
-    schemaVersion: "np.agent-eval-report.v1" as const,
-    authority: "offline-evidence-no-approval" as const,
-    input: source,
-    rows,
+      entries.some((entry) => entry.recipe === recipe),
+  );
+}
+function reportClaims(entries: ValidatedEntry[], metricsScope: "Recipe" | "Dataset") {
+  return {
     fullR6: "not-established" as const,
     modelUsefulness: "not-established" as const,
     limitations: [
       "Fixture/schema gates cover bounded synthetic checks; provider mode does not establish real-model usefulness.",
       "Offline reviews are self-reported, retain unreviewed coverage, and grant no live approval or activation.",
       "Missing review files display eligibility and unreviewed counts derived from an empty review; no review artifact or labels are fabricated.",
-      "Recipe metrics are not pooled. Review deltas use only the owner's matched reviewed cohort.",
+      `${metricsScope} metrics are not pooled. Review deltas use only the owner's matched reviewed cohort.`,
       "Production shadow, operational acceptance, and the full R6 acceptance gate remain separate.",
       moderatorLimitation,
-      ...(source.entries.some((entry) => entry.recipe === "guardian")
+      ...(entries.some((entry) => entry.recipe === "guardian")
         ? [
             "Guardian is a versioned synthetic reference baseline, not production rule replay. Its synthetic intent controls do not establish production attack precision, model usefulness, current authority, approval binding, throughput or enablement. Required live checks remain not run. Full R6 retains its existing scope; Guardian acceptance is separate.",
           ]
         : []),
     ],
   };
+}
+/** Offline validation and projection only; never invokes a provider or grants authority. */
+export async function npBuildAgentEvaluationReportV1(
+  value: unknown,
+): Promise<NpAgentEvaluationReportV1> {
+  const schemaVersion = "np.agent-eval-report-input.v1";
+  const entries = await validateEntries(value, schemaVersion);
+  const rows: NpAgentEvaluationReportRowV1[] = [];
+  for (const recipe of reportRecipes(entries))
+    rows.push(
+      await row(
+        recipe,
+        entries.find((entry) => entry.recipe === recipe),
+      ),
+    );
+  const body: Omit<NpAgentEvaluationReportV1, "artifactHash"> = {
+    schemaVersion: "np.agent-eval-report.v1",
+    authority: "offline-evidence-no-approval",
+    input: { schemaVersion, entries },
+    rows,
+    ...reportClaims(entries, "Recipe"),
+  };
   const artifact = { ...body, artifactHash: await npDigestAgentEvaluationValueV1(body) };
   clone(artifact);
   return artifact;
 }
-export async function npRequireAgentEvaluationReportV1(
+export async function npBuildAgentEvaluationReportV2(
   value: unknown,
-): Promise<NpAgentEvaluationReportV1> {
-  const r = record(clone(value), [
+): Promise<NpAgentEvaluationReportV2> {
+  const schemaVersion = "np.agent-eval-report-input.v2";
+  const entries = await validateEntries(value, schemaVersion);
+  const rows: NpAgentEvaluationReportRowV2[] = [];
+  for (const recipe of reportRecipes(entries)) {
+    const datasets = entries.filter((entry) => entry.recipe === recipe);
+    if (!datasets.length) rows.push({ ...(await row(recipe, undefined)), dataset: null });
+    for (const entry of datasets)
+      rows.push({
+        ...(await row(recipe, entry)),
+        dataset: datasetIdentity(entry.current.evaluation),
+      });
+  }
+  const body: Omit<NpAgentEvaluationReportV2, "artifactHash"> = {
+    schemaVersion: "np.agent-eval-report.v2",
+    authority: "offline-evidence-no-approval",
+    input: { schemaVersion, entries },
+    rows,
+    ...reportClaims(entries, "Dataset"),
+  };
+  const artifact = { ...body, artifactHash: await npDigestAgentEvaluationValueV1(body) };
+  clone(artifact);
+  return artifact;
+}
+export async function npBuildAgentEvaluationReport(
+  input: NpAgentEvaluationReportInputV1 | NpAgentEvaluationReportInputV2,
+): Promise<NpAgentEvaluationReportV1 | NpAgentEvaluationReportV2> {
+  const version = Object.getOwnPropertyDescriptor(input, "schemaVersion")?.value;
+  return version === "np.agent-eval-report-input.v2"
+    ? npBuildAgentEvaluationReportV2(input)
+    : npBuildAgentEvaluationReportV1(input);
+}
+function reportRecord(value: unknown) {
+  return record(clone(value), [
     "schemaVersion",
     "authority",
     "input",
@@ -308,6 +372,19 @@ export async function npRequireAgentEvaluationReportV1(
     "limitations",
     "artifactHash",
   ]);
+}
+export async function npRequireAgentEvaluationReportV2(
+  value: unknown,
+): Promise<NpAgentEvaluationReportV2> {
+  const r = reportRecord(value);
+  const actual = await npBuildAgentEvaluationReportV2(r.input);
+  if (!equal(actual, r)) fail();
+  return actual;
+}
+export async function npRequireAgentEvaluationReportV1(
+  value: unknown,
+): Promise<NpAgentEvaluationReportV1> {
+  const r = reportRecord(value);
   const actual = await npBuildAgentEvaluationReportV1(r.input);
   if (equal(actual, r)) return actual;
   // Reports written before the proposal row retain their original exact projection.

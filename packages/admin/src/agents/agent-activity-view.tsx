@@ -7,10 +7,13 @@ import {
   npAgentActionStates,
   npAgentCapabilityIds,
   npAgentPrincipalStatusesV1,
+  npAgentRecipeTemplates,
+  npAgentRecipeTriggerKinds,
   npAgentRunStates,
   npAnalyzeAgentActivityActionsPageV1,
   npAnalyzeAgentActivityPrincipalsPageV1,
   npAnalyzeAgentActivityRunsPageV1,
+  npBuildAgentActivityRunSupportBundleV1,
   npRequireAgentActivityActionDetailV1,
   npRequireAgentActivityRunResourceV1,
   npRequireAgentContractResult,
@@ -19,6 +22,10 @@ import {
   type NpAgentActivityKindV1,
   type NpAgentActivityPrincipalsPageV1,
   type NpAgentActivityRunsPageV1,
+  type NpAgentActivityRunLinksV1,
+  type NpAgentActivityRunResourceV1,
+  type NpAgentActivityRuntimeDiagnosticsV1,
+  type NpAgentActivityRuntimeOperationV1,
   type NpAgentOperatorReviewV1,
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
@@ -335,20 +342,21 @@ function EvidenceNotice({ evidence }: { evidence: "redacted" | "expired" }) {
   );
 }
 
-function EmptyActivity({ section }: { section: NpAgentActivityKindV1 }) {
+function EmptyActivity({ section, hasMore }: { section: NpAgentActivityKindV1; hasMore: boolean }) {
   return (
     <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
       <p className="min-w-0 break-words text-[14px] font-medium [overflow-wrap:anywhere]">
-        {section === "runs"
-          ? "No Agent runs match these filters."
-          : section === "actions"
-            ? "No Agent actions match these filters."
-            : "No principals match these filters."}
+        {hasMore
+          ? "No visible results on this page."
+          : section === "runs"
+            ? "No Agent runs match these filters."
+            : section === "actions"
+              ? "No Agent actions match these filters."
+              : "No principals match these filters."}
       </p>
-      {section === "runs" ? (
+      {section === "runs" && !hasMore ? (
         <p className="mt-2 text-[12.5px] text-neutral-500">
-          Current read capabilities execute inline. Their activity appears under Actions without
-          creating a run.
+          Gateway operations that execute inline appear under Actions.
         </p>
       ) : null}
       <Button asChild size="sm" variant="ghost" className="mt-3">
@@ -454,6 +462,87 @@ function ActivityFilters({
             />
           </div>
         )}
+        {section === "runs" ? (
+          <>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-query">Search by ID, recipe, or operation</Label>
+              <Input
+                id="activity-query"
+                name="q"
+                maxLength={128}
+                defaultValue={query.get("q") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-template">Agent template</Label>
+              <select
+                id="activity-template"
+                name="template"
+                defaultValue={query.get("template") ?? ""}
+                className={selectClass}
+              >
+                <option value="">All templates</option>
+                {npAgentRecipeTemplates.map((template) => (
+                  <option key={template} value={template}>
+                    {template}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-agent">Agent ID</Label>
+              <Input
+                id="activity-agent"
+                name="agentId"
+                maxLength={36}
+                defaultValue={query.get("agentId") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-trigger">Trigger kind</Label>
+              <select
+                id="activity-trigger"
+                name="triggerKind"
+                defaultValue={query.get("triggerKind") ?? ""}
+                className={selectClass}
+              >
+                <option value="">All trigger kinds</option>
+                {npAgentRecipeTriggerKinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-approval">Approval ID</Label>
+              <Input
+                id="activity-approval"
+                name="approvalId"
+                maxLength={36}
+                defaultValue={query.get("approvalId") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-changeset">ChangeSet ID</Label>
+              <Input
+                id="activity-changeset"
+                name="changeSetId"
+                maxLength={36}
+                defaultValue={query.get("changeSetId") ?? ""}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="activity-incident">Incident ID</Label>
+              <Input
+                id="activity-incident"
+                name="incidentId"
+                maxLength={36}
+                defaultValue={query.get("incidentId") ?? ""}
+              />
+            </div>
+          </>
+        ) : null}
         {section === "actions" ? (
           <div className="grid gap-1.5">
             <Label htmlFor="activity-run">Run ID</Label>
@@ -632,13 +721,15 @@ function Pagination({
   queryString: string;
   nextCursor: string | null;
 }) {
-  const next = new URLSearchParams(queryString);
-  if (nextCursor) next.set("cursor", nextCursor);
   const first = new URLSearchParams(queryString);
+  const hasCursor = first.has("cursor");
+  if (!hasCursor && !nextCursor) return null;
+  const next = new URLSearchParams(first);
+  if (nextCursor) next.set("cursor", nextCursor);
   first.delete("cursor");
   return (
     <div className="flex justify-between gap-3">
-      {new URLSearchParams(queryString).has("cursor") ? (
+      {hasCursor ? (
         <Button asChild variant="outline" size="sm">
           <Link href={activityHref(section, first.toString())}>
             <ArrowLeft className="size-3.5" />
@@ -722,18 +813,14 @@ export function AgentActivityView({
           />
         ) : null}
         {page ? (
-          page.items.length ? (
-            <>
+          <>
+            {page.items.length ? (
               <PageRows page={page} />
-              <Pagination
-                section={section}
-                queryString={queryString}
-                nextCursor={page.nextCursor}
-              />
-            </>
-          ) : (
-            <EmptyActivity section={section} />
-          )
+            ) : (
+              <EmptyActivity section={section} hasMore={Boolean(page.nextCursor)} />
+            )}
+            <Pagination section={section} queryString={queryString} nextCursor={page.nextCursor} />
+          </>
         ) : null}
       </AgentStudioFrame>
     </AgentRecoveryBoundary>
@@ -746,6 +833,147 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
       <dt className="text-[11.5px] text-neutral-500">{label}</dt>
       <dd className="mt-1 break-words text-[13px] [overflow-wrap:anywhere]">{children}</dd>
     </div>
+  );
+}
+
+const triggerLabels = { manual: "Manual", schedule: "Scheduled", event: "Event" };
+const policyLabels = {
+  "agent-policy": "Agent policy",
+  "site-policy": "Site policy",
+  "feature-setting": "Feature settings",
+  framework: "Framework rules",
+};
+const dispatchLabels = {
+  "not-dispatched": "Not dispatched",
+  dispatched: "Dispatched",
+  unknown: "Dispatch unconfirmed",
+};
+const usageSourceLabels = { provider: "Provider reported", "adapter-estimate": "Adapter estimate" };
+
+function RunDiagnostics({
+  diagnostics,
+}: {
+  diagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
+}) {
+  const trigger = diagnostics?.trigger;
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle className="text-[15px]">Runtime diagnostics</CardTitle>
+      </CardHeader>
+      <CardContent className="min-w-0 space-y-4">
+        {diagnostics ? (
+          <>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <Fact label="Trigger">
+                {trigger ? (
+                  <>
+                    {triggerLabels[trigger.kind]} · {trigger.id}
+                  </>
+                ) : (
+                  "No registered trigger recorded"
+                )}
+              </Fact>
+              {trigger?.eventKind ? <Fact label="Event kind">{trigger.eventKind}</Fact> : null}
+              {trigger?.scheduledFor ? (
+                <Fact label="Scheduled occurrence">
+                  <ActivityTime value={trigger.scheduledFor} />
+                </Fact>
+              ) : null}
+              {diagnostics.retryAt ? (
+                <Fact label="Retry eligible at">
+                  <ActivityTime value={diagnostics.retryAt} />
+                </Fact>
+              ) : null}
+            </dl>
+            <section aria-labelledby="run-admission-policies" className="space-y-2">
+              <h3 id="run-admission-policies" className="text-sm font-semibold">
+                Policies at admission
+              </h3>
+              {diagnostics.policyRefs?.length ? (
+                <ul className="space-y-2">
+                  {diagnostics.policyRefs.map((policy) => (
+                    <li
+                      key={`${policy.kind}:${policy.id}:${policy.version}:${policy.digest}`}
+                      className="break-words text-sm [overflow-wrap:anywhere]"
+                    >
+                      <p>
+                        {policyLabels[policy.kind]} · version {policy.version}
+                      </p>
+                      {policy.id ? <p>{policy.id}</p> : null}
+                      <p className="font-mono text-xs">{policy.digest}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm">
+                  {diagnostics.policyRefs
+                    ? "No policy references recorded."
+                    : "Policy references are unavailable."}
+                </p>
+              )}
+            </section>
+            <h3 className="text-sm font-semibold">Provider calls</h3>
+            {diagnostics.providerCalls.length ? (
+              <ol className="space-y-3">
+                {diagnostics.providerCalls.map((call) => (
+                  <li className="min-w-0 space-y-2 rounded-lg border p-3" key={call.sequence}>
+                    <h4 className="break-words text-sm font-medium [overflow-wrap:anywhere]">
+                      Call {call.sequence} · {call.provider} / {call.model}
+                    </h4>
+                    <p className="text-sm">
+                      <StateBadge state={call.state} /> · {dispatchLabels[call.dispatchState]}
+                      {call.errorClass ? ` · ${call.errorClass}` : ""}
+                    </p>
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <Fact label="Latency">
+                        {call.latencyMs === null ? "Unavailable" : `${call.latencyMs} ms`}
+                      </Fact>
+                      {call.startedAt ? (
+                        <Fact label="Started">
+                          <ActivityTime value={call.startedAt} />
+                        </Fact>
+                      ) : null}
+                      {call.finishedAt ? (
+                        <Fact label="Finished">
+                          <ActivityTime value={call.finishedAt} />
+                        </Fact>
+                      ) : null}
+                      {call.usage ? (
+                        <>
+                          <Fact label="Tokens · input / cached input / output">
+                            {call.usage.inputTokens} / {call.usage.cachedInputTokens} /{" "}
+                            {call.usage.outputTokens} · {usageSourceLabels[call.usage.tokenSource]}
+                          </Fact>
+                          <Fact label="Cost (USD micros)">
+                            {call.usage.costMicros} · {usageSourceLabels[call.usage.costSource]}
+                          </Fact>
+                        </>
+                      ) : (
+                        <Fact label="Usage">
+                          {call.dispatchState === "not-dispatched"
+                            ? "No dispatch recorded"
+                            : "Unknown"}
+                        </Fact>
+                      )}
+                    </dl>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-sm">No provider calls retained for this run.</p>
+            )}
+            {diagnostics.moreProviderCalls ? (
+              <p className="text-sm">
+                Showing the {diagnostics.providerCalls.length} most recent retained calls.
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-sm">Runtime diagnostics are unavailable.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -800,6 +1028,163 @@ function RunActions({ runId }: { runId: string }) {
   );
 }
 
+function RuntimeOperationActivity({
+  operations,
+}: {
+  operations: NpAgentActivityRuntimeOperationV1[];
+}) {
+  if (!operations.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-[15px]">Runtime operation requests</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-3 text-[13px]">
+          {operations.map((item) => {
+            const retry = item.operation === "agent.run.retry";
+            if ("approvalId" in item)
+              return (
+                <li key={item.approvalId} className="space-y-1">
+                  <p>
+                    {item.state === "pending" ? "Awaiting human approval" : "Approval recorded"} ·
+                    Expires <ActivityTime value={item.expiresAt} />
+                  </p>
+                  <Link
+                    className="underline"
+                    prefetch={false}
+                    href={`/admin/agents/approvals/${encodeURIComponent(item.approvalId)}`}
+                  >
+                    {retry ? "Review retry request" : "Review cancellation request"}
+                  </Link>
+                </li>
+              );
+            if (!("actionId" in item))
+              return (
+                <li key={`${item.operation}:${item.state}`} className="space-y-1">
+                  <p>
+                    {retry ? "Retry" : "Cancellation"} ·{" "}
+                    {item.state === "reserved"
+                      ? "Awaiting dispatch"
+                      : item.state === "dispatching"
+                        ? "Dispatch started"
+                        : "Outcome unconfirmed"}
+                  </p>
+                  {item.state !== "reserved" ? (
+                    <p>Check the recorded outcome before requesting another operation.</p>
+                  ) : null}
+                </li>
+              );
+            return (
+              <li key={item.actionId} className="space-y-1">
+                <p>
+                  {item.state === "succeeded"
+                    ? retry
+                      ? "Retry Run created"
+                      : "Cancellation confirmed"
+                    : `${retry ? "Retry" : "Cancellation"} · ${item.state === "failed" ? "Execution failed" : "Execution conflict"}`}
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {"resultRunId" in item ? (
+                    <Link
+                      className="underline"
+                      prefetch={false}
+                      href={`/admin/agents/activity/${encodeURIComponent(item.resultRunId)}`}
+                    >
+                      Open retry Run
+                    </Link>
+                  ) : null}
+                  <Link
+                    className="underline"
+                    prefetch={false}
+                    href={`/admin/agents/activity/actions/${encodeURIComponent(item.actionId)}`}
+                  >
+                    {retry ? "Review retry execution" : "Review cancellation execution"}
+                  </Link>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RelatedRunRecords({ related }: { related: NpAgentActivityRunLinksV1 }) {
+  const groups = [
+    { name: "Incident", path: "incidents", ids: related.incidentIds },
+    { name: "Approval", path: "approvals", ids: related.approvalIds },
+    { name: "ChangeSet", path: "changesets", ids: related.changeSetIds },
+  ];
+  if (!groups.some(({ ids }) => ids.length)) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-[15px]">Related records</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2 break-all text-[13px]">
+          {groups.flatMap(({ name, path, ids }) =>
+            ids.map((id) => (
+              <li key={`${path}/${id}`}>
+                <Link
+                  className="underline"
+                  prefetch={false}
+                  href={`/admin/agents/${path}/${encodeURIComponent(id)}`}
+                >
+                  {name} {id}
+                </Link>
+              </li>
+            )),
+          )}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunSupportBundle({
+  detail,
+  disabled,
+}: {
+  detail: NpAgentActivityRunResourceV1;
+  disabled: boolean;
+}) {
+  const [status, setStatus] = React.useState<"idle" | "copied" | "failed">("idle");
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(npBuildAgentActivityRunSupportBundleV1(detail), null, 2),
+      );
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={disabled}
+        onClick={() => void copy()}
+      >
+        Copy support bundle
+      </Button>
+      <p role="status" className="text-[13px]">
+        {status === "copied"
+          ? "Support bundle copied."
+          : status === "failed"
+            ? "Could not copy. Try again."
+            : ""}
+      </p>
+    </div>
+  );
+}
+
 export function AgentActivityRunDetailView({ runId }: { runId: string }) {
   const resource = useActivity(
     `${apiPaths.runs}/${encodeURIComponent(runId)}`,
@@ -838,6 +1223,9 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
           observedAt={resource.observedAt}
         />
         {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
+        {resource.value && !resource.error ? (
+          <RunSupportBundle detail={resource.value} disabled={resource.loading} />
+        ) : null}
         {expired ? (
           <Card>
             <CardHeader>
@@ -916,12 +1304,30 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
                     </>
                   ) : null}
                   <Fact label="Parent run">{run.parentRunId ?? "None"}</Fact>
+                  {detail.runtimeRetrySourceRunId ? (
+                    <Fact label="Retry source">
+                      <Link
+                        className="underline"
+                        prefetch={false}
+                        href={`/admin/agents/activity/${encodeURIComponent(detail.runtimeRetrySourceRunId)}`}
+                      >
+                        Open original Run
+                      </Link>
+                    </Fact>
+                  ) : null}
                   <Fact label="Deadline">
                     <ActivityTime value={run.deadlineAt} />
                   </Fact>
                 </dl>
               </CardContent>
             </Card>
+            {detail.related ? <RelatedRunRecords related={detail.related} /> : null}
+            {detail.runtimeOperations ? (
+              <RuntimeOperationActivity operations={detail.runtimeOperations} />
+            ) : null}
+            {run.origin === "runtime" ? (
+              <RunDiagnostics diagnostics={detail.runtimeDiagnostics} />
+            ) : null}
             <Card>
               <CardHeader>
                 <CardTitle className="text-[15px]">Recorded timeline</CardTitle>
@@ -1075,7 +1481,16 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                   <Fact label="Effect">
                     {action.effectProfile.id} v{action.effectProfile.contractVersion}
                   </Fact>
-                  <Fact label="Verification">{action.verificationState ?? "Not applicable"}</Fact>
+                  <Fact label="Verification">
+                    {detail.verificationResult?.state ??
+                      action.verificationState ??
+                      "No result recorded"}
+                  </Fact>
+                  {detail.verificationResult?.completedAt ? (
+                    <Fact label="Verification completed">
+                      <ActivityTime value={detail.verificationResult.completedAt} />
+                    </Fact>
+                  ) : null}
                   <Fact label="Created">
                     <ActivityTime value={action.createdAt} />
                   </Fact>
@@ -1086,7 +1501,30 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                     <ActivityTime value={action.finishedAt} />
                   </Fact>
                   <Fact label="Required scopes">{action.requiredScopes.join(", ")}</Fact>
-                  <Fact label="Approval">{action.approvalId ?? "None recorded"}</Fact>
+                  <Fact label="Approval">
+                    {action.approvalId ? (
+                      <Link
+                        className="underline"
+                        prefetch={false}
+                        href={`/admin/agents/approvals/${encodeURIComponent(action.approvalId)}`}
+                      >
+                        Open approval
+                      </Link>
+                    ) : (
+                      "None recorded"
+                    )}
+                  </Fact>
+                  {detail.changeSetId ? (
+                    <Fact label="ChangeSet">
+                      <Link
+                        className="underline"
+                        prefetch={false}
+                        href={`/admin/agents/changesets/${encodeURIComponent(detail.changeSetId)}`}
+                      >
+                        Open ChangeSet
+                      </Link>
+                    </Fact>
+                  ) : null}
                   <Fact label="Safe error">{action.errorCode ?? "None"}</Fact>
                 </dl>
               </CardContent>
@@ -1099,6 +1537,9 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <Fact label="Input hash">{detail.inputHash}</Fact>
                   <Fact label="Output hash">{detail.outputHash ?? "Not recorded"}</Fact>
+                  {detail.verificationResult?.digest ? (
+                    <Fact label="Verification hash">{detail.verificationResult.digest}</Fact>
+                  ) : null}
                   <Fact label="Proposal hash">{action.proposalHash}</Fact>
                   <Fact label="Capability fingerprint">{action.capabilityFingerprint}</Fact>
                   <Fact label="Audit reference">{detail.auditEventId ?? "Not recorded"}</Fact>

@@ -18,6 +18,8 @@ import { SocialLinks } from "./social-links.js";
  * two columns at ~800px and to one column at ~480px (CSS-driven,
  * no JS). The bottom row carries the copyright and a small set
  * of secondary links (RSS / Sitemap / Privacy / Colophon).
+ * Navigation and supplemental pages are loaded when followed, keeping the
+ * current page independent of speculative destination requests.
  */
 const FALLBACK_SITE_NAME = "Equilibrium";
 
@@ -31,7 +33,7 @@ export async function DefaultFooter() {
       <div className="np-site-footer-inner">
         <div className="np-site-footer-grid">
           <section className="np-site-footer-col np-site-footer-brand">
-            <Link href="/" className="np-site-footer-logo">
+            <Link href="/" prefetch={false} className="np-site-footer-logo">
               <span className="np-site-logo-mark" aria-hidden="true" />
               <span>{siteName}</span>
             </Link>
@@ -49,7 +51,9 @@ export async function DefaultFooter() {
                 footerNav.map((item: NpResolvedNavItem, index: number) => (
                   <li key={`footer-sitemap-${index.toString()}`}>
                     {item.url ? (
-                      <Link href={item.url}>{item.label}</Link>
+                      <Link href={item.url} prefetch={false}>
+                        {item.label}
+                      </Link>
                     ) : (
                       <span>{item.label}</span>
                     )}
@@ -58,7 +62,9 @@ export async function DefaultFooter() {
                         {item.children.map((child: NpResolvedNavItem, childIndex: number) => (
                           <li key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}>
                             {child.url ? (
-                              <Link href={child.url}>{child.label}</Link>
+                              <Link href={child.url} prefetch={false}>
+                                {child.label}
+                              </Link>
                             ) : (
                               <span>{child.label}</span>
                             )}
@@ -84,13 +90,19 @@ export async function DefaultFooter() {
                 <a href="/feed.json">JSON feed</a>
               </li>
               <li>
-                <Link href="/now">Now page</Link>
+                <Link href="/now" prefetch={false}>
+                  Now page
+                </Link>
               </li>
               <li>
-                <Link href="/colophon">Colophon</Link>
+                <Link href="/colophon" prefetch={false}>
+                  Colophon
+                </Link>
               </li>
               <li>
-                <Link href="/about">Hire the team</Link>
+                <Link href="/about" prefetch={false}>
+                  Hire the team
+                </Link>
               </li>
             </ul>
           </section>
@@ -116,10 +128,14 @@ export async function DefaultFooter() {
               <a href="/sitemap.xml">Sitemap</a>
             </li>
             <li>
-              <Link href="/privacy">Privacy</Link>
+              <Link href="/privacy" prefetch={false}>
+                Privacy
+              </Link>
             </li>
             <li>
-              <Link href="/colophon">Colophon</Link>
+              <Link href="/colophon" prefetch={false}>
+                Colophon
+              </Link>
             </li>
           </ul>
         </div>
@@ -134,16 +150,24 @@ function FooterNavFallback() {
   return (
     <>
       <li>
-        <Link href="/">Home</Link>
+        <Link href="/" prefetch={false}>
+          Home
+        </Link>
       </li>
       <li>
-        <Link href="/about">About</Link>
+        <Link href="/about" prefetch={false}>
+          About
+        </Link>
       </li>
       <li>
-        <Link href="/blog">Blog</Link>
+        <Link href="/blog" prefetch={false}>
+          Blog
+        </Link>
       </li>
       <li>
-        <Link href="/contact">Contact</Link>
+        <Link href="/contact" prefetch={false}>
+          Contact
+        </Link>
       </li>
     </>
   );

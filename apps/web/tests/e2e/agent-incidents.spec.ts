@@ -359,12 +359,18 @@ test("Guardian observations and explicit temporary limits preserve approval and 
   await response
     .getByRole("button", { name: "Prepare temporary request limit", exact: true })
     .click();
+  await expect(
+    response.getByRole("status").filter({ hasText: "The request outcome is unknown" }),
+  ).toBeFocused();
   await response
     .getByRole("button", { name: "Retry unchanged Guardian response request", exact: true })
     .click();
   await expect(
     response.getByRole("link", { name: "Review human approval", exact: true }),
   ).toBeVisible();
+  await expect(
+    response.getByRole("heading", { name: /Temporary request limit .*approval_pending/ }),
+  ).toBeFocused();
   expect(planCommands).toHaveLength(2);
   expect(planCommands[1]).toEqual(planCommands[0]);
   expect(planCommands[0]).toMatchObject({
@@ -394,6 +400,7 @@ test("Guardian observations and explicit temporary limits preserve approval and 
     .getByRole("button", { name: "Execute this approved Guardian response", exact: true })
     .click();
   await expect(response.getByText(/Awaiting verification/)).toBeVisible();
+  await expect(response.getByRole("heading", { name: /Awaiting verification/ })).toBeFocused();
   await response.getByRole("button", { name: "Check result", exact: true }).click();
   await expect(
     response.getByText(`Restriction ${signalId} · active`, { exact: true }),
@@ -479,7 +486,7 @@ test("Member response retains its duration draft while Incident polling refreshe
   ).toBeEnabled();
 });
 
-test("incident list defaults to unresolved and filters without treating failures as empty", async ({
+test("incident list keeps its filters through background refresh and distinguishes failure from empty", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -490,10 +497,15 @@ test("incident list defaults to unresolved and filters without treating failures
   const uninstalled = await page.request.get("/api/admin/agents/incidents");
   expect(uninstalled.status()).toBe(503);
   expect(uninstalled.headers()["cache-control"]).toContain("no-store");
+  const start = new Date();
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 1_000));
   let unavailable = false;
+  let pendingRead: Promise<void> | undefined;
   const queries: URLSearchParams[] = [];
-  await page.route("**/api/admin/agents/incidents?*", (route) => {
+  await page.route("**/api/admin/agents/incidents?*", async (route) => {
     queries.push(new URL(route.request().url()).searchParams);
+    await pendingRead;
     return unavailable
       ? route.fulfill({ status: 503, json: {} })
       : route.fulfill({
@@ -529,6 +541,21 @@ test("incident list defaults to unresolved and filters without treating failures
   expect(queries.at(-1)?.get("source")).toBe("moderator.repeated-domain");
   expect(queries.at(-1)?.get("observedAfter")).toBe(at);
   expect(queries.at(-1)?.get("containment")).toBe("inactive");
+  let releaseRead: (() => void) | undefined;
+  pendingRead = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const currentQueries = queries.map((query) => query.toString());
+  const selectedQuery = currentQueries.at(-1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => queries.length).toBe(currentQueries.length + 1);
+  await expect(page.getByText("No incidents match this view.")).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search incident title and summary" });
+  await search.fill("Unsubmitted search draft");
+  expect(queries.at(-1)?.toString()).toBe(selectedQuery);
+  releaseRead?.();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await expect(search).toHaveValue("Unsubmitted search draft");
   unavailable = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
@@ -644,6 +671,21 @@ test("incident feedback retries one identity and exposes only review links", asy
     label: "confirmed-spam",
     supersedesId: null,
   });
+  await page.route(/\/api\/admin\/agents\/activity\?/, (route) =>
+    route.fulfill({
+      json: { schemaVersion: "np.agent-activity-runs.v1", items: [], nextCursor: null },
+    }),
+  );
+  const activityRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/admin/agents/activity" && url.searchParams.get("incidentId") === id
+    );
+  });
+  await page.getByRole("link", { name: "View related runs", exact: true }).click();
+  await activityRequest;
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/activity\\?incidentId=${id}$`));
+  await expect(page.getByLabel("Incident ID", { exact: true })).toHaveValue(id);
 });
 
 test("incident feedback conflict discards stale evidence and access loss clears the refreshed view", async ({
@@ -683,9 +725,12 @@ test("incident investigation and closure retain one decision identity until conf
   await signInAsE2EAdmin(page);
   const result = detail();
   const commands: Record<string, unknown>[] = [];
-  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
-    route.fulfill({ json: result }),
-  );
+  await page.clock.install();
+  let reads = 0;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) => {
+    reads++;
+    return route.fulfill({ json: result });
+  });
   await page.route(`**/api/admin/agents/incidents/${id}/transitions`, (route) => {
     const command = route.request().postDataJSON();
     commands.push(command);
@@ -758,6 +803,9 @@ test("incident investigation and closure retain one decision identity until conf
     page.getByText("Reviewed <script>text</script>; retain quarantine.", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("No incident transitions are currently available.")).toBeVisible();
+  const terminalReads = reads;
+  await page.clock.fastForward(60_000);
+  expect(reads).toBe(terminalReads);
   expect(commands).toHaveLength(4);
   expect(commands[2]).toEqual(commands[1]);
   expect(commands[3]).toEqual(commands[1]);
@@ -942,6 +990,9 @@ test("incident response prepares an exact target, waits for approval, and explic
     response.getByText(`Current target version: ${targetDigest}`, { exact: true }),
   ).toBeVisible();
   await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect(
+    response.getByRole("status").filter({ hasText: "The response outcome is unconfirmed" }),
+  ).toBeFocused();
   await expect(response.getByRole("button", { name: "Retry unchanged response" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Record feedback", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
@@ -986,7 +1037,7 @@ test("incident response prepares an exact target, waits for approval, and explic
   await response.getByRole("button", { name: "Retry unchanged response" }).click();
   await expect(
     response.getByRole("heading", { name: "Quarantine plan · succeeded" }),
-  ).toBeVisible();
+  ).toBeFocused();
   expect(executed[1]).toEqual(executed[0]);
   expect(executed[0]).toMatchObject({
     expectedVersion: 2,
@@ -1008,7 +1059,7 @@ test("incident response prepares an exact target, waits for approval, and explic
   result.response!.plans[1]!.canExecute = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await response.getByRole("button", { name: "Execute approved restore" }).click();
-  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeVisible();
+  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeFocused();
   await expect(page.getByText(/Containment: 1 total · 0 active · 1 restored/)).toBeVisible();
   expect(executed[2]).toMatchObject({
     expectedVersion: 4,
@@ -1147,7 +1198,7 @@ test("incident response conflict and access loss remove stale plans before retry
   await page.getByRole("button", { name: "Execute approved quarantine" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This response plan or its target changed" }),
-  ).toBeVisible();
+  ).toBeFocused();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Review response approval" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Retry unchanged response" })).toHaveCount(0);
@@ -1156,7 +1207,7 @@ test("incident response conflict and access loss remove stale plans before retry
   await page.getByRole("button", { name: "Execute approved quarantine" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
-  ).toBeVisible();
+  ).toBeFocused();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
 });
 

@@ -547,7 +547,8 @@ export const defaultThemeCss = `
 .np-mobile-nav-toggle:hover {
   background: var(--np-color-muted, #f8fafc);
 }
-.np-mobile-nav-overlay {
+.np-mobile-nav-overlay,
+.np-mobile-nav-drawer::backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
@@ -556,9 +557,19 @@ export const defaultThemeCss = `
 .np-mobile-nav-drawer {
   position: fixed;
   top: 0;
+  inset-inline-start: auto;
   inset-inline-end: 0;
+  margin: 0;
+  padding: 0;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  border: 0;
+  font: inherit;
+  color: var(--np-color-foreground, #0f172a);
   width: min(20rem, 85vw);
   height: 100dvh;
+  overflow-y: auto;
   background: var(--np-color-background, #fff);
   border-inline-start: 1px solid var(--np-color-border, #e5e7eb);
   z-index: 50;
@@ -571,6 +582,7 @@ export const defaultThemeCss = `
   transform: translateX(0);
   animation: np-mobile-nav-drawer-in 0.2s ease both;
 }
+.np-mobile-nav-drawer:not([open]) { display: none; }
 @keyframes np-mobile-nav-drawer-in {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }

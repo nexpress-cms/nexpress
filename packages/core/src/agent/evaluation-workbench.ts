@@ -11,6 +11,7 @@ import {
 } from "../agent-contract/evaluation-workbench-contract.js";
 import {
   npBuildAgentEvaluationArtifactV1,
+  npIsAgentFixedEvaluationCategoryV1,
   type NpAgentEvaluationArtifactV1,
 } from "../agent-contract/evaluation-contract.js";
 import {
@@ -175,12 +176,17 @@ export async function npBuildAgentEvaluationWorkbenchV1(
         score.ok &&
         (request.recipe !== "publisher" ||
           !source.violations.some((violation) => violation.caseId === entry.caseId));
+      const fixedPrediction = npIsAgentFixedEvaluationCategoryV1(
+        source.suite.cases[index].category,
+      );
       cases.push({
         ...base,
         allowedOutcomes: entry.eligible
-          ? canAccept
-            ? ["accept", "edit", "reject"]
-            : ["edit", "reject"]
+          ? [
+              ...(canAccept ? (["accept"] as const) : []),
+              ...(fixedPrediction ? [] : (["edit"] as const)),
+              "reject",
+            ]
           : [],
         evidenceJson: json(source.suite.cases[index].evidence),
         predictionJson: json(result.prediction),

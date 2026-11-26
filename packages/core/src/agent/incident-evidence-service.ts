@@ -4,7 +4,7 @@ import { getDb } from "../db/runtime.js";
 import { type npAgentEvents, npAgentIncidentSignals, npAgentSignals } from "../db/schema/agent.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import {
-  npInspectCommunityCommentEvidenceV1,
+  npInspectCommunityCommentEvidenceBatchV1,
   type NpCommunityContentTargetV1,
 } from "../community/content-containment.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -48,6 +48,10 @@ type Facts = {
   auth: Awaited<ReturnType<typeof npResolveAgentStaffSessionAuthorizationV1>>;
   incident: NpAgentIncidentV1;
   sources: (typeof npAgentEvents.$inferSelect)[];
+  comments: Map<
+    string,
+    Awaited<ReturnType<typeof npInspectCommunityCommentEvidenceBatchV1>>[number]
+  >;
 };
 type Input = Omit<NpAgentIncidentStaffContextV1, "transaction"> & { incidentId: string };
 type EventRef = Extract<NpAgentEvidenceRef, { kind: "event" }>;
@@ -97,6 +101,45 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     "np.agent-incident-evidence.cursor",
   );
   const sourceRows = npReadAgentEventRowsV1;
+  async function inspectComments(
+    db: Db,
+    input: Input,
+    user: Facts["user"],
+    sources: Facts["sources"],
+  ) {
+    const selected: { eventId: string; target: NpCommunityContentTargetV1 }[] = [];
+    for (const source of sources) {
+      try {
+        const checked = await npReadAgentModeratorCommentSourceV1(source);
+        if (checked)
+          selected.push({
+            eventId: source.id,
+            target: {
+              kind: "comment",
+              collection: checked.event.subject.collection,
+              id: checked.event.subject.commentId,
+            },
+          });
+      } catch {
+        // Projection remains responsible for rejecting invalid canonical sources.
+      }
+    }
+    const comments: Facts["comments"] = new Map();
+    for (let offset = 0; offset < selected.length; offset += 100) {
+      const page = selected.slice(offset, offset + 100);
+      const inspected = await npInspectCommunityCommentEvidenceBatchV1(
+        db as unknown as NpTransaction,
+        {
+          siteId: input.siteId,
+          user,
+          targets: page.map((item) => item.target),
+        },
+      );
+      for (const [index, item] of page.entries())
+        comments.set(item.eventId, inspected[index] ?? null);
+    }
+    return comments;
+  }
   async function snapshot(db: Db, input: Input) {
     canonicalBodyUuid(input.incidentId, "incidentId");
     const auth = await npResolveAgentStaffSessionAuthorizationV1(
@@ -160,9 +203,10 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       input.siteId,
       groups.map((g) => g.eventId),
     );
+    const comments = await inspectComments(db, input, user, sources);
     const items: NpAgentIncidentEvidenceItemV1[] = [];
     for (const group of groups)
-      items.push(await project(db, input, { auth, incident, sources, user }, group));
+      items.push(await project(db, input, { auth, incident, sources, user, comments }, group));
     // The authenticated cursor carries only a binding MAC; no private source body leaves the server.
     const binding = codec.mac(
       JSON.stringify({
@@ -366,22 +410,8 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       collection: event.subject.collection,
       id: event.subject.commentId,
     };
-    let inspected;
-    try {
-      inspected = await npInspectCommunityCommentEvidenceV1(db as unknown as NpTransaction, {
-        siteId: input.siteId,
-        target,
-        user: facts.user,
-      });
-    } catch (error) {
-      if (
-        error instanceof NpForbiddenError ||
-        error instanceof NpNotFoundError ||
-        error instanceof NpValidationError
-      )
-        return missing;
-      throw error;
-    }
+    const inspected = facts.comments.get(source.id);
+    if (!inspected) return missing;
     const row = inspected.comment;
     if (row.targetId !== event.subject.documentId || row.memberId !== event.payload.authorMemberId)
       return missing;
@@ -486,11 +516,17 @@ export function createAgentIncidentEvidenceServiceV1(options: {
         const ids = [...new Set(refs.map((ref) => ref.eventId))];
         if (ids.length > MAXIMUM_INCIDENT_EVENTS) return false;
         const sources = await sourceRows(db, context.siteId, ids.sort());
+        const comments = await inspectComments(
+          db,
+          { ...context, incidentId: incident.id },
+          user,
+          sources,
+        );
         for (const eventId of ids) {
           const item = await project(
             db,
             { ...context, incidentId: incident.id },
-            { auth, incident, sources, user },
+            { auth, incident, sources, user, comments },
             { eventId, signalIds: [], refs: refs.filter((ref) => ref.eventId === eventId) },
           );
           if (item.availability !== "available") return false;

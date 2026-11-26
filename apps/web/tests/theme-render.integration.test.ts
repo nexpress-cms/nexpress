@@ -15,9 +15,10 @@ import {
 } from "./harness.js";
 
 // Model an anonymous public request; navigation/settings still use PostgreSQL.
+const requestContext = vi.hoisted(() => ({ pathname: "/features" }));
 vi.mock("next/headers", () => ({
   headers: () =>
-    Promise.resolve(new Headers({ "x-np-locale": "en", "x-np-pathname": "/features" })),
+    Promise.resolve(new Headers({ "x-np-locale": "en", "x-np-pathname": requestContext.pathname })),
   cookies: () => Promise.resolve({ get: () => undefined }),
 }));
 
@@ -41,29 +42,60 @@ describe.skipIf(skipIfNoTestDb())("built-in theme shell and slot rendering", () 
     restoreThemes = () => registerThemes(previous);
   });
   beforeEach(async () => {
+    requestContext.pathname = "/features";
     await truncateAll();
     const { registerThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    registerThemes([defaultTheme, magazineTheme]);
+    const { docsTheme } = await import("@nexpress/theme-docs");
+    const { communityTheme } = await import("@nexpress/theme-community");
+    const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    registerThemes([defaultTheme, magazineTheme, docsTheme, communityTheme, portfolioTheme]);
   });
   afterAll(async () => {
     restoreThemes?.();
     await closeTestDb();
   });
 
-  async function saveNavigation(location: string, label: string, url: string) {
+  async function saveNavigation(
+    location: string,
+    label: string,
+    url: string,
+    children?: { id: string; type: "link"; label: string; url: string }[],
+  ) {
     const admin = await seedUser({ role: "admin" });
     const { PUT } = await import("@/app/api/navigation/route");
     const response = await PUT(
       buildRequest("/api/navigation", {
         session: admin,
         method: "PUT",
-        body: { location, items: [{ id: "render-fixture", type: "link", label, url }] },
+        body: { location, items: [{ id: "render-fixture", type: "link", label, url, children }] },
       }),
     );
     expect((await readJson(response)).status).toBe(200);
   }
+
+  it("docs header exposes persisted navigation in a native mobile disclosure only when links exist", async () => {
+    const { DocsHeader } = await import("@nexpress/theme-docs");
+    expect(await renderHtml(createElement(DocsHeader))).not.toContain("<details");
+    await saveNavigation("header", "Operator guide", "/operator-guide");
+    const html = await renderHtml(createElement(DocsHeader));
+    expect(html).toContain('<details class="np-docs-mobile-nav"><summary>Menu</summary>');
+    expect(html).toContain('class="np-docs-mobile-nav-list"');
+    expect(html.match(/href="\/operator-guide"/gu)).toHaveLength(2);
+  });
+
+  it("community header marks the current child page without marking its ancestor as another current page", async () => {
+    const { CommunityHeader } = await import("@nexpress/theme-community");
+    requestContext.pathname = "/features/child";
+    await saveNavigation("header", "Features", "/features", [
+      { id: "child", type: "link", label: "Child page", url: "/features/child" },
+    ]);
+    const html = await renderHtml(createElement(CommunityHeader));
+    expect(html).toContain('<a href="/features">Features</a>');
+    expect(html).toContain('<a href="/features/child" aria-current="page">Child page</a>');
+    expect(html.match(/aria-current="page"/gu)).toHaveLength(1);
+  });
 
   it("magazine shell preserves escaped children inside its scoped wrapper and emits its font/token bootstrap", async () => {
     const { magazineTheme, MagazineShell } = await import("@nexpress/theme-magazine");
@@ -73,9 +105,29 @@ describe.skipIf(skipIfNoTestDb())("built-in theme shell and slot rendering", () 
     );
     expect(html).toContain('<div class="np-magazine">&lt;probe&gt;hello&lt;/probe&gt;</div>');
     expect(html).not.toContain("<probe>");
-    expect(html).toContain('rel="preconnect" href="https://fonts.googleapis.com"');
-    expect(html).toContain("Newsreader");
+    expect(html.match(/@font-face\s*\{/gu)).toHaveLength(3);
+    expect(html).toContain('font-family: "Newsreader"');
+    expect(html).toContain('font-family: "Hanken Grotesk"');
+    expect(html).not.toMatch(/fonts\.(?:googleapis|gstatic)\.com/u);
     expect(html).toContain("--np-color-rule:");
+  });
+
+  it("portfolio shell emits its local font faces and keeps its scoped children and font aliases", async () => {
+    const { portfolioTheme, PortfolioShell } = await import("@nexpress/theme-portfolio");
+    expect(portfolioTheme.impl.shell).toBe(PortfolioShell);
+    const html = await renderHtml(
+      createElement(PortfolioShell, { children: "<probe>hello</probe>" }),
+    );
+    expect(html).toContain('class="np-portfolio"');
+    expect(html).toContain("&lt;probe&gt;hello&lt;/probe&gt;</div>");
+    expect(html).not.toContain("<probe>");
+    expect(html.match(/@font-face\s*\{/gu)).toHaveLength(3);
+    expect(html.match(/font-family: "Instrument Serif"/gu)).toHaveLength(2);
+    expect(html).toContain("font-style: italic");
+    expect(html).toContain('font-family: "Hanken Grotesk"');
+    expect(html).not.toMatch(/fonts\.(?:googleapis|gstatic)\.com/u);
+    expect(html).toContain("--np-font-display: var(--np-font-heading)");
+    expect(html).toContain("--np-font-chrome: var(--np-font-body)");
   });
 
   it("magazine header renders its masthead and current persisted section navigation", async () => {

@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npBuildAgentProfileEvaluationReviewArtifactV1,
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
   npRequireAgentEvaluationWorkbenchResultV1,
+  npRequireAgentEvaluationWorkbenchReportV2,
   npRequireAgentEvaluationSuiteV1,
   npRequireAgentModeratorProposalEvaluationEvidenceV2,
   type NpAgentEvaluationArtifactV1,
@@ -12,10 +14,13 @@ import {
 import {
   npCreateAgentModeratorProposalEvaluationSuiteV3,
   npRequireAgentEvaluationReportV1,
+  npRequireAgentEvaluationReportV2,
   runAgentEvaluationV1,
   runAgentModeratorEvaluationV2,
   runAgentModeratorEvaluationV3,
   npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+  npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+  npCreateAgentMemberReportEvaluationSuiteV1,
   npCreateAgentPublisherSelectionEvaluationSuiteV1,
 } from "@nexpress/core/agents";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -67,13 +72,13 @@ test.beforeAll(async () => {
   ]);
 });
 
-async function importArtifact(page: Page, label: string, name: string, value: unknown) {
-  await page.getByLabel(label, { exact: true }).setInputFiles({
+async function importArtifact(target: Page | Locator, label: string, name: string, value: unknown) {
+  await target.getByLabel(label, { exact: true }).setInputFiles({
     name,
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(value)),
   });
-  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await expect(target.getByText(name, { exact: true })).toBeVisible();
 }
 
 async function recompute(page: Page, button: string) {
@@ -111,6 +116,196 @@ async function downloadJson(
   if (!path) throw new Error("Expected a local downloaded artifact.");
   return JSON.parse(await readFile(path, "utf8"));
 }
+
+test("evaluation workspace transfers reviewed results and downloads a report for three Moderator datasets", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    178 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const [member, semantic, segmented] = await Promise.all(
+    [
+      npCreateAgentMemberReportEvaluationSuiteV1,
+      npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+      npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+    ].map(async (create) =>
+      runAgentEvaluationV1({
+        suite: await create(),
+        mode: "fake",
+        providerId: "fake",
+        model: "deterministic-v1",
+        budget: evaluation.budget,
+      }),
+    ),
+  );
+  const template = await npBuildAgentProfileEvaluationReviewArtifactV1(member);
+  const { caseId, caseHash, predictionHash, sourceHash } = template.entries[0];
+  const review = await npBuildAgentProfileEvaluationReviewArtifactV1(member, [
+    {
+      caseId,
+      caseHash,
+      predictionHash,
+      sourceHash,
+      outcome: "accept",
+      reviewer: "report-browser-fixture",
+      reviewedAt: "2026-11-26T00:00:00.000Z",
+      notes: "",
+      editedProposal: null,
+    },
+  ]);
+
+  await page.goto("/admin/agents/evaluations");
+  await page.getByText("Build a multi-dataset report", { exact: true }).click();
+  const add = page.getByRole("button", { name: "Add dataset", exact: true });
+  const generate = page.getByRole("button", { name: "Generate V2 report", exact: true });
+  const download = page.getByRole("button", { name: "Download V2 report JSON", exact: true });
+  const transfer = page.getByRole("button", { name: "Add to V2 report", exact: true });
+  const replace = page.getByRole("button", { name: "Replace dataset", exact: true });
+  const dataset = (index: number) =>
+    page.getByRole("group", { name: `Dataset ${index}`, exact: true });
+  await add.click();
+  await expect(dataset(2)).toBeFocused();
+  await expect(generate).toBeDisabled();
+  for (const [index, source] of [member, segmented].entries()) {
+    await importArtifact(
+      dataset(index + 1),
+      "Dataset evaluation artifact (required)",
+      `${source.suite.id}.json`,
+      source,
+    );
+  }
+  await dataset(1)
+    .getByLabel("Dataset current review artifact (optional)", { exact: true })
+    .setInputFiles({
+      name: "oversized-combined.json",
+      mimeType: "application/json",
+      buffer: Buffer.alloc(4 * 1024 * 1024, " "),
+    });
+  await expect(dataset(1).getByRole("alert")).toHaveText(
+    "All files together must fit within 4 MiB.",
+  );
+  await expect(generate).toBeDisabled();
+  await importArtifact(
+    dataset(1),
+    "Dataset current review artifact (optional)",
+    "member-reviewed.json",
+    review,
+  );
+  await importArtifact(
+    dataset(1),
+    "Dataset baseline review artifact (optional)",
+    "member-baseline-review.json",
+    review,
+  );
+  await expect(generate).toBeDisabled();
+  await importArtifact(
+    dataset(1),
+    "Dataset baseline evaluation artifact (optional)",
+    "member-baseline.json",
+    member,
+  );
+  await importArtifact(
+    dataset(2),
+    "Dataset baseline evaluation artifact (optional)",
+    "incompatible-semantic-baseline.json",
+    semantic,
+  );
+
+  await page.getByLabel("Recipe", { exact: true }).selectOption("moderator-assessment");
+  await importArtifact(page, "Evaluation artifact (required)", "semantic-workbench.json", semantic);
+  await recompute(page, "Validate imports");
+  await transfer.click();
+  await expect(dataset(3)).toBeFocused();
+  await expect(dataset(3).getByText("Validated evaluation", { exact: true })).toBeVisible();
+
+  await importArtifact(page, "Evaluation artifact (required)", "member-workbench.json", member);
+  await expect(transfer).toHaveCount(0);
+  await importArtifact(
+    page,
+    "Baseline evaluation artifact (optional)",
+    "baseline-workbench.json",
+    member,
+  );
+  await importArtifact(
+    page,
+    "Baseline review artifact (optional)",
+    "baseline-review-workbench.json",
+    review,
+  );
+  await recompute(page, "Validate imports");
+  await page.getByLabel("Outcome", { exact: true }).selectOption("accept");
+  const reviewer = page.getByLabel("Reviewer (self-reported)", { exact: true });
+  await reviewer.fill("workbench-direct-review");
+  await expect(transfer).toBeDisabled();
+  const applied = await recompute(page, "Apply and recompute");
+
+  await transfer.click();
+  const keep = page.getByRole("button", { name: "Keep existing dataset", exact: true });
+  await expect(keep).toBeFocused();
+  await keep.click();
+  await expect(dataset(1).getByText("member-reviewed.json", { exact: true })).toBeVisible();
+  await expect(dataset(1)).toBeFocused();
+
+  await transfer.click();
+  await expect(replace).toBeVisible();
+  await reviewer.fill("unapplied-review");
+  await expect(replace).toHaveCount(0);
+  await expect(transfer).toBeDisabled();
+  await page.getByRole("button", { name: "Discard draft", exact: true }).click();
+  await transfer.click();
+  await replace.click();
+  await expect(dataset(1)).toBeFocused();
+  await expect(dataset(1).getByText("Validated current review", { exact: true })).toBeVisible();
+  await expect(dataset(4)).toHaveCount(0);
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/admin/agents/evaluations" &&
+      response.request().method() === "POST",
+  );
+  await generate.click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  const { reportArtifactJson } = npRequireAgentEvaluationWorkbenchReportV2(await response.json());
+  const summary = page.getByLabel("Report summary", { exact: true });
+  await expect(summary).toContainText("moderator-segmented-assessment, version 2");
+  await expect(summary).toContainText("not comparable (SUITE_MISMATCH)");
+  const downloadPromise = page.waitForEvent("download");
+  await download.click();
+  const downloaded = await downloadPromise;
+  expect(downloaded.suggestedFilename()).toBe("evaluation-report-v2.json");
+  const path = await downloaded.path();
+  if (!path) throw new Error("Expected a local V2 report.");
+  expect(await readFile(path, "utf8")).toBe(reportArtifactJson);
+  const report = await npRequireAgentEvaluationReportV2(JSON.parse(reportArtifactJson));
+  expect(report.rows.filter((row) => row.dataset).map((row) => row.dataset?.id)).toEqual([
+    "moderator-member-report",
+    "moderator-segmented-assessment",
+    "moderator-semantic-assessment",
+  ]);
+  expect(report.rows.find((row) => row.dataset?.id === member.suite.id)).toMatchObject({
+    review: { summary: { reviewed: 1 } },
+    evaluationComparison: { result: { comparable: true } },
+    reviewComparison: { result: { comparable: true, acceptBasisPointsDelta: 0 } },
+  });
+  expect(report.rows.find((row) => row.dataset?.id === segmented.suite.id)).toMatchObject({
+    evaluationComparison: { result: { comparable: false, reason: "SUITE_MISMATCH" } },
+  });
+  const memberEntry = report.input.entries[0];
+  expect(memberEntry.current.review).toEqual(JSON.parse(applied.reviewArtifactJson!));
+  expect(memberEntry.baseline).toEqual({ evaluation: member, review });
+
+  await dataset(2).getByRole("button", { name: "Remove dataset 2", exact: true }).click();
+  await expect(download).toHaveCount(0);
+  await expect(dataset(2)).toBeFocused();
+  await expect(generate).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+});
 
 test("evaluation workspace reviews synthetic document and mixed content proposals without granting authority", async ({
   page,
@@ -454,20 +649,53 @@ test("evaluation workspace labels actual document/comment detector replay and ex
   expect(new Set(writes)).toEqual(new Set(["/api/admin/agents/evaluations"]));
 });
 
-for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
-  test(`${recipe} imports and reviews the explicit new profile without live execution`, async ({
+for (const [dataset, recipe, createSuite, editableField, bucket] of [
+  [
+    "moderator-assessment",
+    "moderator-assessment",
+    npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+    "moderatorAssessment",
+    210,
+  ],
+  [
+    "publisher-selection",
+    "publisher-selection",
+    npCreateAgentPublisherSelectionEvaluationSuiteV1,
+    "publisherSelectionResponse",
+    220,
+  ],
+  [
+    "moderator-member-report.v1",
+    "moderator-assessment",
+    npCreateAgentMemberReportEvaluationSuiteV1,
+    null,
+    156,
+  ],
+  [
+    "moderator-assessment.v2",
+    "moderator-assessment",
+    npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+    null,
+    144,
+  ],
+] as const) {
+  test(`${dataset} imports and reviews the explicit new profile without live execution`, async ({
     page,
   }, testInfo) => {
     await isolateE2ERateLimitBucket(
       page.context(),
-      210 + (recipe === "publisher-selection" ? 10 : 0) + testInfo.retry,
+      bucket + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
     );
     await signInAsE2EAdmin(page);
-    const suite = await (recipe === "moderator-assessment"
-      ? npCreateAgentModeratorAssessmentEvaluationSuiteV1()
-      : npCreateAgentPublisherSelectionEvaluationSuiteV1());
+    const suite = await createSuite();
+    const cases =
+      dataset === "moderator-assessment.v2"
+        ? suite.cases.filter((entry) =>
+            ["complete-disagreement", "missing-tail"].includes(entry.id),
+          )
+        : suite.cases.slice(0, 2);
     const source = await runAgentEvaluationV1({
-      suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases: suite.cases.slice(0, 2) }),
+      suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases }),
       mode: "fake",
       providerId: "fake",
       model: "deterministic-v1",
@@ -481,7 +709,7 @@ for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
     });
     await page.goto("/admin/agents/evaluations");
     await page.getByLabel("Recipe", { exact: true }).selectOption(recipe);
-    await importArtifact(page, "Evaluation artifact (required)", `${recipe}.json`, source);
+    await importArtifact(page, "Evaluation artifact (required)", `${dataset}.json`, source);
     const initial = await recompute(page, "Validate imports");
     expect(initial.recipe).toBe(recipe);
     expect(initial.fixtureGate).toBe("passed");
@@ -490,13 +718,37 @@ for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
     await page
       .getByLabel("Case", { exact: true })
       .selectOption(`${entry.caseId}@${entry.caseVersion}`);
-    await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
-    const edited = JSON.parse(
-      await page.getByLabel("Edited structured result JSON", { exact: true }).inputValue(),
-    ) as Record<string, unknown>;
-    expect(edited).toHaveProperty(
-      recipe === "moderator-assessment" ? "moderatorAssessment" : "publisherSelectionResponse",
-    );
+    if (editableField) {
+      await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
+      const edited = JSON.parse(
+        await page.getByLabel("Edited structured result JSON", { exact: true }).inputValue(),
+      ) as Record<string, unknown>;
+      expect(edited).toHaveProperty(editableField);
+    } else {
+      expect(entry.allowedOutcomes).toEqual(["accept", "reject"]);
+      if (dataset === "moderator-assessment.v2") {
+        await expect(
+          page.getByText("2 / 2 segments · 11 / 11 targets · Complete", { exact: true }),
+        ).toBeVisible();
+        await expect(page.getByText("uncertain", { exact: true })).toBeVisible();
+        await page.getByLabel("Case", { exact: true }).selectOption("missing-tail@1");
+        await expect(
+          page.getByText("1 / 2 segments · 10 / 11 targets · Incomplete", { exact: true }),
+        ).toBeVisible();
+        await expect(page.getByText("Withheld · awaiting segments", { exact: true })).toBeVisible();
+        await page
+          .getByLabel("Case", { exact: true })
+          .selectOption(`${entry.caseId}@${entry.caseVersion}`);
+      } else {
+        expect(JSON.parse(entry.predictionJson)).toMatchObject({
+          actions: [],
+          memberReport: { classification: "unverified-claim", disposition: "human-review" },
+        });
+      }
+      await expect(
+        page.getByLabel("Outcome", { exact: true }).locator('option[value="edit"]'),
+      ).toHaveCount(0);
+    }
     await page.getByLabel("Outcome", { exact: true }).selectOption("accept");
     await page
       .getByLabel("Reviewer (self-reported)", { exact: true })
@@ -514,7 +766,7 @@ for (const recipe of ["moderator-assessment", "publisher-selection"] as const) {
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
         .toBe(true);
       await page.screenshot({
-        path: testInfo.outputPath(`${recipe}-${width}.png`),
+        path: testInfo.outputPath(`${dataset}-${width}.png`),
         fullPage: true,
         animations: "disabled",
       });

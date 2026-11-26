@@ -66,7 +66,7 @@ jobs:
           pnpm test:repo
 
   checks:
-    name: Full typecheck + build + test
+    name: Build + typecheck + runtime smoke
     needs: [scope]
     if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
@@ -115,7 +115,31 @@ jobs:
       - name: Typecheck (tsc --noEmit per package)
         run: pnpm typecheck
 
-      - name: Test
+  unit-tests:
+    name: Unit tests + package builds
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_build
+      NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      SITE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.33.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test with required package builds
+        # Turbo builds package outputs before each consumer test;
+        # this job needs neither another job's artifacts nor a production Web build.
         # Each Vitest package already runs files in parallel. Bound the workspace
         # fan-out as in local verify so competing pools do not consume deadlines.
         run: pnpm test --concurrency=2
@@ -141,7 +165,7 @@ jobs:
 
     services:
       redis:
-        image: redis:7-alpine
+        image: ${{ matrix.partition == 2 && 'redis:7-alpine' || '' }}
         ports:
           - 6379:6379
         options: >-
@@ -166,7 +190,7 @@ jobs:
     env:
       DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
       TEST_DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
-      # Same `next build` project-config validation as the checks job.
+      # Vitest loads the reference project config.
       NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
       SITE_URL: http://localhost:3000
 
@@ -186,12 +210,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Build integration test dependencies
+        run: pnpm build --filter '@nexpress/web^...' --filter @nexpress/core
 
       - name: Run assigned integration tests
         env:
-          TEST_REDIS_URL: redis://127.0.0.1:6379
+          TEST_REDIS_URL: ${{ matrix.partition == 2 && 'redis://127.0.0.1:6379' || '' }}
         run: node scripts/integration-partitions.mjs ${{ matrix.partition }} --output "$RUNNER_TEMP/np-integration"
 
       - name: Upload successful coverage inventory
@@ -311,6 +335,11 @@ jobs:
           TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
           NP_TEST_PREVIEW_BROWSER: "1"
         run: pnpm --filter @nexpress/web exec vitest run tests/agent-preview-browser.integration.test.ts
+
+      - name: CLI browser transport fixture
+        env:
+          NP_BUILD_REQUIRE_CHROMIUM: "1"
+        run: pnpm --filter @nexpress/cli exec vitest run src/site-build/chromium-render.test.ts
 
       - name: E2E tests
         run: pnpm --filter @nexpress/web test:e2e
@@ -531,7 +560,7 @@ jobs:
 
   checks-gate:
     name: typecheck + build + test
-    needs: [scope, checks]
+    needs: [scope, checks, unit-tests]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -540,12 +569,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Require validated docs or full check
+      - name: Require validated docs or both build and unit jobs
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
           FULL_RESULT: ${{ needs.checks.result }}
-        run: node scripts/ci-scope.mjs gate
+          UNIT_RESULT: ${{ needs.unit-tests.result }}
+        run: |
+          node scripts/ci-scope.mjs gate
+          FULL_RESULT="$UNIT_RESULT" node scripts/ci-scope.mjs gate
 
   e2e-gate:
     name: E2E (Playwright)

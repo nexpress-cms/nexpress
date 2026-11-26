@@ -28,6 +28,10 @@ import { createAgentRuntimeBreakersV1 } from "../../../packages/core/src/agent/r
 import { createAgentProviderInferenceRuntimeV1 } from "../../../packages/core/src/agent/provider-inference.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "../../../packages/core/src/agent/runtime-controls.js";
 import { npInspectCommunityContentContainmentV1 } from "../../../packages/core/src/community/content-containment.js";
+import {
+  getCollectionConfig,
+  registerCollection,
+} from "../../../packages/core/src/collections/index.js";
 import type { NpTransaction } from "../../../packages/core/src/collections/pipeline.js";
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
 import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
@@ -116,7 +120,9 @@ const responseSchema: NpAgentJsonSchema = {
 };
 
 /** Real Runtime, signed human approval and community owners; inference stays local. */
-export async function moderationRuntimeFixture(options: { runtimeTargetLimit?: number } = {}) {
+export async function moderationRuntimeFixture(
+  options: { runtimeTargetLimit?: number; documentTarget?: boolean } = {},
+) {
   const definition = runtimeDefinition();
   definition.template = "moderator";
   definition.autonomy = "approved";
@@ -311,6 +317,13 @@ export async function moderationRuntimeFixture(options: { runtimeTargetLimit?: n
     return executor;
   };
   const executor = createExecutor();
+  if (options.documentTarget) {
+    const config = getCollectionConfig("discussions");
+    registerCollection("discussions", discussionsTable, {
+      ...config,
+      community: { ...config.community, moderation: { hiddenField: "locked" } },
+    });
+  }
   const [member] = await runtime.db
     .insert(npMembers)
     .values({
@@ -353,17 +366,21 @@ export async function moderationRuntimeFixture(options: { runtimeTargetLimit?: n
       fingerprint: `moderation-${randomUUID()}`,
       title: "Reviewed repeated links",
       summary: "Bounded evidence",
-      primarySubject: {
-        kind: "comment",
-        commentId: comment.id,
-        collection: "discussions",
-        documentId: document.id,
-      },
+      primarySubject: options.documentTarget
+        ? { kind: "document", collection: "discussions", documentId: document.id }
+        : {
+            kind: "comment",
+            commentId: comment.id,
+            collection: "discussions",
+            documentId: document.id,
+          },
       firstObservedAt: runtime.options.now(),
       lastObservedAt: runtime.options.now(),
     })
     .returning();
-  const target = { kind: "comment" as const, collection: "discussions", id: comment.id };
+  const target = options.documentTarget
+    ? { kind: "document" as const, collection: "discussions", id: document.id }
+    : { kind: "comment" as const, collection: "discussions", id: comment.id };
   const inspected = await withCurrentSite(siteId, () =>
     runtime.db.transaction((tx) =>
       npInspectCommunityContentContainmentV1(tx as unknown as NpTransaction, {

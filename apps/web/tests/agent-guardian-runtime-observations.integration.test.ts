@@ -1,6 +1,12 @@
+import pg from "pg";
+import { writeFileSync } from "node:fs";
+import {
+  createIntegrationWorkScope,
+  settleIntegrationWork,
+} from "../../../packages/core/src/integration/work-scope.js";
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { and, asc, eq, sql } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentGuardianRuntimeObservationServiceV1,
   type NpAgentGuardianRuntimeObservationOptionsV1,
@@ -23,6 +29,7 @@ import {
   npAgentSignals,
   npAgentRuns,
   npAgentCircuitBreakers,
+  npAgentProviderCalls,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npSessions, npSettings } from "../../../packages/core/src/db/schema/system.js";
 import type {
@@ -32,7 +39,7 @@ import type {
 import { runtimeReadCapabilityFixture } from "./agent-runtime-capability-fixture.js";
 import { runtimeUsageFixture } from "./agent-runtime-usage-fixture.js";
 import { guardianRuntimeExecutorFixture } from "./agent-guardian-runtime-fixture.js";
-import { siteId } from "./agent-runtime-service-fixture.js";
+import { runtimeBudget, siteId } from "./agent-runtime-service-fixture.js";
 import {
   closeTestDb,
   ensureMigrated,
@@ -181,86 +188,133 @@ describe.skipIf(skipIfNoTestDb())(
       registerTestCollections();
     });
     afterEach(async () => {
+      await settleIntegrationWork();
       resetAgentGuardianRuntimeObserverV1();
       for (const dispose of cleanup.splice(0)) await dispose();
     });
     afterAll(closeTestDb);
     it("pins emitted and sampled receipts for a current Run, then releases actual terminal settled history through its source owner", async () => {
-      const f = await runtimeUsageFixture({ limits: { maxProviderCalls: 120 } });
-      cleanup.push(f.dispose);
-      const g = install(f);
-      for (let sequence = 1; sequence <= 101; sequence++) {
-        const request = await f.request({ sequence });
-        await f.usage.reserve({ siteId, runId: f.runId, request });
-        const cancelled: NpAgentProviderInvokeOutcomeV1 = {
-          schemaVersion: "np.agent-provider-invoke-outcome.v1",
-          status: "failed",
-          provider: request.provider,
-          model: request.model,
-          providerRequestId: null,
-          output: null,
-          errorClass: "cancelled",
-          safeCode: "CONTROLLED_UNSENT_RELEASE",
-          retryable: false,
-          dispatchState: "not-dispatched",
-          usage: null,
-          finishReason: null,
-          latencyMs: 0,
+      const scope = createIntegrationWorkScope(() => {});
+      await scope.run(async () => {
+        const query = vi.spyOn(pg.Client.prototype, "query");
+        const started = performance.now();
+        let last = started,
+          lastQueries = 0;
+        const phases: Record<string, { ms: number; queries: number }> = {};
+        const phase = (name: string) => {
+          const current = performance.now(),
+            queries = query.mock.calls.length;
+          phases[name] = { ms: current - last, queries: queries - lastQueries };
+          last = current;
+          lastQueries = queries;
         };
-        await f.usage.reconcile({
-          siteId,
-          providerCallId: request.providerCallId,
-          requireUnsent: true,
-          response: await f.response(request, cancelled),
-        });
-      }
-      for (let round = 0; round < 30; round++) {
-        await g.source.collect({ siteId });
-        const pending = (await f.db.select().from(npAgentRuntimeReceipts)).filter(
-          (r) => r.state === "pending" || r.state === "blocked",
-        );
-        if (!pending.length) break;
-      }
-      const initial = await f.db.select().from(npAgentRuntimeReceipts);
-      expect(initial.filter((r) => r.state === "emitted")).toHaveLength(100);
-      expect(initial.filter((r) => r.state === "sampled")).toHaveLength(1);
-      expect(await f.db.select().from(npAgentSignals)).toHaveLength(0);
-      const owner = retention(f, g.source);
-      const held = await owner.prune({ siteId });
-      expect(held.eventsPruned).toBe(0);
-      expect(held.receiptsPruned).toBe(0);
-      expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(101);
-      const store = createAgentRuntimeExecutionStoreV1({
-        admission: f.admission,
-        now: f.options.now,
+        const checkpoint = () => {
+          if (scope.signal.aborted) throw new Error("Runtime evidence test scope closed");
+        };
+        try {
+          const f = await runtimeUsageFixture({ limits: { maxProviderCalls: 120 } });
+          cleanup.push(f.dispose);
+          checkpoint();
+          phase("fixture");
+          const g = install(f);
+          for (let sequence = 1; sequence <= 101; sequence++) {
+            checkpoint();
+            const request = await f.request({ sequence });
+            await f.usage.reserve({ siteId, runId: f.runId, request });
+            const cancelled: NpAgentProviderInvokeOutcomeV1 = {
+              schemaVersion: "np.agent-provider-invoke-outcome.v1",
+              status: "failed",
+              provider: request.provider,
+              model: request.model,
+              providerRequestId: null,
+              output: null,
+              errorClass: "cancelled",
+              safeCode: "CONTROLLED_UNSENT_RELEASE",
+              retryable: false,
+              dispatchState: "not-dispatched",
+              usage: null,
+              finishReason: null,
+              latencyMs: 0,
+            };
+            await f.usage.reconcile({
+              siteId,
+              providerCallId: request.providerCallId,
+              requireUnsent: true,
+              response: await f.response(request, cancelled),
+            });
+          }
+          phase("prepare");
+          for (let round = 0; round < 30; round++) {
+            checkpoint();
+            await g.source.collect({ siteId });
+            const pending = (await f.db.select().from(npAgentRuntimeReceipts)).filter(
+              (r) => r.state === "pending" || r.state === "blocked",
+            );
+            if (!pending.length) break;
+          }
+          phase("collect");
+          expect(phases.collect!.queries).toBeGreaterThan(0);
+          expect(phases.collect!.queries).toBeLessThan(5_000);
+          const initial = await f.db.select().from(npAgentRuntimeReceipts);
+          expect(initial.filter((r) => r.state === "emitted")).toHaveLength(100);
+          expect(initial.filter((r) => r.state === "sampled")).toHaveLength(1);
+          expect(await f.db.select().from(npAgentSignals)).toHaveLength(0);
+          const owner = retention(f, g.source);
+          const held = await owner.prune({ siteId });
+          expect(held.eventsPruned).toBe(0);
+          expect(held.receiptsPruned).toBe(0);
+          expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(101);
+          phase("active-retention");
+          checkpoint();
+          const store = createAgentRuntimeExecutionStoreV1({
+            admission: f.admission,
+            now: f.options.now,
+          });
+          await store.cancel({ siteId, runId: f.runId });
+          await pruneAgentRuntimeEventsV1({
+            siteId,
+            now: new Date(f.options.now().getTime() + 100 * 86_400_000),
+          });
+          expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(101);
+          expect(await f.db.select().from(npAgentEvents)).toHaveLength(100);
+          expect(
+            await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId)),
+          ).toHaveLength(1);
+          phase("cancel-runtime-retention");
+          let cursor: string | null = null,
+            eventsPruned = 0,
+            receiptsPruned = 0;
+          for (let round = 0; round < 30; round++) {
+            checkpoint();
+            const result = await owner.prune({ siteId, cursor, limit: 25 });
+            eventsPruned += result.eventsPruned;
+            receiptsPruned += result.receiptsPruned;
+            cursor = result.nextCursor;
+            if (cursor === null) break;
+          }
+          phase("terminal-retention");
+          expect(eventsPruned).toBe(100);
+          expect(receiptsPruned).toBe(101);
+          expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(0);
+          expect(await f.db.select().from(npAgentEvents)).toHaveLength(0);
+          expect(
+            await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId)),
+          ).toMatchObject([{ state: "cancelled" }]);
+          phase("assertions");
+          const path = process.env.NP_GUARDIAN_PERFORMANCE_LOG;
+          if (path)
+            writeFileSync(
+              path,
+              JSON.stringify({
+                ms: performance.now() - started,
+                queries: query.mock.calls.length,
+                phases,
+              }),
+            );
+        } finally {
+          query.mockRestore();
+        }
       });
-      await store.cancel({ siteId, runId: f.runId });
-      await pruneAgentRuntimeEventsV1({
-        siteId,
-        now: new Date(f.options.now().getTime() + 100 * 86_400_000),
-      });
-      expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(101);
-      expect(await f.db.select().from(npAgentEvents)).toHaveLength(100);
-      expect(await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId))).toHaveLength(
-        1,
-      );
-      let cursor: string | null = null,
-        eventsPruned = 0,
-        receiptsPruned = 0;
-      for (let round = 0; round < 30; round++) {
-        const result = await owner.prune({ siteId, cursor, limit: 25 });
-        eventsPruned += result.eventsPruned;
-        receiptsPruned += result.receiptsPruned;
-        cursor = result.nextCursor;
-        if (cursor === null) break;
-      }
-      expect(eventsPruned).toBe(100);
-      expect(receiptsPruned).toBe(101);
-      expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(0);
-      expect(await f.db.select().from(npAgentEvents)).toHaveLength(0);
-      expect(
-        await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId)),
-      ).toMatchObject([{ state: "cancelled" }]);
     }, 120_000);
     it("retains an authentic emitted unknown-cost receipt even after its Run becomes terminal and old", async () => {
       const f = await runtimeUsageFixture();
@@ -450,6 +504,135 @@ describe.skipIf(skipIfNoTestDb())(
       }
       expect(await g.source.collect({ siteId })).toMatchObject({ processed: 0, emitted: 0 });
       expect(await f.db.select().from(npAgentSignals)).toHaveLength(1);
+    });
+    it("rechecks Run and Action sources after retained-key callbacks and on each proof read", async () => {
+      const f = await runtimeReadCapabilityFixture(),
+        g = install(f);
+      await f.capability.invokeRuntime(f.input);
+      for (let n = 0; n < 4; n++) await newRead(f);
+      await g.source.collect({ siteId });
+      const incident = await g.incident();
+      const expected = await g.source.assessmentEvidence({ db: f.db, siteId, incident });
+      // Proof reads traverse ascending Event ids. Mutate the first source during
+      // the last key lookup, after that source's MAC was already authenticated.
+      const [first] = await f.db
+        .select()
+        .from(npAgentRuntimeReceipts)
+        .orderBy(asc(npAgentRuntimeReceipts.emittedEventId));
+      if (first.body.fact.kind !== "action-admitted") throw new Error("Expected Action source");
+      const [action] = await f.db
+        .select()
+        .from(npAgentActions)
+        .where(eq(npAgentActions.id, first.body.fact.actionId));
+      const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, first.runId));
+      let keyReads = 0;
+      let onLastKey: (() => Promise<void>) | undefined = async () => {
+        await f.db
+          .update(npAgentActions)
+          .set({ inputHash: `cj1:sha256:${"B".repeat(43)}` })
+          .where(eq(npAgentActions.id, action.id));
+      };
+      const source = createAgentGuardianRuntimeObservationServiceV1({
+        ...g.sourceOptions,
+        receiptKey: { id: "guardian-runtime-test-v2", bytes: new Uint8Array(32).fill(85) },
+        resolveReceiptKey: async (id) => {
+          if (id !== g.sourceOptions.receiptKey.id) return null;
+          if (++keyReads === 5) await onLastKey?.();
+          return g.sourceOptions.receiptKey.bytes;
+        },
+      });
+      const read = () => source.assessmentEvidence({ db: f.db, siteId, incident });
+      await expect(read()).rejects.toMatchObject({ code: "GUARDIAN_RUNTIME_EVIDENCE_UNAVAILABLE" });
+      expect(keyReads).toBe(5);
+      await f.db
+        .update(npAgentActions)
+        .set({ inputHash: action.inputHash })
+        .where(eq(npAgentActions.id, action.id));
+      onLastKey = undefined;
+      keyReads = 0;
+      expect(await read()).toEqual(expected);
+      await f.db
+        .update(npAgentRuns)
+        .set({ runLimitsHash: `cj1:sha256:${"B".repeat(43)}` })
+        .where(eq(npAgentRuns.id, run.id));
+      await expect(read()).rejects.toMatchObject({ code: "GUARDIAN_RUNTIME_EVIDENCE_UNAVAILABLE" });
+      const [signal] = await f.db.select().from(npAgentSignals);
+      expect(await source.verifySignal({ db: f.db, siteId, signalId: signal.id })).toBe(false);
+      await f.db
+        .update(npAgentRuns)
+        .set({ runLimitsHash: run.runLimitsHash })
+        .where(eq(npAgentRuns.id, run.id));
+      expect(await read()).toEqual(expected);
+      expect(await source.verifySignal({ db: f.db, siteId, signalId: signal.id })).toBe(true);
+    });
+    it("excludes a corrupt older provider source while later settled calls form a genuine cohort", async () => {
+      const f = await runtimeUsageFixture({
+        budget: runtimeBudget({ costMicrosPerDay: 500_000, costMicrosPerMonth: 500_000 }),
+        limits: { maxCostMicros: 200_000 },
+      });
+      cleanup.push(f.dispose);
+      const g = install(f);
+      async function settled(sequence: number) {
+        const request = await f.request({ sequence });
+        await f.usage.reserve({ siteId, runId: f.runId, request });
+        await f.usage.beginDispatch({ siteId, runId: f.runId, request });
+        await f.usage.reconcile({
+          siteId,
+          providerCallId: request.providerCallId,
+          response: await f.response(request, success(40_000), decision),
+        });
+        return request;
+      }
+      const first = await settled(1);
+      await settled(2);
+      expect(await g.source.collect({ siteId })).toMatchObject({ emitted: 2, blocked: 0 });
+      expect(await f.db.select().from(npAgentSignals)).toHaveLength(0);
+      // Find the exact signed source for the call we will corrupt; row order is immaterial.
+      const receipts = await f.db.select().from(npAgentRuntimeReceipts);
+      const corrupt = receipts.find(
+        (receipt) =>
+          receipt.body.fact.kind === "provider-cost" &&
+          receipt.body.fact.providerCallId === first.providerCallId,
+      )!;
+      const oldEvent = await f.db
+        .select()
+        .from(npAgentEvents)
+        .where(eq(npAgentEvents.id, corrupt.emittedEventId!));
+      await settled(3);
+      await settled(4);
+      await f.db
+        .update(npAgentProviderCalls)
+        .set({ sequence: 99 })
+        .where(eq(npAgentProviderCalls.id, first.providerCallId));
+      expect(await g.source.collect({ siteId })).toMatchObject({ emitted: 2, blocked: 0 });
+      const [signal] = await f.db.select().from(npAgentSignals);
+      expect(signal.detectorId).toBe("guardian.spend-velocity");
+      expect(await g.source.verifySignal({ db: f.db, siteId, signalId: signal.id })).toBe(true);
+      const evidence = await g.source.assessmentEvidence({
+        db: f.db,
+        siteId,
+        incident: await g.incident(),
+      });
+      expect(evidence).toMatchObject([
+        { observedCount: 3, accounting: { knownCostMicros: 120_000 } },
+      ]);
+      expect(await f.db.select().from(npAgentRuntimeReceipts)).toHaveLength(4);
+      await expect(
+        g.source.verifyEvent({ db: f.db, siteId, eventId: corrupt.emittedEventId! }),
+      ).rejects.toMatchObject({ code: "GUARDIAN_RUNTIME_EVIDENCE_UNAVAILABLE" });
+      await f.db
+        .update(npAgentProviderCalls)
+        .set({ sequence: 1 })
+        .where(eq(npAgentProviderCalls.id, first.providerCallId));
+      expect(
+        await g.source.verifyEvent({ db: f.db, siteId, eventId: corrupt.emittedEventId! }),
+      ).toMatchObject({ source: "runtime" });
+      expect(
+        await f.db
+          .select()
+          .from(npAgentEvents)
+          .where(eq(npAgentEvents.id, corrupt.emittedEventId!)),
+      ).toEqual(oldEvent);
     });
     it("does not recapture a replayed Action or commit an Action when its installed source fails", async () => {
       const f = await runtimeReadCapabilityFixture(),

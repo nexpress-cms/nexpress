@@ -45,6 +45,9 @@ function object(value: object): NpAgentJsonObject {
 export function npDigestChangeSetExecutionProjectionV1(value: unknown): string {
   return `cj1:sha256:${createHash("sha256").update("np.agent-execution-projection.v1\0").update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
 }
+export function npDigestRuntimeChangeSetCapabilityOutputV1(value: unknown): string {
+  return `cj1:sha256:${createHash("sha256").update("np.agent-runtime-changeset-output.v1\0").update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
+}
 function invalid(): never {
   throw new Error("Invalid ChangeSet execution projection.");
 }

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import collectionVectors from "./__fixtures__/collection-v1.json" with { type: "json" };
+import executionVectors from "./__fixtures__/execution-v1.json" with { type: "json" };
+import rendererVectors from "./__fixtures__/renderer-v1.json" with { type: "json" };
 import vectors from "./__fixtures__/canonical-v1.json" with { type: "json" };
+import directionVectors from "./__fixtures__/direction-v1.json" with { type: "json" };
 import {
   npAnalyzeAgentSiteBriefV1,
   npAnalyzeAgentSiteBlueprintV1,
@@ -12,13 +16,18 @@ import {
   npBuildFilePurposes,
   npParseAgentSiteBriefV1,
   npParseBuildJsonV1,
+  npParseBuildCandidateTransportJsonV1,
   npRequireAgentBuildCommandOutputV1,
   npRequireAgentBuildSourceTreeV1,
   npRequireAgentGeneratedMediaPromptV1,
   npRequireAgentSiteBlueprintV1,
+  npRequireAgentBuildSeedPlanV1,
+  npRequireAgentBuildNavigationV1,
   npRequireAgentSiteBriefV1,
   npRequireBuildReadyBriefV1,
   npRequireBuildBlueprintForBriefV1,
+  npRequireBuildVerificationForBlueprintV1,
+  npRequireAgentBuildVerificationResultBodyV1,
   npIsBuildSourcePathExcludedV1,
   type NpBuildImplementedCanonicalPurposeV1,
   type NpBuildFilePurposeV1,
@@ -102,7 +111,53 @@ function preview(p: NpAgentSiteBlueprintV1, count = 1): void {
 }
 
 describe("Build canonical profile v1", () => {
-  it("locks implemented purpose/body/vector inventories and rejects reserved owners", async () => {
+  it("binds observed verification inventory to every exact blueprint command and preview declaration", async () => {
+    const proposal = blueprint();
+    preview(proposal);
+    const body = npRequireAgentBuildVerificationResultBodyV1({
+      ...JSON.parse(executionVectors.structured[2].canonical),
+      blueprintHash: await npBuildCanonicalDigest("np.build-site-blueprint.v1", proposal),
+      commandResults: proposal.commands.map((command) => ({ commandId: command.id, exitCode: 0 })),
+      artifacts: JSON.parse(executionVectors.structured[2].canonical).artifacts.map(
+        (artifact: { path: string; pageId: string | null }) => ({
+          ...artifact,
+          path: artifact.path.replace("home-", "page-0-"),
+          pageId: artifact.pageId === null ? null : "page-0",
+        }),
+      ),
+    });
+    const result = {
+      ...body,
+      manifestDigest: await npBuildCanonicalDigest("np.build-verification-result.v1", body),
+    };
+    expect(await npRequireBuildVerificationForBlueprintV1(proposal, result)).toEqual(result);
+    const reversed = { ...body, commandResults: [...body.commandResults].reverse() };
+    await expect(
+      npRequireBuildVerificationForBlueprintV1(proposal, {
+        ...reversed,
+        manifestDigest: await npBuildCanonicalDigest("np.build-verification-result.v1", reversed),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      npRequireBuildVerificationForBlueprintV1(proposal, {
+        ...result,
+        finalSourceDigest: fileDigest,
+      }),
+    ).rejects.toThrow();
+    const changed = {
+      ...body,
+      artifacts: body.artifacts.map((artifact) =>
+        artifact.kind === "screenshot" ? { ...artifact, pageId: "another-page" } : artifact,
+      ),
+    };
+    await expect(
+      npRequireBuildVerificationForBlueprintV1(proposal, {
+        ...changed,
+        manifestDigest: await npBuildCanonicalDigest("np.build-verification-result.v1", changed),
+      }),
+    ).rejects.toThrow();
+  });
+  it("locks all sixteen purpose/body/vector inventories and rejects unknown owners", async () => {
     expect(npBuildCanonicalPurposes).toHaveLength(16);
     expect(npBuildFilePurposes).toHaveLength(4);
     expect(Object.keys(npBuildCanonicalBodyValidatorsV1)).toEqual([...npBuildCanonicalPurposes]);
@@ -111,20 +166,30 @@ describe("Build canonical profile v1", () => {
         .filter(([, v]) => v)
         .map(([k]) => k)
         .sort(),
-    ).toEqual(vectors.structured.map((v) => v.purpose).sort());
-    for (const purpose of npBuildCanonicalPurposes)
-      if (!npBuildCanonicalBodyValidatorsV1[purpose]) {
-        // Simulates untyped CLI/JSON input without weakening the public implemented-purpose type.
-        await expect(
-          Reflect.apply(npBuildCanonicalDigest, undefined, [purpose, {}]),
-        ).rejects.toThrow("not implemented");
-      }
+    ).toEqual(
+      [
+        ...new Set(
+          [
+            ...vectors.structured,
+            ...directionVectors.structured,
+            ...collectionVectors.structured,
+            ...executionVectors.structured,
+            ...rendererVectors.structured,
+          ].map((v) => v.purpose),
+        ),
+      ].sort(),
+    );
     await expect(
       Reflect.apply(npBuildCanonicalDigest, undefined, ["__proto__", {}]),
     ).rejects.toThrow("unknown canonical purpose");
   });
   it("matches independent Python canonical bytes/digests and Node SHA-256", async () => {
-    for (const vector of vectors.structured) {
+    for (const vector of [
+      ...vectors.structured,
+      ...directionVectors.structured,
+      ...collectionVectors.structured,
+      ...executionVectors.structured,
+    ]) {
       const purpose = vector.purpose as NpBuildImplementedCanonicalPurposeV1;
       const bytes = npBuildCanonicalBytes(purpose, JSON.parse(vector.canonical) as unknown);
       expect(new TextDecoder().decode(bytes.canonicalJsonUtf8), purpose).toBe(vector.canonical);
@@ -201,6 +266,21 @@ describe("Build canonical profile v1", () => {
       text: 'quoted " } ]',
     });
     expect(npParseAgentSiteBriefV1(JSON.stringify(brief()))).toEqual(brief());
+  });
+  it("parses candidate envelopes without weakening ordinary JSON or raw-input bounds", () => {
+    const wrapped = (body: string, depth: number) =>
+      `${"[".repeat(depth)}${body}${"]".repeat(depth)}`;
+    const deep = wrapped('{"candidate":"valid transport only"}', 22);
+    expect(() => npParseBuildJsonV1(deep)).toThrow();
+    expect(npParseBuildCandidateTransportJsonV1(deep)).toEqual(JSON.parse(deep));
+    for (const raw of [
+      wrapped("0", 25),
+      wrapped('{"field":1,"\\u0066ield":2}', 22),
+      wrapped('{"number":9007199254740992}', 22),
+      wrapped('{"text":"\\ud800"}', 22),
+      " ".repeat(8 * 1024 * 1024 + 1),
+    ])
+      expect(() => npParseBuildCandidateTransportJsonV1(raw)).toThrow();
   });
   it("rejects hostile containers without executing accessors or toJSON", () => {
     let calls = 0;
@@ -475,11 +555,25 @@ describe("Site Blueprint proposal contract", () => {
       },
     ];
     expect(npAnalyzeAgentSiteBlueprintV1(p).ok).toBe(true);
+    expect(npRequireAgentBuildSeedPlanV1(p.seed)).toEqual(p.seed);
     p.seed.documents[0].data = { relation: { $ref: "client:demo" } };
     expect(npAnalyzeAgentSiteBlueprintV1(p).ok).toBe(false);
+    expect(() => npRequireAgentBuildSeedPlanV1(p.seed)).toThrow();
     p.seed.documents[0].data = { title: "Synthetic demo" };
     p.seed.documents[0].dependsOnDocumentIds = [p.seed.documents[0].documentId];
     expect(npAnalyzeAgentSiteBlueprintV1(p).ok).toBe(false);
+    expect(() => npRequireAgentBuildSeedPlanV1(p.seed)).toThrow();
+    expect(() =>
+      npRequireAgentBuildSeedPlanV1({ ...p.seed, mode: "none", documents: [] }),
+    ).not.toThrow();
+    expect(() => npRequireAgentBuildSeedPlanV1({ ...p.seed, mode: "none" })).toThrow();
+    expect(() =>
+      npRequireAgentBuildNavigationV1({ location: "header", items: [], injected: true }),
+    ).toThrow();
+    expect(npRequireAgentBuildNavigationV1({ location: "header", items: [] })).toEqual({
+      location: "header",
+      items: [],
+    });
     for (const env of [
       { name: "SECRET", owner: "nexpress", sourceId: null },
       { name: "NP_SECRET=value", owner: "nexpress", sourceId: null },

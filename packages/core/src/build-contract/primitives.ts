@@ -195,10 +195,27 @@ export const jsonObject: z.ZodType<NpAgentJsonObject> = z.custom<NpAgentJsonObje
 
 /** Raw text must pass here before JSON.parse can discard duplicate (including escaped) keys. */
 export function npParseBuildJsonV1(raw: string): NpAgentJsonValue {
+  return parseBuildJsonWithLimits(raw, 4 * 1024 * 1024, 16);
+}
+
+/** Candidate transport envelopes contain a catalog and a complete direction draft.
+ * Parsing only preserves strict JSON before their owning validators run; this
+ * neither authenticates a native producer nor adds a canonical-purpose body.
+ */
+export function npParseBuildCandidateTransportJsonV1(raw: string): NpAgentJsonValue {
+  return parseBuildJsonWithLimits(raw, 8 * 1024 * 1024, 24);
+}
+
+/** Internal owning profiles choose fixed bounds; callers cannot widen public artifact limits. */
+export function parseBuildJsonWithLimits(
+  raw: string,
+  maximumBytes: number,
+  maximumDepth: number,
+): NpAgentJsonValue {
   if (
     typeof raw !== "string" ||
-    raw.length > 4 * 1024 * 1024 ||
-    encoder.encode(raw).length > 4 * 1024 * 1024
+    raw.length > maximumBytes ||
+    encoder.encode(raw).length > maximumBytes
   )
     fail("build.json", "exceeds raw JSON limit");
   let index = 0,
@@ -219,7 +236,8 @@ export function npParseBuildJsonV1(raw: string): NpAgentJsonValue {
     return fail("build.json", "unterminated JSON string");
   };
   const scan = (depth: number): void => {
-    if (depth > 16 || ++nodes > 100_000) fail("build.json", "exceeds raw JSON depth/node limit");
+    if (depth > maximumDepth || ++nodes > 100_000)
+      fail("build.json", "exceeds raw JSON depth/node limit");
     space();
     const ch = raw[index];
     if (ch === "{" || ch === "[") {
@@ -264,7 +282,7 @@ export function npParseBuildJsonV1(raw: string): NpAgentJsonValue {
     scan(0);
     space();
     if (index !== raw.length) fail("build.json", "unexpected trailing JSON");
-    return inspectJson(JSON.parse(raw) as unknown, 4 * 1024 * 1024, 16);
+    return inspectJson(JSON.parse(raw) as unknown, maximumBytes, maximumDepth);
   } catch (error) {
     if (error instanceof NpAgentContractError) throw error;
     return fail("build.json", "invalid JSON syntax");

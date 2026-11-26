@@ -1,7 +1,12 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: { index: "src/index.ts" },
+  entry: {
+    index: "src/index.ts",
+    "site-build-loader": "src/site-build/loader.ts",
+    "site-build-render-driver": "src/site-build/render-driver-entry.ts",
+    "site-build-linux-sandbox": "src/site-build/linux-sandbox.ts",
+  },
   format: ["esm"],
   dts: false,
   clean: true,

@@ -52,6 +52,17 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet execution lifecycle", () => {
       afterHash: expect.any(String),
       resultDigest: expect.any(String),
     });
+    const reviewInput = { actor: f.actor, id: f.id };
+    const review = await f.service.getReview(reviewInput);
+    expect(review.executionDetail?.execution).toEqual(review.changeSet.execution);
+    expect(review.executionDetail?.execution.state).toBe("succeeded");
+    await f.db
+      .update(npAgentChangesetExecutions)
+      .set({ resultDigest: digest })
+      .where(eq(npAgentChangesetExecutions.changesetId, f.id));
+    await expect(f.service.getReview(reviewInput)).rejects.toMatchObject({
+      code: "CHANGESET_NOT_FOUND",
+    });
   });
 
   it("retains a scheduled reservation until due and executes it with the approved human after creator logout", async () => {

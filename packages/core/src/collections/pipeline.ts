@@ -50,6 +50,7 @@ import {
   type NpSaveResult,
   type NpAuthUser,
   type NpCollectionHook,
+  type NpCollectionDocumentReader,
   type NpFieldConfig,
   type NpHookPrincipal,
   type NpMemberWriteAccessArgs,
@@ -1038,6 +1039,7 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
       ctx.actor.user,
       ctx.validatedData,
       ctx.originalDoc,
+      ctx.outerTx,
     );
     return;
   }
@@ -1113,6 +1115,7 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
       collection: c.collection,
       originalDoc: c.originalDoc,
     },
+    c.outerTx,
   );
 
   // Plugin draft hooks run before slug/i18n/field preparation so in-place
@@ -2981,6 +2984,34 @@ export async function npGetPersistedCollectionDocumentIds(
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
+async function withCollectionDocumentReader<T>(
+  user: NpAuthUser | null,
+  tx: NpTransaction | undefined,
+  callback: (readDocument?: NpCollectionDocumentReader) => T | Promise<T>,
+): Promise<T> {
+  if (!tx) return await callback();
+
+  let active = true;
+  const readDocument: NpCollectionDocumentReader = async <TDocument extends object>(
+    collection: string,
+    id: string,
+  ) => {
+    if (!active) {
+      throw new Error("Collection document reader is no longer active.");
+    }
+    const document = await getDocumentById<TDocument>(collection, id, user ?? undefined, { tx });
+    if (!active) {
+      throw new Error("Collection document reader is no longer active.");
+    }
+    return document;
+  };
+  try {
+    return await callback(readDocument);
+  } finally {
+    active = false;
+  }
+}
+
 async function assertWriteAccess(
   config: NpCollectionConfig,
   collection: string,
@@ -2988,6 +3019,7 @@ async function assertWriteAccess(
   user: NpAuthUser,
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
+  tx?: NpTransaction,
 ): Promise<void> {
   const access = operation === "create" ? config.access?.create : config.access?.update;
 
@@ -2995,7 +3027,14 @@ async function assertWriteAccess(
     return;
   }
 
-  const allowed = await access({ user, doc: originalDoc ?? undefined, data });
+  const allowed = await withCollectionDocumentReader(user, tx, (readDocument) =>
+    access({
+      user,
+      doc: originalDoc ?? undefined,
+      data,
+      ...(readDocument ? { readDocument } : {}),
+    }),
+  );
 
   if (!allowed) {
     throw new NpForbiddenError(collection, operation);
@@ -3036,14 +3075,18 @@ export { assertReadAccess as npAssertCollectionReadScope };
 async function runHooks(
   hooks: NpCollectionHook[] | undefined,
   args: Parameters<NpCollectionHook>[0],
+  tx?: NpTransaction,
 ): Promise<Record<string, unknown>> {
   let nextData = args.data;
 
   for (const hook of hooks ?? []) {
-    nextData = await hook({
-      ...args,
-      data: nextData,
-    });
+    nextData = await withCollectionDocumentReader(args.user, tx, (readDocument) =>
+      hook({
+        ...args,
+        data: nextData,
+        ...(readDocument ? { readDocument } : {}),
+      }),
+    );
   }
 
   return nextData;

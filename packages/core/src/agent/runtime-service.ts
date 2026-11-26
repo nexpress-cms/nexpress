@@ -1,3 +1,4 @@
+import { npRequireAgentRuntimeRecipeEvidenceV1 } from "./runtime-recipe-evidence.js";
 import { npIsAgentGuardianAssessmentRecipeV1 } from "../agent-contract/guardian-assessment-recipe-contract.js";
 import {
   npIsAgentRuntimeManualRecipeSupportedV1,
@@ -49,10 +50,7 @@ import {
   npRequireAgentRuntimeAdmissionSourcesV1,
   type NpAgentRuntimeAdmissionSourcesV1,
 } from "../agent-contract/runtime-contract.js";
-import {
-  npRequireAgentRecipeRegistryCanonical,
-  npDigestAgentRecipeRegistryCanonical,
-} from "../agent-contract/canonical-recipe-registry.js";
+import { npRequireAgentRecipeRegistryCanonical } from "../agent-contract/canonical-recipe-registry.js";
 import {
   npRequireAgentPolicyCanonical,
   npDigestAgentPolicyCanonical,
@@ -155,16 +153,17 @@ function definitionFromRow(agent: Agent, version: Version): NpAgentConfiguration
   });
 }
 
-async function configEvidence(
+function configEvidence(
   definition: NpAgentConfigurationDefinitionV1,
-  registry: NpAgentRecipeRegistryCanonicalV1,
+  recipes: ReturnType<typeof npRequireAgentRuntimeRecipeEvidenceV1>,
 ) {
   const selected = [];
   for (const branch of definition.settings) {
-    const recipe = registry.recipes.find(
-      (entry) => entry.id === branch.recipeId && entry.version === branch.recipeVersion,
+    const entry = recipes.definitions.find(
+      ({ recipe }) => recipe.id === branch.recipeId && recipe.version === branch.recipeVersion,
     );
-    if (!recipe || !recipe.allowedTemplates.includes(definition.template))
+    const recipe = entry?.recipe;
+    if (!entry || !recipe || !recipe.allowedTemplates.includes(definition.template))
       safeError("RUNTIME_RECIPE_UNAVAILABLE");
     npRequireAgentProviderSchemaValueV1(
       recipe.settingsSchema,
@@ -174,19 +173,13 @@ async function configEvidence(
     selected.push({
       id: recipe.id,
       version: recipe.version,
-      fingerprint: await npDigestAgentRecipeRegistryCanonical(
-        { ...registry, projection: "definition", recipes: [recipe] },
-        registry.recipes,
-      ),
+      fingerprint: entry.fingerprint,
     });
   }
   const { name: _label, ...versionFields } = definition;
   return {
     configHash: hash("np.agent-runtime-config.v1", { definition: versionFields, selected }),
-    recipeRegistryFingerprint: await npDigestAgentRecipeRegistryCanonical(
-      registry,
-      registry.recipes,
-    ),
+    recipeRegistryFingerprint: recipes.registryFingerprint,
   };
 }
 
@@ -230,9 +223,9 @@ export async function npRequireAgentRuntimeVersionV1(input: {
     .limit(1);
   if (!version) safeError("RUNTIME_RESOURCE_UNAVAILABLE", 404);
   const definition = definitionFromRow(agent, version);
-  const registry = npRequireAgentRecipeRegistryCanonical(version.recipeRegistryBody);
-  if (registry.projection !== "registry") safeError("RUNTIME_DEFINITION_INVALID");
-  const evidence = await configEvidence(definition, registry);
+  const recipes = npRequireAgentRuntimeRecipeEvidenceV1(version.recipeRegistryBody);
+  const registry = recipes.registry;
+  const evidence = configEvidence(definition, recipes);
   if (
     evidence.configHash !== version.configHash ||
     evidence.recipeRegistryFingerprint !== version.recipeRegistryFingerprint
@@ -572,7 +565,7 @@ export function createAgentRuntimeServiceV1(
       npResolveAgentBudgetV1(deploymentBudget, [settings.budgetCeiling]),
       definition.budget,
     );
-    const calculated = await configEvidence(definition, registry);
+    const calculated = configEvidence(definition, npRequireAgentRuntimeRecipeEvidenceV1(registry));
     if (calculated.configHash !== version.configHash || !definition.scopes.includes("site:read"))
       safeError("RUNTIME_DEFINITION_STALE");
     const authorization = await npResolveAgentStaffSessionAuthorizationV1(
@@ -1048,7 +1041,10 @@ export function createAgentRuntimeServiceV1(
                   raw.definitionHash
                 )
                   safeError("RUNTIME_DEFINITION_INVALID");
-                const evidence = await configEvidence(definition, registry);
+                const evidence = configEvidence(
+                  definition,
+                  npRequireAgentRuntimeRecipeEvidenceV1(registry),
+                );
                 const id = randomUUID(),
                   versionId = randomUUID(),
                   principalId = randomUUID();
@@ -1274,7 +1270,10 @@ export function createAgentRuntimeServiceV1(
                     raw.definitionHash
                 )
                   safeError("RUNTIME_DEFINITION_INVALID");
-                const evidence = await configEvidence(definition, registry);
+                const evidence = configEvidence(
+                  definition,
+                  npRequireAgentRuntimeRecipeEvidenceV1(registry),
+                );
                 let draftVersionId = agent.draftVersionId;
                 if (draftVersionId && version?.status === "draft")
                   await db

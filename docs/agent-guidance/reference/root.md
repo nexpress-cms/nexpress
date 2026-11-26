@@ -64,8 +64,17 @@ resident watcher memory.
 
 When a leaf package changes and you used the default `pnpm dev`, the leaf's `dist/` is stale. Either rebuild that leaf (`pnpm --filter <pkg> build`) or switch to the `... dev` filter for the rest of the session.
 
+Admin, Editor, Default, Community and Magazine use the workspace's `tsx watch`
+owner for their package `dev` commands. It watches `src/`, `package.json`,
+`tsup.config.ts`, `tsconfig.json` and the shared `tsconfig.base.json`, then runs
+that package's existing tsup configuration in a fresh process. Source edits,
+added/removed dependencies and compiler/build config changes therefore reload
+current inputs. Output under `dist/` and tsup's temporary bundled config files
+are excluded so a build does not restart itself. The normal full `build` command
+and its one-time clean remain unchanged; dev builds retain existing declarations.
+
 - `pnpm build` / `pnpm test` — turbo fan-out over all workspaces. `pnpm dev` is now scoped to apps/web (see above).
-- `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Each package runs `eslint . --cache --cache-location node_modules/.cache/eslint`, so the heavy `recommendedTypeChecked` rule set's TS programs stay bounded per process and incremental runs hit cache. The previous root `eslint .` over 1000+ files OOMed at an 8 GB heap; the per-package fan-out caps peak RSS at ~1.2 GB. Use `pnpm --filter <pkg> lint` to target one package, or `turbo run lint --filter=<pkg>...` for a dependency-aware subset.
+- `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Packages use cached ESLint checks; large package targets use `scripts/lint-batches.mjs` to run sequential children over at most 16 files. App `lint:shared` sets `NP_LINT_BATCH_SIZE=8` because its composition graph can exhaust the 6 GB heap with 16 files. The smaller batches preserve file discovery, rules, heap limits and failure aggregation. Use `pnpm --filter <pkg> lint` for one package, or `turbo run lint --filter=<pkg>...` for its dependencies.
 - `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier
@@ -157,9 +166,15 @@ import { foo } from "./bar.js"; // correct
 import { foo } from "./bar"; // breaks the build
 ```
 
-Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after fresh clone; `pnpm dev` keeps dists fresh with `tsup --watch`.
+Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after a fresh clone; the selected package dev command keeps its runtime output current as sources change.
 
-Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's _signature_ during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NP_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
+Root dev commands load `NP_DEV_FAST` from `.env` (default `1`). Configs that
+support fast mode, including Admin and Editor, skip dts emit and sourcemaps;
+other configs retain their existing declaration settings. In fast mode,
+sibling packages use `.d.ts` files from the last full build. Changes to exported
+type signatures need a targeted package build, or a dev restart with
+`NP_DEV_FAST=0`, before consumer typechecks see them. Root `pnpm build` always
+sets `NP_DEV_FAST=0`, so published output retains full declarations.
 
 ### Core service singletons (critical)
 
@@ -430,6 +445,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 - **React packages** declare React as a `peerDependency`; do not bundle it.
 - **Formatting**: Prettier — double quotes (`singleQuote: false`), semicolons, trailing commas, 100 char width.
 - **tsup builds**: all packages use `format: ["esm"]`, `dts: true` (except CLI). Multi-entry packages (editor, blocks, admin) produce separate client bundles with `"use client"` banner.
+- **Parallel tsup entries**: when array configs share `dist/`, clean once in the package's `build` script (`rm -rf dist && tsup`) and disable per-entry cleaning. tsup's declaration cleanup otherwise removes sibling entries' already-emitted `.d.ts` files. Keep `dev` on `--no-clean` so fast watch preserves declarations from the last full build; verify exported and relative declarations in the packed consumer after changing these configs.
 - `NEXPRESS_DB_PORT` in `.env` must match the port Postgres is bound to in `docker-compose.yml` (default 5433, not 5432).
 
 ## PR cadence (for agents)
@@ -485,7 +501,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 
 These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
 
-- **Build-plane proposal contracts** — the AP-801 Site Brief/Blueprint parsers and Build digests in `@nexpress/core/agent-contract` validate bounded proposals. CLI discovery, rendering and generation remain separate and unimplemented; proposal parsing grants no execution authority. See the [Build contract boundary](../../design/agentic-platform/build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
+- **Build-plane proposal contracts and CLI** — Site Brief/Blueprint parsers and Build digests in `@nexpress/core/agent-contract`, plus the project-side `nexpress site` brief/proposal validation, Build skill installer and isolated configured-catalog inspection, validate bounded local declarations/proposals. Rendering and generation remain separate; parsing or catalog inspection grants no execution authority. See the [Build contract boundary](../../design/agentic-platform/build-agent-and-site-blueprint.md#14-ap-801-implementation-boundary).
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
 - **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
 - **Framework-host bootstrap wiring** — `@nexpress/core/bootstrap` exposes raw singleton setters, registry lifecycle, and hook dispatch for integration packages. Application code must use `@nexpress/next` or domain subpaths; individual host symbols may move while this boundary is experimental.
@@ -512,7 +528,7 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
   in [testing guidance](../../testing.md#documentation-only-pr-checks). The named
   gates below require that validation or their corresponding full job; mixed,
   uncertain and manual-dispatch runs retain full checks:
-  1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
+  1. `typecheck + build + test` — requires both independent jobs: formatting/production build/runtime smoke/typecheck, and `pnpm test` with its dependency builds.
   2. `integration tests (Postgres)` — aggregates two independent Postgres 16 partitions with exact Web file coverage, Core once and Redis once. Covers the pipeline / write-path code that mocked unit tests cannot. Local `pnpm test:integration` remains unchanged; see `docs/testing.md`.
   3. `E2E (Playwright)` — Postgres 16 + Playwright + `next start` against the built bundle. Runs on PRs and manual dispatch, not push-to-main.
   4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages, scaffolds a temp project outside the monorepo, installs it, typechecks it, and runs the deploy-readiness journey smoke.
@@ -533,4 +549,4 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
-- **Turbo typecheck/test tasks depend on `^build`** — packages must be built before typecheck/test will run. This increases CI time.
+- **Turbo build prerequisites** — package tests depend on their own `build` (including dependency builds), so published self-imports resolve on a clean checkout. Reference Web unit tests only need `^build`; typechecks retain their existing build prerequisites. Run these through Turbo rather than testing consumers against incomplete output.

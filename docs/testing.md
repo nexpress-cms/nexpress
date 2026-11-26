@@ -5,6 +5,34 @@ pure contracts, PostgreSQL integration for persistence and transaction behavior,
 browser tests for rendering and interaction, and packed scaffolds for consumer
 installation and generated-project behavior.
 
+## Verification scope and completion
+
+The R8 acceptance work exposed avoidable delays from growing evidence-management
+procedures and repairing QA helpers during expensive runs. Apply these rules:
+
+- Define the required checks, their scope and the completion criteria before
+  expensive acceptance work. Do not expand the gate merely to collect more
+  evidence after those criteria pass.
+- Reuse passed results when their covered source, dependencies and environment
+  remain applicable. After a change or failure, rerun the affected checks and
+  required final gates. Broaden only to resolve a concrete remaining concern;
+  preserve the scope, skips and reused status of earlier observations.
+- Keep one compact evidence index pointing to existing command results and logs.
+  Add hashes or extra receipts only when needed for a concrete reproducibility,
+  integrity or security requirement. Evidence organization alone does not justify
+  another application build or browser journey.
+- Check a QA helper's preconditions and smallest representative path before
+  launching a long suite. Distinguish helper failures from product regressions,
+  and preserve a successful user edit when repairing the verification path.
+- Before restarting Docker, inspect the owned test database's mounts and
+  persistence. Container identity does not prove retained data: tmpfs is lost
+  on restart. Check actual readiness and database existence afterward; rebuild
+  only the owned disposable fixture through its normal migration and seed owners
+  when necessary, without resetting unrelated or production data.
+- Stop implementation work when the required checks and self-review pass, and
+  report remaining limitations. Documentation or evidence-only edits need their
+  relevant checks, not another full application acceptance cycle.
+
 ## Documentation-only PR checks
 
 CI still starts for every pull request and preserves the required check names.
@@ -24,8 +52,9 @@ contract checks without building packages, starting databases or running browser
 and scaffold suites. Deleted documents still undergo repository contract checks.
 
 The four existing result names report success only after documentation validation
-or their corresponding full job succeeds. Scope/validation failure or cancellation
-cannot become a green required check. Full PostgreSQL runs still require both
+or all their corresponding full jobs succeed. The build/typecheck result requires
+both the build/runtime job and the independent unit-test job. Scope/validation
+failure or cancellation cannot become a green required check. Full PostgreSQL runs still require both
 partitions and exact coverage receipts; only a validated documentation-only PR
 may intentionally skip them. Gate logs explicitly distinguish these paths.
 Version PR dispatch and Dependabot's named-result checks retain their contracts.
@@ -69,6 +98,18 @@ while paying for one fixture. Record registered cases, exercised inputs, and
 fixture work separately when comparing changes.
 
 ## Keeping tests useful
+
+On hosts with many logical CPUs, bound both workspace fan-out and Vitest file
+workers when running the combined gate:
+
+```bash
+VITEST_MAX_WORKERS=2 pnpm verify --concurrency=2
+```
+
+Turbo passes this test-runner setting through without incorporating it into
+application configuration. The CLI suite also defaults to at most two file
+workers because it owns filesystem capsules and child-process fixtures. These
+limits keep existing assertions, fixture cardinalities and deadlines unchanged.
 
 - Assert observable results and effects. Source-text checks belong only to
   contracts that are themselves structural, such as browser-safe entrypoints,
@@ -191,15 +232,26 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
 ### CI integration partitions
 
 CI keeps the local `pnpm test:integration` command unchanged. Its PostgreSQL
-coverage runs on two independent runners, each with its own PostgreSQL 16 and
-Redis 7 containers. After the usual full build, `scripts/integration-partitions.mjs`
-uses Vitest's configured file discovery and splits Web files by descending
-historical duration, assigning each next file to the lighter group. The timing
-seed in `scripts/integration-durations.json` comes from the successful PostgreSQL
-jobs in [main CI 38942471534](https://github.com/nexpress-cms/nexpress/actions/runs/38942471534)
-at `8c872426`, covering all 211 discovered files; it is a weight,
-not an allowlist or a wall-time prediction. New files use the median known weight,
-and removed files are ignored. Core runs once in partition 1 and Redis once in
+coverage runs on two independent runners, each with its own PostgreSQL 16
+container. Partition 2 also starts Redis 7 for the live adapter tests. The
+partitions build Web's workspace dependencies, including Core. The Redis
+tests import the adapter source. The workspace build and Playwright jobs build
+the reference app.
+
+`scripts/integration-partitions.mjs` uses Vitest's configured file discovery
+and splits Web files by descending historical duration, assigning each next
+file to the lighter group. The timing
+seed in `scripts/integration-durations.json` uses the median file duration across
+three successful partition pairs covering all 243 discovered files. Reassigning
+those same measurements reduced the difference between summed file times in each
+pair. Runner wall time also depends on build, DB setup and execution conditions.
+See [PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/43855261528),
+[main CI](https://github.com/nexpress-cms/nexpress/actions/runs/43858848258) and
+[Version PR CI](https://github.com/nexpress-cms/nexpress/actions/runs/43859025269).
+New files use the median known weight, and removed files are ignored.
+Four opt-in Guardian/native-preview files were discovered but skipped in all
+three runs and retain zero measured weight; their enabled
+acceptance is separate. Core runs once in partition 1 and Redis once in
 partition 2. Each Web partition runs at most two forks, matching the complete
 local acceptance configuration. This bounds contention between CPU-heavy recipe
 journeys and other DB/contract files without extending their deadlines. Worker
@@ -231,17 +283,22 @@ Inspect the plan without database connections:
 node scripts/integration-partitions.mjs --plan
 ```
 
-To reproduce a partition locally, build dependencies first and set `DATABASE_URL`,
+To reproduce a partition locally, build the same dependencies and set `DATABASE_URL`,
 `TEST_DATABASE_URL`, `NP_SECRET`, `SITE_URL`, `TEST_REDIS_URL` (partition 2), and
-`GITHUB_SHA` to the tested commit. Use a disposable database for each partition:
+`GITHUB_SHA` to the tested commit.
+
+Set `SITE_URL=http://localhost:3000`, matching CI and the sitemap assertions.
+Preview/browser helper ports are separate from this integration fixture.
+
+Use a disposable database for each partition:
 
 ```bash
+pnpm build --filter '@nexpress/web^...' --filter @nexpress/core
 node scripts/integration-partitions.mjs 1 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs 2 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs --check-results /tmp/np-integration-results
 ```
 
-Partitioning repeats build/setup on two runners to shorten the critical path.
 Historical durations balance work; they do not establish a hosted-CI speedup.
 Initial local acceptance used separate disposable databases and verified complete,
 non-overlapping coverage, with Redis and native-preview gating handled explicitly.
@@ -441,7 +498,70 @@ allowed overflow.
 Publish flow, theme switching, and plugin config regression coverage
 are now part of the Playwright suite.
 
+## R8 Build workflow acceptance
+
+Use the [Build completion sequence](design/agentic-platform/build-agent-and-site-blueprint.md#15-r8-completion-sequence)
+and [generation test matrix](design/agentic-platform/testing-and-evaluation.md#11-build-plane-generation-tests)
+for local R8 acceptance. Framework `verify` and lint do not replace actual
+packed-project commands, native direction rerendering, selected previews,
+schema/SQL review or ordinary Admin/member continuation. Keep each result bound
+to its observed package/source/environment graph and report opt-in skips.
+
+The ordinary seed regression uses the real reference bootstrap and isolated
+PostgreSQL harness. It covers direct facade commits, dependent Forum saves and
+replay in one caller transaction, late-failure rollback and closed-board 403.
+After its per-case truncate, the existing `reloadPlugins()` owner restores the
+configured plugin registration inventory; ACLs and block validation stay active.
+Run affected Core/Forum builds before this consumer check:
+
+```bash
+pnpm --filter @nexpress/web exec vitest run --config vitest.config.ts tests/site-build-seed.integration.test.ts tests/forum-board-policy.integration.test.ts
+```
+
+Set the isolated `TEST_DATABASE_URL` explicitly as described above. Keep
+paid/provider tests, real credentials and Runtime activation outside this local
+acceptance profile. The flow records the actual executed scope and limitations.
+
+The CLI's POSIX publication helpers compile with the same `-Wall -Werror`
+settings on macOS Clang and Linux GCC. Keep embedded C statements unambiguously
+indented for both compilers. The optional native Chromium transport fixture
+uses discovered macOS Playwright browsers or an explicit
+`NP_BUILD_CHROMIUM_EXECUTABLE`; automatic discovery selects Playwright's
+headless shell on macOS and Linux, not an OS Chromium launcher or the separate
+headed browser. CI executes that fixture in the E2E job using the headless shell
+already installed there, with `NP_BUILD_REQUIRE_CHROMIUM=1` preventing a missing
+browser from silently skipping. An explicitly configured missing browser also
+fails. This fixture does not replace the separate R8 native sandbox acceptance.
+Timeout diagnostics assert the actual timeout outcome, wait phase, pending
+requests, timing consistency and cleanup. Avoid millisecond equality between
+wall-clock scheduling and rounded monotonic telemetry.
+
+Web integration files share bootstrap within a worker (`isolate:false`). A suite
+must close its own DB harness without calling terminal `shutdownBootstrap()`;
+later files still use that bootstrap. A focused lifecycle regression can force
+seed tests before existing Guardian/Forum suites in one worker while retaining
+their normal assertions and setup.
+
 ## CI
+
+Full verification runs build/typecheck/runtime smoke and unit tests on independent
+runners. The first job keeps full formatting, production build, script-runtime
+smoke and workspace typechecks. The second runs the existing
+`pnpm test --concurrency=2`, including repository tests. Package tests wait for
+their own build, which also builds dependencies; self-imports of published
+subpaths therefore resolve on a clean checkout. The reference Web unit tests
+use source aliases and only need dependency builds, so their task retains
+`^build` without a production Web build. No build artifacts pass between runners.
+The required `typecheck + build + test` gate waits for both jobs and
+requires each to succeed.
+Validated documentation-only PRs intentionally skip both jobs; missing, failed or
+cancelled results still fail the gate.
+
+This separation repeats required library builds on the unit runner in exchange
+for independent execution and reruns. It preserves test assertions, fixture sizes,
+per-test deadlines and package ownership. A shorter hosted critical path must be
+measured on successful CI runs; local caches and historical partition weights
+alone do not demonstrate a hosted speedup.
 
 `.github/workflows/ci.yml` runs on every pull request, manual
 `workflow_dispatch`, and selected `push: main` changes (docs-only and
@@ -449,9 +569,9 @@ changeset-only pushes are ignored on `main`). It preserves four required result
 names; documentation-only validation or the corresponding full jobs satisfy them.
 Full jobs use Ubuntu, Node 22 and pnpm 10.33:
 
-1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
-   The full job runs `pnpm test --concurrency=2`: workspace packages share a
-   bounded fan-out while each package retains its existing file parallelism.
+1. `typecheck + build + test` — aggregates independent build/runtime/typecheck
+   and unit-test jobs. The unit job runs `pnpm test --concurrency=2`: workspace
+   packages share a bounded fan-out while each retains its existing file parallelism.
    This avoids overlapping Vitest pools consuming test deadlines; test counts,
    assertions and timeout values are unchanged.
 2. `integration tests (Postgres)` — validates both PostgreSQL partition results

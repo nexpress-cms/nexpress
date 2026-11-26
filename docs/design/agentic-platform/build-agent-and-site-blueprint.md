@@ -1,6 +1,6 @@
 # Build Agent and Site Blueprint
 
-> Status: AP-801 proposal contracts implemented; CLI/render/generation workflow remains proposed.
+> Status: local R8 implementation and unpaid acceptance complete for the recorded package/source epochs (2026-10-27). Hosted Launchpad adoption is deferred; publication and production enablement remain separate authorized work.
 > This workflow changes a normal repository; it is not a Runtime Agent
 > capability and cannot mutate a live production schema.
 > Baseline: `9b1c04e8927e195b8e8e23c7b1261756067ee25f` (2026-07-24).
@@ -138,6 +138,14 @@ exactly equal to `node_modules`, `dist`, `.next`, `.turbo`, or `coverage`.
 The command-registry version owns that closed exclusion list. The source-tree
 digest is the structured digest of this manifest with
 `np.build-source-tree.v1`.
+
+The render capsule uses the existing declaration capsule's separate input-copy
+boundary: it omits the original `.nexpress/site` artifact directory and stages
+only its explicitly selected synthetic fixtures and fixed driver input.
+Otherwise writing a sealed set would change its own renderer/catalog identity.
+Artifact-specific hashes and stable byte reads bind these inputs, and runtime
+metadata binds the complete copied inventory, including staged fixture bytes.
+The original repository source-tree V1 exclusions above remain unchanged.
 
 The field mapping is normative:
 
@@ -335,7 +343,7 @@ export interface NpAgentDesignDirectionV1 {
   tokens: NpThemeTokensOverlay;
   typography: { heading: string; body: string; mono: string | null };
   layout: {
-    density: "compact" | "comfortable" | "spacious";
+    density: "theme-native" | "compact" | "comfortable" | "spacious";
     contentWidth: string;
     navigation: string;
   };
@@ -444,10 +452,13 @@ information-architecture page id. Pattern bindings reparse overrides and
 store the exact resolved blocks; custom bindings store the exact template and
 blocks with null pattern/overrides. Sample JSON uses the shared bounds,
 contains representative non-PII fixtures only, and the complete comparison
-input is at most 1 MiB/depth 10. Each direction has at most 200 page bindings and 20
+input is at most 1 MiB/depth 16. Each direction has at most 200 page bindings and 20
 tradeoffs; names/ids/package/typeface fields are at most 128 characters and
 rationale/tradeoff prose 2,000. One canonical direction is at most 1 MiB and
-depth 12; the complete set is at most 4 MiB and depth 13.
+depth 20; the complete set is at most 4 MiB and depth 22. Render sources use
+depth 22. These limits include the enclosing proposal, binding and block
+objects, allowing an ordinary registered Lexical rich-text document inside a
+block without dropping its canonical envelope. Byte and node limits still apply.
 `previewPageIds` contains 1–6 sorted unique information-architecture page ids
 and is identical for all directions. Each desktop/mobile artifact is a
 registry-generated montage of those exact pages in that order and viewport;
@@ -504,6 +515,24 @@ resolved bytes invalidate the direction before preview.
 
 The blueprint is the complete generation plan.
 
+Its collection definition uses the source-bound authoring projection below.
+`configuration` preserves the actual authoring data; supported function slots
+become null placeholders listed by sorted JSON pointers in `callbacks`.
+Definitions without callbacks have `sourceCapsuleDigest:null`; definitions
+with callbacks bind the freshly observed renderer/source inventory. Validation
+reuses the same pure collection schema and semantic analyzer as `defineConfig`,
+with private non-executable sentinels for those slots. A supplied digest alone
+is never evidence that source was loaded or that a callback may execute.
+
+```ts
+export interface NpAgentBuildCollectionDefinitionV1 extends NpAgentJsonObject {
+  schemaVersion: "np.agent-build-collection-definition.v1";
+  configuration: NpAgentJsonObject;
+  callbacks: string[];
+  sourceCapsuleDigest: string | null;
+}
+```
+
 ```ts
 export interface NpAgentBlueprintCollection {
   id: string;
@@ -511,7 +540,7 @@ export interface NpAgentBlueprintCollection {
   slug: string;
   sourcePath: string;
   expectedSourceHash: string | null;
-  definition: NpAgentJsonObject;
+  definition: NpAgentBuildCollectionDefinitionV1;
   definitionHash: string;
   migrationClass: "none" | "additive" | "rename" | "destructive-review";
 }
@@ -745,6 +774,8 @@ export type NpAgentBuildPreviewCheckIdV1 =
 export type NpAgentBuildPreviewIssueCodeV1 =
   | "INTERACTION_FAILED"
   | "LINK_TARGET_MISSING"
+  | "INTERNAL_LINK_UNVERIFIED"
+  | "LINK_SCHEME_UNVERIFIED"
   | "EXTERNAL_LINK_UNVERIFIED"
   | "METADATA_MISSING"
   | "METADATA_INVALID"
@@ -752,7 +783,8 @@ export type NpAgentBuildPreviewIssueCodeV1 =
   | "LAYOUT_OVERFLOW"
   | "AUDIENCE_MISMATCH"
   | "UNEXPECTED_REQUEST"
-  | "CHECK_TIMEOUT";
+  | "CHECK_TIMEOUT"
+  | "CHECK_UNSUPPORTED";
 
 export interface NpAgentBuildPreviewReportV1 {
   schemaVersion: "np.agent-build-preview-report.v1";
@@ -786,7 +818,7 @@ export interface NpAgentBuildPreviewReportV1 {
   }>;
 }
 
-export interface NpAgentBuildVerificationResultV1 {
+export interface NpAgentBuildVerificationResultBodyV1 {
   schemaVersion: "np.agent-build-verification-result.v1";
   blueprintHash: string;
   commandRegistryFingerprint: string;
@@ -796,8 +828,6 @@ export interface NpAgentBuildVerificationResultV1 {
   commandResults: Array<{
     commandId: string;
     exitCode: number;
-    outputDigest: string;
-    durationMs: number;
   }>;
   artifacts: Array<
     | {
@@ -819,7 +849,21 @@ export interface NpAgentBuildVerificationResultV1 {
         viewport: null;
       }
   >;
+}
+export interface NpAgentBuildVerificationResultV1 extends NpAgentBuildVerificationResultBodyV1 {
   manifestDigest: string;
+}
+// Actual execution observations are volatile audit evidence, not reproducible inputs.
+export interface NpAgentBuildVerificationObservationV1 {
+  schemaVersion: "np.agent-build-verification-observation.v1";
+  manifestDigest: string;
+  commandResults: Array<{
+    commandId: string;
+    exitCode: number;
+    outputDigest: string;
+    durationMs: number;
+    outputArtifactPath: string;
+  }>;
   startedAt: string;
   finishedAt: string;
 }
@@ -989,6 +1033,18 @@ canonical body excluding that field. The apply audit stores the result path
 and digest. Handoff/approval trusts observed result hashes only after
 recomputing the manifest, source digests, command outputs, and every artifact;
 a missing/stale result is not replaced by a blueprint-supplied expectation.
+
+Reproducibility compares the stable result body and `manifestDigest`. Real
+start/finish timestamps, measured durations, and raw bounded command-output
+hashes belong to a separate `np.agent-build-verification-observation.v1` audit
+record under `.nexpress/site/audit/`. Each observation binds the stable manifest
+and the same ordered command ids/exit codes, references closed output artifacts,
+and retains actual timing without replacing it with fixed or normalized values.
+Trust requires reloading and hashing those outputs as well as the stable result;
+parsing an observation does not prove that a command ran. The manifest does not
+hash volatile observations, which would make byte-identical fresh-run results
+impossible. This clarifies the earlier prototype that mixed real timing/logs
+into the reproducible body before its canonical owner was implemented.
 
 The blueprint has at most 64 collections, 200 pages, 32 navigation locations,
 64 plugins, 1,000 seed documents, 200 media fixtures, 500 file changes, 32
@@ -1250,8 +1306,13 @@ pnpm exec nexpress site generate \
 # Existing contracts finish the loop.
 pnpm run schema:gen
 pnpm db:generate
-pnpm verify
-pnpm run deploy:plan -- --target vercel --json
+# Run the exact format paths listed in the exported handoff, then:
+pnpm run typecheck
+pnpm exec eslint . --no-cache
+pnpm exec vitest run
+pnpm run build
+pnpm run doctor
+pnpm exec nexpress deploy plan --target vercel --json
 ```
 
 The CLI is a deterministic artifact/render/validation/apply layer, not the
@@ -1306,7 +1367,9 @@ repository plane. It must:
 - produce a reviewed Drizzle migration;
 - flag destructive/rename operations separately;
 - never apply migration to a production `DATABASE_URL`;
-- run `pnpm verify` before handoff.
+- run the installed project's format, typecheck, lint, tests, build and Doctor
+  owners before handoff; framework changes additionally require the repository's
+  `pnpm verify` gate.
 
 A schema rename plus feature work should be split into contract/migration and
 downstream PRs. Auth, payment, safety, or policy semantics require explicit
@@ -1414,6 +1477,10 @@ The first release must prove:
 
 ## 14. AP-801 implementation boundary
 
+This section records the initial AP-801 proposal-only checkpoint. The later
+owners and execution paths are described in section 15; its initial reserved
+purposes and verification counts are historical evidence.
+
 The browser-safe `@nexpress/core/agent-contract` entry exports the Site Brief
 and Site Blueprint types, `npAnalyzeAgentSiteBriefV1`,
 `npAnalyzeAgentSiteBlueprintV1`, their `npRequire…`/raw JSON parsers, and
@@ -1434,12 +1501,12 @@ portable subset without whitespace, percent escapes, device names or reserved
 credential/output paths. Source-manifest validation does not read files.
 
 The 16 structured purposes and four raw-file purposes are closed inventories.
-Five structured body validators currently ship: brief, blueprint, generated
+The initial AP-801 slice shipped five structured body validators: brief, blueprint, generated
 media prompt, command output, and source tree. Each has fixed canonical bytes
 and independent Python SHA-256 vectors; all four file purposes have
-empty/binary/CRLF vectors. The other 11 structured purposes are reserved and
-fail closed until their exact owning artifact schemas ship. No generic JSON
-fallback can hash a renderer, command registry, collection definition, direction
+empty/binary/CRLF vectors. At that checkpoint, the other 11 structured purposes
+were reserved and failed closed until their exact owning artifact schemas
+shipped. No generic JSON fallback could hash a renderer, command registry, collection definition, direction
 set or verification result under one of those reserved purposes. The Build
 profile uses separate domain bytes from Runtime; its JCS serializer preserves
 Unicode without normalization.
@@ -1478,3 +1545,541 @@ and the complete packed-scaffold journey were not rerun for this pure-contract
 slice. The ordinary verify run explicitly skipped its three Redis integration
 cases. The external Core consumer and Chromium API checks are narrower than
 those gates and do not establish full R8 acceptance.
+
+## 15. R8 completion sequence
+
+The completion objective was authorized on 2026-10-23. Work proceeds in the
+following dependency order; a completed implementation step is not evidence
+that the final acceptance gate passed. Package versions, changesets and the
+lockfile remain unchanged. Tests use synthetic fixtures and no paid provider
+calls. Git publication and deployment require their existing authorization.
+
+| Order                | Scope                                                                                                                                                       | Completion evidence                                                                                                                                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 — AP-802           | Project-side `site` CLI, exact brief template/canonical validation, proposal inspection and project-scoped Build skill                                      | Packed CLI consumes its own shipped contracts; malformed/hostile input and file conflicts fail without changing unrelated files; proposals never claim render or execution approval                                        |
+| 2 — AP-803           | Remaining direction/comparison/projection/render canonical owners, installed catalog resolution, three-direction render/seal and fresh independent rerender | Korean community and editorial/docs fixtures; six desktop/mobile montages per set; changed source/catalog/image/environment and unsupported sandbox fail closed                                                            |
+| 3 — AP-804           | Source/command/verification owners, bounded repository plan/apply, synthetic seed materialization, schema/migration review and local preview                | Fresh normal scaffold plus dirty-project preservation, CAS/idempotency, fixed commands, exact generated paths/hashes, no production migration apply, observed all-route preview manifest                                   |
+| 4 — AP-805           | Reviewable local handoff containing artifacts, ownership, environment names, verification and existing Git/deploy-plan commands                             | A developer continues with ordinary repository files; artifacts do not imply commit, publication, deployment or Runtime authority                                                                                          |
+| 5 — R8 gate / AP-806 | Full acceptance matrix, self-review and hosted/ephemeral Launchpad evaluation after local stability                                                         | All ten criteria in section 13 and Build tests in testing-and-evaluation section 11 pass; unresolved blockers keep the gate open. Launchpad receives a documented adopt/defer decision, without deploying a hosted service |
+
+AP-801–805 local implementation and the unpaid local R8 gate are complete
+within the evidence and limits below. The post-merge CI and Release runs for AP-801
+(`39694730491` / `39694730488`, main `79f16196`) both passed. The draft Version
+PR is outside this implementation plan.
+
+The [Launchpad evaluation](r8-launchpad-evaluation.md) records the hosted
+adoption boundary and defer decision. It does not substitute for the local gate.
+
+### Current local implementation
+
+Local R8 implementation and unpaid acceptance are complete for the observed
+package/source/environment epochs below. AP-801–805 have working local owners;
+AP-806 has a documented **defer** decision. The generated application remains an
+ordinary owned NexPress project. No provider call, Runtime activation, hosted
+service, Git publication, deployment or production migration was performed.
+
+The pre-PR code checkpoint passed all **113 `verify` tasks and 41 lint tasks**
+against one 4,375-file source inventory (`38dda614…`). CLI tests passed 809 cases
+with five explicit native opt-in skips. Separate native profiles retain their
+own executed coverage below; those skips are not counted as passes. Focused
+collection tests passed 17 cases, seed-generator tests passed 28, and the real
+PostgreSQL continuation regression passed **18 cases without skips**: seed 4
+and Forum policy 14. The latter proves dependent saves and replay, rollback
+after a later failure, and closed-board rejection. Root rehashed the same
+source inventory after acceptance. Completion edits up to the initial PR head
+were documentation only. The subsequent Linux CI portability correction below
+has its own affected checks and final gate.
+
+The continuation regression repaired a transaction visibility defect. The
+seed creates a Forum board and post in one caller transaction, while Forum's
+existing ACL and pre-write lookup previously read through the global connection.
+The additive [callback-scoped document reader](../../collection-documents.md#persistence-hooks-and-operations)
+keeps that transaction, actor, tenant boundary, read ACL and read hooks. Forum
+uses it for the existing board lookup; the reader is revoked when its callback
+ends. No extra Admin or site authority is granted. A second repair makes a
+post-commit cache refresh failure report a fixed safe warning after successful
+seed persistence; parse/materialization/shutdown failures still fail. An
+already-running serving host must refresh its caches through its existing owner.
+
+Acceptance uses explicit immutable supplier epochs. Community's CP0805
+forty-package ledger retains the original Default theme. Its packed ordinary
+scaffold passed 19 stages and 41 confirmations, with no skips. Public Community
+generation passed both eight-command dry-run and execute paths. Execute
+published the three planned ordinary files, changing the canonical source-tree
+inventory from 464 to 466 files; the narrower ordinary-project inventory is
+440 files. Nine stable artifacts compared equal, and all 59 retained files
+from each observation were independently rehashed. Reexecution reported the
+three exact `already-matches-plan` conflicts without publishing again. All
+seven handoff authority flags remained false. These results belong to that
+frozen graph, rather than every later package build.
+
+Editorial used a separate ledger with the updated Default theme and the other
+39 archives unchanged. Its twelve fresh direction page jobs sealed six montages.
+Reference was selected after original desktop/mobile review; its mobile menu
+supports the handbook navigation. Schema and migration commands produced five
+reviewed files: one nullable `reviewerNote` field in the schema and document
+type, one 67-byte `ADD COLUMN` statement, the unchanged seventeen-entry journal
+prefix plus one entry, and the corresponding snapshot delta. No SQL was
+applied to the original or production database. Disposable synthetic preview
+PostgreSQL remains part of the local native test profile.
+
+Editorial's final blueprint was bound to the observed candidate fingerprint.
+The actual final public dry-run passed all **ten commands**, including fresh
+rerender acceptance, installed-project checks and preview. Thirteen comparison
+native audits plus four final page audits closed without forbidden descendants;
+all 54 retained outputs (1,586,560 bytes) were rehashed. Root reviewed all four
+final desktop/mobile originals. Doctor reported zero errors and four development
+warnings; preview reported zero errors and 23 `INTERNAL_LINK_UNVERIFIED` warnings
+outside the two observed routes. These are not production-readiness or whole-site
+navigation claims. Final blueprint hash: `nb1:sha256:DorJnyIT_knrVitinMz_yMKKLRcamUlrS3m_QfGusDs`;
+verification manifest: `nb1:sha256:kjNAFJVExEwVgwXtjvNwTLdzgr7_xE7qJrQbIx07tHw`.
+
+The final ordinary Community continuation used refreshed packed Core and Forum
+archives, with the other 38 retained archives unchanged and all installed
+payloads independently checked. The corrected seed script was adopted as an
+explicit developer source edit; this does not relabel the earlier frozen public
+generation. A later CLI-only distribution check passed with nine raw payload
+members equal to current Root build output and 39 referenced archives unchanged.
+That CLI index change is not a rerun of every older native image profile.
+
+Docker was restarted with user authorization after it stopped responding. Its
+PostgreSQL data directory was tmpfs: the old synthetic database was actually
+lost, although the container identity remained the same. A new, previously
+absent dedicated database received the existing seventeen migrations through
+the normal owner: 17 applied, zero pending/drifted/unknown. No production database,
+SQL source, volume or image was reset. Default-site bootstrap and the generated
+seed then ran normally. Before the first Admin edit, a read-only materialized
+audit passed with one snapshot and two SQL queries, including documents,
+relationships, theme and navigation. The older pre-restart live-build audit is
+retained as a separate historical observation.
+
+The closed ordinary run `6b4c6d66…` contains **seven stage rows: five current
+executions and two explicit reuses**. It reuses the pre-first-Admin seed/replay
+proof and the successful ordinary build from `71f02438…`; source bytes and
+installed payloads were rechecked before reuse. Current browser run `6b18f159…`
+proved staff login, missing-CSRF rejection, normal publish, persisted readback in
+a new tab, unchanged identity/slug/locale, anonymous member-page 404 without body
+leakage, and ordinary member login with authorized body access. The subsequent
+seed conflict preserved the actual developer edit and full snapshot. Runtime
+settings remained absent, external browser requests were zero, and the owned
+server stopped without forced termination. Four original browser captures were
+reviewed. The public document title changed as expected; identical body pixels
+do not imply a failed save.
+
+The final bounded privacy corpus contains **2,113 unique texts / 100,841,241
+bytes**, including 881 public source rows and 110 decoded payloads through only
+the two existing typed codecs. All ten fixed environment profiles scanned the
+same corpus. Original scan findings are retained: eight profiles matched only
+the public three-byte SMTP example, while Community and Editorial each matched
+one deduplicated public `.env.example` database-default row. Independent
+recomputation classified those findings using exact public template/source,
+whole-file and known synthetic environment hashes; the scanner and its findings
+were not rewritten. No other configured credential literal or generic JWT/cookie
+pattern matched. The separate ordinary-run scan also checked the actual in-memory
+synthetic login credentials against its retained outputs. Actual session literals
+were not supplied, so neither scan claims their absence. Raw Root source and
+unretained historical streams are outside this corpus; static QA helper bodies
+are represented by provenance metadata. Root separately reviewed the 22 manifest
+PNGs and the four ordinary continuation originals for visible private data.
+
+Known visual limits remain explicit: the nonselected Docs shell hides mobile
+primary navigation on these custom pages; Community P3 can mark both an ancestor
+and child navigation item active; the ordinary Forum page has two existing main
+landmarks; the Admin main capture clips its left edge. Selected previews and
+continuation pass their scoped checks, without a full WCAG or all-route audit.
+Failed attempts, development warnings, reused stages and opt-in skips remain in
+the evidence rather than being counted as fresh passes. Package versions,
+changesets, the root lockfile and root migration sources are unchanged.
+
+The first PR CI run exposed a compiler portability defect: GCC rejected
+misleading indentation in three embedded POSIX publication helpers that Clang
+had accepted. The correction changes whitespace only and preserves the C tokens,
+all file-descriptor checks and `-Wall -Werror`. All three helpers then compiled
+successfully with Linux GCC. The optional browser transport fixture also stops
+assuming Linux's `/usr/bin/chromium` is a usable browser. CI requires the actual
+Playwright headless shell already installed in the E2E job; a missing required
+or explicitly configured executable fails instead of skipping. This does not widen host authority
+or substitute transport fixtures for native sandbox acceptance.
+
+The new seed integration suite now closes only its DB harness, matching the
+existing `isolate:false` shared-worker contract. Terminal bootstrap shutdown in
+that suite had prevented later files from initializing. A targeted real
+PostgreSQL run forced seed first, then Guardian health and Forum policy in the
+same worker: all 22 cases passed without skips. After the portability correction,
+`verify` again passed 113 tasks (CLI 809 passes / five native opt-in skips), lint
+passed 41 tasks, and the required-browser transport fixture passed all 13 cases.
+These affected checks supplement the earlier scoped acceptance; they do not
+relabel every retained native image or packed graph as freshly rerun.
+
+#### Earlier implementation and verification checkpoints
+
+The following records preserve each checkpoint as observed. Their pending-work
+statements describe that earlier point and are superseded by the completed
+local acceptance above; their individual results retain their original scope.
+
+The 2026-10-24 KST IPC-progress and packaged-font code checkpoint passed all 113
+`verify` tasks and all 41 lint tasks, including 769 CLI cases with five explicit
+native opt-in skips. Both commands observed the same 4,366-file source inventory
+(`ab46b3d6…`). The separately executed native profiles below cover their exact
+scopes; skipped opt-ins are not silently counted as executed by `verify`.
+A preceding checkpoint hit one existing 20-second host Chromium test deadline;
+the complete quiet reruns passed without changing that deadline or production
+isolation limits.
+
+Unpaid acceptance evidence at this checkpoint includes:
+
+- Actual PostgreSQL: Core 71 and Web 2,093 ordinary cases across the original
+  full run and the corrected six-file run (63 cases). The original 24 failures
+  are all covered by passing corrected cases. The current font checkpoint also
+  passed all 79 cases in the 12 required theme files, without skips and with the
+  same source inventory as `verify`/lint. The original four opt-in skips remain explicit: native preview passed
+  separately; the three earlier Guardian capacity/performance opt-ins were not
+  rerun at this checkpoint.
+- Actual Redis: 16 cases; native Agent preview: one case. Neither result proves
+  the Build direction or final-preview workflow.
+- Production browser: 131 cases passed in the full 132-case run, and the
+  corrected publish case passed on its first attempt separately. The correction
+  requires one absolute canonical URL from the actual site settings, matching
+  the normal page metadata owner. This is combined evidence, not a single green
+  full-browser run. One remaining generated upload was identified by its test fixture,
+  database row and hash before cleanup; source continuity was verified.
+- Packed consumer: all 40 public archives, installed outside the workspace,
+  passed the ordinary scaffold lifecycle, fresh synthetic migration apply,
+  Agent foundation, Next build, extension lifecycle, entrypoint and deployment
+  readiness journey. The actual records contain 19 outer stages and 41
+  confirmation lines, with no timeout, signal, overflow or skip. The current
+  fresh gate uses CLI archive `0b1cb8ba…` and magazine archive `1cd127ef…`;
+  the other 38 archives retain their prior verified bytes. Installed CLI and
+  theme files, including all three fonts, both licenses and provenance, matched
+  the archives throughout the journey. All 19 child process groups disappeared
+  without forced cleanup; the final audit found no remaining database sessions,
+  no Agent rows and no Gateway/Runtime settings. An earlier attempt failed because the QA helper's
+  long temporary path exceeded the host's Unix-socket limit; the complete fresh
+  rerun removed that helper-only override.
+
+Actual browser closure exposed group-exit ordering failures and asynchronous
+fatal-signal/parent-death teardown that could invalidate a queued syscall stop.
+The scheduler now freezes and observes peers before signal delivery and EXIT
+handoffs as well as inspected calls. Both `exit` and `exit_group` use the
+inspected path. Pending data-call observations run before a control handoff;
+all pending scalar control intents are checked without executing them and are
+checked again before actual execution. Unknown ENTRY observations, pending
+outcomes and ESRCH still fail closed.
+
+While kernel teardown can deliver parent-death signals or write
+`clear_child_tid`, only known EXIT stops advance. An observed zombie of the
+same owned live TID establishes kernel quiescence for argument freezing,
+including a leader whose EXIT ptrace event was skipped by SIGKILL. It never
+substitutes for terminal `waitpid` observations, task retirement or reaping.
+Bounded proc polling avoids repeatedly reading proc state at every unrelated
+syscall stop; a negative observation never permits a task to resume.
+
+A bounded pipe/socket reproduction then exposed reader starvation: an inspected
+blocking write retained exclusive ownership while its reader remained frozen.
+The supervisor may now request an interrupt after 100 ms, but a request or
+EVENT_STOP never releases ownership. Only the actual syscall EXIT, after all
+existing outcome checks, establishes a 100 ms stopped-writer hold so readers can
+advance before a restarted ENTRY is checked afresh. Pending interrupt outcomes
+remain protected against new ENTRY, EXIT events, zombie observations, terminal
+waits and ESRCH. No arguments, FD flags, write policy or product limits changed.
+
+This C/fixture checkpoint passed 186 actual native cases: 120 Linux cases
+(75 ordinary, 35 registered PostgreSQL profiles and ten registered Chromium
+profiles), 32 Next metadata cases and 34 write-diagnostic cases. Seven added
+positive cases cover write/writev on pipes and UNIX sockets, plus
+sendto/sendmsg/sendmmsg on UNIX sockets; successful fixture exit requires every
+payload byte/count/FNV and the reader's actual successful wait. The earlier
+normal-shutdown cases retain seven 32-round/eight-thread fatal-exit patterns
+and SIGCHLD/SA_RESTART progress. A separate 15-case scheduler stub checks
+pending-intent/outcome preservation and the interrupt/actual-EXIT/restart
+sequence; it is not counted as traced native execution. The exact original
+product tests ran without QA source edits. All 186 assert complete descendant
+reaping; the 120 Linux cases additionally assert saved audit/stdout byte equality.
+Product deadlines, namespace/capability boundaries and attempted-effect
+assertions were unchanged. The dedicated fixture image uses synthetic
+registered executables and is not an actual renderer acceptance result.
+A separate Linux Next-owner check also passed all 20 cases, including its
+otherwise skipped actual installed-Linux-owner derivation.
+
+The preceding actual editorial direction job failed closed during browser
+closure with `syscall-observation-vanished`; all 170 observed tasks were reaped
+but no direction set was sealed. The community run separately failed during
+browser/network-idle with `driver-exit` and all 167 tasks reaped. Its precise
+browser cause remains unconfirmed: the old public error transport omitted the
+already collected browser diagnostic. The CLI now copies only its existing
+fixed diagnostic enums, bounded counts and classified request fields, without
+raw messages, URLs or credentials. Both failed runs remain failed. The next control-handoff attempt also remained incomplete: editorial's third
+mobile capture hit its unchanged browser/screenshot deadline (171/171 tasks
+reaped), while Community reached its magazine direction and refused an external
+GET (168/168 reaped). The exact external initiator is not present in the safe
+diagnostic; the magazine shell's external font links are a source-owned cause
+candidate. A separate exact editorial mobile job passed and produced one
+reviewed PNG, but does not replace the full direction journey. A fresh packed
+CLI/runtime/catalog and complete direction/generation journeys are required
+for the IPC-progress checkpoint.
+
+Magazine's public/member shells now use the same vendored Newsreader and Hanken
+Grotesk faces instead of external Google stylesheet/font requests. Static
+package-relative URLs let Next emit same-origin media without changing CSP,
+browser request policy or preview typography. The pinned upstream font bytes,
+licenses and provenance ship in the theme archive. A separate Next 16.4.2
+build/loopback asset probe establishes this mechanism; the full current packed
+direction and ordinary-site journeys still need their own observed results.
+
+The IPC-progress editorial run advanced through all four docs-theme page jobs,
+including the previously timed-out mobile guide, then failed closed in the
+default-theme comparison. Its safe diagnostic reports a same-origin,
+undeclared RSC GET; all 178 observed tasks were reaped and temporary IPC was
+reclaimed. No set was sealed. Default theme's fixed supplemental, member and
+locale links are source-owned prefetch candidates, but the precise first URL
+was not retained. Those 18 links now use Next's `prefetch={false}` contract;
+declared navigation, link destinations, user interaction, request policy and
+unverified-link warnings remain unchanged. The fresh default-theme acceptance
+is still required; the failed run is not converted into a pass.
+
+The editorial scaffold's public renderer preparation now passes its actual
+schema, migration and Next build owners with no source changes. Its earlier
+build failure was a QA config import ending in `.js` for a TypeScript source;
+the fixture now follows the ordinary app's Bundler import convention. The
+Korean community fixture also includes a normal Forum member route, ready for
+actual member-session and anonymous-withholding checks. Complete three-direction
+render/rerender, changed-collection codegen equality, generation/publication,
+all-route preview and ordinary continuation evidence remain open; these
+checkpoints do not establish R8 completion.
+
+The private native build currently accepts exact reviewed Next owners for
+16.3.4 and 16.4.2. A fresh community fixture resolved 16.4.3 from the ordinary
+scaffold's `^16.0.0` range and was correctly refused before the Next build;
+this is not evidence of support for that patch. The disposable acceptance
+project alone now pins 16.4.2, preserving the framework versions, changesets and
+repository lockfile. Pin the intended supported owner before renderer
+preparation; changing dependencies requires a fresh runtime/catalog and
+comparison. Other Next versions need a separately examined owner profile.
+
+The CLI also exposes `site renderer prepare`, `site direction render|validate`,
+`site fixture inspect`, `site seed source`, `site codegen source`,
+`site plan validate`, `site generate` and
+`site handoff export`. Generation defaults to a private dry-run. The trusted
+host reobserves installed owners, independently rerenders the comparison, runs
+the fixed commands, reconciles the actual candidate catalog/seed, checks Doctor
+against a fresh synthetic database and renders the candidate's final preview.
+Source publication additionally requires explicit execute arguments with the
+exact plan hash. Bounded actual command/native evidence is retained before
+private cleanup; failed retention, cleanup and partial source publication remain
+separate outcomes. No Git operation, production migration, provider call or
+deployment is performed. The current local profile requires an ordinary
+generated schema/migration baseline. Staged media remains unsupported until
+an allocated-ID upload/storage owner can preserve the normal quota, hooks and
+failure-cleanup contracts; reference-only metadata never fetches or uploads.
+
+Reexecution diagnoses the bounded file plan against freshly observed source
+before an old runtime can hide the mismatch. The safe conflict lists each
+planned relative path, expected/current/planned hash and
+`already-matches-plan`, `modified` or `missing` state, with no source write or
+new verification authority. Already published bytes therefore require a new
+reviewed comparison/plan rather than a fabricated idempotent success. Existing
+fresh observations, command execution and FD/CAS publication checks remain
+unchanged. The 48 focused unit cases include actual public error serialization
+and prove no native/context/publication call occurs on these precondition
+failures; packed replay remains part of the actual generation gate.
+
+Before finalizing a plan, `site seed source` obtains the ordinary continuation
+files from the installed configured seed owner. For collection edits,
+`site codegen source` runs only the fixed schema/migration owners over a private
+staged copy and returns their actual changed paths, modes and old/new hashes
+with bounded source bytes. The normal generator uses the same fixed drivers
+and reruns them independently. Neither source envelope stages repository files,
+approves a plan or applies a database migration. Codegen retains actual command
+audit before removing its private copy; failed retention and cleanup remain
+explicit outcomes.
+
+Native progress so far is narrower than full acceptance: two fresh Next builds
+over the same source produced identical complete `.next` inventories and
+complete renderer inventories, and repeated ordinary scaffold page captures
+produced identical PNG bytes with all observed processes and temporary IPC
+reaped. The browser diagnostics exposed duplicate locale canonical metadata
+from the default SEO audit plugin and unexamined Next live-region shadow content.
+Their source fixes have focused tests; fresh packed acceptance must verify them.
+The complete three-direction comparison/rerender, generated candidate/Doctor,
+editorial/docs case and all unpaid final gates are still required. Helper tests
+or the single-page diagnostic do not complete AP-803–805 or R8.
+
+The project-side CLI now provides `site brief init`, `site brief validate`,
+`site proposal validate`, and `site skill install --client codex|claude`.
+Skill installation is planned by default and writes only with `--apply`.
+Brief/proposal JSON results explicitly carry `validationScope:"proposal-only"`
+and `executable:false`; unresolved questions block a blueprint. Outputs are
+new files or byte-identical reruns, never replacements of differing artifacts.
+Reads bound file size before allocation, reject links and unstable file
+metadata, and decode UTF-8 strictly. Errors use fixed safe messages. This
+artifact helper is not the repository generator's filesystem sandbox.
+
+The pure contract entry also owns comparison inputs, draft/final directions
+and sets, direction projections, render sources, cache receipts, source-bound
+collection definitions and renderer inventories. All sixteen structured canonical owners now exist, including exact command
+registry, render environment, and stable verification-result bodies. Drafts cannot carry preview refs; sets bind exactly three
+unique directions to identical IA/fixtures/viewports. Brief/comparison and
+projection digest checks and source/receipt binding helpers establish proposal
+consistency only. A parsed final-set shape or matching unsigned receipt does
+not establish image provenance, current expiry, file bytes, installed catalog
+membership or trusted rerender success. The direction fixtures explicitly
+contain no rendered image evidence. Each canonical purpose rejects arbitrary
+JSON and dispatches to its exact owning validator. Registry/environment
+descriptors do not authenticate executables, fonts, sandbox enforcement or a run.
+
+`site catalog inspect --config src/nexpress.config.ts --out
+.nexpress/site/catalog.json` now observes configured declarations in an isolated
+worker on supported macOS hosts. It reuses actual authoring/discovery validators,
+source precedence and the scaffold's default component objects; it does not
+bootstrap services or run plugin setup. Unsupported layouts and unregistered
+component owners fail closed. Collection ACL/hook/validator slots retain exact
+JSON pointers and a freshly observed source-capsule digest; functions are never
+executed, stringified or silently dropped. These slots describe source-bound
+declarations, not function behavior, captured state or execution authority.
+
+Additional owning profiles supply identities that did not previously exist. `np.installed-package-content.v1` inventories sorted installed relative
+paths, executable modes and raw SHA-256 bytes; SHA-256 of its version prefix,
+NUL and canonical JSON is encoded as `npkg1:sha256:<base64url>`. This is local
+installed content identity, distinct from registry tarball SRI.
+`np.installed-build-catalog.v1` similarly prefixes the exact configured catalog
+and encodes its SHA-256 as `ndc1:sha256:<base64url>`. Package and catalog vectors
+have independent Python implementations.
+`np.installed-build-block-definition.v1` binds the validated block discovery
+projection, selected theme package and complete catalog fingerprint; its
+version/NUL/JCS SHA-256 identity is `nbdef1:sha256:<base64url>`. Thus it commits
+the actual observed source/package capsule as well as projected metadata.
+`npBuildInstalledBlockDefinitionFingerprintsV1` supplies that inventory. The
+comparison requires the exact sorted unique inventory for its declared themes;
+live props validation still uses the selected executable definitions, not a
+reconstructed discovery projection. None of these subordinate profiles expands
+Build's closed canonical-purpose registry or grants Runtime authority.
+
+The loader uses new owned source and package copies, never the original
+repository or node_modules. A registered application-source capsule omits the
+`.nexpress` artifact area and credential paths; its physical source-tree hash also binds
+the generated `.np-build-modules.json` dependency graph, including observed
+CommonJS self-resolution and peer wiring. This capsule is distinct from the
+complete original-worktree snapshot required by repository generation. The
+closed source-tree exclusion contract remains unchanged. Installed metadata,
+payloads, dependency links and original sources are checked again for changes.
+Only fixed worker/loader code is launched, with synthetic configuration, no
+inherited credentials, no network, read-only sources and denied subprocesses.
+The returned scope is `configured-declarations`, with `executable:false`.
+`site directions validate --brief ... --drafts ... --config ... --out ...`
+now resolves all three drafts against freshly observed installed declarations
+inside the same isolated worker. It checks the exact catalog and block-definition
+inventory, theme-specific pattern/template availability, real block props
+(including warnings), configured locales, and canonical equality of stored blocks
+to materialized pattern overrides. Overrides are either `{}` or exact
+`np.pattern-overrides.v1` patches keyed by sorted unique existing nested block ids;
+props are complete replacements and topology never changes. The result carries
+`validationScope:"installed-directions"`, `executable:false`, and
+`renderedImages:0`. Full blueprint/environment/seed checks and the actual
+renderer use the separate host paths above; this declaration check cannot approve a plan or
+establish render provenance.
+
+The local source reader streams raw file bytes under the existing source-file
+profile, retains executable mode, applies the closed exclusions, rejects
+links/case collisions and checks file/directory identities again after the
+walk using nanosecond timestamps. It does not execute config or scripts.
+The private macOS Node policy builder has an actual kernel probe for source
+write denial, hard-link denial, forbidden environment/credential reads and
+writes, unmounted-file denial, denied subprocess creation and signals to other
+processes, a permitted loopback port and a separate live but denied loopback
+port. Only mount/executable ancestor metadata is readable for Node resolution.
+Its child receives only a fixed runtime environment.
+Other operating systems fail closed. This proves only that tested Node policy,
+not server inbound policy, browser confinement, attempted-effect auditing,
+browser process-tree cleanup or the full preview harness.
+These helpers alone do not establish the direction-render or repository-generate
+CLI's actual execution acceptance.
+
+Installed-direction and closed-owner verification (2026-10-23):
+
+- All 16 structured purpose/body/vector inventories now match. The focused Core
+  Build suite has 43 cases, including independent execution-descriptor vectors,
+  exact verification/observation bindings and the source-bound block-definition
+  profile. Actual timing/logs remain separate audit observations; their values
+  are never fixed to manufacture reproducibility.
+- The complete code gate passed 113 workspace `verify` tasks and 41 lint tasks.
+  Core has 2,835 unit cases, Blocks 105, CLI 206, App 850 and Web 170. The
+  ordinary Redis suite retains 13 passes and three integration skips. There is
+  one existing Admin effect warning, with zero lint errors.
+- The ordinary packed scaffold, refreshed with Core/Blocks/App/CLI tarballs,
+  validated the same three directions in two fresh isolated workers with
+  byte-identical output. Invalid installed templates, real block props,
+  incomplete definition fingerprints and stale catalog identities each failed
+  without writing a validated result. No rendered-image evidence was claimed.
+  All 1,021/9/238/2 distribution files respectively matched the final builds.
+- Packed Node and real Chromium 152 reproduced 31 vectors: 16 structured,
+  12 raw-file and three subordinate identity profiles. The browser had no
+  Node globals. The packed project's typecheck resolved the new public owners
+  and App validator; fresh Codex/Claude skill installations were byte-equal
+  and passed the skill-creator validator.
+- The private `np.png-rgba.v1` codec has seven tests for exact pixels/alpha,
+  filters, independent stored-deflate vectors, CRC/order/stream validation and
+  bounded hostile inputs. It supports RGB/RGBA8 sRGB screenshots and rejects
+  unsupported encodings. This codec is preparation for the renderer, not proof
+  that any site image was rendered.
+- All 68 owned changed files passed formatting and `git diff --check`; the
+  preexisting handoff remained byte-identical. Versions, changesets, lockfile
+  and migrations did not change. These checks do not complete AP-803–806 or
+  replace PostgreSQL/Redis/theme/native/production-browser/full packed-journey
+  acceptance for the eventual R8 workflow.
+
+Earlier catalog extension verification (2026-10-23):
+
+- The current code passed all 113 workspace `verify` tasks and 41 lint tasks.
+  Core has 2,827 unit cases, CLI 198, App 844 and Web 170. The ordinary Redis
+  suite still has three integration skips. The new catalog composition test
+  covers actual bundled definitions, absent/ambiguous owners, zero callback or
+  plugin-setup execution, and replacement of entries in the public defaults
+  array. Ownership uses the original imported component identities.
+- A project created outside the workspace from all 40 public package tarballs,
+  then refreshed with the final Core/App/CLI tarballs, passed installed CLI
+  inspection twice in fresh isolated processes. Both runs produced identical
+  canonical bytes and fingerprints over 380 installed package contents,
+  11 collections, six themes and 12 plugins. The installed probes verified denied
+  source writes and credential reads, denied subprocesses, denied access to a live loopback
+  service and absence of inherited environment values. Core/App/CLI installed
+  distributions matched every file in the corresponding final local `dist`.
+- The packed project's TypeScript check resolved the published contract and
+  App facade declarations. Both project-scoped skill clients produced equal
+  files; the updated installed skill passed the skill-creator validator.
+- Packed Node and actual Chromium 152 reproduced 27 vectors: 13 structured,
+  12 raw-file and two owning discovery/package profiles. The browser had no
+  Node globals and projected collection callback slots without invoking them.
+  The collection authoring schema was extracted into a pure shared module;
+  server configuration still uses that exact schema, while the browser entry
+  no longer pulls the Node storage adapter contract.
+
+These are declaration/contract checks, with zero rendered site images. They
+do not establish the server/browser render sandbox, sticky attempted-effect
+audit, fresh montage rerender, repository generation or the complete unpaid
+R8 acceptance gate. PostgreSQL, full Redis, theme/native/production-site
+preview and the complete packed-scaffold journey remain required for that
+gate. Versions, changesets, the lockfile and migrations remain unchanged.
+
+Earlier brief/direction foundation verification (before the catalog extension):
+
+- Core Build contracts: 26 cases, including independent Python/Node vectors,
+  200-page/1,000-fixture three-way coverage, cross-direction refs, stale
+  projections and source/receipt bindings.
+- Packed Core/CLI installed outside the workspace with pnpm 10.33; brief
+  init/validate and both client skill installers ran. An external TypeScript
+  consumer resolved the published declarations. Node and actual Chromium 152
+  reproduced all 23 vectors (11 structured, 12 raw-file); the browser had no
+  Node globals. This is a contract consumer check, not the R8 site preview.
+- Independent skill use prepared a Korean community brief, preserved six
+  undecided requirements and reran with the same digest. Its observed
+  declaration-location problem was corrected. The installed skill passed the
+  skill-creator validator in an isolated Python environment.
+- The final refreshed gate passed all 113 `verify` tasks and 41 lint tasks,
+  including the source-reader precision and actual Node policy probe. The
+  ordinary Redis suite retained 13 passes / 3 integration skips. PostgreSQL,
+  full Redis, theme integration, native preview, production-site browser and
+  the complete packed-scaffold journey were not run for this artifact/contract
+  bundle. The packed CLI and Core entry bytes matched the final local builds.
+  Formatting, diff checks and the preexisting handoff preservation check also
+  passed. No package version, changeset, lockfile or migration changed. None of
+  these narrower checks establishes full R8 acceptance.

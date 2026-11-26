@@ -9,6 +9,8 @@ import {
   npAgentWireContractSchemaVersionsV1,
   npAgentWireContractsV1,
   npAnalyzeAgentActionProjectionV1,
+  npAnalyzeAgentActivityRunDetailV1,
+  npAnalyzeAgentActivityRunResourceV1,
   npAnalyzeAgentActionStateV1,
   npAnalyzeAgentBudgetV1,
   npAnalyzeAgentConnectionV1,
@@ -515,6 +517,61 @@ describe("Agent client-safe wire contract v1", () => {
       ok: false,
       issues: [{ path: "agent.wire.run.parentRunId" }],
     });
+  });
+
+  it("limits provider diagnostics to the staff Runtime detail and rejects private fields", () => {
+    const waiting = { ...run(), state: "waiting_retry", finishedAt: null };
+    const base = {
+      schemaVersion: "np.agent-activity-run.v1",
+      run: waiting,
+      invocationId: null,
+      evidence: "redacted",
+      auditEventIds: [],
+    };
+    const call = {
+      sequence: 1,
+      state: "ambiguous",
+      dispatchState: "unknown",
+      latencyMs: 1000,
+      provider: "fixture",
+      model: "fixture-model",
+      errorClass: "timeout",
+      usage: null,
+      startedAt: "2026-08-27T00:00:01.000Z",
+      finishedAt: "2026-08-27T00:00:02.000Z",
+    };
+    const diagnostics = {
+      trigger: null,
+      retryAt: "2026-08-27T00:00:10.000Z",
+      providerCalls: [call],
+      moreProviderCalls: false,
+    };
+    const read = (runtimeDiagnostics: unknown) =>
+      npAnalyzeAgentActivityRunResourceV1({ ...base, runtimeDiagnostics });
+    expect(read(diagnostics)).toMatchObject({
+      ok: true,
+      value: { runtimeDiagnostics: diagnostics },
+    });
+    expect(npAnalyzeAgentActivityRunResourceV1(base)).toEqual({ ok: true, value: base });
+    expect(npAnalyzeAgentActivityRunDetailV1({ ...base, runtimeDiagnostics: diagnostics }).ok).toBe(
+      false,
+    );
+    expect(
+      npAnalyzeAgentActivityRunResourceV1({
+        ...base,
+        run: { ...waiting, origin: "gateway", agent: null },
+        runtimeDiagnostics: null,
+      }).ok,
+    ).toBe(false);
+    for (const invalid of [
+      { retryAt: null },
+      { retryAt: waiting.deadlineAt },
+      { providerCalls: [call, { ...call }] },
+      { moreProviderCalls: true },
+      { providerCalls: [{ ...call, requestDigest: DIGEST_A }] },
+      { providerCalls: [{ ...call, dispatchState: "dispatched" }] },
+    ])
+      expect(read({ ...diagnostics, ...invalid }).ok).toBe(false);
   });
 
   it("keeps action input canonical and opaque recovery evidence off the activity wire", () => {

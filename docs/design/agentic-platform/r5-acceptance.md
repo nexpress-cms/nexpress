@@ -25,14 +25,13 @@ Existing integration journeys now exercise those boundaries directly.
 [Admin state evidence](admin-state-accessibility.md) now cover bounded loading,
 refresh, failure, keyboard and visual scenarios; the
 [success lifecycles](admin-success-lifecycle.md) add activation, connection
-revocation and full rollback presentation. Actual screen-reader workflows remain
-not verified, and this evidence is not an exhaustive pass for every applicable
-state and visual variant in
+revocation and full rollback presentation. The
+[VoiceOver record](admin-assistive-technology-acceptance.md#grouped-local-acceptance--2026-11-14-kst)
+includes captured captions and focused browser scenarios. Full operator-led
+screen-reader, applicable state and visual acceptance remain open under
 [Admin release acceptance](admin-agent-studio.md#20-admin-release-acceptance).
-Accessible-name assertions and automated viewport checks do not substitute for
-actual screen-reader or visual review.
-The remaining work is specified below; this is not a claim of complete R5 or
-permission to begin R6.
+The current local development closeout retains these receipts and leaves the
+remaining operator checks for release acceptance.
 
 This reconciliation changes documentation only. The original acceptance audit
 also made no production service, public contract, schema, migration, package
@@ -104,13 +103,13 @@ Do not repeat completed work or add a test for every route/state combination to
 make the table appear complete. Use the existing owners when a concrete gap or
 product defect is established.
 
-| Requirement                     | Current evidence                                                                                                                                                                                                                                                                                                                                                                    | Remaining boundary                                                                                                                                                                                                                                                            |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §20.3 state inventory           | The [20-route inventory](admin-acceptance.md#shipped-route-inventory), [state follow-up](admin-state-accessibility.md#applicable-state-boundary), [diagnostics](agent-error-diagnostics.md) and [read observation](studio-read-observation.md) document loading, empty, retained or invalidating refresh, independent failures, access loss, contract errors and mutation recovery. | Coverage is bounded to the documented shared owners and fixtures. No exhaustive per-view/state pass is claimed. Source freshness/cache age remain unsupported; projection and receipt times do not supply those facts.                                                        |
-| §20.6 accessible workflows      | Existing keyboard/focus cases and [successful activation, revocation and rollback](admin-success-lifecycle.md) provide synthetic outcomes and optional local checkpoints.                                                                                                                                                                                                           | All six [actual AT workflows](admin-assistive-technology-acceptance.md#one-consolidated-run) remain not verified. Observe utterances, focus and timing in one consolidated operator run. Current Incident response is tracked by R6; the historical R5 inventory predates it. |
-| §20.7 visual variants           | The [state/accessibility record](admin-state-accessibility.md#browser-and-assistive-technology-evidence) contains 320/768/1280, light/dark, reduced-motion, bounded volume and long-copy inspections; later flows record their own inspected states.                                                                                                                                | Those inspections are not a manual pass for every state or every localization. Preserve their recorded scope and assess any uncovered applicable variant explicitly.                                                                                                          |
-| §13 diagnostics and read timing | Safe optional support correlation/recovery declarations and independent browser receipt/available Runtime projection times are shipped.                                                                                                                                                                                                                                             | Missing metadata stays unavailable; server projection time is not source freshness. Submitted diagnostic events do not guarantee durable support lookup.                                                                                                                      |
-| §20.10 Health/Doctor            | [Maintenance](agent-maintenance-evidence.md), [budget](agent-budget-evidence.md) and [worker](agent-worker-evidence.md) observations distinguish receipts, measurement and subscription evidence, including unknown/unavailable states.                                                                                                                                             | Bounded samples, generic heartbeats and subscription observations do not prove end-to-end progress, coverage of every required queue or overall maintenance readiness. Complete Health/Doctor acceptance is not established by those observations alone.                      |
+| Requirement                     | Current evidence                                                                                                                                                                                                                                                                                                                                                                    | Remaining boundary                                                                                                                                                                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §20.3 state inventory           | The [20-route inventory](admin-acceptance.md#shipped-route-inventory), [state follow-up](admin-state-accessibility.md#applicable-state-boundary), [diagnostics](agent-error-diagnostics.md) and [read observation](studio-read-observation.md) document loading, empty, retained or invalidating refresh, independent failures, access loss, contract errors and mutation recovery. | Coverage is bounded to the documented shared owners and fixtures. No exhaustive per-view/state pass is claimed. Source freshness/cache age remain unsupported; projection and receipt times do not supply those facts.                                      |
+| §20.6 accessible workflows      | Existing keyboard/focus cases and [successful activation, revocation and rollback](admin-success-lifecycle.md) provide synthetic outcomes and optional local checkpoints.                                                                                                                                                                                                           | The [VoiceOver follow-up](admin-assistive-technology-acceptance.md#voiceover-follow-up--2026-11-14-kst) records the observed outcomes and outstanding operator checks. Current Incident response is tracked by R6; the historical R5 inventory predates it. |
+| §20.7 visual variants           | The [state/accessibility record](admin-state-accessibility.md#browser-and-assistive-technology-evidence) contains 320/768/1280, light/dark, reduced-motion, bounded volume and long-copy inspections; later flows record their own inspected states.                                                                                                                                | Those inspections are not a manual pass for every state or every localization. Preserve their recorded scope and assess any uncovered applicable variant explicitly.                                                                                        |
+| §13 diagnostics and read timing | Safe optional support correlation/recovery declarations and independent browser receipt/available Runtime projection times are shipped.                                                                                                                                                                                                                                             | Missing metadata stays unavailable; server projection time is not source freshness. Submitted diagnostic events do not guarantee durable support lookup.                                                                                                    |
+| §20.10 Health/Doctor            | [Maintenance](agent-maintenance-evidence.md), [budget](agent-budget-evidence.md) and [worker](agent-worker-evidence.md) observations distinguish receipts, measurement and subscription evidence, including unknown/unavailable states.                                                                                                                                             | Bounded samples, generic heartbeats and subscription observations do not prove end-to-end progress, coverage of every required queue or overall maintenance readiness. Complete Health/Doctor acceptance is not established by those observations alone.    |
 
 [Retained Runtime outcomes](agent-runtime-outcome-evidence.md) additionally expose
 Run-owner terminal results and current unfinished deadline/lease facts in Health
@@ -139,10 +138,10 @@ route/state combination:
   claiming every visual combination. Earlier [form](admin-form-acceptance.md#verification),
   [success-readback](admin-success-lifecycle.md#verification) and
   [read-observation](studio-read-observation.md) evidence retains its own scope.
-- Complete AT-01–06 using the existing consolidated operator checklist and
-  synthetic fixtures, recording actual utterances, focus and timing. No new AT
-  attempt was made here; the historical inability to capture speech is not a
-  freshly measured environment result.
+- For release acceptance, use the
+  [VoiceOver follow-up](admin-assistive-technology-acceptance.md#voiceover-follow-up--2026-11-14-kst)
+  to identify the operator checks beyond the captured captions. Record keyboard
+  focus assertions and complete reading-order observations at their actual scope.
 - Keep source freshness/cache age explicitly unavailable until its source owner
   supplies a contract. Receipt/projection timestamps cannot satisfy that claim.
   Current Incident-response acceptance belongs to the shipped R6 owners; read-only
@@ -151,6 +150,30 @@ route/state combination:
 These observations narrow what remains; they do not waive §20.3, §20.6 or §20.7,
 or promote bounded samples to full acceptance. Only a reproduced defect warrants
 an implementation change and its affected regression check.
+
+### Rollback approval and Admin browser recheck (2026-11-08 KST)
+
+The [rollback approval reader](r4-rollback-flow.md#installation-and-surface)
+now serves the approval's exact retained plan even after a newer generation
+exists. The Admin detail presents closed approvals as records for reference.
+The existing compensation journey now opens the consumed approval, checks its
+plan hash and confirms that decision and execution controls are absent.
+
+The production build passed 47 Chromium cases across the existing Connections,
+Gateway and Activity, Runtime, shared states, Approvals and ChangeSet specs
+without retries or skips. Those cases include 320/768/1280 viewports, light and
+dark themes, reduced motion, long localized text and bounded lists. Direct
+image inspection covered the 320px approval error, rollback execution, Gateway
+suspension dialog, budget observations, policy list and manual form, plus the
+768px dark Connections list. The PostgreSQL recheck passed 93 cases across six
+related ChangeSet and approval suites.
+
+This November 8 preflight obtained no caption. The later
+[November 14 VoiceOver run](admin-assistive-technology-acceptance.md#voiceover-observation--2026-11-14-kst)
+captured actual captions in all six workflows. The
+[follow-up](admin-assistive-technology-acceptance.md#voiceover-follow-up--2026-11-14-kst)
+records the focus and announcement fixes and their retest. Full R5 acceptance
+remains open.
 
 ### Health and Doctor requirement crosswalk
 

@@ -174,6 +174,21 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
         )
       ).status,
     ).toBe(200);
+    const runtime = await runs(
+      buildRequest(
+        `${root}/activity?origin=runtime&agentId=${missingId}&triggerKind=manual&template=guardian&q=${missingId}&approvalId=${missingId}&changeSetId=${missingId}`,
+        {
+          session,
+        },
+      ),
+    );
+    expect(runtime.status).toBe(200);
+    expect(await runtime.json()).toMatchObject({ items: [], nextCursor: null });
+    const incident = await runs(
+      buildRequest(`${root}/activity?incidentId=${missingId}`, { session }),
+    );
+    expect(incident.status).toBe(200);
+    expect(await incident.json()).toMatchObject({ items: [], nextCursor: null });
     for (const query of [
       "limit=01",
       "limit=101",
@@ -183,12 +198,26 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       "constructor=x",
       "state=complete",
       "kind=external",
+      "agentId=observer",
+      "triggerKind=webhook",
+      "triggerKind=manual&triggerKind=event",
+      "approvalId=pending",
+      "incidentId=latest",
+      "q=site.%25",
+      "q=site.inspect&q=content.query",
+      "template=default",
+      `incidentId=${missingId}&incidentId=${missingId}`,
+      `changeSetId=${missingId}&changeSetId=${missingId}`,
       "from=2026-02-30T00%3A00%3A00.000Z",
     ]) {
       const response = await runs(buildRequest(`${root}/activity?${query}`, { session }));
       expect(response.status, query).toBe(400);
       expect(response.headers.get("cache-control")).toContain("no-store");
     }
+    expect(
+      (await actions(buildRequest(`${root}/activity/actions?triggerKind=manual`, { session })))
+        .status,
+    ).toBe(400);
     expect(
       (await actions(buildRequest(`${root}/activity/actions?origin=gateway`, { session }))).status,
     ).toBe(400);

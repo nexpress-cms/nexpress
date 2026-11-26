@@ -27,6 +27,8 @@
 - Follow [testing guidance](docs/testing.md) and the affected feature's acceptance gates. Unset integration environment variables can silently skip tests; report skips and explicitly run required PostgreSQL, Redis, theme, native preview, production browser and packed-scaffold checks.
 - Do not test against incomplete build output. Keep browser startup/artifact cleanup separate from tools scanning the same directories.
 - Self-review, fix discovered issues, rerun affected checks, and run `git diff --check`. Inspect changes for secrets and unintended generated files. Documentation-only restructuring needs preservation/link/format checks, not application builds.
+- Fix the required checks and completion criteria before expensive acceptance runs. Reuse passed results for unchanged covered scope; repeat or broaden checks only for an affected change, failure or concrete unresolved concern.
+- Keep evidence in one compact index of existing logs. Avoid chains of wrappers, hashes and receipts that do not resolve a concrete question. Follow the [verification scope and completion rules](docs/testing.md#verification-scope-and-completion), including QA-helper checks and Docker persistence recovery.
 
 ## Commits and releases
 

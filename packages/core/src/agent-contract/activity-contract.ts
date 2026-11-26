@@ -1,5 +1,16 @@
 import { npRequireAgentContractResult } from "./contract.js";
 import {
+  parseActivityRuntimeDiagnosticsV1,
+  type NpAgentActivityRuntimeDiagnosticsV1,
+} from "./activity-runtime-diagnostics.js";
+import {
+  parseActivityRuntimeOperationsV1,
+  type NpAgentActivityRuntimeOperationV1,
+} from "./activity-runtime-operations.js";
+export type { NpAgentActivityRuntimeOperationV1 } from "./activity-runtime-operations.js";
+export { npAgentActivityProviderCallLimitV1 } from "./activity-runtime-diagnostics.js";
+export type { NpAgentActivityRuntimeDiagnosticsV1 } from "./activity-runtime-diagnostics.js";
+import {
   npRequireAgentOperatorReviewV1,
   type NpAgentOperatorReviewV1,
 } from "./operator-review-contract.js";
@@ -19,9 +30,13 @@ import {
 } from "./canonical-runtime-primitives.js";
 import {
   npAgentCapabilityIds,
+  npAgentRecipeTemplates,
+  npAgentRecipeTriggerKinds,
   npAgentRunStates,
   npAgentActionStates,
   type NpAgentCapabilityId,
+  type NpAgentRecipeTemplate,
+  type NpAgentRecipeTriggerKind,
 } from "./types.js";
 import {
   npAnalyzeAgentPrincipalV1,
@@ -40,6 +55,13 @@ export interface NpAgentActivityQueryV1 {
   cursor?: string;
   principalId?: string;
   runId?: string;
+  agentId?: string;
+  approvalId?: string;
+  changeSetId?: string;
+  incidentId?: string;
+  template?: NpAgentRecipeTemplate;
+  q?: string;
+  triggerKind?: NpAgentRecipeTriggerKind;
   origin?: "gateway" | "runtime";
   kind?: "external" | "runtime";
   state?: string;
@@ -66,7 +88,39 @@ export interface NpAgentActivityExpiredRunV1 {
   releasedAt: string;
   evidence: "expired";
 }
-export type NpAgentActivityRunResourceV1 = NpAgentActivityRunDetailV1 | NpAgentActivityExpiredRunV1;
+export type NpAgentActivityRunResourceV1 =
+  | (NpAgentActivityRunDetailV1 & {
+      runtimeDiagnostics?: NpAgentActivityRuntimeDiagnosticsV1 | null;
+      runtimeOperations?: NpAgentActivityRuntimeOperationV1[];
+      runtimeRetrySourceRunId?: string;
+      related?: NpAgentActivityRunLinksV1;
+    })
+  | NpAgentActivityExpiredRunV1;
+
+const relatedKeys = ["incidentIds", "approvalIds", "changeSetIds"] as const;
+export const npAgentActivityRunLinkLimitV1 = 10;
+export type NpAgentActivityRunLinksV1 = Record<(typeof relatedKeys)[number], string[]>;
+
+function parseRunLinks(value: unknown): NpAgentActivityRunLinksV1 {
+  const record = canonicalBodyRecord(value, "related", relatedKeys, relatedKeys, {
+    seen: new WeakSet(),
+  });
+  function parse(key: (typeof relatedKeys)[number]) {
+    const ids = record[key];
+    const path = `related.${key}`;
+    if (!Array.isArray(ids) || ids.length > npAgentActivityRunLinkLimitV1)
+      return failCanonicalBody("invalid-field", path, "must be a bounded ID list");
+    const parsed = ids.map((id) => canonicalBodyUuid(id, path));
+    if (new Set(parsed).size !== parsed.length)
+      return failCanonicalBody("invalid-field", path, "must not contain duplicate IDs");
+    return parsed;
+  }
+  return {
+    incidentIds: parse("incidentIds"),
+    approvalIds: parse("approvalIds"),
+    changeSetIds: parse("changeSetIds"),
+  };
+}
 
 export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
   return analyzeCanonicalBody("agent.activity.runResource", (): NpAgentActivityRunResourceV1 => {
@@ -80,6 +134,10 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
         "invocationId",
         "evidence",
         "auditEventIds",
+        "runtimeDiagnostics",
+        "runtimeOperations",
+        "runtimeRetrySourceRunId",
+        "related",
         "runId",
         "siteId",
         "principalId",
@@ -91,8 +149,38 @@ export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
       ["schemaVersion"],
       { seen: new WeakSet() },
     );
-    if (r.schemaVersion === "np.agent-activity-run.v1")
-      return npRequireAgentActivityRunDetailV1(cloned);
+    if (r.schemaVersion === "np.agent-activity-run.v1") {
+      const { runtimeDiagnostics, runtimeOperations, runtimeRetrySourceRunId, related, ...base } =
+        r;
+      const detail = npRequireAgentActivityRunDetailV1(base);
+      const retrySource = Object.hasOwn(r, "runtimeRetrySourceRunId")
+        ? canonicalBodyUuid(runtimeRetrySourceRunId, "runtimeRetrySourceRunId")
+        : undefined;
+      if (
+        retrySource &&
+        (detail.run.origin !== "runtime" ||
+          detail.evidence !== "redacted" ||
+          retrySource === detail.run.id)
+      )
+        failCanonicalBody(
+          "invalid-field",
+          "runtimeRetrySourceRunId",
+          "must identify a different Runtime Run",
+        );
+      return {
+        ...detail,
+        ...(Object.hasOwn(r, "runtimeDiagnostics")
+          ? {
+              runtimeDiagnostics: parseActivityRuntimeDiagnosticsV1(runtimeDiagnostics, detail.run),
+            }
+          : {}),
+        ...(Object.hasOwn(r, "related") ? { related: parseRunLinks(related) } : {}),
+        ...(Object.hasOwn(r, "runtimeOperations")
+          ? { runtimeOperations: parseActivityRuntimeOperationsV1(runtimeOperations, detail.run) }
+          : {}),
+        ...(retrySource ? { runtimeRetrySourceRunId: retrySource } : {}),
+      };
+    }
     const keys = [
       "schemaVersion",
       "runId",
@@ -140,6 +228,41 @@ export function npRequireAgentActivityRunResourceV1(value: unknown) {
   return npRequireAgentContractResult(npAnalyzeAgentActivityRunResourceV1(value));
 }
 
+/** Explicit allowlist for user-initiated support sharing. Never encode the resource itself. */
+export function npBuildAgentActivityRunSupportBundleV1(detail: NpAgentActivityRunResourceV1) {
+  const schemaVersion = "np.agent-activity-run-support.v1" as const;
+  if (detail.schemaVersion === "np.agent-activity-run-expired.v1") {
+    const { siteId, runId, state, finishedAt, releasedAt, evidence } = detail;
+    return { schemaVersion, siteId, runId, state, finishedAt, releasedAt, evidence };
+  }
+  const {
+    siteId,
+    id: runId,
+    origin,
+    state,
+    queuedAt,
+    startedAt,
+    finishedAt,
+    attempt,
+    errorCode,
+  } = detail.run;
+  return {
+    schemaVersion,
+    siteId,
+    runId,
+    origin,
+    state,
+    queuedAt,
+    startedAt,
+    finishedAt,
+    attempt,
+    errorCode,
+    evidence: detail.evidence,
+    invocationId: detail.invocationId,
+    auditEventIds: detail.auditEventIds,
+  };
+}
+
 export interface NpAgentActivityActionDetailV1 {
   schemaVersion: "np.agent-activity-action.v1";
   action: NpAgentActionProjectionV1;
@@ -150,6 +273,12 @@ export interface NpAgentActivityActionDetailV1 {
   auditEventId: string | null;
   evidence: "redacted" | "expired";
   operatorReview?: NpAgentOperatorReviewV1;
+  changeSetId?: string;
+  verificationResult?: {
+    state: "queued" | "running" | "passed" | "failed";
+    completedAt: string | null;
+    digest: string | null;
+  };
 }
 export type NpAgentActivityPrincipalsPageV1 = NpAgentCursorPageV1<
   NpAgentPrincipalV1,
@@ -165,7 +294,23 @@ export type NpAgentActivityActionsPageV1 = NpAgentCursorPageV1<
 >;
 const keys = {
   principals: ["limit", "cursor", "state", "kind", "from", "to"],
-  runs: ["limit", "cursor", "state", "principalId", "origin", "capabilityId", "from", "to"],
+  runs: [
+    "limit",
+    "cursor",
+    "state",
+    "principalId",
+    "origin",
+    "agentId",
+    "triggerKind",
+    "capabilityId",
+    "approvalId",
+    "changeSetId",
+    "incidentId",
+    "template",
+    "q",
+    "from",
+    "to",
+  ],
   actions: ["limit", "cursor", "state", "principalId", "runId", "capabilityId", "from", "to"],
 } as const;
 export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value: unknown) {
@@ -189,7 +334,14 @@ export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value
               : npAgentActionStates,
         ),
       );
-    for (const key of ["principalId", "runId"] as const)
+    for (const key of [
+      "principalId",
+      "runId",
+      "agentId",
+      "approvalId",
+      "changeSetId",
+      "incidentId",
+    ] as const)
       if (r[key] !== undefined) q[key] = canonicalBodyUuid(r[key], key);
     for (const key of ["from", "to"] as const)
       if (r[key] !== undefined) q[key] = canonicalBodyUtc(r[key], key);
@@ -199,6 +351,20 @@ export function npAnalyzeAgentActivityQueryV1(kind: NpAgentActivityKindV1, value
       q.kind = canonicalBodyEnum(r.kind, "kind", new Set(["external", "runtime"]));
     if (r.origin !== undefined)
       q.origin = canonicalBodyEnum(r.origin, "origin", new Set(["gateway", "runtime"]));
+    if (r.template !== undefined)
+      q.template = canonicalBodyEnum(r.template, "template", new Set(npAgentRecipeTemplates));
+    if (r.q !== undefined) {
+      const term = canonicalRuntimeText(r.q, "q", 128, { requireTrimmed: true });
+      if (!/^[a-z0-9][a-z0-9._:-]*$/iu.test(term))
+        return failCanonicalBody("invalid-field", "q", "must be a run or operation identifier");
+      q.q = term;
+    }
+    if (r.triggerKind !== undefined)
+      q.triggerKind = canonicalBodyEnum(
+        r.triggerKind,
+        "triggerKind",
+        new Set(npAgentRecipeTriggerKinds),
+      );
     if (r.capabilityId !== undefined)
       q.capabilityId = canonicalBodyEnum(
         r.capabilityId,
@@ -243,7 +409,7 @@ export function npAnalyzeAgentActivityRunDetailV1(value: unknown) {
 export function npRequireAgentActivityRunDetailV1(value: unknown) {
   return npRequireAgentContractResult(npAnalyzeAgentActivityRunDetailV1(value));
 }
-export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
+function analyzeAction(value: unknown, includeDetail: boolean) {
   return analyzeCanonicalBody("agent.activity.action", () => {
     const allowed = [
       "schemaVersion",
@@ -259,7 +425,7 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
     const r = canonicalBodyRecord(
       cloneCanonicalRuntimeInput(value, "agent.activity.action", 512 * 1024),
       "agent.activity.action",
-      allowed,
+      includeDetail ? [...allowed, "changeSetId", "verificationResult"] : allowed,
       allowed.filter((key) => key !== "operatorReview"),
       {
         seen: new WeakSet(),
@@ -270,6 +436,46 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
       r.operatorReview === undefined ? undefined : npRequireAgentOperatorReviewV1(r.operatorReview);
     if (operatorReview && operatorReview.capabilityId !== action.capabilityId)
       failCanonicalBody("invalid-field", "operatorReview", "must match this Action capability");
+    const changeSetId =
+      r.changeSetId === undefined ? undefined : canonicalBodyUuid(r.changeSetId, "changeSetId");
+    if (
+      changeSetId &&
+      (!action.runId ||
+        !["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+          action.capabilityId,
+        ))
+    )
+      failCanonicalBody(
+        "invalid-field",
+        "changeSetId",
+        "requires a Run-linked ChangeSet execution capability",
+      );
+    let verificationResult: NpAgentActivityActionDetailV1["verificationResult"];
+    if (r.verificationResult !== undefined) {
+      const path = "verificationResult";
+      const keys = ["state", "completedAt", "digest"];
+      const verification = canonicalBodyRecord(r.verificationResult, path, keys, keys, {
+        seen: new WeakSet(),
+      });
+      const state = canonicalBodyEnum<NonNullable<typeof verificationResult>["state"]>(
+        verification.state,
+        path,
+        new Set(["queued", "running", "passed", "failed"]),
+      );
+      const completedAt =
+        verification.completedAt === null ? null : canonicalBodyUtc(verification.completedAt, path);
+      const digest =
+        verification.digest === null ? null : canonicalBodySha256Digest(verification.digest, path);
+      const terminal = state === "passed" || state === "failed";
+      if (
+        terminal !== (completedAt !== null) ||
+        terminal !== (digest !== null) ||
+        (completedAt !== null && completedAt < action.createdAt) ||
+        (!changeSetId && (!terminal || action.verificationState !== state))
+      )
+        failCanonicalBody("invalid-field", path, "must match recorded verification evidence");
+      verificationResult = { state, completedAt, digest };
+    }
     return {
       schemaVersion: canonicalBodyEnum<"np.agent-activity-action.v1">(
         r.schemaVersion,
@@ -289,8 +495,13 @@ export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
         r.outputHash === null ? null : canonicalBodySha256Digest(r.outputHash, "outputHash"),
       auditEventId: nullableUuid(r.auditEventId),
       ...(operatorReview === undefined ? {} : { operatorReview }),
+      ...(changeSetId === undefined ? {} : { changeSetId }),
+      ...(verificationResult === undefined ? {} : { verificationResult }),
     };
   });
+}
+export function npAnalyzeAgentActivityActionDetailV1(value: unknown) {
+  return analyzeAction(value, true);
 }
 export function npRequireAgentActivityActionDetailV1(value: unknown) {
   return npRequireAgentContractResult(npAnalyzeAgentActivityActionDetailV1(value));
@@ -312,7 +523,7 @@ export const npAnalyzeAgentActivityRunsPageV1 = (value: unknown) =>
 export const npAnalyzeAgentActivityActionsPageV1 = (value: unknown) =>
   npAnalyzeAgentCursorPageV1(value, {
     schemaVersion: "np.agent-activity-actions.v1" as const,
-    analyzeItem: npAnalyzeAgentActivityActionDetailV1,
+    analyzeItem: (value) => analyzeAction(value, false),
     itemIssueRoot: "action",
     maximumItems: 100,
   });

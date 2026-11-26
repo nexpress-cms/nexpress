@@ -3,7 +3,7 @@ import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
-  npFormatAgentEvaluationReportV1,
+  npFormatAgentEvaluationReport,
   npFormatAgentGuardianEvaluationArtifactV1,
   npRequireAgentGuardianEvaluationArtifactV1,
   npCompareAgentGuardianEvaluationArtifactsV1,
@@ -13,7 +13,7 @@ import {
   type NpAgentGuardianEvaluationArtifactV1,
   type NpAgentGuardianEvaluationReviewArtifactV1,
   type NpAgentGuardianEvaluationReviewComparisonV1,
-  type NpAgentEvaluationReportCommandResultV1,
+  type NpAgentEvaluationReportCommandResult,
   npFormatAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationCommandResult,
   type NpAgentModeratorEvaluationReviewCommandResult,
@@ -38,6 +38,7 @@ import {
   npBuildAgentProfileEvaluationReviewArtifactV1,
   npRequireAgentProfileEvaluationReviewArtifactV1,
   npCompareAgentProfileEvaluationReviewArtifactsV1,
+  npIsAgentProfileEvaluationCategoryV1,
   type NpAgentEvaluationCommandArgsV1,
   type NpAgentEvaluationCommandResultV1,
   type NpAgentEvaluationReviewArtifactV1,
@@ -78,7 +79,7 @@ type GuardianResult =
     };
 export type EvaluationResult =
   | GuardianResult
-  | NpAgentEvaluationReportCommandResultV1
+  | NpAgentEvaluationReportCommandResult
   | OperatorPlanReviewResult
   | ModeratorProposalReviewResult
   | NpAgentEvaluationCommandResultV1
@@ -130,7 +131,7 @@ export function formatEvaluationResult(result: EvaluationResult): string {
   }
   if (result.schemaVersion === "np.agent-eval-report-command.v1")
     return result.artifact
-      ? npFormatAgentEvaluationReportV1(result.artifact)
+      ? npFormatAgentEvaluationReport(result.artifact)
       : `Evaluation report unavailable (${result.errorCode}).`;
   if (
     result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
@@ -206,21 +207,21 @@ export async function prepareEvaluationResultVerifier(
 ): Promise<(value: unknown) => Promise<EvaluationResult>> {
   if (input.reportPath) {
     const {
-      npReadAgentEvaluationReportInputV1,
-      npBuildAgentEvaluationReportV1,
+      npReadAgentEvaluationReportInput,
+      npBuildAgentEvaluationReport,
       npAssertAgentEvaluationReportOutputV1,
     } = await import("@nexpress/core/agents");
-    const loaded = await npReadAgentEvaluationReportInputV1(input.reportPath, cwd);
+    const loaded = await npReadAgentEvaluationReportInput(input.reportPath, cwd);
     if (input.outPath)
       await npAssertAgentEvaluationReportOutputV1(input.outPath, loaded.sourcePaths, cwd);
-    const expected: NpAgentEvaluationReportCommandResultV1 = {
+    const expected: NpAgentEvaluationReportCommandResult = {
       schemaVersion: "np.agent-eval-report-command.v1",
-      artifact: await npBuildAgentEvaluationReportV1(loaded.input),
+      artifact: await npBuildAgentEvaluationReport(loaded.input),
       errorCode: null,
     };
     return (value) => {
       for (const errorCode of ["ARTIFACT_INVALID", "ARTIFACT_UNAVAILABLE"] as const) {
-        const failure: NpAgentEvaluationReportCommandResultV1 = {
+        const failure: NpAgentEvaluationReportCommandResult = {
           schemaVersion: expected.schemaVersion,
           artifact: null,
           errorCode,
@@ -256,10 +257,7 @@ export async function prepareEvaluationResultVerifier(
       return prepareModeratorProposalReviewVerifier(input, cwd, evaluation);
     if (evaluation.suite.cases[0].category === "ops-plan")
       return prepareOperatorPlanReviewVerifier(input, cwd, evaluation);
-    if (
-      evaluation.suite.cases[0].category === "moderator-assessment" ||
-      evaluation.suite.cases[0].category === "publisher-selection"
-    )
+    if (npIsAgentProfileEvaluationCategoryV1(evaluation.suite.cases[0].category))
       return prepareProfileReviewVerifier(input, cwd, evaluation);
     const expectedArtifact = await npBuildAgentEvaluationReviewArtifactV1(
       evaluation,
@@ -309,29 +307,35 @@ export async function prepareEvaluationResultVerifier(
     npCreateAgentPublisherEvaluationSuiteV2,
     npCreateAgentPublisherSelectionEvaluationSuiteV1,
     npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+    npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+    npCreateAgentMemberReportEvaluationSuiteV1,
     npCreateAgentOperatorPlanEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV2,
     npCreateAgentModeratorProposalEvaluationSuiteV3,
   } = await import("@nexpress/core/agents");
   const suite =
-    input.dataset === "publisher.v3"
-      ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
-      : input.dataset === "moderator-assessment.v1"
-        ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
-        : input.dataset === "publisher.v2"
-          ? await npCreateAgentPublisherEvaluationSuiteV2()
-          : input.dataset === "publisher.v1"
-            ? await npCreateAgentPublisherEvaluationSuiteV1()
-            : input.dataset === "operator-plan.v1"
-              ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-              : input.dataset === "moderator-proposal.v3"
-                ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-                : input.dataset === "moderator-proposal.v2"
-                  ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                  : input.dataset === "moderator-proposal.v1"
-                    ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                    : await npCreateAgentOperatorEvaluationSuiteV1();
+    input.dataset === "moderator-assessment.v2"
+      ? await npCreateAgentModeratorSegmentedEvaluationSuiteV2()
+      : input.dataset === "moderator-member-report.v1"
+        ? await npCreateAgentMemberReportEvaluationSuiteV1()
+        : input.dataset === "publisher.v3"
+          ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
+          : input.dataset === "moderator-assessment.v1"
+            ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+            : input.dataset === "publisher.v2"
+              ? await npCreateAgentPublisherEvaluationSuiteV2()
+              : input.dataset === "publisher.v1"
+                ? await npCreateAgentPublisherEvaluationSuiteV1()
+                : input.dataset === "operator-plan.v1"
+                  ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+                  : input.dataset === "moderator-proposal.v3"
+                    ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                    : input.dataset === "moderator-proposal.v2"
+                      ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                      : input.dataset === "moderator-proposal.v1"
+                        ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                        : await npCreateAgentOperatorEvaluationSuiteV1();
   const suiteHash = await npDigestAgentEvaluationSuiteV1(suite);
   return async (value) => {
     const parsed = await npRequireAgentEvaluationCommandResultV1(value);

@@ -97,6 +97,19 @@ The token tree is closed and validated. Import the client-safe inventory and
 validators from `@nexpress/core/theme`, or read the full guide at
 [`docs/theme-tokens.md`](https://github.com/nexpress-cms/nexpress/blob/main/docs/theme-tokens.md).
 
+## Mobile navigation dialogs
+
+Client components can import `npOpenMobileNavDialog` from
+`@nexpress/theme/client`. Call it from an effect while navigation is open,
+passing the native `dialog`, its trigger button, and `{ desktopQuery, onClose }`;
+return its cleanup from that effect. The browser provides modal focus containment
+and makes the background inert. The helper wraps Tab/Shift+Tab at the first/last
+visible control and synchronizes Escape/external close
+with component state, closes at the desktop breakpoint, locks body scrolling,
+and restores scrolling and focus on cleanup when the trigger is still visible.
+Render a labeled dialog with a close button inside it and keep it hidden without
+the native `open` attribute; do not control the `open` attribute through JSX.
+
 ## Reference themes
 
 The monorepo ships five:

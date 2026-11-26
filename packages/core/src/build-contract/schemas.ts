@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  npRequireAgentBuildCollectionDefinitionV1,
+  type NpAgentBuildCollectionDefinitionV1,
+} from "./collection-definition.js";
 import type { NpBlockContent } from "../fields/block-content.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeNavigationItems, npAnalyzeNavigationLocation } from "../navigation/contract.js";
@@ -13,6 +17,8 @@ import type {
   NpAgentBuildSourceTreeV1,
   NpAgentBuildCommandOutputV1,
   NpAgentBlueprintCommand,
+  NpAgentBlueprintSeedPlan,
+  NpAgentBlueprintNavigation,
 } from "./types.js";
 import {
   compareUtf8,
@@ -42,12 +48,12 @@ const target = z.enum(["local", "vercel", "railway", "render", "fly", "docker"])
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable();
 const uuid = z.string().regex(new RegExp(npAuthUuidPattern, "u"));
 const nullableId = id.nullable();
-const tokens = z.custom<NpThemeTokensOverlay>(
+export const tokens = z.custom<NpThemeTokensOverlay>(
   (v) => npAnalyzeThemeTokensOverlay(v).length === 0,
   "invalid theme token overlay",
 );
 // Preserve the existing block wire rather than introducing a second block schema.
-const blockContent = z.custom<NpBlockContent>(
+export const blockContent = z.custom<NpBlockContent>(
   (v) => npValidateBlockContent(v).ok,
   "invalid block content",
 );
@@ -64,12 +70,12 @@ const shellFree = text(512).refine(
   "must be a typed argument, not shell syntax",
 );
 const previewRoot = ".nexpress/site/review/final";
-const viewport = z.strictObject({
+export const viewport = z.strictObject({
   width: z.number().int().min(240).max(7680),
   height: z.number().int().min(240).max(4320),
   deviceScaleFactor: z.union([z.literal(1), z.literal(2)]),
 });
-const viewports = z.strictObject({ desktop: viewport, mobile: viewport });
+export const viewports = z.strictObject({ desktop: viewport, mobile: viewport });
 const previewChecks = z.tuple([
   z.literal("interaction-smoke"),
   z.literal("links"),
@@ -202,7 +208,14 @@ const collection = z
     slug,
     sourcePath,
     expectedSourceHash: fileDigest.nullable(),
-    definition: jsonObject,
+    definition: z.custom<NpAgentBuildCollectionDefinitionV1>((value) => {
+      try {
+        npRequireAgentBuildCollectionDefinitionV1(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }, "invalid exact source-bound collection definition"),
     definitionHash: digest,
     migrationClass: z.enum(["none", "additive", "rename", "destructive-review"]),
   })
@@ -353,7 +366,7 @@ const check = z.discriminatedUnion("expected", [
     artifactPath: under(".nexpress/site/review"),
   }),
 ]);
-const document = z.strictObject({
+export const buildSeedDocumentSchema = z.strictObject({
   documentId: uuid,
   collection: slug,
   locale: locale.nullable(),
@@ -372,7 +385,7 @@ const document = z.strictObject({
   provenance: z.literal("demo"),
 });
 
-function canonicalOrder<T>(
+export function canonicalOrder<T>(
   items: T[],
   key: (v: T) => string,
   dependencies: (v: T) => string[],
@@ -405,7 +418,7 @@ function canonicalOrder<T>(
   }
   return true;
 }
-const collisionFree = (paths: string[]): boolean => {
+export const collisionFree = (paths: string[]): boolean => {
   // Conservatively detect portable Unicode case aliases, including sharp-s/final sigma.
   const folded = paths.map((path) =>
     path.normalize("NFC").toUpperCase().toLowerCase().normalize("NFC"),
@@ -417,6 +430,36 @@ const collisionFree = (paths: string[]): boolean => {
       if (all.has(path.slice(0, slash))) return false;
   return true;
 };
+
+export const buildNavigationSchema: z.ZodType<NpAgentBlueprintNavigation> = z.strictObject({
+  location: navigationLocation,
+  items: navigationItems,
+});
+export const buildSeedPlanSchema: z.ZodType<NpAgentBlueprintSeedPlan> = z
+  .strictObject({
+    mode: z.enum(["none", "demo-fixtures"]),
+    documents: unique(buildSeedDocumentSchema, 1000, (v) => v.documentId),
+    media: unique(media, 200, (v) => v.mediaId),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode === "none" && (value.documents.length || value.media.length))
+      issue(ctx, [], "none requires empty documents and media");
+    if (
+      !canonicalOrder(
+        value.documents,
+        (document) => document.documentId,
+        (document) => document.dependsOnDocumentIds,
+        (left, right) =>
+          compareUtf8(left.collection, right.collection) ||
+          compareUtf8(left.documentId, right.documentId),
+      )
+    )
+      issue(
+        ctx,
+        ["documents"],
+        "documents must resolve an acyclic graph in canonical topological order",
+      );
+  });
 
 export const blueprintSchema: z.ZodType<NpAgentSiteBlueprintV1> = z
   .strictObject({
@@ -441,11 +484,7 @@ export const blueprintSchema: z.ZodType<NpAgentSiteBlueprintV1> = z
       (v) => new Set(v.map((p) => p.route)).size === v.length,
       "duplicate route",
     ),
-    navigation: unique(
-      z.strictObject({ location: navigationLocation, items: navigationItems }),
-      32,
-      (v) => v.location,
-    ),
+    navigation: unique(buildNavigationSchema, 32, (v) => v.location),
     plugins: unique(
       z.strictObject({
         source: z.literal("installed"),
@@ -459,11 +498,7 @@ export const blueprintSchema: z.ZodType<NpAgentSiteBlueprintV1> = z
       64,
       (v) => v.package,
     ),
-    seed: z.strictObject({
-      mode: z.enum(["none", "demo-fixtures"]),
-      documents: unique(document, 1000, (v) => v.documentId),
-      media: unique(media, 200, (v) => v.mediaId),
-    }),
+    seed: buildSeedPlanSchema,
     deployment: z.strictObject({
       target,
       database: z.literal("postgres"),
@@ -503,8 +538,6 @@ export const blueprintSchema: z.ZodType<NpAgentSiteBlueprintV1> = z
       !collisionFree(v.collections.map((c) => c.sourcePath))
     )
       issue(ctx, ["filePlan"], "paths must not alias or collide with parent files");
-    if (v.seed.mode === "none" && (v.seed.documents.length || v.seed.media.length))
-      issue(ctx, ["seed"], "none requires empty documents and media");
     if (
       !canonicalOrder(
         v.commands,
@@ -517,20 +550,6 @@ export const blueprintSchema: z.ZodType<NpAgentSiteBlueprintV1> = z
         ctx,
         ["commands"],
         "commands must resolve an acyclic graph in canonical topological order",
-      );
-    if (
-      !canonicalOrder(
-        v.seed.documents,
-        (d) => d.documentId,
-        (d) => d.dependsOnDocumentIds,
-        (a, b) =>
-          compareUtf8(a.collection, b.collection) || compareUtf8(a.documentId, b.documentId),
-      )
-    )
-      issue(
-        ctx,
-        ["seed", "documents"],
-        "documents must resolve an acyclic graph in canonical topological order",
       );
     const commandMap = new Map(v.commands.map((c) => [c.id, c]));
     for (const [i, c] of v.verification.entries())

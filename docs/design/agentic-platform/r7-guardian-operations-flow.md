@@ -315,3 +315,61 @@ unchanged. Schema generation reports no SQL changes; package versions, changeset
 and the workspace lockfile remain unchanged. Validation uses local synthetic
 fixtures without paid provider calls or production activation. Production shadow
 evidence and independent security approval remain outstanding.
+
+## Runtime evidence read efficiency (2026-10-31)
+
+Runtime proof reads authenticate each receipt and its exact Event binding before
+loading its Run, version, provider call or Action through same-site queries of at
+most 100 IDs. Retained-key callbacks finish before these source reads. The
+existing per-fact comparisons and canonical source verifiers still apply; one
+fresh Run row needs its complete execution-integrity calculation only once in
+that pass. Source rows and Run-integrity results are private to the pass; none
+is reused after a host callback or in another proof read. Current staff authority
+is independently rechecked by the existing
+evidence owner. Pending receipt collection and individual retention receipt
+verification retain their original source reads.
+
+Collection excludes unverifiable older sources while retaining their rows; a
+strict retained-proof read rejects missing or corrupt sources. Fixed rules are
+evaluated once for the same authenticated cohort when a detector needs them.
+Frozen Signals still retain their original cohort. No canonical wire, detector,
+capture limit, authority or retention eligibility changes.
+
+An unchanged real-PostgreSQL journey creates 101 unsent accounting receipts,
+emits 100 and caps one, preserves the active Run, then releases its settled
+terminal evidence through the Guardian owner. Native Node and PostgreSQL 16,
+two test workers and a temporary SQL counter/CPU profiler produced:
+
+| Phase                     | Before SQL | After SQL | Before elapsed | After elapsed |
+| ------------------------- | ---------- | --------- | -------------- | ------------- |
+| Fixture                   | 260        | 260       | 0.861 s        | 0.831 s       |
+| Request/reserve/reconcile | 7,272      | 7,272     | 9.422 s        | 9.429 s       |
+| Collection                | 12,628     | 2,679     | 35.895 s       | 5.325 s       |
+| Active Guardian retention | 414        | 414       | 0.506 s        | 0.520 s       |
+| Terminal Guardian pruning | 3,072      | 3,072     | 7.893 s        | 7.943 s       |
+
+Collection SQL fell 78.8%. The whole case took 55.761 and 25.316 seconds;
+commands took 67.983 and 37.052 seconds. Other project workers were active, so
+these wall times are local observations, not a controlled whole-suite or hosted
+CI speedup. Generic Runtime pruning is separate from Guardian pruning; its
+bounded traversal used 1,273 and 1,417 SQL calls in these runs. The source fixture,
+101-receipt boundary, original assertions and 120-second deadline were preserved.
+The retained journey now guards collection at fewer than 5,000 SQL calls and
+drains its entire asynchronous body before fixture disposal or database reset.
+
+Focused regressions alter an earlier Action during the final retained-key lookup,
+invalidate and restore Run integrity between reads, and exclude a corrupted old
+provider source while later genuine settled calls form a valid cohort. Existing
+unknown accounting, active/blocked/held receipt protection, callback/client-reuse
+fences and 500 ms SQL / five-second collection deadlines remain required.
+Validation uses local fake outcomes without provider calls or activation.
+
+The settled local gate passes seven PostgreSQL files / 92 cases without skips or
+retries, including all 17 Runtime observation cases, accounting, Runtime and
+Guardian retention, operations, advisory assessment and retention-job owners.
+`pnpm verify --concurrency=2` passes all 113 tasks (Core 2,848 unit cases), lint
+passes all 41 tasks, and the changed integration entrypoint passes a separate
+Node-targeted TypeScript check. Existing conditional Redis three and CLI/Linux
+five unit skips remain; this focused follow-up makes no new full R7/R8 acceptance
+claim. Self-review, formatting and diff checks pass. Versions, changesets,
+lockfile, migrations and source-release/audit contracts remain unchanged.

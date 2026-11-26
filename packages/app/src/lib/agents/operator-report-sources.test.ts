@@ -16,6 +16,9 @@ async function file(name: string, value: unknown) {
   directories.push(directory);
   const path = join(directory, name);
   await writeFile(path, JSON.stringify(value));
+  // APFS may record submillisecond mtimes beyond the current Date.now() tick.
+  const recordedAt = new Date(Date.now() - 1000);
+  await utimes(path, recordedAt, recordedAt);
   return path;
 }
 describe("explicit retained Doctor and release evidence", () => {

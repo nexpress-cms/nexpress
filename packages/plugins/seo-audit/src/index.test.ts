@@ -48,6 +48,48 @@ describe("seo-audit configSchema", () => {
 });
 
 describe("plugin metadata", () => {
+  it.each(["pages", "posts"])(
+    "leaves locale-aware route metadata to the framework for %s",
+    async (collection) => {
+      const registered = seoAuditPlugin.hooks?.["render:beforePage"];
+      if (!registered) throw new Error("Missing render hook");
+      const hook = typeof registered === "function" ? registered : registered.handler;
+      const result = await hook({
+        hook: "render:beforePage",
+        data: {
+          collection,
+          slug: "ko/about",
+          document: { slug: "about", title: "About", seoDescription: "About this site" },
+        },
+        get ctx(): never {
+          throw new Error("Metadata ownership requires no plugin context access");
+        },
+      });
+      expect(result).toBeUndefined();
+    },
+  );
+  it("preserves head contributions for custom collection hosts", async () => {
+    const registered = seoAuditPlugin.hooks?.["render:beforePage"];
+    if (!registered) throw new Error("Missing render hook");
+    const hook = typeof registered === "function" ? registered : registered.handler;
+    const result = await hook({
+      hook: "render:beforePage",
+      data: {
+        collection: "events",
+        slug: "event",
+        document: { slug: "event", title: "Event", description: "Event details" },
+      },
+      get ctx(): never {
+        throw new Error("No context required");
+      },
+    });
+    expect(result).toMatchObject({
+      head: expect.arrayContaining([
+        { tag: "link", attrs: { rel: "canonical", href: "/event" } },
+        { tag: "meta", attrs: { name: "description", content: "Event details" } },
+      ]),
+    });
+  });
   it("registers id, version, and capabilities", () => {
     expect(seoAuditPlugin.manifest.id).toBe("seo-audit");
     expect(seoAuditPlugin.manifest.version).toBe("0.2.0");
