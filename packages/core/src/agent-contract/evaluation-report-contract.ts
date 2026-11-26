@@ -46,6 +46,7 @@ import type {
 } from "./moderator-proposal-evaluation-review-contract.js";
 
 export const npAgentEvaluationReportMaxBytesV1 = 4 * 1024 * 1024;
+export const npAgentEvaluationReportMaxEntriesV2 = 16;
 export { npAgentEvaluationReportRecipesV1, type NpAgentEvaluationReportRecipeV1 };
 export interface NpAgentEvaluationReportManifestV1 {
   schemaVersion: "np.agent-eval-report-manifest.v1";
@@ -55,6 +56,12 @@ export interface NpAgentEvaluationReportManifestV1 {
     review: string | null;
     baseline: { evaluation: string; review: string | null } | null;
   }[];
+}
+export interface NpAgentEvaluationReportManifestV2 extends Omit<
+  NpAgentEvaluationReportManifestV1,
+  "schemaVersion"
+> {
+  schemaVersion: "np.agent-eval-report-manifest.v2";
 }
 export interface NpAgentEvaluationReportEvidenceV1 {
   evaluation:
@@ -77,6 +84,12 @@ export interface NpAgentEvaluationReportInputV1 {
     current: { evaluation: unknown; review: unknown };
     baseline: { evaluation: unknown; review: unknown } | null;
   }[];
+}
+export interface NpAgentEvaluationReportInputV2 extends Omit<
+  NpAgentEvaluationReportInputV1,
+  "schemaVersion"
+> {
+  schemaVersion: "np.agent-eval-report-input.v2";
 }
 export interface NpAgentEvaluationReportRowV1 {
   recipe: NpAgentEvaluationReportRecipeV1;
@@ -131,6 +144,17 @@ export interface NpAgentEvaluationReportV1 {
   limitations: string[];
   artifactHash: string;
 }
+export interface NpAgentEvaluationReportRowV2 extends NpAgentEvaluationReportRowV1 {
+  dataset: { id: string; version: number } | null;
+}
+export interface NpAgentEvaluationReportV2 extends Omit<
+  NpAgentEvaluationReportV1,
+  "schemaVersion" | "input" | "rows"
+> {
+  schemaVersion: "np.agent-eval-report.v2";
+  input: NpAgentEvaluationReportInputV2;
+  rows: NpAgentEvaluationReportRowV2[];
+}
 export interface NpAgentEvaluationReportCommandResultV1 {
   schemaVersion: "np.agent-eval-report-command.v1";
   artifact: NpAgentEvaluationReportV1 | null;
@@ -140,6 +164,12 @@ export interface NpAgentEvaluationReportCommandResultV1 {
     | "ARTIFACT_UNAVAILABLE"
     | "EVALUATION_UNAVAILABLE"
     | null;
+}
+export interface NpAgentEvaluationReportCommandResult extends Omit<
+  NpAgentEvaluationReportCommandResultV1,
+  "artifact"
+> {
+  artifact: NpAgentEvaluationReportV1 | NpAgentEvaluationReportV2 | null;
 }
 const fail = (): never => {
   throw new Error("Invalid bounded Agent evaluation report manifest.");
@@ -161,21 +191,31 @@ const filePath = (value: unknown): string => {
 export function npRequireAgentEvaluationReportManifestV1(
   value: unknown,
 ): NpAgentEvaluationReportManifestV1 {
+  const manifest = npRequireAgentEvaluationReportManifest(value);
+  if (manifest.schemaVersion !== "np.agent-eval-report-manifest.v1") return fail();
+  return manifest;
+}
+export function npRequireAgentEvaluationReportManifest(
+  value: unknown,
+): NpAgentEvaluationReportManifestV1 | NpAgentEvaluationReportManifestV2 {
   const r = record(cloneCanonicalRuntimeInput(value, "agent.evaluation.report.manifest", 128_000), [
     "schemaVersion",
     "entries",
   ]);
+  const schemaVersion = r.schemaVersion;
+  const v1 = schemaVersion === "np.agent-eval-report-manifest.v1";
   if (
-    r.schemaVersion !== "np.agent-eval-report-manifest.v1" ||
+    (!v1 && schemaVersion !== "np.agent-eval-report-manifest.v2") ||
     !Array.isArray(r.entries) ||
-    r.entries.length > npAgentEvaluationReportRecipesV1.length
+    r.entries.length >
+      (v1 ? npAgentEvaluationReportRecipesV1.length : npAgentEvaluationReportMaxEntriesV2)
   )
-    fail();
+    return fail();
   const seen = new Set<string>();
   const entries = (r.entries as unknown[]).map((value) => {
     const entry = record(value, ["recipe", "evaluation", "review", "baseline"]);
     const recipe = npAgentEvaluationReportRecipesV1.find((recipe) => recipe === entry.recipe);
-    if (!recipe || seen.has(recipe)) return fail();
+    if (!recipe || (v1 && seen.has(recipe))) return fail();
     seen.add(recipe);
     const baseline =
       entry.baseline === null ? null : record(entry.baseline, ["evaluation", "review"]);
@@ -192,18 +232,27 @@ export function npRequireAgentEvaluationReportManifestV1(
             },
     };
   });
-  return { schemaVersion: "np.agent-eval-report-manifest.v1", entries };
+  return { schemaVersion, entries };
 }
-/** Format only independently validated reports; no rates are pooled across recipes. */
 export function npFormatAgentEvaluationReportV1(report: NpAgentEvaluationReportV1): string {
+  return npFormatAgentEvaluationReport(report);
+}
+/** Format only independently validated reports; rates stay scoped to each row. */
+export function npFormatAgentEvaluationReport(
+  report: NpAgentEvaluationReportV1 | NpAgentEvaluationReportV2,
+): string {
   const lines = [
     report.rows.some((row) => row.recipe === "guardian")
       ? "Offline evaluation evidence report (legacy R6 and separate Guardian evidence)"
       : "R6 offline evaluation evidence report",
   ];
   for (const row of report.rows) {
+    const dataset = "dataset" in row ? row.dataset : null;
+    const label = dataset
+      ? `${row.recipe} [${dataset.id}, version ${dataset.version}]`
+      : row.recipe;
     lines.push(
-      `${row.recipe}: ${row.status}; mode=${row.mode ?? "missing"}; fixture/schema gate=${row.fixtureGate}; cases=${row.cases ?? "unknown"}`,
+      `${label}: ${row.status}; mode=${row.mode ?? "missing"}; fixture/schema gate=${row.fixtureGate}; cases=${row.cases ?? "unknown"}`,
     );
     const metrics = row.metrics;
     if (metrics)

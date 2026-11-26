@@ -16,8 +16,7 @@ const contracts = await import(
 );
 const directory = await mkdtemp(join(scaffoldDir, ".np-evaluation-report-"));
 try {
-  const evaluation = await agents.runAgentEvaluationV1({
-    suite: await agents.npCreateAgentOperatorPlanEvaluationSuiteV1(),
+  const offline = {
     mode: "fake",
     providerId: "fake",
     model: "deterministic-v1",
@@ -28,19 +27,37 @@ try {
       maxCostMicros: 0,
       timeoutMs: 5000,
     },
+  };
+  const evaluation = await agents.runAgentEvaluationV1({
+    ...offline,
+    suite: await agents.npCreateAgentOperatorPlanEvaluationSuiteV1(),
   });
   const review = await contracts.npBuildAgentOperatorPlanEvaluationReviewArtifactV1(evaluation);
   const evidence = { evaluation, review };
-  const expected = await agents.npBuildAgentEvaluationReportV1(
+  const assessments = await Promise.all(
+    [
+      agents.npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+      agents.npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+      agents.npCreateAgentMemberReportEvaluationSuiteV1,
+    ].map(async (factory) => agents.runAgentEvaluationV1({ ...offline, suite: await factory() })),
+  );
+  const expected = await agents.npBuildAgentEvaluationReportV2(
     JSON.parse(
       JSON.stringify({
-        schemaVersion: "np.agent-eval-report-input.v1",
-        entries: [{ recipe: "operator", current: evidence, baseline: evidence }],
+        schemaVersion: "np.agent-eval-report-input.v2",
+        entries: [
+          { recipe: "operator", current: evidence, baseline: evidence },
+          ...assessments.map((evaluation) => ({
+            recipe: "moderator-assessment",
+            current: { evaluation, review: null },
+            baseline: null,
+          })),
+        ],
       }),
     ),
   );
   const manifest = {
-    schemaVersion: "np.agent-eval-report-manifest.v1",
+    schemaVersion: "np.agent-eval-report-manifest.v2",
     entries: [
       {
         recipe: "operator",
@@ -48,10 +65,18 @@ try {
         review: "review.json",
         baseline: { evaluation: "evaluation.json", review: "review.json" },
       },
+      ...assessments.map(({ suite }) => ({
+        recipe: "moderator-assessment",
+        evaluation: `${suite.id}.json`,
+        review: null,
+        baseline: null,
+      })),
     ],
   };
   for (const [name, value] of Object.entries({ evaluation, review, manifest }))
     await writeFile(join(directory, `${name}.json`), JSON.stringify(value));
+  for (const assessment of assessments)
+    await writeFile(join(directory, `${assessment.suite.id}.json`), JSON.stringify(assessment));
   const destination = join(directory, "report.json");
   const child = spawnSync(
     "pnpm",
