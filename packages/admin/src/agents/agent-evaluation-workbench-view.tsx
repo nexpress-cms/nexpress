@@ -295,6 +295,9 @@ export function AgentEvaluationWorkbenchView({
             <p className="text-xs text-neutral-500">
               Operator plan requires operator-plan.v1. Detector replay and Moderator proposals are
               separate datasets.
+              {recipe === "moderator-assessment"
+                ? " Import moderator-assessment.v1 for content assessment or moderator-member-report.v1 for synthetic Member report and response review."
+                : ""}
               {recipe === "guardian"
                 ? " Guardian requires guardian.v1. This synthetic reference does not establish production rule replay, production precision, model usefulness, live approval or enablement. Review support concerns only the synthetic prediction."
                 : ""}

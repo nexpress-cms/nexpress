@@ -175,12 +175,15 @@ export async function npBuildAgentEvaluationWorkbenchV1(
         score.ok &&
         (request.recipe !== "publisher" ||
           !source.violations.some((violation) => violation.caseId === entry.caseId));
+      const memberReport = source.suite.cases[index].category === "moderator-member-report";
       cases.push({
         ...base,
         allowedOutcomes: entry.eligible
-          ? canAccept
-            ? ["accept", "edit", "reject"]
-            : ["edit", "reject"]
+          ? [
+              ...(canAccept ? (["accept"] as const) : []),
+              ...(memberReport ? [] : (["edit"] as const)),
+              "reject",
+            ]
           : [],
         evidenceJson: json(source.suite.cases[index].evidence),
         predictionJson: json(result.prediction),

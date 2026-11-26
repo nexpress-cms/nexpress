@@ -102,6 +102,30 @@ The Admin UI uses `npFetch` and pure display-contract validation. Shared App
 pages/API own framework wiring; reference and packed scaffold routes remain
 thin matching wrappers. No versions, changesets, lockfile or migrations change.
 
+## Member report and response evaluation
+
+Run the deterministic reference evaluation from a NexPress project:
+
+```bash
+nexpress agent evaluate --dataset moderator-member-report.v1 --out member-report.json --json
+```
+
+The eighteen versioned synthetic cases cover current unverified claims,
+missing and stale evidence, site scope, host policy, member and incident
+state, duration limits, manual restrictions, and unchanged, expired or changed
+workflow-owned restrictions. Predictions contain a claim classification, a
+review disposition and a reason. Every case has an empty action list.
+
+Select **Moderator semantic assessment** in the existing Workbench and import
+the generated artifact. Accept or reject the exact prediction, then export the
+review or report through the usual controls. CLI review and comparison use the
+same source bindings. A content-assessment baseline is a different corpus.
+
+The reference scores synthetic facts at zero provider cost. Real restrictions
+and revocations require the existing Member response service and its human
+approval checks. Evaluation labels concern the synthetic prediction and carry
+no approval authority.
+
 ## Acceptance boundary
 
 Imported and ordinary exported review attribution remains self-reported offline data. Fixture checks, human

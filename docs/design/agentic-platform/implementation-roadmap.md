@@ -790,8 +790,10 @@ adds a separate 32-case bilingual document/comment replay corpus with actual
 threshold, author independence, target-kind deduplication and newest-fact checks.
 It preserves both earlier detector artifacts and keeps CLI/Workbench/report
 feedback bound to exact predictions. Member filings now have the advisory
-review flow above; Member response/classification datasets, production precision,
-longitudinal comparison and live-model quality remain separate work.
+review flow above. The [Member report evaluation](r6-evaluation-workbench-flow.md#member-report-and-response-evaluation)
+adds a standalone synthetic corpus for claim classification and response review
+eligibility. Production precision, longitudinal comparison and live-model
+quality remain separate work.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.

@@ -10,11 +10,13 @@ import {
   npBuildAgentEvaluationArtifactV1,
   npRequireAgentEvaluationPredictionV1,
   npDigestAgentEvaluationValueV1,
+  npCreateAgentMemberReportEvaluationPredictionV1,
   npCompareAgentEvaluationArtifactsV1,
   npAgentEvaluationArtifactMaxBytesV1,
   type NpAgentEvaluationArtifactV1,
   type NpAgentEvaluationPredictionV1,
   type NpAgentEvaluationEvidenceV1,
+  type NpAgentEvaluationCategoryV1,
 } from "./evaluation-contract.js";
 import type {
   NpAgentEvaluationReviewSummaryV1,
@@ -103,7 +105,10 @@ function grounded(
   evidence: NpAgentEvaluationEvidenceV1[],
   value: NpAgentEvaluationPredictionV1,
 ): boolean {
-  if (source.suite.cases[0].category === "moderator-assessment") {
+  const category = source.suite.cases[0].category;
+  if (category === "moderator-member-report")
+    return equal(npCreateAgentMemberReportEvaluationPredictionV1(evidence), value);
+  if (category === "moderator-assessment") {
     return (
       !!value.moderatorAssessment &&
       !npEvaluateAgentModeratorAssessmentV1(evidence, value.moderatorAssessment).length &&
@@ -113,7 +118,7 @@ function grounded(
       )
     );
   }
-  if (source.suite.cases[0].category === "publisher-selection")
+  if (category === "publisher-selection")
     return (
       !!value.publisherSelectionResponse &&
       !npEvaluateAgentPublisherSelectionV1(evidence, value.publisherSelectionResponse).length &&
@@ -127,6 +132,15 @@ function grounded(
     );
   return false;
 }
+export function npIsAgentProfileEvaluationCategoryV1(
+  category: NpAgentEvaluationCategoryV1,
+): boolean {
+  return (
+    category === "moderator-assessment" ||
+    category === "moderator-member-report" ||
+    category === "publisher-selection"
+  );
+}
 /** Offline labels bind source/case/prediction exactly; no identity or execution authority is asserted. */
 export async function npBuildAgentProfileEvaluationReviewArtifactV1(
   sourceValue: unknown,
@@ -135,7 +149,7 @@ export async function npBuildAgentProfileEvaluationReviewArtifactV1(
   const source = await npRequireAgentEvaluationArtifactV1(sourceValue);
   const category = source.suite.cases[0].category;
   if (
-    !["moderator-assessment", "publisher-selection"].includes(category) ||
+    !npIsAgentProfileEvaluationCategoryV1(category) ||
     source.suite.cases.some((c) => c.category !== category)
   )
     fail();
@@ -159,7 +173,7 @@ export async function npBuildAgentProfileEvaluationReviewArtifactV1(
       eligible:
         result.error === null &&
         result.prediction !== null &&
-        (category === "moderator-assessment" ||
+        (category !== "publisher-selection" ||
           result.prediction.publisherSelectionResponse?.decision.kind === "propose-capability"),
       review: null,
     })),
@@ -189,6 +203,7 @@ export async function npBuildAgentProfileEvaluationReviewArtifactV1(
     const outcome = r.outcome as NpAgentProfileEvaluationReviewLabelV1["outcome"];
     let editedProposal: NpAgentEvaluationPredictionV1 | null = null;
     if (outcome === "edit") {
+      if (category === "moderator-member-report") fail();
       editedProposal = npRequireAgentEvaluationPredictionV1(
         r.editedProposal,
         source.suite.cases[0].category,

@@ -83,16 +83,17 @@ async function evidence(
     evaluation.schemaVersion === "np.agent-eval.v1" &&
     evaluation.suite.cases.some(
       (c) =>
+        !(recipe === "moderator-assessment" && c.category === "moderator-member-report") &&
         c.category !==
-        (recipe === "publisher-selection"
-          ? "publisher-selection"
-          : recipe === "moderator-assessment"
-            ? "moderator-assessment"
-            : recipe === "operator"
-              ? "ops-plan"
-              : recipe === "moderator-proposal"
-                ? "moderator-proposal"
-                : "publisher"),
+          (recipe === "publisher-selection"
+            ? "publisher-selection"
+            : recipe === "moderator-assessment"
+              ? "moderator-assessment"
+              : recipe === "operator"
+                ? "ops-plan"
+                : recipe === "moderator-proposal"
+                  ? "moderator-proposal"
+                  : "publisher"),
     )
   )
     fail();
