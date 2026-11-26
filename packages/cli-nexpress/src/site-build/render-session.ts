@@ -8,6 +8,10 @@ import {
 } from "@nexpress/core/agent-contract";
 import { SiteBuildError } from "./artifact-io.js";
 import { withSiteBuildDockerV1 } from "./docker-host.js";
+import {
+  isSiteBuildNextPreviewOwnerVersionV1,
+  type NpSiteBuildNextPreviewOwnerVersionV1,
+} from "./next-preview-runtime.js";
 import { prepareSiteBuildRendererBaseV1 } from "./renderer-image.js";
 import {
   observeSiteBuildLinuxProjectInputsV1,
@@ -60,7 +64,7 @@ interface BuildSummary {
   };
   nextPreviewRuntime?: {
     scope: "private-preview-next-isr-flush-to-disk-false";
-    ownerVersion: "16.3.4" | "16.4.2";
+    ownerVersion: NpSiteBuildNextPreviewOwnerVersionV1;
     ownerContentDigest: string;
     originalEntrySha256: string;
     derivedEntrySha256: string;
@@ -199,7 +203,7 @@ function buildSummaryValue(value: unknown): BuildSummary {
     ]);
     if (
       runtime.scope !== "private-preview-next-isr-flush-to-disk-false" ||
-      (runtime.ownerVersion !== "16.3.4" && runtime.ownerVersion !== "16.4.2") ||
+      !isSiteBuildNextPreviewOwnerVersionV1(runtime.ownerVersion) ||
       typeof runtime.ownerContentDigest !== "string" ||
       !/^npkg1:sha256:[A-Za-z0-9_-]{43}$/u.test(runtime.ownerContentDigest) ||
       !sha256(runtime.originalEntrySha256) ||

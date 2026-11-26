@@ -24,8 +24,8 @@ const owners = {
   "dist/trace/trace.js": "04c46dd2d1f10d40bfe8a9a01d706447559c965bc66262576aed356cf1095a39",
   "dist/trace/shared.js": "a7691a73a9d374f77f2925ce8a062c1b5030817086ef0f105534b9f09b3e9c94",
 } as const;
-type NextVersion = "16.3.4" | "16.4.2";
-const ownerProfiles: Record<NextVersion, Record<string, string>> = {
+const ownerProfiles = {
+  "16.4.6": owners,
   "16.4.2": owners,
   "16.3.4": {
     ...owners,
@@ -33,7 +33,13 @@ const ownerProfiles: Record<NextVersion, Record<string, string>> = {
       "1ed7da61f3ef90965c7593d1816c8dba1eb85d314bf951987190925b54f3607e",
     "dist/trace/trace.js": "bc735939cd5231beac096725b0ff7eaa5c00d2a477e8994b01e5f73a1610c577",
   },
-};
+} satisfies Record<string, Record<string, string>>;
+type NextVersion = keyof typeof ownerProfiles;
+
+export function isSiteBuildDeterministicNextOwnerVersionV1(value: string): value is NextVersion {
+  return Object.hasOwn(ownerProfiles, value);
+}
+
 const originalPreviewFunction = `function generateConfig() {
     return {
         previewModeId: _crypto.default.randomBytes(16).toString('hex'),
@@ -152,7 +158,7 @@ export async function createSiteBuildDeterministicNextContextV1(input: {
   )
     return fail();
   if (
-    !["16.3.4", "16.4.2"].includes(input.nextVersion) ||
+    !isSiteBuildDeterministicNextOwnerVersionV1(input.nextVersion) ||
     !packages.some((item) => item.name === "next" && item.version === input.nextVersion)
   )
     return fail();
@@ -329,7 +335,7 @@ export async function prepareSiteBuildDeterministicNextBuildV1(input: {
   const next = input.packages.rootImports.get("next");
   if (
     !next ||
-    (next.version !== "16.4.2" && next.version !== "16.3.4") ||
+    !isSiteBuildDeterministicNextOwnerVersionV1(next.version) ||
     next.root !== (await realpath(join(dependencies, "next"))) ||
     !next.root.startsWith(dependencies + "/")
   )

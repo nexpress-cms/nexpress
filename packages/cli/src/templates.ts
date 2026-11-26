@@ -230,12 +230,12 @@ function packageJsonTemplate(config: TemplateConfig): string {
         // optional peer of @nexpress/core, so pnpm's strict dependency
         // isolation requires the generated app to declare it directly or
         // the first transactional send fails at runtime.
-        nodemailer: "^9.0.0",
+        nodemailer: "^10.1.4",
         // Media processing runs through @nexpress/core, but production
         // platforms such as Vercel need sharp's optional native payload
         // present in the app install graph for standalone tracing. Keep
         // this range aligned with @nexpress/core's direct dependency.
-        sharp: "^0.35.4",
+        sharp: "^0.35.5",
         // Pinned to ^16 — `@nexpress/app`'s route handlers use Next 16
         // signatures (notably `revalidateTag(tag, profile)` with the
         // second arg added in 16; `proxy.ts` replacing `middleware.ts`).
@@ -273,7 +273,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       pnpm: {
         overrides: {
           browserslist: "4.28.7",
-          sharp: "0.35.4",
+          sharp: "0.35.5",
         },
       },
       // Native-build allowlist for pnpm lives in `pnpm-workspace.yaml`'s
