@@ -19,7 +19,7 @@ const ownerPaths = [
 ] as const;
 // Explicit observed shipped owners. A version string or lookalike JS is insufficient.
 // 16.4.6 is the repository owner. Earlier owners remain valid for pinned projects.
-const profiles: Record<string, readonly string[]> = {
+const profiles = {
   "16.3.4": [
     "de18448b9bb78b8b53ddf50caecca755cbc99031ba3609ada337c65fb11ed284",
     "3dbabaa66c33eed945d522e7b44cc300a81264472c23ad70c410901cb90d1101",
@@ -38,7 +38,15 @@ const profiles: Record<string, readonly string[]> = {
     "b213afa46803f94a38aa506c6b130eeb94841d7e1ca37686357adf2637cce69e",
     "427a5a07865eb68f0335ef701636bc1e065e8809552d243333d22e5eefcaae29",
   ],
-};
+} satisfies Record<string, readonly string[]>;
+export type NpSiteBuildNextPreviewOwnerVersionV1 = keyof typeof profiles;
+
+export function isSiteBuildNextPreviewOwnerVersionV1(
+  value: unknown,
+): value is NpSiteBuildNextPreviewOwnerVersionV1 {
+  return typeof value === "string" && Object.hasOwn(profiles, value);
+}
+
 const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const record = (value: unknown): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -100,7 +108,7 @@ export interface NpSiteBuildNextPreviewRuntimeReceiptV1 {
   status: "written" | "unchanged";
   owner: {
     name: "next";
-    version: string;
+    version: NpSiteBuildNextPreviewOwnerVersionV1;
     contentDigest: string;
     files: Array<{ path: string; sha256: string }>;
   };
@@ -306,7 +314,7 @@ export async function deriveSiteBuildNextPreviewRuntimeV1(input: {
     if (
       !next ||
       next.name !== "next" ||
-      !Object.hasOwn(profiles, next.version) ||
+      !isSiteBuildNextPreviewOwnerVersionV1(next.version) ||
       !next.root.startsWith(`${project}/node_modules/`)
     )
       throw new SiteBuildError("unavailable");
