@@ -17,7 +17,7 @@ const svg =
 const media = "icon.fixture-token.svg";
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
-async function fixture() {
+async function fixture(nextVersion: "16.4.2" | "16.4.6" = "16.4.2") {
   const project = await mkdtemp(join(tmpdir(), "np-next-metadata-"));
   roots.push(project);
   const put = async (path: string, value: string | object) => {
@@ -55,9 +55,10 @@ async function fixture() {
     routeCache: { owner: { kind: "APP_ROUTE", sourceRoute: "/icon.svg/route" } },
   });
   await put(".next/server/app/icon.svg/route.js", 'var R={};R.c("server/chunks/icon-route.js");');
+  const routeDirective = nextVersion === "16.4.6" ? '"use strict";' : "";
   await put(
     ".next/server/chunks/icon-route.js",
-    `module.exports=[2,e=>{let route=new X.AppRouteRouteModule({definition:{page:"/icon.svg/route",pathname:"/icon.svg"},resolvedPagePath:"[project]/src/app/icon.svg--route-entry.js"})},3,e=>{var t=e.i(4);let body=Buffer.from("${Buffer.from(svg).toString("base64")}","base64");e.s(["GET",0,function(){return new t.NextResponse(body,{headers:{"Content-Type":"image/svg+xml","Cache-Control":"public, max-age=0, must-revalidate"}})},"dynamic",0,"force-static"])}];`,
+    `module.exports=[2,e=>{let route=new X.AppRouteRouteModule({definition:{page:"/icon.svg/route",pathname:"/icon.svg"},resolvedPagePath:"[project]/src/app/icon.svg--route-entry.js"})},3,e=>{${routeDirective}var t=e.i(4);let body=Buffer.from("${Buffer.from(svg).toString("base64")}","base64");e.s(["GET",0,function(){return new t.NextResponse(body,{headers:{"Content-Type":"image/svg+xml","Cache-Control":"public, max-age=0, must-revalidate"}})},"dynamic",0,"force-static"])}];`,
   );
   await put(
     ".next/server/app/(site)/[[...slug]]/page.js",
@@ -71,20 +72,23 @@ async function fixture() {
   const next: NpObservedBuildPackageV1 = {
     root: join(project, "node_modules/next"),
     name: "next",
-    version: "16.4.2",
+    version: nextVersion,
     contentDigest: "",
-    manifest: { name: "next", version: "16.4.2" },
+    manifest: { name: "next", version: nextVersion },
     dependencies: new Map(),
     files: [
       {
         path: "package.json",
         mode: "100644",
-        sha256: digest('{"name":"next","version":"16.4.2"}'),
+        sha256: digest(JSON.stringify({ name: "next", version: nextVersion })),
       },
       {
         path: "dist/server/base-server.js",
         mode: "100644",
-        sha256: "5c24d699cccb76b3346b279edfa8a4025f89c14322ee6569e4fb2cc2ae144777",
+        sha256:
+          nextVersion === "16.4.2"
+            ? "5c24d699cccb76b3346b279edfa8a4025f89c14322ee6569e4fb2cc2ae144777"
+            : "482aee1ef7d102fccff1a6200960114adbf856080122e1587bdbdc36a7d80a2d",
       },
       {
         path: "dist/build/webpack/loaders/next-metadata-route-loader.js",
@@ -136,33 +140,36 @@ const observe = (input: Awaited<ReturnType<typeof fixture>>) =>
   observeSiteBuildNextMetadataAssetsV1(input);
 
 describe("source-owned root Next static metadata assets", () => {
-  it("derives one exact GET request from equal source/body/media and compiled owners without executing modules", async () => {
-    const input = await fixture();
-    const result = await observe(input);
-    expect(result.metadataRequests).toEqual([`/icon.svg?${media}`]);
-    expect(result.evidence.assets).toEqual([
-      {
-        request: `/icon.svg?${media}`,
-        source: "src/app/icon.svg",
-        body: ".next/server/app/icon.svg.body",
-        media: `.next/static/media/${media}`,
-        routeOwner: ".next/server/chunks/icon-route.js",
-        metadataOwner: ".next/server/chunks/layout.js",
-        mediaOwner: ".next/server/chunks/layout.js",
-      },
-    ]);
-    expect(result.evidence.files.find((f) => f.path === "src/app/icon.svg")?.sha256).toBe(
-      digest(svg),
-    );
-    expect(result.evidenceSha256).toMatch(/^[a-f0-9]{64}$/u);
-    expect(JSON.stringify(result)).not.toContain(input.project);
-    expect(JSON.stringify(result)).not.toContain(svg);
-    expect(Object.isFrozen(result.metadataRequests)).toBe(true);
-    expect(input.assertCapsuleUnchanged).toHaveBeenCalledTimes(2);
-    expect(input.assertPackagesUnchanged).toHaveBeenCalledTimes(2);
-    await result.assertUnchanged();
-    expect((await observe(input)).evidenceSha256).toBe(result.evidenceSha256);
-  });
+  it.each(["16.4.2", "16.4.6"] as const)(
+    "derives one exact GET request from the static icon and compiled owners on Next %s",
+    async (version) => {
+      const input = await fixture(version);
+      const result = await observe(input);
+      expect(result.metadataRequests).toEqual([`/icon.svg?${media}`]);
+      expect(result.evidence.assets).toEqual([
+        {
+          request: `/icon.svg?${media}`,
+          source: "src/app/icon.svg",
+          body: ".next/server/app/icon.svg.body",
+          media: `.next/static/media/${media}`,
+          routeOwner: ".next/server/chunks/icon-route.js",
+          metadataOwner: ".next/server/chunks/layout.js",
+          mediaOwner: ".next/server/chunks/layout.js",
+        },
+      ]);
+      expect(result.evidence.files.find((f) => f.path === "src/app/icon.svg")?.sha256).toBe(
+        digest(svg),
+      );
+      expect(result.evidenceSha256).toMatch(/^[a-f0-9]{64}$/u);
+      expect(JSON.stringify(result)).not.toContain(input.project);
+      expect(JSON.stringify(result)).not.toContain(svg);
+      expect(Object.isFrozen(result.metadataRequests)).toBe(true);
+      expect(input.assertCapsuleUnchanged).toHaveBeenCalledTimes(2);
+      expect(input.assertPackagesUnchanged).toHaveBeenCalledTimes(2);
+      await result.assertUnchanged();
+      expect((await observe(input)).evidenceSha256).toBe(result.evidenceSha256);
+    },
+  );
   it("observes complete absence and invalidates the lease when an icon later appears", async () => {
     const input = await fixture();
     for (const path of [

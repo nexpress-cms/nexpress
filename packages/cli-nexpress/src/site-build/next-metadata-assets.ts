@@ -12,13 +12,18 @@ import { SiteBuildError } from "./artifact-io.js";
 import type { NpObservedBuildPackagesV1 } from "./installed-packages.js";
 
 const profile = "np.next-root-static-icon-svg.v1" as const;
-const nextOwners = {
+const next1642Owners = {
   "dist/server/base-server.js": "5c24d699cccb76b3346b279edfa8a4025f89c14322ee6569e4fb2cc2ae144777",
   "dist/build/webpack/loaders/next-metadata-route-loader.js":
     "1cb4ed333bdeaa80b62e0eb2f521ec1008a5f44eb9ef48fe948c387232ef21a9",
   "dist/server/route-modules/app-route/helpers/auto-implement-methods.js":
     "fecd56746f3aac13db5e804dc99a6fc87f970e380e57e125f0e0815373a4094d",
 } as const;
+const next1646Owners = {
+  ...next1642Owners,
+  "dist/server/base-server.js": "482aee1ef7d102fccff1a6200960114adbf856080122e1587bdbdc36a7d80a2d",
+} as const;
+const nextOwnerProfiles = { "16.4.2": next1642Owners, "16.4.6": next1646Owners };
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const compare = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 const same = (a: BigIntStats, b: BigIntStats) =>
@@ -63,7 +68,7 @@ export interface NpSiteBuildNextMetadataAssetsV1 {
 
 /**
  * Trusted in-process capsule/package observation only, never an authored URL inventory.
- * This first profile supports the measured Next16.4.2 Turbopack root static icon.svg.
+ * This profile supports the measured Next Turbopack root static icon.svg.
  * No project module is imported or executed. Other root icon conventions fail closed.
  * The caller still owns native execution, request policy and capsule authorization.
  */
@@ -80,7 +85,7 @@ export async function observeSiteBuildNextMetadataAssetsV1(input: {
       !next ||
       !input.packages.instances.includes(next) ||
       next.name !== "next" ||
-      next.version !== "16.4.2"
+      (next.version !== "16.4.2" && next.version !== "16.4.6")
     )
       return fail();
     const inventory = npRequireBuildInstalledPackageContentV1({
@@ -96,7 +101,7 @@ export async function observeSiteBuildNextMetadataAssetsV1(input: {
         (p) =>
           p.name === next.name && p.version === next.version && p.contentDigest === contentDigest,
       ).length !== 1 ||
-      Object.entries(nextOwners).some(
+      Object.entries(nextOwnerProfiles[next.version]).some(
         ([path, sha256]) => inventory.files.find((file) => file.path === path)?.sha256 !== sha256,
       )
     )
@@ -411,7 +416,15 @@ export async function observeSiteBuildNextMetadataAssetsV1(input: {
             const module = call.getFirstAncestorByKind(SyntaxKind.ArrowFunction);
             const moduleBody = module?.getBody();
             if (!moduleBody || !Node.isBlock(moduleBody)) return false;
-            const statements = moduleBody.getStatements();
+            let statements = moduleBody.getStatements();
+            const [directive] = statements;
+            if (
+              next.version === "16.4.6" &&
+              directive &&
+              Node.isExpressionStatement(directive) &&
+              text(directive.getExpression()) === "use strict"
+            )
+              statements = statements.slice(1);
             if (
               statements.length !== 3 ||
               !Node.isVariableStatement(statements[0]) ||
