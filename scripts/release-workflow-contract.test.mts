@@ -115,7 +115,11 @@ test("the Release workflow uses the complete Changesets v2 contract", async () =
     "v2 action authentication belongs in github-token, not the step environment",
   );
   assert.match(workflow, /VERSION_PR_NUMBER:\s*\${{\s*steps\.changesets\.outputs\.pr-number\s*}}/);
-  assert.equal(rootManifest.devDependencies?.["@changesets/cli"], "^3.0.1");
+  assert.match(
+    rootManifest.devDependencies?.["@changesets/cli"] ?? "",
+    /^\^3\.0\.[1-9]\d*$/u,
+    "the release workflow requires Changesets CLI 3.0.1 or a later 3.0 patch",
+  );
   assert.equal(config.$schema, "https://unpkg.com/@changesets/config@4.0.0/schema.json");
   assert.match(releaseScript, /env: process\.env/);
   assert.match(releaseScript, /"changeset", "publish", "--no-git-tag"/);
