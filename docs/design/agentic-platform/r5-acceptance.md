@@ -25,14 +25,13 @@ Existing integration journeys now exercise those boundaries directly.
 [Admin state evidence](admin-state-accessibility.md) now cover bounded loading,
 refresh, failure, keyboard and visual scenarios; the
 [success lifecycles](admin-success-lifecycle.md) add activation, connection
-revocation and full rollback presentation. Actual screen-reader workflows remain
-not verified, and this evidence is not an exhaustive pass for every applicable
-state and visual variant in
+revocation and full rollback presentation. The
+[VoiceOver record](admin-assistive-technology-acceptance.md#grouped-local-acceptance--2026-11-14-kst)
+includes captured captions and focused browser scenarios. Full operator-led
+screen-reader, applicable state and visual acceptance remain open under
 [Admin release acceptance](admin-agent-studio.md#20-admin-release-acceptance).
-Accessible-name assertions and automated viewport checks do not substitute for
-actual screen-reader or visual review.
-The remaining work is specified below; this is not a claim of complete R5 or
-permission to begin R6.
+The current local development closeout retains these receipts and leaves the
+remaining operator checks for release acceptance.
 
 This reconciliation changes documentation only. The original acceptance audit
 also made no production service, public contract, schema, migration, package
@@ -139,9 +138,10 @@ route/state combination:
   claiming every visual combination. Earlier [form](admin-form-acceptance.md#verification),
   [success-readback](admin-success-lifecycle.md#verification) and
   [read-observation](studio-read-observation.md) evidence retains its own scope.
-- Use the [VoiceOver follow-up](admin-assistive-technology-acceptance.md#voiceover-follow-up--2026-11-14-kst)
-  to resume the remaining AT-01–06 operator checks. Keep captured captions,
-  keyboard focus assertions and full reading-order evidence distinct.
+- For release acceptance, use the
+  [VoiceOver follow-up](admin-assistive-technology-acceptance.md#voiceover-follow-up--2026-11-14-kst)
+  to identify the operator checks beyond the captured captions. Record keyboard
+  focus assertions and complete reading-order observations at their actual scope.
 - Keep source freshness/cache age explicitly unavailable until its source owner
   supplies a contract. Receipt/projection timestamps cannot satisfy that claim.
   Current Incident-response acceptance belongs to the shipped R6 owners; read-only

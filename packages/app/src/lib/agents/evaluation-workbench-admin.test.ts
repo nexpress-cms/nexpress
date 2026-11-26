@@ -4,10 +4,13 @@ import { NpAuthError, NpForbiddenError } from "@nexpress/core";
 import { npApiErrorDiagnosticsHeader } from "@nexpress/core/api-contract";
 import {
   npAgentEvaluationWorkbenchRequestMaxBytesV1,
+  npRequireAgentEvaluationWorkbenchReportV2,
   npRequireAgentEvaluationWorkbenchResultV1,
+  type NpAgentEvaluationWorkbenchRequestV1,
 } from "@nexpress/core/agent-contract";
 import {
   npBuildAgentEvaluationWorkbenchV1,
+  npRequireAgentEvaluationReportV2,
   runAgentModeratorEvaluationV1,
 } from "@nexpress/core/agents";
 const mocks = vi.hoisted(() => ({ staff: vi.fn(), ensure: vi.fn(), build: vi.fn() }));
@@ -21,7 +24,7 @@ vi.mock("./studio-admin", () => ({
 }));
 vi.mock("../init-core", () => ({ ensureFor: mocks.ensure }));
 import { handleAgentEvaluationWorkbenchRequest } from "./evaluation-workbench-admin";
-let input: unknown;
+let input: NpAgentEvaluationWorkbenchRequestV1;
 let output: unknown;
 const request = (body: unknown = input, headers: Record<string, string> = {}, query = "") =>
   new NextRequest(`https://site.example/api/admin/agents/evaluations${query}`, {
@@ -71,6 +74,28 @@ describe("evaluation workbench staff HTTP boundary", () => {
       expect(await response.text()).not.toContain("private-upload");
     }
     expect(mocks.build).not.toHaveBeenCalled();
+  });
+  it("recomputes V2 reports through the same staff admission without changing the review contract", async () => {
+    const entry = {
+      recipe: input.recipe,
+      current: { evaluation: input.evaluation, review: null },
+      baseline: null,
+    };
+    const body = { schemaVersion: "np.agent-eval-report-input.v2", entries: [entry] };
+    const response = await handleAgentEvaluationWorkbenchRequest(request(body));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(mocks.staff).toHaveBeenCalledOnce();
+    expect(mocks.build).not.toHaveBeenCalled();
+    const result = npRequireAgentEvaluationWorkbenchReportV2(await response.json());
+    const artifact = await npRequireAgentEvaluationReportV2(JSON.parse(result.reportArtifactJson));
+    expect(artifact.input).toEqual(body);
+
+    const duplicate = await handleAgentEvaluationWorkbenchRequest(
+      request({ ...body, entries: [entry, entry] }),
+    );
+    expect(duplicate.status).toBe(400);
+    expect(await duplicate.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
   });
   it("rejects unsupported transport and bounded body overflow before the verifier", async () => {
     const inputs = [

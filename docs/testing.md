@@ -232,10 +232,15 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
 ### CI integration partitions
 
 CI keeps the local `pnpm test:integration` command unchanged. Its PostgreSQL
-coverage runs on two independent runners, each with its own PostgreSQL 16 and
-Redis 7 containers. After the usual full build, `scripts/integration-partitions.mjs`
-uses Vitest's configured file discovery and splits Web files by descending
-historical duration, assigning each next file to the lighter group. The timing
+coverage runs on two independent runners, each with its own PostgreSQL 16
+container. Partition 2 also starts Redis 7 for the live adapter tests. The
+partitions build Web's workspace dependencies, including Core. The Redis
+tests import the adapter source. The workspace build and Playwright jobs build
+the reference app.
+
+`scripts/integration-partitions.mjs` uses Vitest's configured file discovery
+and splits Web files by descending historical duration, assigning each next
+file to the lighter group. The timing
 seed in `scripts/integration-durations.json` uses the median file duration across
 three successful partition pairs covering all 243 discovered files. Reassigning
 those same measurements reduced the difference between summed file times in each
@@ -278,7 +283,7 @@ Inspect the plan without database connections:
 node scripts/integration-partitions.mjs --plan
 ```
 
-To reproduce a partition locally, build dependencies first and set `DATABASE_URL`,
+To reproduce a partition locally, build the same dependencies and set `DATABASE_URL`,
 `TEST_DATABASE_URL`, `NP_SECRET`, `SITE_URL`, `TEST_REDIS_URL` (partition 2), and
 `GITHUB_SHA` to the tested commit.
 
@@ -288,12 +293,12 @@ Preview/browser helper ports are separate from this integration fixture.
 Use a disposable database for each partition:
 
 ```bash
+pnpm build --filter '@nexpress/web^...' --filter @nexpress/core
 node scripts/integration-partitions.mjs 1 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs 2 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs --check-results /tmp/np-integration-results
 ```
 
-Partitioning repeats build/setup on two runners to shorten the critical path.
 Historical durations balance work; they do not establish a hosted-CI speedup.
 Initial local acceptance used separate disposable databases and verified complete,
 non-overlapping coverage, with Redis and native-preview gating handled explicitly.
