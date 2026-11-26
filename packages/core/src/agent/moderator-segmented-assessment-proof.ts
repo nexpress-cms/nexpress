@@ -4,6 +4,13 @@ import {
   npRequireAgentModeratorAssessmentEvidenceV2,
   type NpAgentModeratorAssessmentEvidenceV2,
 } from "../agent-contract/moderator-segmented-assessment-contract.js";
+import {
+  npAddAgentModeratorSegmentTargetsV2,
+  npAgentModeratorSegmentTargetProjectionV2,
+  npAgentModeratorSegmentTargetsDigestPurposeV2,
+  npMatchesAgentModeratorSegmentAnchorV2,
+  npMatchesAgentModeratorSegmentDecisionV2,
+} from "../agent-contract/moderator-segmented-assessment-summary.js";
 import type { NpAgentJsonObject } from "../agent-contract/types.js";
 import type { npAgentProviderCalls } from "../db/schema/agent.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
@@ -72,24 +79,16 @@ export function npRequireAgentModeratorSegmentedSourceProofV2(
     })
   )
     npModeratorSegmentedAssessmentUnavailableV2();
-  if (metadata.incident && !metadata.truncated) {
-    const expectedCount = Math.min(
-      10,
-      Math.max(0, Math.min(metadata.manifest.targetCount, 1000) - metadata.segmentIndex * 10),
-    );
-    const projected = metadata.sources.map(({ id: _id, ...source }) => ({
-      ...source,
-      truncated: false,
-    }));
-    if (
-      metadata.sources.length !== expectedCount ||
+  const projection = npAgentModeratorSegmentTargetProjectionV2(metadata);
+  if (
+    projection.projected !== null &&
+    (metadata.sources.length !== projection.expectedCount ||
       npDigestAgentModeratorSegmentedEvidenceV2(
-        "np.agent-moderator-segment-targets.v2",
-        projected,
-      ) !== metadata.manifest.segmentDigests[metadata.segmentIndex]
-    )
-      npModeratorSegmentedAssessmentUnavailableV2();
-  }
+        npAgentModeratorSegmentTargetsDigestPurposeV2,
+        projection.projected,
+      ) !== metadata.manifest.segmentDigests[metadata.segmentIndex])
+  )
+    npModeratorSegmentedAssessmentUnavailableV2();
   return metadata;
 }
 export function npReadAgentModeratorSegmentCallEvidenceV2(
@@ -114,20 +113,9 @@ export async function npRequireAgentModeratorSegmentDecisionV2(
   const output = await npRequireAgentRuntimeProviderDecisionV1(call);
   if (output.task !== "moderation-classification" || output.decision.kind !== "classification")
     npModeratorSegmentedAssessmentUnavailableV2();
-  const decision = output.decision;
-  const admitted = [...new Set(evidence.sources.map((source) => source.excerptDigest))].sort();
-  if (
-    decision.evidenceDigests.some((digest) => !admitted.includes(digest)) ||
-    (decision.label !== "uncertain" &&
-      (evidence.truncated ||
-        !evidence.incident ||
-        admitted.length === 0 ||
-        serializeAgentCanonicalJson(decision.evidenceDigests) !==
-          serializeAgentCanonicalJson(admitted))) ||
-    (decision.label === "uncertain" && !decision.reasonCodes.includes("insufficient-evidence"))
-  )
+  if (!npMatchesAgentModeratorSegmentDecisionV2(evidence, output.decision))
     npModeratorSegmentedAssessmentUnavailableV2();
-  return decision;
+  return output.decision;
 }
 /** Existing call rows form the durable checkpoint. Never infer a successful missing segment. */
 export async function npReadAgentModeratorSegmentProgressV2(
@@ -152,17 +140,7 @@ export async function npReadAgentModeratorSegmentProgressV2(
       call.recipeFingerprint !== calls[0].recipeFingerprint ||
       call.instructionDigest !== calls[0].instructionDigest ||
       call.responseSchemaDigest !== calls[0].responseSchemaDigest ||
-      evidence.segmentIndex !== completed.length ||
-      serializeAgentCanonicalJson({
-        observedAt: evidence.observedAt,
-        incident: evidence.incident,
-        manifest: evidence.manifest,
-      }) !==
-        serializeAgentCanonicalJson({
-          observedAt: anchor.observedAt,
-          incident: anchor.incident,
-          manifest: anchor.manifest,
-        })
+      !npMatchesAgentModeratorSegmentAnchorV2(anchor, evidence, completed.length)
     )
       npModeratorSegmentedAssessmentUnavailableV2();
     if (previous && previous.state !== "succeeded") {
@@ -176,11 +154,8 @@ export async function npReadAgentModeratorSegmentProgressV2(
         npModeratorSegmentedAssessmentUnavailableV2();
     } else if (call.retryOfId !== null) npModeratorSegmentedAssessmentUnavailableV2();
     if (call.state === "succeeded") {
-      for (const source of evidence.sources) {
-        const key = serializeAgentCanonicalJson(source.subject);
-        if (coveredTargets.has(key)) npModeratorSegmentedAssessmentUnavailableV2();
-        coveredTargets.add(key);
-      }
+      if (!npAddAgentModeratorSegmentTargetsV2(coveredTargets, evidence.sources))
+        npModeratorSegmentedAssessmentUnavailableV2();
       completed.push({
         call,
         evidence,

@@ -20,7 +20,7 @@ comparison functions, including the actual offline Moderator replay.
 The shared App script writes atomically; the installed CLI captures the inputs
 before running the project script and independently reconstructs its result.
 
-Each recipe occurs at most once. Operator requires the diagnosis/plan category
+Each recipe occurs at most once in a V1 manifest. Operator requires the diagnosis/plan category
 from `operator-plan.v1`; legacy `operator.v1` tag-only results do not substitute
 for plan evaluation. Publisher uses its proposal artifact, and Moderator uses
 its deterministic detector artifact from `moderator.v1`, `moderator.v2` or
@@ -121,8 +121,8 @@ use `null` when a review or baseline is absent:
 Paths resolve relative to the manifest directory; absolute local paths also
 work. Every declared reference counts toward the read budget. The manifest plus all file
 reads share a 4 MiB budget, and the embedded report has its own 4 MiB bound.
-Symlink inputs, non-files, malformed/extra fields and duplicate recipes fail
-closed. The output must differ from the manifest and every input, including
+Symlink inputs, non-files, malformed or extra fields, and duplicates fail
+validation. The output must differ from the manifest and every input, including
 hardlink aliases. Errors expose fixed codes rather than paths or file contents.
 
 ```bash
@@ -136,6 +136,58 @@ Set its review to null if it was not reviewed. Leave out an entire recipe entry
 when its evaluation is missing; the report still includes its missing row.
 An empty entries array is valid and produces four missing rows. The historical
 three-row projection is retained only for verifying its original artifacts.
+
+### Include multiple datasets for one recipe
+
+Use a V2 manifest to see semantic assessment, segmented assessment and Member
+report evidence in one report. Generate the semantic evaluation as shown above,
+then create the two other evaluation files:
+
+```bash
+pnpm agent:evaluate --dataset moderator-assessment.v2 --out segmented.json --json
+pnpm agent:evaluate --dataset moderator-member-report.v1 --out member-report.json --json
+```
+
+```json
+{
+  "schemaVersion": "np.agent-eval-report-manifest.v2",
+  "entries": [
+    {
+      "recipe": "moderator-assessment",
+      "evaluation": "semantic.json",
+      "review": null,
+      "baseline": null
+    },
+    {
+      "recipe": "moderator-assessment",
+      "evaluation": "segmented.json",
+      "review": null,
+      "baseline": null
+    },
+    {
+      "recipe": "moderator-assessment",
+      "evaluation": "member-report.json",
+      "review": null,
+      "baseline": null
+    }
+  ]
+}
+```
+
+Run the same `--report` command with this manifest. It writes an
+`np.agent-eval-report.v2` artifact in the existing JSON command envelope.
+Each row names the validated dataset ID and version. Rows within a recipe
+sort by dataset ID and then numeric version. Missing default recipe rows show
+`dataset: null`. V2 allows up to 16 entries within the same byte limits, with
+one current entry per recipe, dataset ID and version. This identity is derived
+from the artifact, so different filenames cannot create duplicate rows.
+
+Set review and baseline paths on each entry independently. A review must bind
+its exact evaluation. Comparisons reuse the owning evaluator's requirements,
+including exact suite or corpus compatibility, and report incompatible
+baselines without deltas. The report keeps metrics and reviews separate by
+dataset. V1 manifests continue to produce V1 reports, including the reports
+used by the single-evaluation Workbench.
 
 ## Interpret the result and recover
 

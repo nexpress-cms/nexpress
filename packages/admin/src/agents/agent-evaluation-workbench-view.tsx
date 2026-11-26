@@ -3,7 +3,7 @@
 import * as React from "react";
 import {
   npAgentEvaluationReportRecipesV1,
-  npAgentEvaluationWorkbenchRequestMaxBytesV1,
+  npRequireAgentModeratorSegmentedEvaluationResultV2,
   type NpAgentEvaluationReportRecipeV1,
   type NpAgentEvaluationWorkbenchResultV1,
   type NpAgentEvaluationWorkbenchCaseV1,
@@ -11,13 +11,24 @@ import {
 } from "@nexpress/core/agent-contract";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentEvaluationHistoryPanel } from "./agent-evaluation-history-panel.js";
+import {
+  AgentEvaluationReportPanel,
+  type EvaluationReportPanelActions,
+} from "./agent-evaluation-report-panel.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { useAgentRetryBlocked } from "./agent-recovery.js";
 import {
   EvaluationWorkbenchRequests,
+  downloadEvaluationArtifact,
+  evaluationFileFields as fileFields,
+  evaluationFileLabels as fileLabels,
+  evaluationRecipeLabels as recipeLabels,
   evaluationReviewDraft,
+  evaluationWorkbenchReportEntry,
   evaluationWorkbenchLabels,
   processAgentEvaluationWorkbench,
+  readEvaluationArtifact,
+  type EvaluationFileField as FileField,
   type EvaluationReviewDraft,
 } from "./agent-evaluation-workbench-api.js";
 import { Button } from "../ui/button.js";
@@ -26,9 +37,7 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
 
-const fileFields = ["evaluation", "review", "baseline", "baselineReview"] as const;
-type FileField = (typeof fileFields)[number];
-type ImportedFile = { name: string; value: unknown };
+type ImportedFile = Awaited<ReturnType<typeof readEvaluationArtifact>>;
 type ImportedFiles = Record<FileField, ImportedFile | null>;
 const emptyFiles = (): ImportedFiles => ({
   evaluation: null,
@@ -36,22 +45,17 @@ const emptyFiles = (): ImportedFiles => ({
   baseline: null,
   baselineReview: null,
 });
-const fileLabels: Record<FileField, string> = {
-  evaluation: "Evaluation artifact (required)",
-  review: "Current review artifact (optional)",
-  baseline: "Baseline evaluation artifact (optional)",
-  baselineReview: "Baseline review artifact (optional)",
-};
-const recipeLabels: Record<NpAgentEvaluationReportRecipeV1, string> = {
-  moderator: "Moderator detector",
-  "moderator-proposal": "Moderator proposal",
-  operator: "Operator plan",
-  publisher: "Publisher",
-  "moderator-assessment": "Moderator semantic assessment",
-  "publisher-selection": "Publisher selection profile V3",
-  guardian: "Guardian synthetic reference",
-};
 const caseKey = (entry: NpAgentEvaluationWorkbenchCaseV1) => `${entry.caseId}@${entry.caseVersion}`;
+function segmentedAssessment(predictionJson: string) {
+  const prediction: unknown = JSON.parse(predictionJson);
+  if (!prediction || typeof prediction !== "object" || !("segmentedAssessment" in prediction))
+    return null;
+  try {
+    return npRequireAgentModeratorSegmentedEvaluationResultV2(prediction.segmentedAssessment);
+  } catch {
+    return null;
+  }
+}
 const emptyDraft = (): EvaluationReviewDraft => ({
   outcome: "",
   reviewer: "",
@@ -67,6 +71,7 @@ export function AgentEvaluationWorkbenchView({
   const [recipe, setRecipe] = React.useState<NpAgentEvaluationReportRecipeV1>("moderator-proposal");
   const [files, setFiles] = React.useState<ImportedFiles>(emptyFiles);
   const [fileKey, setFileKey] = React.useState(0);
+  const [reportKey, setReportKey] = React.useState(0);
   const [reading, setReading] = React.useState<FileField[]>([]);
   const [invalidFiles, setInvalidFiles] = React.useState<FileField[]>([]);
   const [result, setResult] = React.useState<NpAgentEvaluationWorkbenchResultV1 | null>(null);
@@ -78,6 +83,7 @@ export function AgentEvaluationWorkbenchView({
   const [failure, setFailure] = React.useState<unknown>();
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState("Choose local JSON artifacts, then validate them.");
+  const reportPanel = React.useRef<EvaluationReportPanelActions>(null);
   const requests = React.useRef(new EvaluationWorkbenchRequests());
   const reads = React.useRef<Record<FileField, number>>({
     evaluation: 0,
@@ -94,6 +100,9 @@ export function AgentEvaluationWorkbenchView({
   });
   const retryBlocked = useAgentRetryBlocked(failure);
   const entry = result?.cases.find((item) => caseKey(item) === selected) ?? null;
+  const segments = entry ? segmentedAssessment(entry.predictionJson) : null;
+  const exportReady =
+    result !== null && !dirty && !busy && !error && !reading.length && !retryBlocked;
 
   React.useEffect(() => {
     const requestOwner = requests.current;
@@ -108,6 +117,7 @@ export function AgentEvaluationWorkbenchView({
   }, []);
 
   const invalidate = (clearLabels = true) => {
+    reportPanel.current?.cancelTransfer();
     if (clearLabels) setWorkingLabels(null);
     requests.current.cancel();
     setBusy(false);
@@ -126,6 +136,18 @@ export function AgentEvaluationWorkbenchView({
     setWorkingLabels(null);
     setFileKey((value) => value + 1);
   };
+  const clearOnAccessLoss = (failure?: AgentStudioApiError) => {
+    invalidate();
+    resetFiles();
+    setReportKey((value) => value + 1);
+    if (failure) setFailure(failure);
+    setStatus("Access lost. Imported files and review drafts were cleared.");
+    setError(
+      failure?.code === "RECENT_REAUTHENTICATION_REQUIRED"
+        ? "Complete staff reauthentication, reload this page, then import your files again."
+        : "Restore access and reload this page before importing evaluation evidence again.",
+    );
+  };
   const importFile = async (field: FileField, file: File | undefined) => {
     invalidate(field === "evaluation" || field === "review");
     const generation = ++reads.current[field];
@@ -137,17 +159,9 @@ export function AgentEvaluationWorkbenchView({
     }
     setReading((current) => [...current.filter((value) => value !== field), field]);
     try {
-      if (file.size > npAgentEvaluationWorkbenchRequestMaxBytesV1)
-        throw new Error(
-          "Each file must be at most 4 MiB; the combined request also has a 4 MiB limit.",
-        );
-      const content = await file.text();
+      const imported = await readEvaluationArtifact(file);
       if (reads.current[field] !== generation) return;
-      if (new TextEncoder().encode(content).length > npAgentEvaluationWorkbenchRequestMaxBytesV1)
-        throw new Error("This file exceeds the 4 MiB limit.");
-      const value: unknown = JSON.parse(content);
-      if (value === null) throw new Error("Select an artifact JSON object, not null.");
-      setFiles((current) => ({ ...current, [field]: { name: file.name, value } }));
+      setFiles((current) => ({ ...current, [field]: imported }));
       setStatus("Files loaded locally. Validate imports to inspect the evaluation.");
     } catch {
       if (reads.current[field] !== generation) return;
@@ -161,6 +175,7 @@ export function AgentEvaluationWorkbenchView({
 
   const process = async (labels: unknown[] | null) => {
     if (!files.evaluation || busy || reading.length || invalidFiles.length || retryBlocked) return;
+    reportPanel.current?.cancelTransfer();
     const previousResult = result;
     const controller = requests.current.begin();
     setBusy(true);
@@ -195,18 +210,7 @@ export function AgentEvaluationWorkbenchView({
       if (!requests.current.current(controller)) return;
       setFailure(caught);
       if (caught instanceof AgentStudioApiError && [401, 403].includes(caught.status)) {
-        requests.current.cancel();
-        resetFiles();
-        setSelected("");
-        setDraft(emptyDraft());
-        setDirty(false);
-        setBusy(false);
-        setStatus("Access lost. Imported files and review drafts were cleared.");
-        setError(
-          caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
-            ? "Complete staff reauthentication, reload this page, then import your files again."
-            : "Access is unavailable. Restore access and reload this page before importing files again.",
-        );
+        clearOnAccessLoss(caught);
       } else {
         setResult(previousResult);
         setError(
@@ -230,28 +234,27 @@ export function AgentEvaluationWorkbenchView({
       const labels = evaluationWorkbenchLabels(result, entry, remove ? null : draft);
       void process(labels);
     } catch (caught) {
+      reportPanel.current?.cancelTransfer();
       setError(caught instanceof Error ? caught.message : "Review labels could not be prepared.");
     }
   };
   const changeDraft = (patch: Partial<EvaluationReviewDraft>) => {
+    reportPanel.current?.cancelTransfer();
     setDraft((current) => ({ ...current, ...patch }));
     setDirty(true);
     setError(null);
   };
   const download = (kind: "labels" | "review" | "report", content: string | null) => {
-    if (!content || !result || dirty || busy || error || reading.length) return;
-    const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
-    urls.current.add(url);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${recipe}-${kind}.json`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => {
-      URL.revokeObjectURL(url);
-      urls.current.delete(url);
-    }, 0);
+    if (!content || !exportReady) return;
+    downloadEvaluationArtifact(`${recipe}-${kind}.json`, content, urls.current);
+  };
+  const addToReport = () => {
+    if (!result || !exportReady) return;
+    try {
+      reportPanel.current?.addValidatedEvaluation(evaluationWorkbenchReportEntry(result));
+    } catch {
+      setError("The validated evaluation could not be added to the report. Validate it again.");
+    }
   };
 
   return (
@@ -265,6 +268,11 @@ export function AgentEvaluationWorkbenchView({
           current authenticated decision below.
         </p>
       </div>
+      <AgentEvaluationReportPanel
+        key={reportKey}
+        ref={reportPanel}
+        onAccessLost={clearOnAccessLoss}
+      />
       <Card>
         <CardHeader>
           <CardTitle className="text-[15px]">Import evaluation artifacts</CardTitle>
@@ -295,6 +303,9 @@ export function AgentEvaluationWorkbenchView({
             <p className="text-xs text-neutral-500">
               Operator plan requires operator-plan.v1. Detector replay and Moderator proposals are
               separate datasets.
+              {recipe === "moderator-assessment"
+                ? " Import moderator-assessment.v1 for content assessment, moderator-assessment.v2 for segmented coverage and classification, or moderator-member-report.v1 for synthetic Member report and response review."
+                : ""}
               {recipe === "guardian"
                 ? " Guardian requires guardian.v1. This synthetic reference does not establish production rule replay, production precision, model usefulness, live approval or enablement. Review support concerns only the synthetic prediction."
                 : ""}
@@ -391,14 +402,7 @@ export function AgentEvaluationWorkbenchView({
             "Saved evaluation loaded. Validate it before inspecting cases or recording another decision.",
           );
         }}
-        onAccessLost={() => {
-          invalidate();
-          resetFiles();
-          setStatus("Access lost. Imported files and review drafts were cleared.");
-          setError(
-            "Restore access and reload this page before importing evaluation evidence again.",
-          );
-        }}
+        onAccessLost={clearOnAccessLoss}
       />
       {result ? (
         <>
@@ -461,6 +465,31 @@ export function AgentEvaluationWorkbenchView({
                       )}
                     </pre>
                   </details>
+                  {segments ? (
+                    <dl className="grid gap-3 rounded-md border p-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="font-medium">Evidence coverage</dt>
+                        <dd>
+                          {segments.coverage.verifiedSegments} / {segments.coverage.segmentCount}{" "}
+                          segments
+                          {" · "}
+                          {segments.coverage.verifiedTargets} / {segments.coverage.targetCount}{" "}
+                          targets
+                          {" · "}
+                          {segments.coverage.complete ? "Complete" : "Incomplete"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium">Advisory classification</dt>
+                        <dd>
+                          {segments.label ??
+                            (segments.state === "invalid-segments"
+                              ? "Withheld · invalid segment evidence"
+                              : "Withheld · awaiting segments")}
+                        </dd>
+                      </div>
+                    </dl>
+                  ) : null}
                   <div className="grid min-w-0 gap-3 xl:grid-cols-3">
                     {[
                       ["Evidence", entry.evidenceJson],
@@ -594,24 +623,27 @@ export function AgentEvaluationWorkbenchView({
             <CardContent className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                disabled={dirty || busy || !!error || result.labelsJson === null}
+                disabled={!exportReady || result.labelsJson === null}
                 onClick={() => download("labels", result.labelsJson)}
               >
                 Download labels JSON
               </Button>
               <Button
                 variant="outline"
-                disabled={dirty || busy || !!error || result.reviewArtifactJson === null}
+                disabled={!exportReady || result.reviewArtifactJson === null}
                 onClick={() => download("review", result.reviewArtifactJson)}
               >
                 Download review JSON
               </Button>
               <Button
                 variant="outline"
-                disabled={dirty || busy || !!error}
+                disabled={!exportReady}
                 onClick={() => download("report", result.reportArtifactJson)}
               >
                 Download report JSON
+              </Button>
+              <Button variant="outline" disabled={!exportReady} onClick={addToReport}>
+                Add to V2 report
               </Button>
             </CardContent>
           </Card>

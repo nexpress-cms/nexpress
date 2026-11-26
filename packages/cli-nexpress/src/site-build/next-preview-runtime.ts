@@ -18,7 +18,7 @@ const ownerPaths = [
   "dist/server/lib/incremental-cache/file-system-cache.js",
 ] as const;
 // Explicit observed shipped owners. A version string or lookalike JS is insufficient.
-// 16.3.4 is the repository owner; 16.4.2 is the prepared Linux scaffold owner.
+// 16.4.6 is the repository owner. Earlier owners remain valid for pinned projects.
 const profiles: Record<string, readonly string[]> = {
   "16.3.4": [
     "de18448b9bb78b8b53ddf50caecca755cbc99031ba3609ada337c65fb11ed284",
@@ -32,6 +32,12 @@ const profiles: Record<string, readonly string[]> = {
     "973a8ed699b0295f4751d32fb53043574103f19c5a43d241d99ef9574c099fca",
     "427a5a07865eb68f0335ef701636bc1e065e8809552d243333d22e5eefcaae29",
   ],
+  "16.4.6": [
+    "5fd190db661ac661673b75839156a52657b9ae64b790ad253ee8197a209683c2",
+    "21f7f8638d6085db6eda0e2f30a3f62902c06afd33c5faa3e074e69c115c690c",
+    "b213afa46803f94a38aa506c6b130eeb94841d7e1ca37686357adf2637cce69e",
+    "427a5a07865eb68f0335ef701636bc1e065e8809552d243333d22e5eefcaae29",
+  ],
 };
 const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const record = (value: unknown): Record<string, unknown> => {
@@ -40,7 +46,7 @@ const record = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
-// Exact shared ESM/CJS server body emitted by both pinned dist/build/utils.js owners.
+// Exact shared ESM/CJS server body emitted by the pinned dist/build/utils.js owners.
 const commonPrefix = `
 
 const dir = path.join(__dirname)

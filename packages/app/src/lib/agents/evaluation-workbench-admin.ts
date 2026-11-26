@@ -1,6 +1,13 @@
 import { NpValidationError } from "@nexpress/core";
-import { npBuildAgentEvaluationWorkbenchV1 } from "@nexpress/core/agents";
-import { npAgentEvaluationWorkbenchRequestMaxBytesV1 } from "@nexpress/core/agent-contract";
+import {
+  npBuildAgentEvaluationReportV2,
+  npBuildAgentEvaluationWorkbenchV1,
+} from "@nexpress/core/agents";
+import {
+  npAgentEvaluationWorkbenchRequestMaxBytesV1,
+  npFormatAgentEvaluationReport,
+  type NpAgentEvaluationWorkbenchReportV2,
+} from "@nexpress/core/agent-contract";
 import type { NextRequest } from "next/server";
 
 import { npSuccessResponse } from "../api-response";
@@ -33,7 +40,19 @@ export async function handleAgentEvaluationWorkbenchRequest(
     const body = await readAgentAdminJsonBody(request, npAgentEvaluationWorkbenchRequestMaxBytesV1);
     let result;
     try {
-      result = await npBuildAgentEvaluationWorkbenchV1(body);
+      if (
+        body &&
+        typeof body === "object" &&
+        "schemaVersion" in body &&
+        body.schemaVersion === "np.agent-eval-report-input.v2"
+      ) {
+        const artifact = await npBuildAgentEvaluationReportV2(body);
+        result = {
+          schemaVersion: "np.agent-eval-workbench-report.v2",
+          summaryText: npFormatAgentEvaluationReport(artifact),
+          reportArtifactJson: JSON.stringify(artifact),
+        } satisfies NpAgentEvaluationWorkbenchReportV2;
+      } else result = await npBuildAgentEvaluationWorkbenchV1(body);
     } catch {
       // Uploaded evidence, labels and verifier internals never enter error bodies or logs.
       throw invalid();
