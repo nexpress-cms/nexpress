@@ -11,6 +11,8 @@ import {
   npRequireAgentEvaluationPredictionV1,
   npDigestAgentEvaluationValueV1,
   npCreateAgentMemberReportEvaluationPredictionV1,
+  npCreateAgentSegmentedEvaluationPredictionV2,
+  npIsAgentFixedEvaluationCategoryV1,
   npCompareAgentEvaluationArtifactsV1,
   npAgentEvaluationArtifactMaxBytesV1,
   type NpAgentEvaluationArtifactV1,
@@ -100,14 +102,16 @@ function summarize(
     rejectBasisPoints: rate(rejected),
   };
 }
-function grounded(
+async function grounded(
   source: NpAgentEvaluationArtifactV1,
   evidence: NpAgentEvaluationEvidenceV1[],
   value: NpAgentEvaluationPredictionV1,
-): boolean {
+): Promise<boolean> {
   const category = source.suite.cases[0].category;
   if (category === "moderator-member-report")
     return equal(npCreateAgentMemberReportEvaluationPredictionV1(evidence), value);
+  if (category === "moderator-segmented-assessment")
+    return equal(await npCreateAgentSegmentedEvaluationPredictionV2(evidence), value);
   if (category === "moderator-assessment") {
     return (
       !!value.moderatorAssessment &&
@@ -137,7 +141,7 @@ export function npIsAgentProfileEvaluationCategoryV1(
 ): boolean {
   return (
     category === "moderator-assessment" ||
-    category === "moderator-member-report" ||
+    npIsAgentFixedEvaluationCategoryV1(category) ||
     category === "publisher-selection"
   );
 }
@@ -203,19 +207,19 @@ export async function npBuildAgentProfileEvaluationReviewArtifactV1(
     const outcome = r.outcome as NpAgentProfileEvaluationReviewLabelV1["outcome"];
     let editedProposal: NpAgentEvaluationPredictionV1 | null = null;
     if (outcome === "edit") {
-      if (category === "moderator-member-report") fail();
+      if (npIsAgentFixedEvaluationCategoryV1(category)) fail();
       editedProposal = npRequireAgentEvaluationPredictionV1(
         r.editedProposal,
         source.suite.cases[0].category,
       );
       if (
         equal(editedProposal, entry.prediction) ||
-        !grounded(source, entry.evidence, editedProposal)
+        !(await grounded(source, entry.evidence, editedProposal))
       )
         fail();
     } else if (r.editedProposal !== null) fail();
     if (outcome === "accept") {
-      if (!entry.prediction || !grounded(source, entry.evidence, entry.prediction)) fail();
+      if (!entry.prediction || !(await grounded(source, entry.evidence, entry.prediction))) fail();
       const index = entries.indexOf(entry);
       const exact = await npBuildAgentEvaluationArtifactV1({
         mode: source.mode,

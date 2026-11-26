@@ -126,6 +126,31 @@ and revocations require the existing Member response service and its human
 approval checks. Evaluation labels concern the synthetic prediction and carry
 no approval authority.
 
+## Large-Incident segmented assessment evaluation
+
+Run the V2 reference evaluation from a NexPress project:
+
+```bash
+nexpress agent evaluate --dataset moderator-assessment.v2 --out segmented-assessment.json --json
+```
+
+The thirteen synthetic cases exercise the existing V2 segment and aggregation
+rules. They cover 151 targets across sixteen agreeing segments, missing or
+misordered segments, duplicate targets, changed source commitments, and full
+coverage with conflicting or uncertain classifications. Invalid or missing
+segments withhold the aggregate. Truncated sources can produce an uncertain
+aggregate with incomplete coverage after all segments arrive.
+
+Select **Moderator semantic assessment** in Workbench and import the artifact.
+The case displays verified segment and target counts separately from its
+advisory classification. Reviews bind the exact prediction. CLI comparisons
+require compatible V2 artifacts and include coverage and classification changes.
+Case evidence is bounded to 256 KiB within the existing import limits.
+
+The evaluation replays synthetic evidence and classifications without provider
+calls. Production ACLs, persisted provider-call proofs, and continuation retain
+their verification in the [V2 Runtime flow](r6-moderator-automatic-segmented-flow.md#large-incident-semantic-assessment).
+
 ## Acceptance boundary
 
 Imported and ordinary exported review attribution remains self-reported offline data. Fixture checks, human

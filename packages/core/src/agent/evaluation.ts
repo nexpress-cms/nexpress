@@ -31,6 +31,7 @@ import { npCreateAgentOperatorRecipeDefinitionV1 } from "../agent-contract/opera
 import {
   npBuildAgentEvaluationArtifactV1,
   npCreateAgentMemberReportEvaluationPredictionV1,
+  npCreateAgentSegmentedEvaluationPredictionV2,
   npDigestAgentEvaluationCaseV1,
   npDigestAgentEvaluationValueV1,
   npAgentEvaluationResponseSchemaV1,
@@ -38,6 +39,7 @@ import {
   npRequireAgentEvaluationBudgetV1,
   npRequireAgentEvaluationPredictionV1,
   npRequireAgentEvaluationSuiteV1,
+  npIsAgentFixedEvaluationCategoryV1,
   type NpAgentEvaluationArtifactV1,
   type NpAgentEvaluationBudgetV1,
   type NpAgentEvaluationCaseResultV1,
@@ -187,7 +189,7 @@ export async function runAgentEvaluationV1(
     throw new NpAgentEvaluationError("ARGUMENT_INVALID");
   const category = suite.cases[0].category;
   if (
-    category === "moderator-member-report" &&
+    npIsAgentFixedEvaluationCategoryV1(category) &&
     (options.mode !== "fake" || budget.maxCostMicros !== 0)
   )
     throw new NpAgentEvaluationError("ARGUMENT_INVALID");
@@ -233,7 +235,7 @@ export async function runAgentEvaluationV1(
     category === "publisher-selection"
       ? await npCreateAgentPublisherSelectionEvaluationProfileV1()
       : null;
-  const recipe = await (category === "moderator-member-report"
+  const recipe = await (npIsAgentFixedEvaluationCategoryV1(category)
     ? null
     : category === "publisher-selection"
       ? selectionProfile!.recipe
@@ -277,10 +279,13 @@ export async function runAgentEvaluationV1(
       stopped = true;
       continue;
     }
-    if (category === "moderator-member-report") {
+    if (npIsAgentFixedEvaluationCategoryV1(category)) {
       calls++;
       result.calls = 1;
-      result.prediction = npCreateAgentMemberReportEvaluationPredictionV1(entry.evidence);
+      result.prediction =
+        category === "moderator-segmented-assessment"
+          ? await npCreateAgentSegmentedEvaluationPredictionV2(entry.evidence)
+          : npCreateAgentMemberReportEvaluationPredictionV1(entry.evidence);
       result.error = null;
       continue;
     }

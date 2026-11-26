@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   npAgentEvaluationReportRecipesV1,
   npAgentEvaluationWorkbenchRequestMaxBytesV1,
+  npRequireAgentModeratorSegmentedEvaluationResultV2,
   type NpAgentEvaluationReportRecipeV1,
   type NpAgentEvaluationWorkbenchResultV1,
   type NpAgentEvaluationWorkbenchCaseV1,
@@ -52,6 +53,16 @@ const recipeLabels: Record<NpAgentEvaluationReportRecipeV1, string> = {
   guardian: "Guardian synthetic reference",
 };
 const caseKey = (entry: NpAgentEvaluationWorkbenchCaseV1) => `${entry.caseId}@${entry.caseVersion}`;
+function segmentedAssessment(predictionJson: string) {
+  const prediction: unknown = JSON.parse(predictionJson);
+  if (!prediction || typeof prediction !== "object" || !("segmentedAssessment" in prediction))
+    return null;
+  try {
+    return npRequireAgentModeratorSegmentedEvaluationResultV2(prediction.segmentedAssessment);
+  } catch {
+    return null;
+  }
+}
 const emptyDraft = (): EvaluationReviewDraft => ({
   outcome: "",
   reviewer: "",
@@ -94,6 +105,7 @@ export function AgentEvaluationWorkbenchView({
   });
   const retryBlocked = useAgentRetryBlocked(failure);
   const entry = result?.cases.find((item) => caseKey(item) === selected) ?? null;
+  const segments = entry ? segmentedAssessment(entry.predictionJson) : null;
 
   React.useEffect(() => {
     const requestOwner = requests.current;
@@ -296,7 +308,7 @@ export function AgentEvaluationWorkbenchView({
               Operator plan requires operator-plan.v1. Detector replay and Moderator proposals are
               separate datasets.
               {recipe === "moderator-assessment"
-                ? " Import moderator-assessment.v1 for content assessment or moderator-member-report.v1 for synthetic Member report and response review."
+                ? " Import moderator-assessment.v1 for content assessment, moderator-assessment.v2 for segmented coverage and classification, or moderator-member-report.v1 for synthetic Member report and response review."
                 : ""}
               {recipe === "guardian"
                 ? " Guardian requires guardian.v1. This synthetic reference does not establish production rule replay, production precision, model usefulness, live approval or enablement. Review support concerns only the synthetic prediction."
@@ -464,6 +476,31 @@ export function AgentEvaluationWorkbenchView({
                       )}
                     </pre>
                   </details>
+                  {segments ? (
+                    <dl className="grid gap-3 rounded-md border p-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="font-medium">Evidence coverage</dt>
+                        <dd>
+                          {segments.coverage.verifiedSegments} / {segments.coverage.segmentCount}{" "}
+                          segments
+                          {" · "}
+                          {segments.coverage.verifiedTargets} / {segments.coverage.targetCount}{" "}
+                          targets
+                          {" · "}
+                          {segments.coverage.complete ? "Complete" : "Incomplete"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium">Advisory classification</dt>
+                        <dd>
+                          {segments.label ??
+                            (segments.state === "invalid-segments"
+                              ? "Withheld · invalid segment evidence"
+                              : "Withheld · awaiting segments")}
+                        </dd>
+                      </div>
+                    </dl>
+                  ) : null}
                   <div className="grid min-w-0 gap-3 xl:grid-cols-3">
                     {[
                       ["Evidence", entry.evidenceJson],

@@ -1,23 +1,27 @@
 import { npRequireAgentEvaluationBudgetV1 } from "./evaluation-contract.js";
 
+const datasets = [
+  "operator.v1",
+  "publisher.v1",
+  "publisher.v2",
+  "moderator-assessment.v1",
+  "moderator-assessment.v2",
+  "moderator-member-report.v1",
+  "publisher.v3",
+  "moderator.v1",
+  "moderator.v2",
+  "moderator.v3",
+  "operator-plan.v1",
+  "moderator-proposal.v1",
+  "moderator-proposal.v2",
+  "moderator-proposal.v3",
+  "guardian.v1",
+] as const;
+
 export interface NpAgentEvaluationCommandArgsV1 {
   provider: string;
   model: string;
-  dataset:
-    | "operator.v1"
-    | "publisher.v1"
-    | "publisher.v2"
-    | "moderator-assessment.v1"
-    | "moderator-member-report.v1"
-    | "publisher.v3"
-    | "moderator.v1"
-    | "moderator.v2"
-    | "moderator.v3"
-    | "operator-plan.v1"
-    | "moderator-proposal.v1"
-    | "moderator-proposal.v2"
-    | "moderator-proposal.v3"
-    | "guardian.v1";
+  dataset: (typeof datasets)[number];
   reviewPath?: string;
   reportPath?: string;
   reviewsPath?: string | null;
@@ -93,24 +97,8 @@ export function npParseAgentEvaluationCommandArgsV1(
     !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(model)
   )
     invalid();
-  const dataset = text("--dataset") ?? "operator.v1";
-  if (
-    dataset !== "operator.v1" &&
-    dataset !== "publisher.v1" &&
-    dataset !== "publisher.v2" &&
-    dataset !== "moderator-assessment.v1" &&
-    dataset !== "moderator-member-report.v1" &&
-    dataset !== "publisher.v3" &&
-    dataset !== "moderator.v1" &&
-    dataset !== "moderator.v2" &&
-    dataset !== "moderator.v3" &&
-    dataset !== "operator-plan.v1" &&
-    dataset !== "moderator-proposal.v1" &&
-    dataset !== "moderator-proposal.v2" &&
-    dataset !== "moderator-proposal.v3" &&
-    dataset !== "guardian.v1"
-  )
-    invalid();
+  const requestedDataset = text("--dataset") ?? "operator.v1";
+  const dataset = datasets.find((entry) => entry === requestedDataset) ?? invalid();
   const budgetFlags = [
     "--max-calls",
     "--max-input-tokens",
@@ -122,6 +110,7 @@ export function npParseAgentEvaluationCommandArgsV1(
       dataset === "moderator.v2" ||
       dataset === "moderator.v3" ||
       dataset === "moderator-member-report.v1" ||
+      dataset === "moderator-assessment.v2" ||
       dataset === "guardian.v1") &&
     (network ||
       fields.has("--model") ||
@@ -157,21 +146,7 @@ export function npParseAgentEvaluationCommandArgsV1(
   return {
     provider,
     model,
-    dataset: dataset as
-      | "operator.v1"
-      | "publisher.v1"
-      | "publisher.v2"
-      | "moderator-assessment.v1"
-      | "moderator-member-report.v1"
-      | "publisher.v3"
-      | "moderator.v1"
-      | "moderator.v2"
-      | "moderator.v3"
-      | "operator-plan.v1"
-      | "moderator-proposal.v1"
-      | "moderator-proposal.v2"
-      | "moderator-proposal.v3"
-      | "guardian.v1",
+    dataset,
     ...(reviewPath ? { reviewPath, reviewsPath: text("--reviews") } : {}),
     ...(reportPath ? { reportPath } : {}),
     maxCalls: budget.maxCalls,

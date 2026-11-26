@@ -19,6 +19,7 @@ import {
   npRequireAgentEvaluationArtifactV1,
   npCompareAgentEvaluationArtifactsV1,
   npDigestAgentEvaluationValueV1,
+  npIsAgentFixedEvaluationCategoryV1,
 } from "../agent-contract/evaluation-contract.js";
 import {
   npBuildAgentEvaluationReviewArtifactV1,
@@ -83,7 +84,7 @@ async function evidence(
     evaluation.schemaVersion === "np.agent-eval.v1" &&
     evaluation.suite.cases.some(
       (c) =>
-        !(recipe === "moderator-assessment" && c.category === "moderator-member-report") &&
+        !(recipe === "moderator-assessment" && npIsAgentFixedEvaluationCategoryV1(c.category)) &&
         c.category !==
           (recipe === "publisher-selection"
             ? "publisher-selection"

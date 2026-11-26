@@ -307,6 +307,7 @@ export async function prepareEvaluationResultVerifier(
     npCreateAgentPublisherEvaluationSuiteV2,
     npCreateAgentPublisherSelectionEvaluationSuiteV1,
     npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+    npCreateAgentModeratorSegmentedEvaluationSuiteV2,
     npCreateAgentMemberReportEvaluationSuiteV1,
     npCreateAgentOperatorPlanEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV1,
@@ -314,25 +315,27 @@ export async function prepareEvaluationResultVerifier(
     npCreateAgentModeratorProposalEvaluationSuiteV3,
   } = await import("@nexpress/core/agents");
   const suite =
-    input.dataset === "moderator-member-report.v1"
-      ? await npCreateAgentMemberReportEvaluationSuiteV1()
-      : input.dataset === "publisher.v3"
-        ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
-        : input.dataset === "moderator-assessment.v1"
-          ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
-          : input.dataset === "publisher.v2"
-            ? await npCreateAgentPublisherEvaluationSuiteV2()
-            : input.dataset === "publisher.v1"
-              ? await npCreateAgentPublisherEvaluationSuiteV1()
-              : input.dataset === "operator-plan.v1"
-                ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-                : input.dataset === "moderator-proposal.v3"
-                  ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
-                  : input.dataset === "moderator-proposal.v2"
-                    ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                    : input.dataset === "moderator-proposal.v1"
-                      ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                      : await npCreateAgentOperatorEvaluationSuiteV1();
+    input.dataset === "moderator-assessment.v2"
+      ? await npCreateAgentModeratorSegmentedEvaluationSuiteV2()
+      : input.dataset === "moderator-member-report.v1"
+        ? await npCreateAgentMemberReportEvaluationSuiteV1()
+        : input.dataset === "publisher.v3"
+          ? await npCreateAgentPublisherSelectionEvaluationSuiteV1()
+          : input.dataset === "moderator-assessment.v1"
+            ? await npCreateAgentModeratorAssessmentEvaluationSuiteV1()
+            : input.dataset === "publisher.v2"
+              ? await npCreateAgentPublisherEvaluationSuiteV2()
+              : input.dataset === "publisher.v1"
+                ? await npCreateAgentPublisherEvaluationSuiteV1()
+                : input.dataset === "operator-plan.v1"
+                  ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+                  : input.dataset === "moderator-proposal.v3"
+                    ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                    : input.dataset === "moderator-proposal.v2"
+                      ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                      : input.dataset === "moderator-proposal.v1"
+                        ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                        : await npCreateAgentOperatorEvaluationSuiteV1();
   const suiteHash = await npDigestAgentEvaluationSuiteV1(suite);
   return async (value) => {
     const parsed = await npRequireAgentEvaluationCommandResultV1(value);

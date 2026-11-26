@@ -101,6 +101,10 @@ owning provider-call lifecycle. Ordinary response diagnostics still expire. The
 [retention matrix](r6-history-retention-flow.md) continues protecting active work,
 unknown outcomes and required audit/approval/rollback evidence.
 
+The [V2 offline evaluation](r6-evaluation-workbench-flow.md#large-incident-segmented-assessment-evaluation)
+reuses the segment checks and aggregation rules with synthetic inputs. CLI and
+Workbench expose coverage and advisory classification separately.
+
 ## Verification
 
 ### Bounded source reads
