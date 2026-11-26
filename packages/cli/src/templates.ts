@@ -230,7 +230,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         // optional peer of @nexpress/core, so pnpm's strict dependency
         // isolation requires the generated app to declare it directly or
         // the first transactional send fails at runtime.
-        nodemailer: "^9.0.0",
+        nodemailer: "^10.1.4",
         // Media processing runs through @nexpress/core, but production
         // platforms such as Vercel need sharp's optional native payload
         // present in the app install graph for standalone tracing. Keep

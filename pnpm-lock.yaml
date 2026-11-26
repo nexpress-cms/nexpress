@@ -658,8 +658,8 @@ importers:
         specifier: ^6.2.12
         version: 6.2.12
       nodemailer:
-        specifier: ^8.0.9 || ^9.0.0
-        version: 9.1.1
+        specifier: ^8.0.9 || ^9.0.0 || ^10.1.4
+        version: 10.1.4
       parse5:
         specifier: 8.0.1
         version: 8.0.1
@@ -5278,10 +5278,6 @@ packages:
     resolution: {integrity: sha512-EsMnOR2oRv4LGnWvHgcVYkkQ4O2j8KO4WTw6l+PHR4sOXo8SAgIraxtEnGDmotjbhv0hDsu3IuDIFZm8iXwO4A==}
     engines: {node: '>=20.0.0'}
 
-  nodemailer@9.1.1:
-    resolution: {integrity: sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ==}
-    engines: {node: '>=6.0.0'}
-
   non-error@0.1.0:
     resolution: {integrity: sha512-TMB1uHiGsHRGv1uYclfhivcnf0/PdFp2pNqRxXjncaAsjYMoisaQJI+SSZCqRq+VliwRTC8tsMQfmrWjDMhkPQ==}
     engines: {node: '>=20'}
@@ -9221,8 +9217,6 @@ snapshots:
   node-releases@2.0.55: {}
 
   nodemailer@10.1.4: {}
-
-  nodemailer@9.1.1: {}
 
   non-error@0.1.0: {}
 
