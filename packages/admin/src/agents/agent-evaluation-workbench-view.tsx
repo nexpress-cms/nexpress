@@ -3,7 +3,6 @@
 import * as React from "react";
 import {
   npAgentEvaluationReportRecipesV1,
-  npAgentEvaluationWorkbenchRequestMaxBytesV1,
   npRequireAgentModeratorSegmentedEvaluationResultV2,
   type NpAgentEvaluationReportRecipeV1,
   type NpAgentEvaluationWorkbenchResultV1,
@@ -12,13 +11,20 @@ import {
 } from "@nexpress/core/agent-contract";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentEvaluationHistoryPanel } from "./agent-evaluation-history-panel.js";
+import { AgentEvaluationReportPanel } from "./agent-evaluation-report-panel.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { useAgentRetryBlocked } from "./agent-recovery.js";
 import {
   EvaluationWorkbenchRequests,
+  downloadEvaluationArtifact,
+  evaluationFileFields as fileFields,
+  evaluationFileLabels as fileLabels,
+  evaluationRecipeLabels as recipeLabels,
   evaluationReviewDraft,
   evaluationWorkbenchLabels,
   processAgentEvaluationWorkbench,
+  readEvaluationArtifact,
+  type EvaluationFileField as FileField,
   type EvaluationReviewDraft,
 } from "./agent-evaluation-workbench-api.js";
 import { Button } from "../ui/button.js";
@@ -27,9 +33,7 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
 
-const fileFields = ["evaluation", "review", "baseline", "baselineReview"] as const;
-type FileField = (typeof fileFields)[number];
-type ImportedFile = { name: string; value: unknown };
+type ImportedFile = Awaited<ReturnType<typeof readEvaluationArtifact>>;
 type ImportedFiles = Record<FileField, ImportedFile | null>;
 const emptyFiles = (): ImportedFiles => ({
   evaluation: null,
@@ -37,21 +41,6 @@ const emptyFiles = (): ImportedFiles => ({
   baseline: null,
   baselineReview: null,
 });
-const fileLabels: Record<FileField, string> = {
-  evaluation: "Evaluation artifact (required)",
-  review: "Current review artifact (optional)",
-  baseline: "Baseline evaluation artifact (optional)",
-  baselineReview: "Baseline review artifact (optional)",
-};
-const recipeLabels: Record<NpAgentEvaluationReportRecipeV1, string> = {
-  moderator: "Moderator detector",
-  "moderator-proposal": "Moderator proposal",
-  operator: "Operator plan",
-  publisher: "Publisher",
-  "moderator-assessment": "Moderator semantic assessment",
-  "publisher-selection": "Publisher selection profile V3",
-  guardian: "Guardian synthetic reference",
-};
 const caseKey = (entry: NpAgentEvaluationWorkbenchCaseV1) => `${entry.caseId}@${entry.caseVersion}`;
 function segmentedAssessment(predictionJson: string) {
   const prediction: unknown = JSON.parse(predictionJson);
@@ -78,6 +67,7 @@ export function AgentEvaluationWorkbenchView({
   const [recipe, setRecipe] = React.useState<NpAgentEvaluationReportRecipeV1>("moderator-proposal");
   const [files, setFiles] = React.useState<ImportedFiles>(emptyFiles);
   const [fileKey, setFileKey] = React.useState(0);
+  const [reportKey, setReportKey] = React.useState(0);
   const [reading, setReading] = React.useState<FileField[]>([]);
   const [invalidFiles, setInvalidFiles] = React.useState<FileField[]>([]);
   const [result, setResult] = React.useState<NpAgentEvaluationWorkbenchResultV1 | null>(null);
@@ -138,6 +128,18 @@ export function AgentEvaluationWorkbenchView({
     setWorkingLabels(null);
     setFileKey((value) => value + 1);
   };
+  const clearOnAccessLoss = (failure?: AgentStudioApiError) => {
+    invalidate();
+    resetFiles();
+    setReportKey((value) => value + 1);
+    if (failure) setFailure(failure);
+    setStatus("Access lost. Imported files and review drafts were cleared.");
+    setError(
+      failure?.code === "RECENT_REAUTHENTICATION_REQUIRED"
+        ? "Complete staff reauthentication, reload this page, then import your files again."
+        : "Restore access and reload this page before importing evaluation evidence again.",
+    );
+  };
   const importFile = async (field: FileField, file: File | undefined) => {
     invalidate(field === "evaluation" || field === "review");
     const generation = ++reads.current[field];
@@ -149,17 +151,9 @@ export function AgentEvaluationWorkbenchView({
     }
     setReading((current) => [...current.filter((value) => value !== field), field]);
     try {
-      if (file.size > npAgentEvaluationWorkbenchRequestMaxBytesV1)
-        throw new Error(
-          "Each file must be at most 4 MiB; the combined request also has a 4 MiB limit.",
-        );
-      const content = await file.text();
+      const imported = await readEvaluationArtifact(file);
       if (reads.current[field] !== generation) return;
-      if (new TextEncoder().encode(content).length > npAgentEvaluationWorkbenchRequestMaxBytesV1)
-        throw new Error("This file exceeds the 4 MiB limit.");
-      const value: unknown = JSON.parse(content);
-      if (value === null) throw new Error("Select an artifact JSON object, not null.");
-      setFiles((current) => ({ ...current, [field]: { name: file.name, value } }));
+      setFiles((current) => ({ ...current, [field]: imported }));
       setStatus("Files loaded locally. Validate imports to inspect the evaluation.");
     } catch {
       if (reads.current[field] !== generation) return;
@@ -207,18 +201,7 @@ export function AgentEvaluationWorkbenchView({
       if (!requests.current.current(controller)) return;
       setFailure(caught);
       if (caught instanceof AgentStudioApiError && [401, 403].includes(caught.status)) {
-        requests.current.cancel();
-        resetFiles();
-        setSelected("");
-        setDraft(emptyDraft());
-        setDirty(false);
-        setBusy(false);
-        setStatus("Access lost. Imported files and review drafts were cleared.");
-        setError(
-          caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
-            ? "Complete staff reauthentication, reload this page, then import your files again."
-            : "Access is unavailable. Restore access and reload this page before importing files again.",
-        );
+        clearOnAccessLoss(caught);
       } else {
         setResult(previousResult);
         setError(
@@ -252,18 +235,7 @@ export function AgentEvaluationWorkbenchView({
   };
   const download = (kind: "labels" | "review" | "report", content: string | null) => {
     if (!content || !result || dirty || busy || error || reading.length) return;
-    const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
-    urls.current.add(url);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${recipe}-${kind}.json`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => {
-      URL.revokeObjectURL(url);
-      urls.current.delete(url);
-    }, 0);
+    downloadEvaluationArtifact(`${recipe}-${kind}.json`, content, urls.current);
   };
 
   return (
@@ -277,6 +249,7 @@ export function AgentEvaluationWorkbenchView({
           current authenticated decision below.
         </p>
       </div>
+      <AgentEvaluationReportPanel key={reportKey} onAccessLost={clearOnAccessLoss} />
       <Card>
         <CardHeader>
           <CardTitle className="text-[15px]">Import evaluation artifacts</CardTitle>
@@ -406,14 +379,7 @@ export function AgentEvaluationWorkbenchView({
             "Saved evaluation loaded. Validate it before inspecting cases or recording another decision.",
           );
         }}
-        onAccessLost={() => {
-          invalidate();
-          resetFiles();
-          setStatus("Access lost. Imported files and review drafts were cleared.");
-          setError(
-            "Restore access and reload this page before importing evaluation evidence again.",
-          );
-        }}
+        onAccessLost={clearOnAccessLoss}
       />
       {result ? (
         <>

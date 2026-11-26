@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npBuildAgentProfileEvaluationReviewArtifactV1,
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
   npRequireAgentEvaluationWorkbenchResultV1,
+  npRequireAgentEvaluationWorkbenchReportV2,
   npRequireAgentEvaluationSuiteV1,
   npRequireAgentModeratorProposalEvaluationEvidenceV2,
   type NpAgentEvaluationArtifactV1,
@@ -12,6 +14,7 @@ import {
 import {
   npCreateAgentModeratorProposalEvaluationSuiteV3,
   npRequireAgentEvaluationReportV1,
+  npRequireAgentEvaluationReportV2,
   runAgentEvaluationV1,
   runAgentModeratorEvaluationV2,
   runAgentModeratorEvaluationV3,
@@ -69,13 +72,13 @@ test.beforeAll(async () => {
   ]);
 });
 
-async function importArtifact(page: Page, label: string, name: string, value: unknown) {
-  await page.getByLabel(label, { exact: true }).setInputFiles({
+async function importArtifact(target: Page | Locator, label: string, name: string, value: unknown) {
+  await target.getByLabel(label, { exact: true }).setInputFiles({
     name,
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(value)),
   });
-  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await expect(target.getByText(name, { exact: true })).toBeVisible();
 }
 
 async function recompute(page: Page, button: string) {
@@ -113,6 +116,144 @@ async function downloadJson(
   if (!path) throw new Error("Expected a local downloaded artifact.");
   return JSON.parse(await readFile(path, "utf8"));
 }
+
+test("evaluation workspace builds and downloads a report for three Moderator datasets", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    178 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const [member, semantic, segmented] = await Promise.all(
+    [
+      npCreateAgentMemberReportEvaluationSuiteV1,
+      npCreateAgentModeratorAssessmentEvaluationSuiteV1,
+      npCreateAgentModeratorSegmentedEvaluationSuiteV2,
+    ].map(async (create) =>
+      runAgentEvaluationV1({
+        suite: await create(),
+        mode: "fake",
+        providerId: "fake",
+        model: "deterministic-v1",
+        budget: evaluation.budget,
+      }),
+    ),
+  );
+  const template = await npBuildAgentProfileEvaluationReviewArtifactV1(member);
+  const { caseId, caseHash, predictionHash, sourceHash } = template.entries[0];
+  const review = await npBuildAgentProfileEvaluationReviewArtifactV1(member, [
+    {
+      caseId,
+      caseHash,
+      predictionHash,
+      sourceHash,
+      outcome: "accept",
+      reviewer: "report-browser-fixture",
+      reviewedAt: "2026-11-26T00:00:00.000Z",
+      notes: "",
+      editedProposal: null,
+    },
+  ]);
+
+  await page.goto("/admin/agents/evaluations");
+  await page.getByText("Build a multi-dataset report", { exact: true }).click();
+  const add = page.getByRole("button", { name: "Add dataset", exact: true });
+  const generate = page.getByRole("button", { name: "Generate V2 report", exact: true });
+  const download = page.getByRole("button", { name: "Download V2 report JSON", exact: true });
+  const dataset = (index: number) =>
+    page.getByRole("group", { name: `Dataset ${index}`, exact: true });
+  await add.click();
+  await add.click();
+  await expect(dataset(3)).toBeFocused();
+  await expect(generate).toBeDisabled();
+  for (const [index, source] of [member, semantic, segmented].entries()) {
+    await importArtifact(
+      dataset(index + 1),
+      "Dataset evaluation artifact (required)",
+      `${source.suite.id}.json`,
+      source,
+    );
+  }
+  await dataset(1)
+    .getByLabel("Dataset current review artifact (optional)", { exact: true })
+    .setInputFiles({
+      name: "oversized-combined.json",
+      mimeType: "application/json",
+      buffer: Buffer.alloc(4 * 1024 * 1024, " "),
+    });
+  await expect(dataset(1).getByRole("alert")).toHaveText(
+    "All files together must fit within 4 MiB.",
+  );
+  await expect(generate).toBeDisabled();
+  await importArtifact(
+    dataset(1),
+    "Dataset current review artifact (optional)",
+    "member-reviewed.json",
+    review,
+  );
+  await importArtifact(
+    dataset(1),
+    "Dataset baseline review artifact (optional)",
+    "member-baseline-review.json",
+    review,
+  );
+  await expect(generate).toBeDisabled();
+  await importArtifact(
+    dataset(1),
+    "Dataset baseline evaluation artifact (optional)",
+    "member-baseline.json",
+    member,
+  );
+  await importArtifact(
+    dataset(3),
+    "Dataset baseline evaluation artifact (optional)",
+    "incompatible-semantic-baseline.json",
+    semantic,
+  );
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/admin/agents/evaluations" &&
+      response.request().method() === "POST",
+  );
+  await generate.click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  const { reportArtifactJson } = npRequireAgentEvaluationWorkbenchReportV2(await response.json());
+  const summary = page.getByLabel("Report summary", { exact: true });
+  await expect(summary).toContainText("moderator-segmented-assessment, version 2");
+  await expect(summary).toContainText("not comparable (SUITE_MISMATCH)");
+  const downloadPromise = page.waitForEvent("download");
+  await download.click();
+  const downloaded = await downloadPromise;
+  expect(downloaded.suggestedFilename()).toBe("evaluation-report-v2.json");
+  const path = await downloaded.path();
+  if (!path) throw new Error("Expected a local V2 report.");
+  expect(await readFile(path, "utf8")).toBe(reportArtifactJson);
+  const report = await npRequireAgentEvaluationReportV2(JSON.parse(reportArtifactJson));
+  expect(report.rows.filter((row) => row.dataset).map((row) => row.dataset?.id)).toEqual([
+    "moderator-member-report",
+    "moderator-segmented-assessment",
+    "moderator-semantic-assessment",
+  ]);
+  expect(report.rows.find((row) => row.dataset?.id === member.suite.id)).toMatchObject({
+    review: { summary: { reviewed: 1 } },
+    evaluationComparison: { result: { comparable: true } },
+    reviewComparison: { result: { comparable: true, acceptBasisPointsDelta: 0 } },
+  });
+  expect(report.rows.find((row) => row.dataset?.id === segmented.suite.id)).toMatchObject({
+    evaluationComparison: { result: { comparable: false, reason: "SUITE_MISMATCH" } },
+  });
+
+  await dataset(2).getByRole("button", { name: "Remove dataset 2", exact: true }).click();
+  await expect(download).toHaveCount(0);
+  await expect(dataset(2)).toBeFocused();
+  await expect(generate).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+});
 
 test("evaluation workspace reviews synthetic document and mixed content proposals without granting authority", async ({
   page,
