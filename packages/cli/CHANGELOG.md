@@ -1,5 +1,11 @@
 # create-nexpress
 
+## 0.1.42
+
+### Patch Changes
+
+- c5b4b3f: Generate new NexPress projects with the current templates and pin every `@nexpress/*` dependency to `0.4.7`.
+
 ## 0.1.41
 
 ### Patch Changes
