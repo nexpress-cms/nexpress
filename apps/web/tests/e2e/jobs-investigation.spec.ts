@@ -283,7 +283,10 @@ test("Jobs logs load slowly, page, refresh, retry and discard obsolete responses
 test("Jobs list pages preserve scope, retry the same window and discard obsolete responses", async ({
   page,
 }, testInfo) => {
-  await isolateE2ERateLimitBucket(page.context(), 170 + testInfo.retry);
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    170 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
   await signInAsE2EAdmin(page);
   const now = Date.now();
   await page.clock.setFixedTime(now);
@@ -334,11 +337,21 @@ test("Jobs list pages preserve scope, retry the same window and discard obsolete
   await expect(
     page.getByText("Showing 100 of 101 reported matches", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Last 24 h", exact: true }).click();
+  const [filteredResponse] = await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === "/api/admin/jobs" &&
+        url.searchParams.get("name") === "agent.runExecute" &&
+        url.searchParams.get("state") === "created"
+      );
+    }),
+    page.getByRole("button", { name: "Last 24 h", exact: true }).click(),
+  ]);
+  const cutoff = new URL(filteredResponse.url()).searchParams.get("since");
+  expect(cutoff).toBe(new Date(now - 86_400_000).toISOString());
   await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Next jobs", exact: true })).toBeEnabled();
-  const cutoff = requests.at(-1)!.searchParams.get("since");
-  expect(cutoff).toBe(new Date(now - 86_400_000).toISOString());
   await page.clock.setFixedTime(now + 60_000);
   await page.getByRole("button", { name: "Next jobs", exact: true }).click();
   await expect(page.getByText("page-created-101", { exact: true })).toBeVisible();
