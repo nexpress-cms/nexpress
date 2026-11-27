@@ -64,8 +64,8 @@
       "nanoid": "3.3.18",
       "postcss": "8.5.26",
       "sharp": "0.35.5",
-      "shell-quote": "1.9.0",
-      "vite": "7.3.5"
+      "shell-quote": "1.11.0",
+      "vite": "7.3.7"
     },
     "onlyBuiltDependencies": [
       "@node-rs/argon2",
