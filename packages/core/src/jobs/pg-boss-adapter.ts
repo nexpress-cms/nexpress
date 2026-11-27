@@ -504,7 +504,9 @@ export class PgBossAdapter implements NpJobQueue {
     }
     if (options.state) {
       params.push(options.state);
-      where.push(`state = $${params.length}`);
+      // The public contract retains expired, which is not a pg-boss 12 enum value.
+      const column = options.state === "expired" ? "state::text" : "state";
+      where.push(`${column} = $${params.length}`);
     }
     if (options.since) {
       params.push(options.since.toISOString());

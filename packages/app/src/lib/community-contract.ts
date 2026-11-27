@@ -1,9 +1,20 @@
 import { NpValidationError } from "@nexpress/core";
 import {
   NpCommunityContractError,
+  npRequireCommunityId,
   npRequireCommunityPagination,
   npRequireCommunityWindow,
 } from "@nexpress/core/community-contract";
+
+export function npReadReportIdFilter(values: readonly string[]): string | undefined {
+  if (values.length === 0) return undefined;
+  if (values.length !== 1) {
+    throw new NpValidationError("Invalid input", [
+      { field: "reportId", message: "Specify one report id" },
+    ]);
+  }
+  return npRequireCommunityRequest((value) => npRequireCommunityId(value, "reportId"), values[0]);
+}
 
 export function npRequireCommunityRequest<T>(parser: (value: unknown) => T, value: unknown): T {
   try {
