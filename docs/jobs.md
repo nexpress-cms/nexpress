@@ -108,6 +108,15 @@ Multi-node deployments scale the worker container
 horizontally — pg-boss's advisory locks keep concurrent
 claims correct.
 
+For collection changes, the stock Worker calls the web process to revalidate
+Next.js paths and tags. Set the same `NP_SCHEDULER_TOKEN` on both processes.
+The Worker uses `SITE_URL`, or `NP_WORKER_WEB_URL` when configured with a
+reachable web origin. Use HTTPS or a trusted private network. An unsuccessful
+request leaves a warning in Admin → Jobs → Logs for that job. Cache delivery
+is best effort so the job still runs search synchronization. Scheduled content
+uses the same site-scoped after-save jobs. For multiple web replicas, use a
+shared cache and tag invalidation across the replicas.
+
 ---
 
 ## 4. Built-in Handlers

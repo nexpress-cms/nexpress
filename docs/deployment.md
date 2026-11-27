@@ -26,8 +26,11 @@ Optional (defaults shown in `.env.example`):
 - `NP_IMPORT_RUN_STALE_AFTER_SECONDS=86400` — how long an admin WordPress
   import run may stay queued/running before the admin sweep marks it failed
   and clears its temporary WXR payload.
-- `NP_SCHEDULER_TOKEN` — Bearer token guarding `/api/internal/*`. Leave
-  unset to disable those endpoints. See [scheduled-publishing.md](./scheduled-publishing.md).
+- `NP_SCHEDULER_TOKEN` — Bearer token guarding `/api/internal/*`. Set the
+  same token on the web and Worker to enable background cache invalidation.
+  See [scheduled-publishing.md](./scheduled-publishing.md) for cron wiring.
+- `NP_WORKER_WEB_URL` — Optional Worker-only web origin for cache invalidation.
+  Defaults to `SITE_URL`. Use HTTPS or a trusted private network.
 - `NP_EMAIL_ADAPTER=smtp` + the exact `NP_SMTP_*` contract — real
   password-reset / invite delivery. Use exact `custom` plus programmatic
   registration for a native provider SDK. The default no-op adapter logs the

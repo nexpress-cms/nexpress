@@ -2,6 +2,8 @@ import { configureBuiltinJobContext, startWorker } from "@nexpress/core";
 import { npGetPersistedCollectionDocumentById } from "@nexpress/core/collections";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 
+import { revalidateCollectionFromWorker } from "../lib/worker-cache-invalidation.js";
+
 /**
  * Worker entry — site code passes its own `ensureFor` so the
  * bootstrap singletons (DB, plugins, email, jobs) match the running app.
@@ -75,15 +77,8 @@ export async function runWorker({
     await ensureFor("worker");
 
     configureBuiltinJobContext({
-      async revalidateCollection(collection, document) {
-        const { revalidateCollection } = await import("../lib/revalidate.js");
-        await revalidateCollection(collection, document);
-      },
-      async revalidatePublishedDocuments(byCollection) {
-        const { revalidatePublishedDocuments } =
-          await import("../lib/scheduled-publish-revalidate.js");
-        await revalidatePublishedDocuments(byCollection);
-      },
+      revalidateCollection: revalidateCollectionFromWorker,
+      // Scheduled publishing enqueues the same site-scoped afterSave jobs.
       async resolveContentAfterSaveContext({ siteId, collection, documentId }) {
         const doc = await npGetPersistedCollectionDocumentById(collection, documentId, siteId);
         if (!doc) return null;

@@ -1,15 +1,18 @@
+import { withCurrentSite } from "@nexpress/core/sites";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   configureBuiltinJobContext: vi.fn(),
   npGetPersistedCollectionDocumentById: vi.fn(),
   startWorker: vi.fn().mockResolvedValue(undefined),
+  recordJobLog: vi.fn(),
 }));
 
 vi.mock("@nexpress/core", () => ({
   configureBuiltinJobContext: mocks.configureBuiltinJobContext,
   startWorker: mocks.startWorker,
 }));
+vi.mock("@nexpress/core/jobs", () => ({ recordJobLog: mocks.recordJobLog }));
 vi.mock("@nexpress/core/collections", () => ({
   npGetPersistedCollectionDocumentById: mocks.npGetPersistedCollectionDocumentById,
 }));
@@ -33,6 +36,8 @@ describe("worker bootstrap", () => {
     else process.env.NP_ENABLE_JOBS = jobsEnabled;
     if (databaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = databaseUrl;
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     vi.clearAllMocks();
   });
@@ -212,5 +217,51 @@ describe("worker bootstrap", () => {
       "doc-1",
       "tenant-a",
     );
+  });
+  it("forwards cache invalidation to the web and retains a warning per failed job", async () => {
+    vi.stubEnv("SITE_URL", "https://public.example.test");
+    vi.stubEnv("NP_WORKER_WEB_URL", "http://web:3000");
+    vi.stubEnv("NP_SCHEDULER_TOKEN", "shared-test-token");
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockRejectedValueOnce(new Error("untrusted transport diagnostics"));
+    vi.stubGlobal("fetch", fetch);
+    await runWorker({
+      ensureFor: vi.fn().mockResolvedValue(undefined),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    });
+    const context = mocks.configureBuiltinJobContext.mock.calls[0]?.[0] as {
+      revalidateCollection(collection: string, doc?: Record<string, unknown>): Promise<void>;
+    };
+    await withCurrentSite("tenant-b", async () => {
+      await context.revalidateCollection("posts", { slug: "story", body: "private fields" });
+      expect(mocks.recordJobLog).not.toHaveBeenCalled();
+      await context.revalidateCollection("posts");
+      await context.revalidateCollection("posts");
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      new URL("http://web:3000/api/internal/revalidate-collection"),
+      expect.objectContaining({
+        redirect: "manual",
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer shared-test-token" }),
+        body: JSON.stringify({ siteId: "tenant-b", collection: "posts", documentSlug: "story" }),
+      }),
+    );
+    expect(mocks.recordJobLog.mock.calls).toEqual([
+      [
+        "warn",
+        "Web cache invalidation was not applied",
+        { siteId: "tenant-b", collection: "posts", httpStatus: 503 },
+      ],
+      [
+        "warn",
+        "Web cache invalidation request failed",
+        { siteId: "tenant-b", collection: "posts" },
+      ],
+    ]);
   });
 });
