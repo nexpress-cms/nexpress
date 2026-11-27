@@ -5,7 +5,7 @@ import type { readCommunityDailyOps } from "../../../lib/community-daily-ops";
 export function CommunityDailyReport({
   report,
 }: {
-  report: Awaited<ReturnType<typeof readCommunityDailyOps>>;
+  report: NonNullable<Awaited<ReturnType<typeof readCommunityDailyOps>>>;
 }) {
   return (
     <section aria-labelledby="community-daily-report" className="min-w-0 space-y-3">

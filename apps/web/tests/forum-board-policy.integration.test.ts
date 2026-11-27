@@ -1,6 +1,7 @@
 import { npAgentProviderCalls, npReports } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { PgBossAdapter } from "@nexpress/core/jobs";
+import { createSite, grantSiteMembership, withCurrentSite } from "@nexpress/core/sites";
 import { createForum } from "@nexpress/plugin-forum";
 import { count, eq, sql } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -233,6 +234,13 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       reason: "A recent report outside the daily queue cutoff",
     });
     const staff = await seedUser();
+    const actor = {
+      id: staff.userId,
+      email: staff.email,
+      name: staff.name,
+      role: staff.role,
+      tokenVersion: 0,
+    };
     const staffSession = {
       cookie: `np-session=${staff.accessToken}`,
       csrfCookie: `np-csrf=${staff.csrfToken}`,
@@ -264,8 +272,8 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       expect(typeof jobId).toBe("string");
 
       vi.stubEnv("NP_ENABLE_JOBS", "1");
-      const before = await readCommunityDailyOps(true);
-      expect(before.cards).toMatchObject([
+      const before = await readCommunityDailyOps(actor);
+      expect(before?.cards).toMatchObject([
         { id: "questions", count: 1, items: [{ href: `/boards/questions/${postId}` }] },
         {
           id: "reports",
@@ -274,10 +282,21 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
         },
         { id: "jobs", count: 1, items: [{ href: "/admin/jobs?name=content.afterSave" }] },
       ]);
-      expect((await readCommunityDailyOps(false)).cards.map(({ id }) => id)).toEqual([
-        "questions",
-        "jobs",
-      ]);
+      const otherSite = "daily-ops-private";
+      await createSite({ id: otherSite, name: "Daily Ops private site" });
+      const readOtherSite = () => withCurrentSite(otherSite, () => readCommunityDailyOps(actor));
+      expect(await readOtherSite()).toBeNull();
+      await grantSiteMembership(otherSite, staff.userId, "editor");
+      expect(await readOtherSite()).toBeNull();
+      await grantSiteMembership(otherSite, staff.userId, "admin");
+      expect(await readOtherSite()).toMatchObject({
+        siteId: otherSite,
+        cards: [
+          { id: "questions", count: null },
+          { id: "reports", count: 0 },
+          { id: "jobs", count: 0 },
+        ],
+      });
       const filtered = await readJson<{ docs: { id: string }[] }>(
         await adminReportsGET(
           request(`/api/admin/community/reports?reportId=${reportId}`, staffSession, {
@@ -318,7 +337,7 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       await adapter.cancelJob(String(jobId));
 
       vi.stubEnv("NP_ENABLE_JOBS", "1");
-      expect((await readCommunityDailyOps(true)).cards.map(({ count }) => count)).toEqual([
+      expect((await readCommunityDailyOps(actor))?.cards.map(({ count }) => count)).toEqual([
         0, 0, 0,
       ]);
       expect(await db.select({ count: count() }).from(npAgentProviderCalls)).toEqual([

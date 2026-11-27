@@ -233,7 +233,7 @@ nexpress ops plugins enable <pluginId> --site <siteId> --execute --approve plugi
 
 ### Community daily report
 
-Admin Ops includes a current-site community daily report. Reload Ops after
+Admin Ops shows the community daily report to administrators of the current site. Reload Ops after
 replying, resolving a report, or handling a job to see the updated counts.
 
 - Questions come from the public Forum board with key `questions`. Visible

@@ -1,7 +1,8 @@
+import { can, type NpAuthUser } from "@nexpress/core";
 import { listReports } from "@nexpress/core/community";
 import { npCollectOperatorJobsObservationV1 } from "@nexpress/core/jobs";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
-import { requireSiteId, withCurrentSite } from "@nexpress/core/sites";
+import { requireSiteId, resolveSiteAuthUser, withCurrentSite } from "@nexpress/core/sites";
 import { npReadForumUnansweredQuestions } from "@nexpress/plugin-forum";
 
 interface DailyOpsCard {
@@ -108,12 +109,14 @@ async function jobsCard(siteId: string): Promise<DailyOpsCard> {
   return { ...base, count: null, description: "Could not observe the site job queues.", link };
 }
 
-export async function readCommunityDailyOps(canModerate: boolean, now = new Date()) {
+export async function readCommunityDailyOps(user: NpAuthUser, now = new Date()) {
   const siteId = await requireSiteId();
+  const siteUser = await resolveSiteAuthUser(user, siteId);
+  if (!siteUser || !can(siteUser, "admin.manage")) return null;
   return withCurrentSite(siteId, async () => {
     const [questions, reports, jobs] = await Promise.all([
       questionsCard(),
-      canModerate ? reportsCard(siteId, now) : null,
+      can(siteUser, "community.moderate") ? reportsCard(siteId, now) : null,
       jobsCard(siteId),
     ]);
     return {

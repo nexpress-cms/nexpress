@@ -89,7 +89,7 @@ export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) 
       target: resolved.target,
       inferredTarget: resolved.inferred,
     }),
-    readCommunityDailyOps(can(user, "community.moderate")),
+    readCommunityDailyOps(user),
   ]);
   const overview = buildAdminOpsOverview(health, readiness);
   const actions = combinedActions(health, readiness);
@@ -152,7 +152,7 @@ export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) 
         </div>
       </div>
 
-      <CommunityDailyReport report={communityReport} />
+      {communityReport ? <CommunityDailyReport report={communityReport} /> : null}
 
       <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
         {overview.cards.map((card) => (
