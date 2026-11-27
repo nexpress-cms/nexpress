@@ -23,9 +23,12 @@ import { createForumPostEditRoute } from "./routes/forum-post-edit.js";
 import { createForumPostNewRoute } from "./routes/forum-post-new.js";
 import type { NpForumRuntime } from "./runtime.js";
 import { createForumBuildRouteOwnerV1 } from "./build-route-owner.js";
+import { rememberForumQuestionSource } from "./question-ops.js";
 import { classicForumSkin } from "./skins/classic.js";
 import { communityFullForumSkin } from "./skins/community-full.js";
 import type { NpForumCollectionSlugs, NpForumQuestionContextSource, NpForumSkin } from "./types.js";
+
+export { npReadForumUnansweredQuestions } from "./question-ops.js";
 
 const SAFE_SEGMENT = /^[a-z][a-z0-9-]*$/u;
 
@@ -448,6 +451,7 @@ export function createForum(options: NpForumOptions = {}) {
     component: createForumPostDetailRoute(runtime),
     metadata: createForumPostMetadata(runtime),
   };
+  rememberForumQuestionSource(detailRoute.component, runtime);
   const pageRoutes = [
     {
       pattern: runtime.basePath,

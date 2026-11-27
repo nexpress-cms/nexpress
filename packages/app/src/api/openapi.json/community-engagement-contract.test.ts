@@ -244,6 +244,14 @@ describe("OpenAPI community engagement contract", () => {
       },
     });
     expect(spec.paths["/api/admin/community/reports"]?.get).toMatchObject({
+      parameters: expect.arrayContaining([
+        {
+          in: "query",
+          name: "reportId",
+          schema: { type: "string", format: "uuid" },
+          description: expect.any(String),
+        },
+      ]),
       responses: {
         "200": {
           content: {

@@ -1,8 +1,10 @@
+import { npAgentProviderCalls, npReports } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import { PgBossAdapter } from "@nexpress/core/jobs";
 import { createForum } from "@nexpress/plugin-forum";
-import { eq, sql } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as collectionGET, POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import {
@@ -10,8 +12,14 @@ import {
   GET as collectionDetailGET,
   PATCH as collectionPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
-import { GET as commentsGET } from "@/app/api/collections/[slug]/[id]/comments/route";
+import {
+  GET as commentsGET,
+  POST as commentsPOST,
+} from "@/app/api/collections/[slug]/[id]/comments/route";
+import { GET as adminReportsGET } from "@/app/api/admin/community/reports/route";
+import { POST as resolveReportPOST } from "@/app/api/admin/community/reports/[id]/resolve/route";
 import { GET as reactionsGET } from "@/app/api/reactions/route";
+import { POST as reportPOST } from "@/app/api/reports/route";
 import { POST as viewPOST } from "@/app/api/views/route";
 import {
   forumBoardsTable,
@@ -21,6 +29,8 @@ import {
 import type { ForumPostsDocument } from "@/db/generated/documents";
 import { NextRequest } from "next/server";
 
+// eslint-disable-next-line import-x/no-relative-packages
+import { readCommunityDailyOps } from "../../../packages/app/src/lib/community-daily-ops.js";
 import {
   closeTestDb,
   ensureMigrated,
@@ -183,6 +193,143 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
     );
     return { response, member };
   }
+
+  it("refreshes the community report after a public reply, report resolution and delayed job cancellation", async () => {
+    const { id: boardId } = await createBoard({ key: "questions" });
+    const { response, member: author } = await createPost(boardId);
+    const post = await readJson<{ id: string }>(response);
+    expect(post.status).toBe(201);
+    const postId = post.body.id;
+    expect((await createPost(boardId, { audience: "private" })).response.status).toBe(201);
+    const reporter = await seedActiveMember({ handle: "daily-ops-reporter" });
+    const memberSession = {
+      cookie: `np-mb-session=${reporter.sessionCookie}`,
+      csrfCookie: `np-mb-csrf=${reporter.csrfCookie}`,
+      csrfHeader: reporter.csrfCookie,
+    };
+    const report = await readJson<{ id: string }>(
+      await reportPOST(
+        request("/api/reports", memberSession, {
+          method: "POST",
+          body: JSON.stringify({
+            targetType: "forum-posts",
+            targetId: postId,
+            reason: "Review this question",
+          }),
+        }),
+      ),
+    );
+    expect(report.status).toBe(201);
+    const reportId = report.body.id;
+    const db = await getTestDb();
+    await db
+      .update(npReports)
+      .set({ createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) })
+      .where(eq(npReports.id, reportId));
+    await db.insert(npReports).values({
+      reporterId: author.memberId,
+      targetType: "forum-posts",
+      targetId: postId,
+      reason: "A recent report outside the daily queue cutoff",
+    });
+    const staff = await seedUser();
+    const staffSession = {
+      cookie: `np-session=${staff.accessToken}`,
+      csrfCookie: `np-csrf=${staff.csrfToken}`,
+      csrfHeader: staff.csrfToken,
+    };
+    const url = getTestDatabaseUrl();
+    if (!url) throw new Error("TEST_DATABASE_URL not set");
+    const adapter = new PgBossAdapter(url, { supervise: false, schedule: false });
+
+    try {
+      await adapter.startProducer();
+      const queue = "content.afterSave";
+      await adapter.getBoss().createQueue(queue);
+      const payload = {
+        siteId: "default",
+        collection: "forum-posts",
+        documentId: postId,
+        operation: "create",
+        userId: null,
+        memberId: author.memberId,
+      };
+      const queued = await db.execute(sql`
+        insert into pgboss.job (name, state, created_on, start_after, data) values
+          (${queue}, 'created', now()-interval '25 minutes', now()-interval '20 minutes', ${JSON.stringify(payload)}::jsonb),
+          (${queue}, 'created', now(), now()+interval '30 minutes', ${JSON.stringify(payload)}::jsonb),
+          (${queue}, 'retry', now()-interval '25 minutes', now()-interval '20 minutes', ${JSON.stringify({ ...payload, siteId: "other" })}::jsonb)
+        returning id`);
+      const jobId = queued.rows[0]?.id;
+      expect(typeof jobId).toBe("string");
+
+      vi.stubEnv("NP_ENABLE_JOBS", "1");
+      const before = await readCommunityDailyOps(true);
+      expect(before.cards).toMatchObject([
+        { id: "questions", count: 1, items: [{ href: `/boards/questions/${postId}` }] },
+        {
+          id: "reports",
+          count: 1,
+          items: [{ href: `/admin/community/reports?reportId=${reportId}` }],
+        },
+        { id: "jobs", count: 1, items: [{ href: "/admin/jobs?name=content.afterSave" }] },
+      ]);
+      expect((await readCommunityDailyOps(false)).cards.map(({ id }) => id)).toEqual([
+        "questions",
+        "jobs",
+      ]);
+      const filtered = await readJson<{ docs: { id: string }[] }>(
+        await adminReportsGET(
+          request(`/api/admin/community/reports?reportId=${reportId}`, staffSession, {
+            method: "GET",
+          }),
+        ),
+      );
+      expect(filtered.status).toBe(200);
+      expect(filtered.body.docs.map(({ id }) => id)).toEqual([reportId]);
+      expect(await adapter.listJobs({ name: queue, source: "archive", state: "expired" })).toEqual({
+        jobs: [],
+        total: 0,
+      });
+      expect(
+        await adapter.listJobs({ name: queue, source: "live", state: "created" }),
+      ).toMatchObject({
+        total: 2,
+        jobs: expect.arrayContaining([expect.objectContaining({ id: jobId })]),
+      });
+      // The following writes exercise the existing handlers and queue owner.
+      vi.stubEnv("NP_ENABLE_JOBS", "0");
+      const reply = await commentsPOST(
+        request(`/api/collections/forum-posts/${postId}/comments`, memberSession, {
+          method: "POST",
+          body: JSON.stringify({ bodyMd: "Use the development guide.", parentId: null }),
+        }),
+        { params: Promise.resolve({ slug: "forum-posts", id: postId }) },
+      );
+      expect(reply.status).toBe(201);
+      const resolved = await resolveReportPOST(
+        request(`/api/admin/community/reports/${reportId}/resolve`, staffSession, {
+          method: "POST",
+          body: JSON.stringify({ action: "dismiss" }),
+        }),
+        { params: Promise.resolve({ id: reportId }) },
+      );
+      expect(resolved.status).toBe(200);
+      await adapter.cancelJob(String(jobId));
+
+      vi.stubEnv("NP_ENABLE_JOBS", "1");
+      expect((await readCommunityDailyOps(true)).cards.map(({ count }) => count)).toEqual([
+        0, 0, 0,
+      ]);
+      expect(await db.select({ count: count() }).from(npAgentProviderCalls)).toEqual([
+        { count: 0 },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      await adapter.stop();
+      await db.execute(sql`drop schema if exists pgboss cascade`);
+    }
+  });
 
   it("persists a proof-bound product question and staff-owned official answer", async () => {
     const { id: boardId, staff } = await createBoard({ key: "product-questions" });

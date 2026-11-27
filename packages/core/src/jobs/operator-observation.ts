@@ -38,6 +38,8 @@ export interface NpOperatorJobsObservationV1 {
   failed: number | null;
   cancelled: number | null;
   oldestReadyAgeSeconds: number | null;
+  /** Present only when a delay threshold was requested and the cohort was observed. */
+  delayedReadyQueues?: { name: (typeof NP_OPERATOR_SITE_JOB_QUEUES_V1)[number]; count: number }[];
 }
 
 /**
@@ -50,6 +52,7 @@ export interface NpOperatorJobsObservationV1 {
 export async function npCollectOperatorJobsObservationV1(options: {
   siteId: string;
   maxTargets: number;
+  delayThresholdSeconds?: number;
   db?: Db;
 }): Promise<NpOperatorJobsObservationV1> {
   if (!npIsCanonicalSiteId(options.siteId)) throw new Error("Invalid observation site.");
@@ -59,6 +62,12 @@ export async function npCollectOperatorJobsObservationV1(options: {
     options.maxTargets > 1000
   )
     throw new Error("Invalid observation bound.");
+  const threshold = options.delayThresholdSeconds;
+  if (
+    threshold !== undefined &&
+    (!Number.isSafeInteger(threshold) || threshold < 1 || threshold >= 86_400)
+  )
+    throw new Error("Invalid ready-job delay threshold.");
   const now = Date.now();
   const unknown: NpOperatorJobsObservationV1 = {
     schemaVersion: "np.operator-jobs-observation.v1",
@@ -122,6 +131,20 @@ export async function npCollectOperatorJobsObservationV1(options: {
           count(*) filter(where state is null or state::text not in ('created','active','retry','completed','failed','cancelled')
             or start_after is null or not isfinite(start_after)
             or (state='active' and (started_on is null or not isfinite(started_on) or started_on > statement_timestamp()))) as invalid
+          ${
+            threshold === undefined
+              ? sql``
+              : sql`, (
+            select coalesce(jsonb_object_agg(name, delayed_count), '{}'::jsonb)
+            from (
+              select name, count(*) as delayed_count
+              from inspected
+              where state in ('created','retry')
+                and start_after <= statement_timestamp() - ${threshold} * interval '1 second'
+              group by name
+            ) delayed
+          ) as delayed_ready_queues`
+          }
         from inspected`);
         const row = facts.rows[0];
         if (!row || Number(row.invalid) !== 0 || typeof row.truncated !== "boolean")
@@ -136,6 +159,19 @@ export async function npCollectOperatorJobsObservationV1(options: {
           if (!Number.isSafeInteger(value) || value < 0) throw new Error("Invalid count.");
           return value;
         };
+        const delayed = row.delayed_ready_queues;
+        const delayedReadyQueues =
+          threshold === undefined
+            ? undefined
+            : NP_OPERATOR_SITE_JOB_QUEUES_V1.flatMap((name) => {
+                if (!delayed || typeof delayed !== "object" || Array.isArray(delayed))
+                  throw new Error("Invalid delayed job facts.");
+                const value = Object.getOwnPropertyDescriptor(delayed, name)?.value;
+                if (value === undefined) return [];
+                if (!Number.isSafeInteger(value) || value < 1)
+                  throw new Error("Invalid delayed job count.");
+                return [{ name, count: value }];
+              });
         return {
           ...unknown,
           state: "observed",
@@ -150,6 +186,7 @@ export async function npCollectOperatorJobsObservationV1(options: {
           failed: count("failed"),
           cancelled: count("cancelled"),
           oldestReadyAgeSeconds: row.ready_age === null ? null : count("ready_age"),
+          ...(delayedReadyQueues ? { delayedReadyQueues } : {}),
         };
       },
       { accessMode: "read only" },

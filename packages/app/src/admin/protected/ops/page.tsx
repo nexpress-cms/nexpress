@@ -16,6 +16,7 @@ import {
   type AdminOpsState,
 } from "../../../lib/admin-ops";
 import { getAuthRuntimeConfig } from "../../../lib/auth-helpers";
+import { readCommunityDailyOps } from "../../../lib/community-daily-ops";
 import { getDb } from "../../../lib/db";
 import { ensureFor } from "../../../lib/init-core";
 import {
@@ -28,6 +29,7 @@ import {
 import { gatherSystemHealth, type HealthSummary } from "../../../lib/system-health";
 import { DEPLOY_TARGETS, deployTargetTitle } from "../../../scripts/deploy-targets";
 import { CopyCommandButton } from "../ops-actions";
+import { CommunityDailyReport } from "./community-daily-report";
 
 interface AdminOpsPageProps {
   searchParams: Promise<{ target?: string }>;
@@ -81,12 +83,13 @@ export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) 
 
   const params = await searchParams;
   const resolved = resolveOpsReadinessTarget(params.target);
-  const [health, readiness] = await Promise.all([
+  const [health, readiness, communityReport] = await Promise.all([
     gatherSystemHealth(),
     gatherOpsReadiness({
       target: resolved.target,
       inferredTarget: resolved.inferred,
     }),
+    readCommunityDailyOps(can(user, "community.moderate")),
   ]);
   const overview = buildAdminOpsOverview(health, readiness);
   const actions = combinedActions(health, readiness);
@@ -148,6 +151,8 @@ export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) 
           </div>
         </div>
       </div>
+
+      <CommunityDailyReport report={communityReport} />
 
       <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
         {overview.cards.map((card) => (

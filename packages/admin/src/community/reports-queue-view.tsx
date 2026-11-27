@@ -40,12 +40,12 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
  * contract. Resolving can dismiss, hide a comment, or unpublish a document;
  * the server rejects actions that do not match the target kind.
  */
-export function ReportsQueueView() {
+export function ReportsQueueView({ reportId }: { reportId?: string } = {}) {
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [totalDocs, setTotalDocs] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
-  const [status, setStatus] = useState<StatusFilter>("unresolved");
+  const [status, setStatus] = useState<StatusFilter>(reportId ? "all" : "unresolved");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] = useState<ReportRow | null>(null);
@@ -55,6 +55,7 @@ export function ReportsQueueView() {
     setError(null);
     try {
       const params = new URLSearchParams({ status, limit: "50", page: page.toString() });
+      if (reportId) params.set("reportId", reportId);
       const res = await npFetch(`/api/admin/community/reports?${params.toString()}`);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
@@ -74,7 +75,7 @@ export function ReportsQueueView() {
     } finally {
       setLoading(false);
     }
-  }, [page, status]);
+  }, [page, reportId, status]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -94,6 +95,15 @@ export function ReportsQueueView() {
         }
         description="Review the reported target in context, then dismiss it or apply the target's supported moderation action. Every resolution is validated and audited by the server."
       />
+
+      {reportId ? (
+        <p className="text-sm text-muted-foreground">
+          Viewing one report.{" "}
+          <Link href="/admin/community/reports" className="underline">
+            View the full report queue
+          </Link>
+        </p>
+      ) : null}
 
       <Card className="min-w-0">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

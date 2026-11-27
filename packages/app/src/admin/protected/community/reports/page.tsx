@@ -6,10 +6,15 @@ import { redirect } from "next/navigation";
 import { getAuthRuntimeConfig } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import { getDb } from "../../../../lib/db";
+import { npReadReportIdFilter } from "../../../../lib/community-contract";
 
 export const dynamic = "force-dynamic";
 
-export default async function CommunityReportsPage() {
+export default async function CommunityReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reportId?: string | string[] }>;
+}) {
   await ensureFor("read");
   const cookieStore = await cookies();
   const token = cookieStore.get("np-session")?.value;
@@ -21,5 +26,22 @@ export default async function CommunityReportsPage() {
   if (!can(user, "community.moderate")) {
     throw new NpForbiddenError("reports", "list");
   }
-  return <ReportsQueueView />;
+  const { reportId } = await searchParams;
+  let selectedReport: string | undefined;
+  try {
+    selectedReport = npReadReportIdFilter(
+      reportId === undefined ? [] : Array.isArray(reportId) ? reportId : [reportId],
+    );
+  } catch {
+    return (
+      <p role="alert">
+        The report filter is invalid.{" "}
+        <a className="underline" href="/admin/community/reports">
+          View the report queue
+        </a>
+        .
+      </p>
+    );
+  }
+  return <ReportsQueueView key={selectedReport ?? "queue"} reportId={selectedReport} />;
 }

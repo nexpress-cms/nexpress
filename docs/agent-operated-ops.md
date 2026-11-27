@@ -231,6 +231,22 @@ nexpress ops plugins disable <pluginId> --site <siteId> --execute --approve plug
 nexpress ops plugins enable <pluginId> --site <siteId> --execute --approve plugin-enable --json
 ```
 
+### Community daily report
+
+Admin Ops includes a current-site community daily report. Reload Ops after
+replying, resolving a report, or handling a job to see the updated counts.
+
+- Questions come from the public Forum board with key `questions`. Visible
+  replies and official answers remove a thread from the count. The report
+  inspects up to 50 newest public questions and marks a larger result as partial.
+- Staff with moderation access see unresolved reports at least 24 hours old.
+  Each report link opens its exact row in the existing moderation queue.
+- Delayed jobs are retained framework jobs created in the last 24 hours whose
+  eligible start is at least 15 minutes past and whose state is created or retry.
+  The report inspects up to 1,000 jobs with a matching site payload and links to
+  the existing Jobs queue filter. Site jobs from an unavailable source display
+  an unavailable state. The report never starts a worker.
+
 ### Admin read-only ops API
 
 These endpoints use the same authenticated admin session as `/admin/ops` and

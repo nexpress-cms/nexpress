@@ -5489,6 +5489,12 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
           name: "targetType",
           schema: communityTargetTypeSchema,
         },
+        {
+          in: "query",
+          name: "reportId",
+          schema: { type: "string", format: "uuid" },
+          description: "Limit results to one report in the current site.",
+        },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
       ],

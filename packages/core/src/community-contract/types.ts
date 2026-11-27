@@ -569,6 +569,9 @@ export interface ListReportsOptions {
   status?: NpReportStatus;
   targetType?: NpReportTarget;
   siteId?: string | null;
+  reportId?: string;
+  createdAtOrBefore?: Date;
+  order?: "newest" | "oldest";
   limit?: number;
   offset?: number;
 }

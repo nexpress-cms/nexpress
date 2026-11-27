@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 import { NpCollectionContractError } from "../collection-contract/contract.js";
 import { getCollectionConfig } from "../collections/registry.js";
@@ -311,6 +311,11 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
     /* no-op */
   } else filters.push(isNull(npReports.resolvedAt));
   if (options.targetType) filters.push(eq(npReports.targetType, options.targetType));
+  if (options.reportId)
+    filters.push(
+      eq(npReports.id, requireCommunityContract(npRequireCommunityId, options.reportId)),
+    );
+  if (options.createdAtOrBefore) filters.push(lte(npReports.createdAt, options.createdAtOrBefore));
 
   if (options.siteId !== null) {
     const resolvedSite = options.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
@@ -318,11 +323,12 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   }
 
   const where = filters.length > 0 ? and(...filters) : undefined;
+  const order = options.order === "oldest" ? asc : desc;
   const reports = (await db
     .select()
     .from(npReports)
     .where(where)
-    .orderBy(desc(npReports.createdAt))
+    .orderBy(order(npReports.createdAt), order(npReports.id))
     .limit(limit)
     .offset(offset)) as NpReportRow[];
   const [totalRow] = (await db.select({ total: count() }).from(npReports).where(where)) as Array<{

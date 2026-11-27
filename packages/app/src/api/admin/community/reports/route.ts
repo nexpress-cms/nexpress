@@ -13,11 +13,11 @@ import type { NextRequest } from "next/server";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
-import { npReadCommunityPage } from "../../../../lib/community-contract";
+import { npReadCommunityPage, npReadReportIdFilter } from "../../../../lib/community-contract";
 
 async function npGuardianGET(request: NextRequest) {
   try {
-    await ensureFor("write");
+    await ensureFor("plugins");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
       throw new NpForbiddenError("reports", "list");
@@ -44,6 +44,7 @@ async function npGuardianGET(request: NextRequest) {
     const result = await listReports({
       status: status ?? "unresolved",
       targetType: targetType ?? undefined,
+      reportId: npReadReportIdFilter(params.getAll("reportId")),
       limit,
       offset,
     });
