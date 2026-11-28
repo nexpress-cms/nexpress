@@ -88,9 +88,8 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
       };
     },
   };
-  const unavailable = async (): Promise<never> => {
-    throw new Error("The community pilot installs staff moderation only.");
-  };
+  const unavailable = (): Promise<never> =>
+    Promise.reject(new Error("The community pilot installs staff moderation only."));
   const events = createAgentRuntimeEventServiceV1({
     admission: {
       admit: unavailable,
@@ -106,13 +105,15 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
     enqueueRun: unavailable,
   });
 
-  let evidence: NpAgentIncidentEvidenceServiceV1;
   const reads = createAgentIncidentServiceV1({
     cursorHmacKey,
     canReadIncident: () => false,
     canReadStaffIncident: (input) => evidence.canReadStaffIncident(input),
   }).staff;
-  evidence = createAgentIncidentEvidenceServiceV1({ reads, cursorHmacKey });
+  const evidence: NpAgentIncidentEvidenceServiceV1 = createAgentIncidentEvidenceServiceV1({
+    reads,
+    cursorHmacKey,
+  });
   const notifications = createAgentIncidentNotificationsServiceV1({ reads, cursorHmacKey });
   const writer = createAgentIncidentWriteServiceV1({
     notifications,
@@ -133,7 +134,6 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
   for (const dimension of npAgentBudgetDimensionKeysV1) {
     budget[dimension] = /provider|token|cost|cooldown/iu.test(dimension) ? 0 : 100;
   }
-  let approvals: NpAgentApprovalServiceV1;
   const moderation = createAgentModerationServiceV1({
     admission: { withCurrentAuthority: unavailable, withStoredAuthority: unavailable },
     resolveApprovals: () => approvals,
@@ -164,7 +164,7 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
     },
     incidents: writer,
   });
-  approvals = createAgentApprovalServiceV1({
+  const approvals: NpAgentApprovalServiceV1 = createAgentApprovalServiceV1({
     targets: moderation.approvalTargets,
     cursorKey: cursorHmacKey,
     integrityKeys: {
@@ -179,7 +179,7 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
     reads,
     moderation,
     approvals,
-    resolveTargets: evidence.resolveTargets,
+    resolveTargets: (input) => evidence.resolveTargets(input),
     admission: { reauthentication },
   });
   const incidents = createAgentIncidentStudioServiceV1({
@@ -217,7 +217,7 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
     studio: createAgentStudioServerRuntimeV1({ incidents, approvals }),
     collect,
     moderationSchedule: scheduledSite
-      ? createCommunityPilotModerationSchedule({ siteId, getDb, collect })
+      ? createCommunityPilotModerationSchedule({ siteId, staffUserId, getDb, collect })
       : undefined,
   };
 }

@@ -90,10 +90,15 @@ pnpm run worker
 The local plugin uses the existing pg-boss plugin schedule. Every minute it
 finds actual comment report events from the six most recent closed ten-minute
 windows at the configured site. Closed report windows in that one-hour range
-remain eligible after a Worker outage. The existing collector and Incident
-writer own evidence, current staff authority, and replay. Jobs logs record
-which closed window each Worker execution collected. The schedule produces
-advisory Incidents for staff review. Quarantine and restoration use the human
+remain eligible after a Worker outage. The schedule checkpoints completed
+collections in six site-scoped plugin storage slots. Each checkpoint binds the
+window, configured collector identity, and exact retained comment and report
+event IDs and hashes. The next tick skips an unchanged checkpoint. Late events
+change the digest. Failed or unfinished collections remain eligible on the
+next tick. The existing collector and Incident writer own live evidence,
+current staff authority, and replay. Jobs logs identify collected and skipped
+windows. The schedule produces advisory Incidents for staff review.
+Quarantine and restoration use the human
 approval path below. To remove the schedule, unset
 `NP_COMMUNITY_PILOT_MODERATION_SITE` on both processes, restart them, and use
 **Plugins → Reload all** to reconcile the saved cron entry.
@@ -111,10 +116,10 @@ Run it once per fresh fixture. The private lock prevents a second recording.
 `finish` starts in a separate process. It checks the same deployment and exact
 report and waits for the real detector window to close. With scheduled
 collection, it waits for two distinct Worker job logs recording the initial
-collection and replay of the same window. With the manual pilot configuration,
-it invokes the collector and verifies the replay directly. Both modes check
-that the report appears in the Incident's evidence and the Admin feed has one
-matching notification.
+collection and a subsequent unchanged-window skip. With the manual pilot
+configuration, it invokes the collector and verifies the replay directly.
+Both modes check that the report appears in the Incident's evidence and the
+Admin feed has one matching notification.
 
 The two fixture staff accounts exercise the real approval, quarantine, and restore
 handlers. Each action checks self-approval rejection, separate approval, and an
