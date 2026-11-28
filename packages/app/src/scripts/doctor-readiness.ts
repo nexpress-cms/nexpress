@@ -8,6 +8,12 @@ import {
   checkTargetProductionStorage,
   type CheckResult,
 } from "../lib/production-readiness.js";
+import {
+  requestWorkerWeb,
+  resolveWorkerWebEndpoint,
+  WORKER_WEB_PROTOCOL_HEADER,
+  WORKER_WEB_PROTOCOL_VERSION,
+} from "../lib/worker-web-target.js";
 export type { CheckResult } from "../lib/production-readiness.js";
 
 type DoctorEnv = Record<string, string | undefined>;
@@ -162,7 +168,7 @@ export function checkSchedulerTokenProd(prodMode: boolean, env: DoctorEnv): Chec
       state: "warn",
       label: "NP_SCHEDULER_TOKEN",
       detail: "not set",
-      hint: "If you use _status: 'scheduled' anywhere, set NP_SCHEDULER_TOKEN and have your cron driver send `Authorization: Bearer <token>`. Otherwise ignore this warning.",
+      hint: "Set the same NP_SCHEDULER_TOKEN on the web and Worker for background cache invalidation. An external scheduler also uses this token.",
     };
   }
   if (token.length < 16) {
@@ -175,6 +181,65 @@ export function checkSchedulerTokenProd(prodMode: boolean, env: DoctorEnv): Chec
     };
   }
   return { id: "prod.scheduler_token", state: "ok", label: "NP_SCHEDULER_TOKEN" };
+}
+
+export const WORKER_WEB_CONNECTION_CHECK_ID = "worker.web_connection";
+
+export async function checkWorkerWebConnection(env: DoctorEnv): Promise<CheckResult> {
+  const check = { id: WORKER_WEB_CONNECTION_CHECK_ID, label: "Worker web connection" };
+  const endpoint = resolveWorkerWebEndpoint(env);
+  if (!endpoint) {
+    return {
+      ...check,
+      state: "error",
+      detail: "Invalid or missing Worker web origin",
+      hint: "Set NP_WORKER_WEB_URL or SITE_URL to an HTTP(S) origin reachable from the Worker.",
+    };
+  }
+  const token = env.NP_SCHEDULER_TOKEN;
+  if (!token) {
+    return {
+      ...check,
+      state: "error",
+      detail: "NP_SCHEDULER_TOKEN is missing from the Worker environment",
+      hint: "Set the same NP_SCHEDULER_TOKEN on the web and Worker.",
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await requestWorkerWeb(endpoint, token, { method: "HEAD" });
+  } catch {
+    return {
+      ...check,
+      state: "error",
+      detail: "Could not connect to the Worker web endpoint",
+      hint: "Check the web service, origin, network route and TLS from the Worker environment.",
+    };
+  }
+
+  if (response.headers.get(WORKER_WEB_PROTOCOL_HEADER) === WORKER_WEB_PROTOCOL_VERSION) {
+    if (response.status === 204) {
+      return { ...check, state: "ok", detail: "Web endpoint reachable and token accepted" };
+    }
+    if (response.status === 401 || response.status === 503) {
+      return {
+        ...check,
+        state: "error",
+        detail:
+          response.status === 401
+            ? "Web endpoint rejected the Worker token"
+            : "NP_SCHEDULER_TOKEN is missing from the web environment",
+        hint: "Set the same NP_SCHEDULER_TOKEN on the web and Worker.",
+      };
+    }
+  }
+  return {
+    ...check,
+    state: "error",
+    detail: `Unexpected response from the Worker web endpoint (HTTP ${response.status.toString()})`,
+    hint: "Check that the origin serves a NexPress release with the Worker web probe and accepts HEAD without a redirect.",
+  };
 }
 
 export function checkMigrationStatusReadiness(

@@ -1,5 +1,5 @@
 import type { DeployTarget } from "./deploy-targets.js";
-import type { CheckResult } from "./doctor-readiness.js";
+import { WORKER_WEB_CONNECTION_CHECK_ID, type CheckResult } from "./doctor-readiness.js";
 import { toProjectCommand } from "./ops-command-format.js";
 
 export interface DoctorFixPlanItem {
@@ -185,13 +185,22 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
     case "prod.scheduler_token":
       return {
         id: "scheduler.generate_token",
-        title: "Generate a scheduler token and configure the cron caller",
+        title: "Generate and configure the shared scheduler token",
         risk: "low",
         requiresApproval: false,
         commands: ["openssl rand -hex 32"],
         notes: [
-          "Set NP_SCHEDULER_TOKEN to the generated value and send Authorization: Bearer <token> from the scheduler.",
+          "Set NP_SCHEDULER_TOKEN on the web and Worker. External schedulers send it as a bearer token.",
         ],
+      };
+    case WORKER_WEB_CONNECTION_CHECK_ID:
+      return {
+        id: "worker.verify_web_connection",
+        title: "Verify the Worker connection to the deployed web service",
+        risk: "low",
+        requiresApproval: false,
+        commands: ["pnpm --silent run doctor:prod -- --check-worker-web --json"],
+        notes: result.hint ? [result.hint] : [],
       };
     default:
       if (result.id === "oauth.github.credentials" || result.id === "oauth.google.credentials") {

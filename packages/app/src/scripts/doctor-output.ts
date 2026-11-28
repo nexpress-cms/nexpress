@@ -1,6 +1,6 @@
 import type { DeployTarget } from "./deploy-targets.js";
 import { buildDoctorFixPlan, type DoctorFixPlanItem } from "./doctor-fix-plan.js";
-import type { CheckResult } from "./doctor-readiness.js";
+import { WORKER_WEB_CONNECTION_CHECK_ID, type CheckResult } from "./doctor-readiness.js";
 import { toProjectCommand } from "./ops-command-format.js";
 
 export interface DoctorSummary {
@@ -77,16 +77,25 @@ export function buildDoctorJson(args: {
     report.projectNextCommand = report.nextCommand ? toProjectCommand(report.nextCommand) : null;
     report.fixPlan = fixPlan;
   } else if (summary.errors > 0 || summary.warnings > 0) {
-    report.nextCommand = buildDoctorFixPlanCommand(args.prodMode, args.target);
+    report.nextCommand = buildDoctorFixPlanCommand(
+      args.prodMode,
+      args.target,
+      args.checks.some((check) => check.id === WORKER_WEB_CONNECTION_CHECK_ID),
+    );
     report.projectNextCommand = toProjectCommand(report.nextCommand);
   }
   return report;
 }
 
-export function buildDoctorFixPlanCommand(prodMode: boolean, target: DeployTarget | null): string {
-  if (!prodMode) return "pnpm run doctor -- --fix-plan";
-  const targetArg = target ? ` --target ${target}` : "";
-  return `pnpm run doctor:prod --${targetArg} --fix-plan`;
+export function buildDoctorFixPlanCommand(
+  prodMode: boolean,
+  target: DeployTarget | null,
+  checkWorkerWeb = false,
+): string {
+  const command = prodMode ? "pnpm run doctor:prod" : "pnpm run doctor";
+  const targetArg = prodMode && target ? ` --target ${target}` : "";
+  const probeArg = checkWorkerWeb ? " --check-worker-web" : "";
+  return `${command} --${targetArg}${probeArg} --fix-plan`;
 }
 
 export function renderDoctorCheck(

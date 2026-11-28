@@ -15,22 +15,42 @@ import { npWithAgentGuardianHttpResponseV1 } from "../../../lib/agents/guardian-
 import { npErrorResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
 import { revalidateCollection } from "../../../lib/revalidate";
+import {
+  WORKER_WEB_PROTOCOL_HEADER,
+  WORKER_WEB_PROTOCOL_VERSION,
+} from "../../../lib/worker-web-target";
 
 const fields = new Set(["siteId", "collection", "documentSlug"]);
 
+function schedulerBearerStatus(request: Request): 204 | 401 | 503 {
+  const token = process.env.NP_SCHEDULER_TOKEN;
+  if (!token) return 503;
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(
+    digest(request.headers.get("authorization") ?? ""),
+    digest(`Bearer ${token}`),
+  )
+    ? 204
+    : 401;
+}
+
+// The probe shares the POST authorization gate and ends before bootstrapping or invalidating.
+export function HEAD(request: Request): Response {
+  return new Response(null, {
+    status: schedulerBearerStatus(request),
+    headers: {
+      "Cache-Control": "no-store",
+      [WORKER_WEB_PROTOCOL_HEADER]: WORKER_WEB_PROTOCOL_VERSION,
+    },
+  });
+}
+
 async function npGuardianPOST(request: NextRequest) {
   try {
-    const token = process.env.NP_SCHEDULER_TOKEN;
-    if (!token) throw new NpServiceUnavailableError("Internal trigger token not configured.");
-    const digest = (value: string) => createHash("sha256").update(value).digest();
-    if (
-      !timingSafeEqual(
-        digest(request.headers.get("authorization") ?? ""),
-        digest(`Bearer ${token}`),
-      )
-    ) {
-      throw new NpAuthError("Unauthorized");
-    }
+    const authStatus = schedulerBearerStatus(request);
+    if (authStatus === 503)
+      throw new NpServiceUnavailableError("Internal trigger token not configured.");
+    if (authStatus === 401) throw new NpAuthError("Unauthorized");
 
     const body = await readJsonBody(request);
     const input =
