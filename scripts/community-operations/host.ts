@@ -30,6 +30,7 @@ import {
 } from "@nexpress/core/bootstrap";
 import type { NpDb } from "@nexpress/next";
 import { and, desc, eq, gt } from "drizzle-orm";
+import { createCommunityPilotModerationSchedule } from "@/lib/community-operations-moderation-schedule";
 
 /** Explicit host composition for a disposable, password-only community pilot. */
 export function createCommunityOperationsPilot(getDb: () => NpDb) {
@@ -56,6 +57,10 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
   }
 
   const siteId = "default";
+  const scheduledSite = process.env.NP_COMMUNITY_PILOT_MODERATION_SITE;
+  if (scheduledSite && scheduledSite !== siteId) {
+    throw new Error("Scheduled pilot moderation requires the explicit default site.");
+  }
   const key = (purpose: string) => createHmac("sha256", secret).update(purpose).digest();
   const cursorHmacKey = key("community-pilot:cursor");
   const reauthentication = {
@@ -193,21 +198,26 @@ export function createCommunityOperationsPilot(getDb: () => NpDb) {
   setCommunityModerationObserverV1(createAgentModeratorCommentObserverV1({ events }));
   setCommunityCommentReportObserverV1(createAgentModeratorCommentReportObserverV1({ events }));
 
+  const collect = (windowStartedAt: string) =>
+    collector.collect({
+      siteId,
+      windowStartedAt,
+      settings: {
+        recipeId: "moderator.repeated-link-spam",
+        recipeVersion: 1,
+        collectionSlugs: ["forum-posts"],
+        windowSeconds: 600,
+        minIndependentAccounts: 3,
+        minItems: 5,
+        automaticConfidenceBasisPoints: 9950,
+      },
+    });
+
   return {
     studio: createAgentStudioServerRuntimeV1({ incidents, approvals }),
-    collect: (windowStartedAt: string) =>
-      collector.collect({
-        siteId,
-        windowStartedAt,
-        settings: {
-          recipeId: "moderator.repeated-link-spam",
-          recipeVersion: 1,
-          collectionSlugs: ["forum-posts"],
-          windowSeconds: 600,
-          minIndependentAccounts: 3,
-          minItems: 5,
-          automaticConfidenceBasisPoints: 9950,
-        },
-      }),
+    collect,
+    moderationSchedule: scheduledSite
+      ? createCommunityPilotModerationSchedule({ siteId, getDb, collect })
+      : undefined,
   };
 }
