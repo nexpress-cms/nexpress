@@ -24,6 +24,7 @@ import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { communityPilot, ensureFor, getDb, shutdownBootstrap } from "../../src/lib/bootstrap.js";
 import {
   communityPilotCollectionLog,
+  communityPilotUnchangedLog,
   communityPilotWindowMs,
 } from "../../src/lib/community-operations-moderation-schedule.js";
 
@@ -117,21 +118,30 @@ async function login(user: string, member: boolean): Promise<Session> {
 
 async function waitForWorkerCollection(siteId: string, windowStartedAt: string) {
   const deadline = Date.now() + 180_000;
-  let first: { jobId: string; incidentId: string } | undefined;
+  let first: { jobId: string; incidentId: string; sourceDigest: string } | undefined;
   while (Date.now() < deadline) {
     const logs = await getDb()
-      .select({ jobId: npJobLogs.jobId, context: npJobLogs.context })
+      .select({ jobId: npJobLogs.jobId, context: npJobLogs.context, message: npJobLogs.message })
       .from(npJobLogs)
       .where(
         and(
-          eq(npJobLogs.message, communityPilotCollectionLog),
+          inArray(npJobLogs.message, [communityPilotCollectionLog, communityPilotUnchangedLog]),
           sql`${npJobLogs.context}->>'siteId' = ${siteId}`,
           sql`${npJobLogs.context}->>'windowStartedAt' = ${windowStartedAt}`,
         ),
       )
       .orderBy(asc(npJobLogs.createdAt))
       .limit(20);
-    for (const { jobId, context } of logs) {
+    for (const { jobId, context, message } of logs) {
+      if (message === communityPilotUnchangedLog) {
+        if (first && jobId !== first.jobId && context?.sourceDigest === first.sourceDigest) {
+          return {
+            incidentId: first.incidentId,
+            workerJobs: { collected: first.jobId, skipped: jobId },
+          };
+        }
+        continue;
+      }
       if (context?.complete !== true) continue;
       assert.equal(context.acceptedFacts, 6);
       assert.ok(Array.isArray(context.observations) && context.observations.length === 1);
@@ -139,15 +149,12 @@ async function waitForWorkerCollection(siteId: string, windowStartedAt: string) 
       const incidentId = uuid(observation.incidentId);
       if (observation.disposition === "created") {
         assert.equal(first?.incidentId ?? incidentId, incidentId);
-        first ??= { jobId, incidentId };
-      } else if (observation.disposition === "replayed" && first && jobId !== first.jobId) {
-        assert.equal(first.incidentId, incidentId);
-        return { incidentId, workerJobs: { collected: first.jobId, replayed: jobId } };
+        first ??= { jobId, incidentId, sourceDigest: text(context.sourceDigest) };
       }
     }
     await setTimeout(1000);
   }
-  throw new Error("No matching collection and replay from the scheduled Worker.");
+  throw new Error("No matching collection and unchanged-window skip from the scheduled Worker.");
 }
 
 try {
@@ -289,9 +296,9 @@ try {
     }
 
     let incidentId: string;
-    let workerJobs: { collected: string; replayed: string } | undefined;
+    let workerJobs: { collected: string; skipped: string } | undefined;
     if (pilot.moderationSchedule) {
-      console.log("Waiting for scheduled Worker collection and replay.");
+      console.log("Waiting for scheduled Worker collection and the unchanged-window skip.");
       ({ incidentId, workerJobs } = await waitForWorkerCollection(siteId, windowStartedAt));
     } else {
       const observation = await pilot.collect(windowStartedAt);
