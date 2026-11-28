@@ -5,15 +5,13 @@ import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import { requireSiteId, resolveSiteAuthUser, withCurrentSite } from "@nexpress/core/sites";
 import { npReadForumUnansweredQuestions } from "@nexpress/plugin-forum";
 
-interface DailyOpsCard {
+type DailyOpsCard = {
   id: "questions" | "reports" | "jobs";
   title: string;
-  count: number | null;
-  partial?: boolean;
   description: string;
   items?: { href: string; label: string; time?: string }[];
   link?: { href: string; label: string };
-}
+} & ({ state: "complete" | "partial"; count: number } | { state: "unavailable"; count: null });
 
 const reportQueue = "/admin/community/reports";
 const dayMilliseconds = 86_400_000;
@@ -26,6 +24,7 @@ async function questionsCard(): Promise<DailyOpsCard> {
   if (!questions) {
     return {
       ...base,
+      state: "unavailable",
       count: null,
       description:
         questions === null
@@ -36,7 +35,7 @@ async function questionsCard(): Promise<DailyOpsCard> {
   return {
     ...base,
     count: questions.items.length,
-    partial: !questions.complete,
+    state: questions.complete ? "complete" : "partial",
     description: questions.complete
       ? "Public questions with no visible reply or official answer."
       : `Among the ${questions.inspected.toString()} newest public questions.`,
@@ -58,9 +57,16 @@ async function reportsCard(siteId: string, now: Date): Promise<DailyOpsCard> {
     limit: maximumPreview,
   }).catch(() => null);
   if (!result)
-    return { ...base, count: null, description: "Could not read the report queue.", link };
+    return {
+      ...base,
+      state: "unavailable",
+      count: null,
+      description: "Could not read the report queue.",
+      link,
+    };
   return {
     ...base,
+    state: "complete",
     count: result.totalDocs,
     description: "Reports open for at least 24 hours.",
     items: result.reports.map((report) => ({
@@ -82,7 +88,12 @@ async function jobsCard(siteId: string): Promise<DailyOpsCard> {
   const link = { href: "/admin/jobs", label: "Open Jobs" };
   try {
     if (!npRequireJobsEnabledFlag(process.env.NP_ENABLE_JOBS))
-      return { ...base, count: null, description: "Background jobs are disabled." };
+      return {
+        ...base,
+        state: "unavailable",
+        count: null,
+        description: "Background jobs are disabled.",
+      };
     const jobs = await npCollectOperatorJobsObservationV1({
       siteId,
       maxTargets: 1000,
@@ -92,7 +103,7 @@ async function jobsCard(siteId: string): Promise<DailyOpsCard> {
       return {
         ...base,
         count: jobs.delayedReadyQueues.reduce((total, queue) => total + queue.count, 0),
-        partial: !jobs.complete,
+        state: jobs.complete ? "complete" : "partial",
         description: jobs.complete
           ? "Site jobs waiting at least 15 minutes after their eligible start, among retained framework jobs created in the past 24 hours."
           : "Site jobs waiting at least 15 minutes after their eligible start. Only the 1,000 newest retained site jobs were inspected.",
@@ -106,7 +117,13 @@ async function jobsCard(siteId: string): Promise<DailyOpsCard> {
   } catch {
     // Preserve an unavailable state when the host or queue cannot provide observations.
   }
-  return { ...base, count: null, description: "Could not observe the site job queues.", link };
+  return {
+    ...base,
+    state: "unavailable",
+    count: null,
+    description: "Could not observe the site job queues.",
+    link,
+  };
 }
 
 export async function readCommunityDailyOps(user: NpAuthUser, now = new Date()) {
@@ -120,6 +137,7 @@ export async function readCommunityDailyOps(user: NpAuthUser, now = new Date()) 
       jobsCard(siteId),
     ]);
     return {
+      schemaVersion: "np.community-daily-ops.v1" as const,
       siteId,
       asOf: now.toISOString(),
       cards: [questions, reports, jobs].filter((card) => card !== null),
