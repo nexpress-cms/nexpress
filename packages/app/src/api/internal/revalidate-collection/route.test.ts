@@ -17,7 +17,7 @@ vi.mock("@nexpress/core/sites", async (original) => ({
 vi.mock("@nexpress/core/collections", () => ({ getCollectionConfig: mocks.getCollectionConfig }));
 vi.mock("../../../lib/revalidate", () => ({ revalidateCollection: mocks.revalidateCollection }));
 
-import { POST } from "./route.js";
+import { HEAD, POST } from "./route.js";
 
 function request(
   token?: string,
@@ -46,6 +46,26 @@ describe("worker collection revalidation route", () => {
     vi.stubEnv("NP_SCHEDULER_TOKEN", "");
     expect((await POST(request("shared-test-token"))).status).toBe(503);
     expect(mocks.ensureFor).not.toHaveBeenCalled();
+  });
+
+  it("probes the same token gate without bootstrapping or invalidating", () => {
+    const probe = (token: string) =>
+      HEAD(
+        new Request("http://web.test/api/internal/revalidate-collection", {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      );
+    const response = probe("shared-test-token");
+    expect(response.status).toBe(204);
+    expect(response.body).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-np-worker-web")).toBe("1");
+    expect(probe("wrong-token").status).toBe(401);
+    vi.stubEnv("NP_SCHEDULER_TOKEN", "");
+    expect(probe("shared-test-token").status).toBe(503);
+    expect(mocks.ensureFor).not.toHaveBeenCalled();
+    expect(mocks.revalidateCollection).not.toHaveBeenCalled();
   });
 
   it("rejects caller-defined cache targets and unknown sites", async () => {

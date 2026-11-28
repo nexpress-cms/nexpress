@@ -66,6 +66,28 @@ describe("doctor output", () => {
     });
   });
 
+  it("preserves the dedicated Worker connection check in remediation commands", () => {
+    const options = {
+      prodMode: true,
+      target: null,
+      checks: [
+        { id: "worker.web_connection", state: "error" as const, label: "Worker web connection" },
+      ],
+    };
+    expect(buildDoctorJson(options)).toMatchObject({
+      ok: false,
+      blocksDeploy: true,
+      nextCommand: "pnpm run doctor:prod -- --check-worker-web --fix-plan",
+    });
+    expect(buildDoctorJson({ ...options, includeFixPlan: true }).fixPlan).toEqual([
+      expect.objectContaining({
+        checkIds: ["worker.web_connection"],
+        blocksDeploy: true,
+        nextCommand: "pnpm --silent run doctor:prod -- --check-worker-web --json",
+      }),
+    ]);
+  });
+
   it("adds fix-plan actions only when requested", () => {
     expect(buildDoctorJson({ prodMode: true, target: "vercel", checks })).toEqual(
       expect.not.objectContaining({ fixPlan: expect.anything() }),
@@ -87,7 +109,7 @@ describe("doctor output", () => {
             projectCommands: ["openssl rand -hex 32"],
             notes: expect.arrayContaining([
               "Set it when scheduled publishing is enabled.",
-              "Set NP_SCHEDULER_TOKEN to the generated value and send Authorization: Bearer <token> from the scheduler.",
+              "Set NP_SCHEDULER_TOKEN on the web and Worker. External schedulers send it as a bearer token.",
             ]),
           }),
           expect.objectContaining({

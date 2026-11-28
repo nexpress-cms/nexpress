@@ -111,11 +111,24 @@ claims correct.
 For collection changes, the stock Worker calls the web process to revalidate
 Next.js paths and tags. Set the same `NP_SCHEDULER_TOKEN` on both processes.
 The Worker uses `SITE_URL`, or `NP_WORKER_WEB_URL` when configured with a
-reachable web origin. Use HTTPS or a trusted private network. An unsuccessful
-request leaves a warning in Admin → Jobs → Logs for that job. Cache delivery
-is best effort so the job still runs search synchronization. Scheduled content
-uses the same site-scoped after-save jobs. For multiple web replicas, use a
-shared cache and tag invalidation across the replicas.
+reachable web origin. Use HTTPS or a trusted private network. After deploying
+the web service, run this check from the Worker's runtime environment before
+starting the Worker.
+
+```sh
+pnpm --silent run doctor:prod -- --check-worker-web --json
+```
+
+The command runs only `worker.web_connection`, which verifies the web endpoint
+and shared token using an authenticated `HEAD` request. A failed check exits
+with code 1 and distinguishes rejected tokens, unreachable services, and
+unexpected proxy or endpoint responses.
+
+An unsuccessful cache invalidation request leaves a warning in Admin → Jobs →
+Logs for that job. Cache delivery is best effort so the job still runs search
+synchronization. Scheduled content uses the same site-scoped after-save jobs.
+For multiple web replicas, use a shared cache and tag invalidation across the
+replicas.
 
 ---
 

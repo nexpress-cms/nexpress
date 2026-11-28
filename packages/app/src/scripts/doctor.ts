@@ -11,6 +11,7 @@ import {
   parseDeployTargetArg,
 } from "./deploy-targets.js";
 import { collectDoctorChecks } from "./doctor-core.js";
+import { checkWorkerWebConnection } from "./doctor-readiness.js";
 import {
   buildDoctorJson,
   dim,
@@ -25,6 +26,7 @@ const ARGV = process.argv.slice(2);
 const PROD_MODE = ARGV.includes("--prod");
 const JSON_MODE = ARGV.includes("--json");
 const FIX_PLAN_MODE = ARGV.includes("--fix-plan");
+const WORKER_WEB_MODE = ARGV.includes("--check-worker-web");
 const BRIEF_MODE = ARGV.includes("--brief");
 const COLOR_MODE = !JSON_MODE && !ARGV.includes("--no-color") && !process.env.NO_COLOR;
 
@@ -46,6 +48,7 @@ Options:
   --target <host> Apply host-specific production checks.
   --json          Print the stable machine-readable readiness report.
   --fix-plan      Include ordered fix suggestions.
+  --check-worker-web  Check only the deployed web connection from the Worker environment.
   --brief         Print compact one-line-per-check human output.
   --no-color      Disable ANSI color in human-readable output.
   --help, -h      Show this help.
@@ -70,11 +73,9 @@ async function main(): Promise<void> {
     console.log(dim(`Running in --prod mode${targetDetail}: deploy-readiness checks.`, COLOR_MODE));
     console.log("");
   }
-  const checks = await collectDoctorChecks({
-    prodMode: PROD_MODE,
-    target: deployTarget,
-    env: process.env,
-  });
+  const checks = WORKER_WEB_MODE
+    ? [await checkWorkerWebConnection(process.env)]
+    : await collectDoctorChecks({ prodMode: PROD_MODE, target: deployTarget, env: process.env });
   const report = buildDoctorJson({
     prodMode: PROD_MODE,
     target: deployTarget,

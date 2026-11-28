@@ -1,2 +1,2 @@
 export const dynamic = "force-dynamic";
-export { POST } from "@nexpress/app/api/internal/revalidate-collection/route";
+export { HEAD, POST } from "@nexpress/app/api/internal/revalidate-collection/route";

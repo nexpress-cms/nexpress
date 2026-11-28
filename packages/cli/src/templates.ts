@@ -1403,6 +1403,16 @@ doctor tightens defaults: \`NP_SECRET\` < 32 chars becomes an error,
 \`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns, a noop error
 reporter warns, and \`local\` storage on a multi-node platform errors.
 
+After deploying the web service, run this from the Worker's environment
+before starting the Worker.
+
+\`\`\`bash
+pnpm --silent run doctor:prod -- --check-worker-web --json
+\`\`\`
+
+The check uses \`NP_WORKER_WEB_URL\` or \`SITE_URL\` and the shared
+\`NP_SCHEDULER_TOKEN\` to verify the web connection and authentication.
+
 ## Vercel Checklist
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new?utm_source=nexpress&utm_campaign=oss)

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   checkJobsEnabledProd,
@@ -13,6 +13,7 @@ import {
   checkTargetSiteUrlProd,
   checkTargetStorageProd,
   checkTargetWorkerProd,
+  checkWorkerWebConnection,
 } from "./doctor-readiness.js";
 import type { MigrationStatus } from "./migration-status.js";
 
@@ -534,5 +535,73 @@ describe("doctor production target readiness", () => {
         detail: "1 applied migration row not present locally",
       }),
     );
+  });
+});
+
+describe("doctor Worker web connection", () => {
+  const env = {
+    SITE_URL: "https://public.example.test",
+    NP_WORKER_WEB_URL: "http://web:3000",
+    NP_SCHEDULER_TOKEN: "worker-test-token",
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("checks the Worker destination with HEAD and requires the NexPress probe header", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 204, headers: { "x-np-worker-web": "1" } }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await checkWorkerWebConnection(env)).toMatchObject({ state: "ok" });
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      new URL("http://web:3000/api/internal/revalidate-collection"),
+      expect.objectContaining({
+        method: "HEAD",
+        cache: "no-store",
+        redirect: "manual",
+        headers: { Authorization: "Bearer worker-test-token" },
+      }),
+    );
+    expect(await checkWorkerWebConnection({ ...env, NP_WORKER_WEB_URL: "" })).toMatchObject({
+      state: "error",
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      new URL("https://public.example.test/api/internal/revalidate-collection"),
+      expect.any(Object),
+    );
+  });
+
+  it("distinguishes authentication, missing server settings and connection failure", async () => {
+    const headers = { "x-np-worker-web": "1" };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401, headers }))
+      .mockResolvedValueOnce(new Response(null, { status: 503, headers }))
+      .mockRejectedValueOnce(new Error("unexpected private transport data"));
+    vi.stubGlobal("fetch", fetch);
+    for (const detail of [
+      "Web endpoint rejected the Worker token",
+      "NP_SCHEDULER_TOKEN is missing from the web environment",
+      "Could not connect to the Worker web endpoint",
+    ]) {
+      expect(await checkWorkerWebConnection(env)).toMatchObject({ state: "error", detail });
+    }
+  });
+
+  it("keeps the token local when the target or credential is invalid", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await checkWorkerWebConnection({ ...env, NP_WORKER_WEB_URL: "https://user:pass@web.test" }),
+    ).toMatchObject({ state: "error", detail: "Invalid or missing Worker web origin" });
+    expect(await checkWorkerWebConnection({ ...env, NP_SCHEDULER_TOKEN: undefined })).toMatchObject(
+      { state: "error", detail: "NP_SCHEDULER_TOKEN is missing from the Worker environment" },
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
