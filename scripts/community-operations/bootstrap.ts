@@ -16,7 +16,12 @@ export const {
   reloadPlugins,
   shutdown: shutdownBootstrap,
 } = createBootstrap({
-  config: nexpressConfig,
+  config: communityPilot?.moderationSchedule
+    ? {
+        ...nexpressConfig,
+        plugins: [...(nexpressConfig.plugins ?? []), communityPilot.moderationSchedule],
+      }
+    : nexpressConfig,
   generatedSchema,
   ...observabilityAdapters,
   agentStudioRuntime: communityPilot?.studio,

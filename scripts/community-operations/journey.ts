@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { open, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { npAgentActions, npAgentProviderCalls, npReports } from "@nexpress/core";
+import { npAgentActions, npAgentProviderCalls, npJobLogs, npReports } from "@nexpress/core";
 import { npAgentModeratorWindowStartedAtV1 } from "@nexpress/core/agents";
 import {
   npRequireAgentApprovalChallengeOutputV1,
@@ -20,8 +20,12 @@ import {
 } from "@nexpress/core/community-contract";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { getSiteById } from "@nexpress/core/sites";
-import { count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { communityPilot, ensureFor, getDb, shutdownBootstrap } from "../../src/lib/bootstrap.js";
+import {
+  communityPilotCollectionLog,
+  communityPilotWindowMs,
+} from "../../src/lib/community-operations-moderation-schedule.js";
 
 const [phase, directory] = process.argv.slice(2);
 const password = process.env.NP_COMMUNITY_PILOT_PASSWORD;
@@ -111,6 +115,41 @@ async function login(user: string, member: boolean): Promise<Session> {
   return { cookie: pairs.join("; "), csrf };
 }
 
+async function waitForWorkerCollection(siteId: string, windowStartedAt: string) {
+  const deadline = Date.now() + 180_000;
+  let first: { jobId: string; incidentId: string } | undefined;
+  while (Date.now() < deadline) {
+    const logs = await getDb()
+      .select({ jobId: npJobLogs.jobId, context: npJobLogs.context })
+      .from(npJobLogs)
+      .where(
+        and(
+          eq(npJobLogs.message, communityPilotCollectionLog),
+          sql`${npJobLogs.context}->>'siteId' = ${siteId}`,
+          sql`${npJobLogs.context}->>'windowStartedAt' = ${windowStartedAt}`,
+        ),
+      )
+      .orderBy(asc(npJobLogs.createdAt))
+      .limit(20);
+    for (const { jobId, context } of logs) {
+      if (context?.complete !== true) continue;
+      assert.equal(context.acceptedFacts, 6);
+      assert.ok(Array.isArray(context.observations) && context.observations.length === 1);
+      const observation = record(context.observations[0]);
+      const incidentId = uuid(observation.incidentId);
+      if (observation.disposition === "created") {
+        assert.equal(first?.incidentId ?? incidentId, incidentId);
+        first ??= { jobId, incidentId };
+      } else if (observation.disposition === "replayed" && first && jobId !== first.jobId) {
+        assert.equal(first.incidentId, incidentId);
+        return { incidentId, workerJobs: { collected: first.jobId, replayed: jobId } };
+      }
+    }
+    await setTimeout(1000);
+  }
+  throw new Error("No matching collection and replay from the scheduled Worker.");
+}
+
 try {
   await ensureFor("read");
   const db = getDb();
@@ -171,7 +210,7 @@ try {
     assert.ok((await publicThread.text()).includes("개발 환경 설정 질문"));
     const commentsPath = `/api/collections/forum-posts/${postId}/comments`;
     // Each observation must belong to the same real detector window.
-    const remaining = 600_000 - (Date.now() % 600_000);
+    const remaining = communityPilotWindowMs - (Date.now() % communityPilotWindowMs);
     if (remaining < 30_000) await setTimeout(remaining + 1_000);
     const comments = [];
     for (let index = 0; index < 5; index++) {
@@ -240,22 +279,31 @@ try {
         (comment) => comment.id === targetId,
       );
 
-    const windowClosedAt = Date.parse(windowStartedAt) + 600_000;
-    assert.ok(Number.isFinite(windowClosedAt) && windowClosedAt <= Date.now() + 600_000);
+    const windowClosedAt = Date.parse(windowStartedAt) + communityPilotWindowMs;
+    assert.ok(
+      Number.isFinite(windowClosedAt) && windowClosedAt <= Date.now() + communityPilotWindowMs,
+    );
     if (windowClosedAt > Date.now()) {
       console.log("Waiting for the existing detector's observation window to close.");
       await setTimeout(windowClosedAt - Date.now() + 100);
     }
 
-    const observation = await pilot.collect(windowStartedAt);
-    assert.equal(observation.acceptedFacts, 6);
-    assert.equal(observation.observations.length, 1, "Expected one advisory Incident.");
-    const incidentId = observation.observations[0].incidentId;
-    const replay = await pilot.collect(windowStartedAt);
-    assert.deepEqual(
-      replay.observations.map(({ incidentId, disposition }) => ({ incidentId, disposition })),
-      [{ incidentId, disposition: "replayed" }],
-    );
+    let incidentId: string;
+    let workerJobs: { collected: string; replayed: string } | undefined;
+    if (pilot.moderationSchedule) {
+      console.log("Waiting for scheduled Worker collection and replay.");
+      ({ incidentId, workerJobs } = await waitForWorkerCollection(siteId, windowStartedAt));
+    } else {
+      const observation = await pilot.collect(windowStartedAt);
+      assert.equal(observation.acceptedFacts, 6);
+      assert.equal(observation.observations.length, 1, "Expected one advisory Incident.");
+      incidentId = observation.observations[0].incidentId;
+      const replay = await pilot.collect(windowStartedAt);
+      assert.deepEqual(
+        replay.observations.map(({ incidentId, disposition }) => ({ incidentId, disposition })),
+        [{ incidentId, disposition: "replayed" }],
+      );
+    }
     const requester = await login("requester", false);
     const approver = await login("approver", false);
     const incidentPath = `/api/admin/agents/incidents/${incidentId}`;
@@ -405,6 +453,7 @@ try {
       reportEventId: reportEvidence.eventId,
       reportResolvedAt: dismissed.resolvedAt,
       openedNotifications: notices.length,
+      ...(workerJobs ? { workerJobs } : {}),
       quarantine,
       restore,
       verification: {

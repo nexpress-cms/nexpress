@@ -32,6 +32,7 @@ NP_ADMIN_EMAIL=requester@example.test NP_ADMIN_NAME='Pilot Requester' \
 
 mkdir -p scripts/community-operations
 cp "$pilot_sources/host.ts" src/lib/community-operations-host.ts
+cp "$pilot_sources/moderation-schedule.ts" src/lib/community-operations-moderation-schedule.ts
 cp "$pilot_sources/bootstrap.ts" src/lib/bootstrap.ts
 cp "$pilot_sources/prepare.ts" "$pilot_sources/journey.ts" scripts/community-operations/
 ```
@@ -68,6 +69,35 @@ ln -s "$PWD/public" .next/standalone/public
 HOSTNAME=127.0.0.1 PORT="${SITE_URL##*:}" node .next/standalone/server.js
 ```
 
+## Optional scheduled collection
+
+Set these variables in the isolated web and Worker environments before starting
+the pilot.
+
+```sh
+export NP_ENABLE_JOBS=1 NP_COMMUNITY_PILOT_MODERATION_SITE=default
+```
+
+After the web is ready, start the existing Worker command in a separate
+process. When using a framework build with the [Worker web connection
+check](../../docs/jobs.md#3-producer-vs-worker), set the shared
+`NP_SCHEDULER_TOKEN` and run that check first.
+
+```sh
+pnpm run worker
+```
+
+The local plugin uses the existing pg-boss plugin schedule. Every minute it
+finds actual comment report events from the six most recent closed ten-minute
+windows at the configured site. Closed report windows in that one-hour range
+remain eligible after a Worker outage. The existing collector and Incident
+writer own evidence, current staff authority, and replay. Jobs logs record
+which closed window each Worker execution collected. The schedule produces
+advisory Incidents for staff review. Quarantine and restoration use the human
+approval path below. To remove the schedule, unset
+`NP_COMMUNITY_PILOT_MODERATION_SITE` on both processes, restart them, and use
+**Plugins → Reload all** to reconcile the saved cron entry.
+
 ## Resume from the deployed site
 
 ```sh
@@ -79,9 +109,12 @@ pnpm exec tsx scripts/community-operations/journey.ts finish "$pilot_receipts"
 origin, local build ID, post, report, target, and detector window to `recorded.json`.
 Run it once per fresh fixture. The private lock prevents a second recording.
 `finish` starts in a separate process. It checks the same deployment and exact
-report, waits for the real detector window to close, and collects and replays
-the evidence. It checks that the report appears in the Incident's evidence
-and the Admin feed has one matching notification.
+report and waits for the real detector window to close. With scheduled
+collection, it waits for two distinct Worker job logs recording the initial
+collection and replay of the same window. With the manual pilot configuration,
+it invokes the collector and verifies the replay directly. Both modes check
+that the report appears in the Incident's evidence and the Admin feed has one
+matching notification.
 
 The two fixture staff accounts exercise the real approval, quarantine, and restore
 handlers. Each action checks self-approval rejection, separate approval, and an
@@ -91,7 +124,7 @@ the requester dismisses the synthetic report in the existing community queue
 and confirms public visibility again.
 
 A completed run writes `operations-handoff.json` with the Incident path, action
-and approval identifiers, verification outcomes, and the observed zero
-provider-call count. Once `finish` creates a plan, its requester session must
+and approval identifiers, verification outcomes, the scheduled Worker job IDs when present, and the
+observed zero provider-call count. Once `finish` creates a plan, its requester session must
 remain live through execution. If that session is lost, use a fresh isolated
 fixture for a full rerun.
