@@ -14,7 +14,10 @@ export function CommunityDailyReport({
           Community daily report
         </h2>
         <p className="break-words text-sm text-muted-foreground">
-          Site {report.siteId} · <time dateTime={report.asOf}>{report.asOf}</time>
+          Site {report.siteId} · <time dateTime={report.asOf}>{report.asOf}</time> ·{" "}
+          <a href="/api/admin/ops/community-daily-report" className="underline underline-offset-2">
+            View report JSON
+          </a>
         </p>
       </div>
       <div className="grid min-w-0 gap-3 md:grid-cols-3">
@@ -27,7 +30,7 @@ export function CommunityDailyReport({
               <p className="text-xl font-semibold">
                 {card.count === null
                   ? "Unavailable"
-                  : `${card.partial ? "At least " : ""}${card.count.toString()}`}
+                  : `${card.state === "partial" ? "At least " : ""}${card.count.toString()}`}
               </p>
               <p className="text-sm text-muted-foreground">{card.description}</p>
               {card.items?.length ? (

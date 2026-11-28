@@ -1041,6 +1041,49 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         target: { $ref: "#/components/schemas/community_report_target_context" },
       },
     },
+    community_daily_ops_report: {
+      type: "object",
+      required: ["schemaVersion", "siteId", "asOf", "cards"],
+      properties: {
+        schemaVersion: { const: "np.community-daily-ops.v1" },
+        siteId: { type: "string", pattern: npSiteIdPattern },
+        asOf: { type: "string", format: "date-time" },
+        cards: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "title", "description", "state", "count"],
+            properties: {
+              id: { enum: ["questions", "reports", "jobs"] },
+              title: { type: "string" },
+              description: { type: "string" },
+              state: { enum: ["complete", "partial", "unavailable"] },
+              count: { type: ["integer", "null"], minimum: 0 },
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["href", "label"],
+                  properties: {
+                    href: { type: "string" },
+                    label: { type: "string" },
+                    time: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+              link: {
+                type: "object",
+                required: ["href", "label"],
+                properties: { href: { type: "string" }, label: { type: "string" } },
+              },
+            },
+            if: { properties: { state: { const: "unavailable" } } },
+            then: { properties: { count: { type: "null" } } },
+            else: { properties: { count: { type: "integer" } } },
+          },
+        },
+      },
+    },
     community_moderation_report_page: {
       type: "object",
       additionalProperties: false,
@@ -5471,6 +5514,26 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         "401": { description: "Member auth required" },
         "403": { description: "The member lacks resolve-report in this target scope" },
         "404": { description: "Report or target not found" },
+      },
+    },
+  };
+  paths["/api/admin/ops/community-daily-report"] = {
+    get: {
+      summary: "Read the current site's community daily operations report",
+      description:
+        "Requires admin.manage on the active site. The reports card also requires community.moderate. A partial count is a lower bound. An unavailable source has a null count.",
+      security: [{ sessionCookie: [] }],
+      responses: {
+        "200": {
+          description: "Current community operations report",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_daily_ops_report" },
+            },
+          },
+        },
+        "401": { description: "Staff session required" },
+        "403": { description: "Site administration access required" },
       },
     },
   };

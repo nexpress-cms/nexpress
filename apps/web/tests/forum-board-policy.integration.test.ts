@@ -17,6 +17,7 @@ import {
   GET as commentsGET,
   POST as commentsPOST,
 } from "@/app/api/collections/[slug]/[id]/comments/route";
+import { GET as dailyReportGET } from "@/app/api/admin/ops/community-daily-report/route";
 import { GET as adminReportsGET } from "@/app/api/admin/community/reports/route";
 import { POST as resolveReportPOST } from "@/app/api/admin/community/reports/[id]/resolve/route";
 import { GET as reactionsGET } from "@/app/api/reactions/route";
@@ -246,6 +247,11 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       csrfCookie: `np-csrf=${staff.csrfToken}`,
       csrfHeader: staff.csrfToken,
     };
+    const reportPath = "/api/admin/ops/community-daily-report";
+    const getReport = () => dailyReportGET(request(reportPath, staffSession, { method: "GET" }));
+    expect(
+      (await dailyReportGET(new NextRequest(`http://localhost:3000${reportPath}`))).status,
+    ).toBe(401);
     const url = getTestDatabaseUrl();
     if (!url) throw new Error("TEST_DATABASE_URL not set");
     const adapter = new PgBossAdapter(url, { supervise: false, schedule: false });
@@ -272,30 +278,51 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       expect(typeof jobId).toBe("string");
 
       vi.stubEnv("NP_ENABLE_JOBS", "1");
-      const before = await readCommunityDailyOps(actor);
-      expect(before?.cards).toMatchObject([
-        { id: "questions", count: 1, items: [{ href: `/boards/questions/${postId}` }] },
+      const apiResponse = await getReport();
+      expect(apiResponse.headers.get("cache-control")).toBe("private, no-store");
+      const { status, body: before } =
+        await readJson<NonNullable<Awaited<ReturnType<typeof readCommunityDailyOps>>>>(apiResponse);
+      expect(status).toBe(200);
+      expect(before.schemaVersion).toBe("np.community-daily-ops.v1");
+      expect(before.siteId).toBe("default");
+      expect(before).toEqual(await readCommunityDailyOps(actor, new Date(before.asOf)));
+      expect(before.cards).toMatchObject([
+        {
+          id: "questions",
+          state: "complete",
+          count: 1,
+          items: [{ href: `/boards/questions/${postId}` }],
+        },
         {
           id: "reports",
+          state: "complete",
           count: 1,
           items: [{ href: `/admin/community/reports?reportId=${reportId}` }],
         },
-        { id: "jobs", count: 1, items: [{ href: "/admin/jobs?name=content.afterSave" }] },
+        {
+          id: "jobs",
+          state: "complete",
+          count: 1,
+          items: [{ href: "/admin/jobs?name=content.afterSave" }],
+        },
       ]);
       const otherSite = "daily-ops-private";
       await createSite({ id: otherSite, name: "Daily Ops private site" });
-      const readOtherSite = () => withCurrentSite(otherSite, () => readCommunityDailyOps(actor));
-      expect(await readOtherSite()).toBeNull();
+      const readOtherSite = () => withCurrentSite(otherSite, getReport);
+      expect((await readOtherSite()).status).toBe(403);
       await grantSiteMembership(otherSite, staff.userId, "editor");
-      expect(await readOtherSite()).toBeNull();
+      expect((await readOtherSite()).status).toBe(403);
       await grantSiteMembership(otherSite, staff.userId, "admin");
-      expect(await readOtherSite()).toMatchObject({
-        siteId: otherSite,
-        cards: [
-          { id: "questions", count: null },
-          { id: "reports", count: 0 },
-          { id: "jobs", count: 0 },
-        ],
+      expect(await readJson(await readOtherSite())).toMatchObject({
+        status: 200,
+        body: {
+          siteId: otherSite,
+          cards: [
+            { id: "questions", state: "unavailable", count: null },
+            { id: "reports", state: "complete", count: 0 },
+            { id: "jobs", state: "complete", count: 0 },
+          ],
+        },
       });
       const filtered = await readJson<{ docs: { id: string }[] }>(
         await adminReportsGET(
@@ -337,9 +364,36 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       await adapter.cancelJob(String(jobId));
 
       vi.stubEnv("NP_ENABLE_JOBS", "1");
-      expect((await readCommunityDailyOps(actor))?.cards.map(({ count }) => count)).toEqual([
-        0, 0, 0,
-      ]);
+      expect((await readJson(await getReport())).body).toMatchObject({
+        cards: [
+          { id: "questions", state: "complete", count: 0 },
+          { id: "reports", state: "complete", count: 0 },
+          { id: "jobs", state: "complete", count: 0 },
+        ],
+      });
+      // The 50 newest questions are answered. An older question lies outside the sample.
+      await db.insert(forumPostsTable).values(
+        Array.from({ length: 50 }, (_, index) => ({
+          board: boardId,
+          title: `Answered question ${index}`,
+          status: "published" as const,
+          body: npCreateEmptyRichTextContent(),
+          answeredAt: new Date(),
+        })),
+      );
+      // A busy queue times out independently of the other two sources.
+      const degraded = await db.transaction(async (tx) => {
+        await tx.execute(sql`lock table pgboss.job in access exclusive mode`);
+        return readJson(await getReport());
+      });
+      expect(degraded.status).toBe(200);
+      expect(degraded.body).toMatchObject({
+        cards: [
+          { id: "questions", state: "partial", count: 0 },
+          { id: "reports", state: "complete", count: 0 },
+          { id: "jobs", state: "unavailable", count: null },
+        ],
+      });
       expect(await db.select({ count: count() }).from(npAgentProviderCalls)).toEqual([
         { count: 0 },
       ]);

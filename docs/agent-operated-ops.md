@@ -247,6 +247,17 @@ replying, resolving a report, or handling a job to see the updated counts.
   the existing Jobs queue filter. Site jobs from an unavailable source display
   an unavailable state. The report never starts a worker.
 
+Staff tools can read the same report with `GET /api/admin/ops/community-daily-report`
+using the existing staff session. The active site determines the report scope.
+The response includes `schemaVersion` (`np.community-daily-ops.v1`), `siteId`,
+`asOf` (UTC), and `cards` identified by `questions`, `reports`, or `jobs`.
+Each card has a machine-readable `state`. A `complete` count can be zero,
+a `partial` count is a lower bound, and an `unavailable` count is `null`.
+Clients can follow the optional `items` and `link` fields to investigate.
+The endpoint requires `admin.manage` on the active site and includes the
+reports card only with `community.moderate`. An unauthenticated request
+returns HTTP 401 and insufficient site access returns HTTP 403.
+
 ### Admin read-only ops API
 
 These endpoints use the same authenticated admin session as `/admin/ops` and
